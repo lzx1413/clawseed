@@ -1,0 +1,94 @@
+[workspace]
+members = [
+    "crates/clawseed",
+    "crates/clawseed-api",
+    "crates/clawseed-macros",
+    "crates/clawseed-parser",
+    "crates/clawseed-config",
+    "crates/clawseed-providers",
+    "crates/clawseed-memory",
+    "crates/clawseed-tools",
+    "crates/clawseed-agent",
+    "crates/clawseed-gateway",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.7.3"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/clawseed-labs/clawseed"
+rust-version = "1.87"
+
+[workspace.dependencies]
+clawseed-api = { path = "crates/clawseed-api" }
+clawseed-macros = { path = "crates/clawseed-macros" }
+clawseed-parser = { path = "crates/clawseed-parser" }
+clawseed-config = { path = "crates/clawseed-config" }
+clawseed-providers = { path = "crates/clawseed-providers" }
+clawseed-memory = { path = "crates/clawseed-memory" }
+clawseed-tools = { path = "crates/clawseed-tools" }
+clawseed-agent = { path = "crates/clawseed-agent" }
+clawseed-gateway = { path = "crates/clawseed-gateway" }
+clawseed = { path = "crates/clawseed" }
+
+# Shared external dependencies
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+serde_json = { version = "1.0", default-features = false, features = ["std"] }
+anyhow = "1.0"
+thiserror = "2.0"
+async-trait = "0.1"
+tokio = { version = "1.50", default-features = false, features = ["rt-multi-thread", "macros", "time", "net", "io-util", "sync", "process", "io-std", "fs", "signal"] }
+tokio-util = { version = "0.7", default-features = false }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+tracing = { version = "0.1", default-features = false }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "ansi", "env-filter"] }
+toml = "1.0"
+directories = "6.0"
+shellexpand = "3.1"
+rusqlite = { version = "0.37", features = ["bundled"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+chrono-tz = "0.10"
+cron = "0.15"
+regex = "1.10"
+uuid = { version = "1.22", default-features = false, features = ["v4", "std"] }
+parking_lot = "0.12"
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+base64 = "0.22"
+clap = { version = "4.5", features = ["derive"] }
+urlencoding = "2.1"
+nanohtml2text = "0.2"
+hex = "0.4"
+glob = "0.3"
+sha2 = "0.10"
+which = "8.0"
+tempfile = "3.26"
+wiremock = "0.6"
+
+[profile.dev]
+incremental = true
+opt-level = 0
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.release-fast]
+inherits = "release"
+codegen-units = 8
+
+[profile.ci]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+
+[profile.dist]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"

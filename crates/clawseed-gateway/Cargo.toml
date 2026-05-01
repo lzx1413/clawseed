@@ -1,0 +1,57 @@
+[package]
+name = "clawseed-gateway"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "HTTP/WebSocket gateway for ClawSeed"
+
+[dependencies]
+clawseed-api = { workspace = true }
+clawseed-config = { workspace = true }
+clawseed-agent = { workspace = true }
+clawseed-memory = { workspace = true }
+clawseed-providers = { workspace = true }
+clawseed-tools = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+axum = { version = "0.8", features = ["ws"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "limit", "timeout"] }
+uuid = { workspace = true }
+parking_lot = { workspace = true }
+futures-util = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+toml = { workspace = true }
+directories = { workspace = true }
+hmac = "0.12"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls-pemfile = "2"
+tokio-rustls = "0.26"
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["server-auto", "tokio"] }
+http-body-util = "0.1"
+rcgen = { version = "0.13", optional = true }
+tempfile = { workspace = true, optional = true }
+chrono = { workspace = true }
+rand = "0.9"
+
+[features]
+default = []
+webauthn = []
+gateway-voice-duplex = []
+channel-nostr = []
+observability-prometheus = []
+tls-tests = ["dep:rcgen", "dep:tempfile"]
+
+[dev-dependencies]
+tempfile = { workspace = true }
+rcgen = "0.13"
+tokio = { workspace = true, features = ["rt", "macros"] }

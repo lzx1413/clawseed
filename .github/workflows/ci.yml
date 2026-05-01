@@ -1,0 +1,203 @@
+name: Quality Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  # ── Stage 1: Lint (fast gate — fails early) ──────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.87.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # ── Stage 2: Build (gated on lint) ───────────────────────────────
+  build:
+    name: Build ${{ matrix.target }}
+    needs: [lint]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-14
+            target: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.87.0
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install mold linker
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y mold
+      - name: Build
+        shell: bash
+        run: cargo build --profile ci --locked --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: clang
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
+
+  # ── Stage 2: Check (parallel with build) ─────────────────────────
+  check:
+    name: Check (${{ matrix.name }})
+    needs: [lint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: all features
+            args: --all-features
+          - name: no default features
+            args: --no-default-features
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.87.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Check
+        run: cargo check --locked ${{ matrix.args }}
+
+  # ── Stage 3: Test (gated on lint) ────────────────────────────────
+  test:
+    name: Test
+    needs: [lint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.87.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install mold linker
+        run: sudo apt-get update -qq && sudo apt-get install -y mold
+      - name: Install cargo-nextest
+        run: curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ~/.cargo/bin
+      - name: Run tests
+        run: cargo nextest run --locked --workspace
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: clang
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
+
+  # ── Stage 4: Security (parallel with test) ───────────────────────
+  security:
+    name: Security
+    needs: [lint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.87.0
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+      - name: Check licenses, sources, and advisories
+        run: cargo deny check
+
+  # ── Stage 5: Coverage ────────────────────────────────────────────
+  coverage:
+    name: Coverage
+    needs: [lint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.87.0
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked
+      - name: Generate coverage
+        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: lcov.info
+
+  # ── Stage 6: ADF file-size guard ─────────────────────────────────
+  adf-guard:
+    name: ADF Guard
+    needs: [lint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for oversized files (>1000 lines)
+        run: |
+          OVERSIZED=$(find . -name "*.rs" -not -path "./target/*" \
+            -exec awk 'END { if (NR > 1000) print FILENAME, NR }' {} \;)
+          if [ -n "$OVERSIZED" ]; then
+            echo "::warning::Files exceeding 1000 lines:"
+            echo "$OVERSIZED"
+            COUNT=$(echo "$OVERSIZED" | wc -l)
+            if [ "$COUNT" -gt 3 ]; then
+              echo "::error::$COUNT files exceed 1000 lines (max 3 allowed)"
+              exit 1
+            fi
+          fi
+
+  # ── Required gate ────────────────────────────────────────────────
+  gate:
+    name: CI Required Gate
+    if: always()
+    needs: [lint, build, check, test, security, coverage, adf-guard]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "::error::One or more CI jobs failed or were cancelled"
+            exit 1
+          fi

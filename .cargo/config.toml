@@ -1,0 +1,34 @@
+[alias]
+mdbook = "run -p xtask --bin mdbook --"
+fluent = "run -p xtask --bin fluent --"
+
+[build]
+rustdocflags = ["--default-theme=ayu"]
+
+[target.x86_64-unknown-linux-musl]
+rustflags = ["-C", "link-arg=-static"]
+
+# ARM64 Linux (Raspberry Pi 4/5, AWS Graviton, etc.)
+# Prerequisite: aarch64-linux-gnu-gcc must be installed.
+#   Arch:   sudo pacman -S aarch64-linux-gnu-gcc
+#   Debian: sudo apt install gcc-aarch64-linux-gnu
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+
+[target.aarch64-unknown-linux-musl]
+rustflags = ["-C", "link-arg=-static", "-C", "link-arg=-Wl,-z,stack-size=8388608"]
+
+# Windows targets
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/STACK:8388608"]
+
+[target.i686-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/STACK:8388608"]
+
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "link-arg=-Wl,--stack,8388608"]
+
+# Android targets — use tools/build-android.sh which sets CARGO_TARGET_*_LINKER via env.
+# Do not hardcode NDK paths here; they are machine-specific and the build script handles them.
+[target.aarch64-linux-android]
+rustflags = ["-C", "link-arg=-Wl,-z,stack-size=8388608"]

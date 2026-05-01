@@ -1,0 +1,44 @@
+[package]
+name = "clawseed-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Agent loop, tool dispatch, cost control, and cron engine for ClawSeed"
+
+[dependencies]
+clawseed-api = { workspace = true }
+clawseed-config = { workspace = true }
+clawseed-parser = { workspace = true }
+clawseed-providers = { workspace = true }
+clawseed-memory = { workspace = true }
+clawseed-tools = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+rusqlite = { workspace = true }
+cron = { workspace = true, optional = true }
+chrono-tz = { workspace = true, optional = true }
+uuid = { workspace = true }
+parking_lot = { workspace = true }
+futures-util = { workspace = true }
+rand = { version = "0.9", features = ["std"] }
+hex = "0.4"
+
+[features]
+default = ["cron-engine"]
+cron-engine = ["dep:cron", "dep:chrono-tz"]
+
+[dev-dependencies]
+tempfile = "3.26"
+toml = { workspace = true }
+async-trait = { workspace = true }
+parking_lot = { workspace = true }
+uuid = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }

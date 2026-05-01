@@ -1,0 +1,27 @@
+[package]
+name = "clawseed"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "ClawSeed - Android AI agent framework"
+publish = false
+
+[[bin]]
+name = "clawseed"
+path = "src/main.rs"
+
+[dependencies]
+clawseed-gateway = { workspace = true }
+clawseed-agent = { workspace = true }
+clawseed-config = { workspace = true }
+clawseed-api = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+
+[features]
+default = ["android"]
+android = []
