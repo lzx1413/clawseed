@@ -74,7 +74,6 @@ clawseed-api（零依赖，仅 trait 定义）
     ├← clawseed-tools      （工具实现）
     ├← clawseed-memory      （存储后端）
     ├← clawseed-providers   （LLM 提供商）
-    ├← clawseed-parser      （消息解析）
     └← clawseed-agent       （Agent 核心）
             ↑
             └← clawseed-config  （配置加载）
@@ -110,8 +109,10 @@ Agent 的核心是一个 turn 循环，每次用户消息触发一次：
 调用 LLM（Provider::chat()）
   ↓
 解析响应（ToolDispatcher::parse_response()）
-  ├── 纯文本响应 → 返回给用户
-  └── 包含工具调用 → 进入工具循环
+├── NativeToolDispatcher：直接从 provider 原生 tool_calls 提取
+└── XmlToolDispatcher：先尝试 ◁▷ 格式，失败后 fallback 到多格式解析器（12+ 种格式）
+    ├── 纯文本响应 → 返回给用户
+    └── 包含工具调用 → 进入工具循环
         ↓
   对每个工具调用：
     1. before_hook 拦截（可取消/修改）
@@ -286,11 +287,10 @@ System prompt（始终保留）
 | Crate | 职责 | 依赖 api | 依赖 agent |
 |-------|------|:---------:|:----------:|
 | `clawseed-api` | 仅 trait 定义 | — | — |
-| `clawseed-agent` | Agent 循环、Hook、调度 | yes | — |
+| `clawseed-agent` | Agent 循环、Hook、调度、解析 | yes | — |
 | `clawseed-tools` | 25+ 内置工具 | yes | no |
 | `clawseed-providers` | LLM 提供商实现 | yes | no |
 | `clawseed-memory` | SQLite 存储 + 向量搜索 | yes | no |
 | `clawseed-config` | TOML 配置加载 | yes | no |
-| `clawseed-parser` | 工具调用解析 | yes | no |
 | `clawseed-gateway` | Axum HTTP/WS 服务器 + 远程工具桥 | yes | yes |
 | `clawseed` | 二进制（CLI） | — | — |

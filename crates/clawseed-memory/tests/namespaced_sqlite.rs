@@ -40,7 +40,10 @@ async fn namespaced_sqlite_recall_within_namespace() {
         .unwrap();
 
     let results = mem.recall("Rust", 10, None, None, None).await.unwrap();
-    assert!(!results.is_empty(), "recall should find entries in namespace");
+    assert!(
+        !results.is_empty(),
+        "recall should find entries in namespace"
+    );
     assert!(
         results.iter().any(|e| e.content.contains("Rust")),
         "recall should find Rust-related entry"
@@ -124,10 +127,7 @@ async fn namespaced_sqlite_list_filters_by_namespace() {
     assert_eq!(a_list.len(), 2);
     assert!(a_list.iter().all(|e| e.namespace == "agent-a"));
 
-    let a_core = ns_a
-        .list(Some(&MemoryCategory::Core), None)
-        .await
-        .unwrap();
+    let a_core = ns_a.list(Some(&MemoryCategory::Core), None).await.unwrap();
     assert_eq!(a_core.len(), 1);
     assert_eq!(a_core[0].key, "a1");
 
@@ -207,7 +207,10 @@ async fn namespaced_sqlite_purge_own_namespace() {
         .unwrap();
 
     let count = ns_a.purge_namespace("agent-a").await.unwrap();
-    assert_eq!(count, 1, "purge should remove 1 entry from agent-a namespace");
+    assert_eq!(
+        count, 1,
+        "purge should remove 1 entry from agent-a namespace"
+    );
 
     // ns_b should be unaffected
     assert_eq!(ns_b.count().await.unwrap(), 1);

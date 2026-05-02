@@ -53,8 +53,7 @@ impl ProviderFactoryRegistry {
         self.factories
             .insert(arc.name().to_string(), Arc::clone(&arc));
         for alias in arc.aliases() {
-            self.factories
-                .insert(alias.to_string(), Arc::clone(&arc));
+            self.factories.insert(alias.to_string(), Arc::clone(&arc));
         }
     }
 
@@ -159,11 +158,7 @@ struct OpenAiCompatFactory {
 }
 
 impl OpenAiCompatFactory {
-    fn new(
-        name: &'static str,
-        display_name: &'static str,
-        default_base_url: &'static str,
-    ) -> Self {
+    fn new(name: &'static str, display_name: &'static str, default_base_url: &'static str) -> Self {
         Self {
             name,
             display_name,
@@ -331,7 +326,14 @@ impl ProviderFactory for GlmFactory {
     }
 
     fn aliases(&self) -> &[&str] {
-        &["zhipu", "glm-global", "zhipu-global", "glm-cn", "zhipu-cn", "bigmodel"]
+        &[
+            "zhipu",
+            "glm-global",
+            "zhipu-global",
+            "glm-cn",
+            "zhipu-cn",
+            "bigmodel",
+        ]
     }
 
     fn create(
@@ -342,17 +344,14 @@ impl ProviderFactory for GlmFactory {
         _options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
         let url = base_url.unwrap_or_else(|| {
-            crate::aliases::glm_base_url(provider_name)
-                .unwrap_or("https://api.z.ai/api/paas/v4")
+            crate::aliases::glm_base_url(provider_name).unwrap_or("https://api.z.ai/api/paas/v4")
         });
-        Ok(Box::new(
-            crate::compatible::OpenAiCompatibleProvider::new(
-                "GLM",
-                url,
-                api_key,
-                AuthStyle::ZhipuJwt,
-            ),
-        ))
+        Ok(Box::new(crate::compatible::OpenAiCompatibleProvider::new(
+            "GLM",
+            url,
+            api_key,
+            AuthStyle::ZhipuJwt,
+        )))
     }
 }
 
@@ -365,9 +364,17 @@ impl ProviderFactory for MinimaxFactory {
 
     fn aliases(&self) -> &[&str] {
         &[
-            "minimax-intl", "minimax-io", "minimax-global", "minimax-oauth",
-            "minimax-portal", "minimax-oauth-global", "minimax-portal-global",
-            "minimax-cn", "minimaxi", "minimax-oauth-cn", "minimax-portal-cn",
+            "minimax-intl",
+            "minimax-io",
+            "minimax-global",
+            "minimax-oauth",
+            "minimax-portal",
+            "minimax-oauth-global",
+            "minimax-portal-global",
+            "minimax-cn",
+            "minimaxi",
+            "minimax-oauth-cn",
+            "minimax-portal-cn",
         ]
     }
 
@@ -379,12 +386,16 @@ impl ProviderFactory for MinimaxFactory {
         _options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
         let url = base_url.unwrap_or_else(|| {
-            crate::aliases::minimax_base_url(provider_name)
-                .unwrap_or("https://api.minimax.io/v1")
+            crate::aliases::minimax_base_url(provider_name).unwrap_or("https://api.minimax.io/v1")
         });
         Ok(Box::new(
-            crate::compatible::OpenAiCompatibleProvider::new("MiniMax", url, api_key, AuthStyle::Bearer)
-                .with_merge_system_into_user(),
+            crate::compatible::OpenAiCompatibleProvider::new(
+                "MiniMax",
+                url,
+                api_key,
+                AuthStyle::Bearer,
+            )
+            .with_merge_system_into_user(),
         ))
     }
 }
@@ -398,8 +409,13 @@ impl ProviderFactory for MoonshotFactory {
 
     fn aliases(&self) -> &[&str] {
         &[
-            "kimi", "moonshot-cn", "kimi-cn",
-            "moonshot-intl", "moonshot-global", "kimi-intl", "kimi-global",
+            "kimi",
+            "moonshot-cn",
+            "kimi-cn",
+            "moonshot-intl",
+            "moonshot-global",
+            "kimi-intl",
+            "kimi-global",
         ]
     }
 
@@ -411,17 +427,14 @@ impl ProviderFactory for MoonshotFactory {
         _options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
         let url = base_url.unwrap_or_else(|| {
-            crate::aliases::moonshot_base_url(provider_name)
-                .unwrap_or("https://api.moonshot.cn/v1")
+            crate::aliases::moonshot_base_url(provider_name).unwrap_or("https://api.moonshot.cn/v1")
         });
-        Ok(Box::new(
-            crate::compatible::OpenAiCompatibleProvider::new(
-                "Moonshot",
-                url,
-                api_key,
-                AuthStyle::Bearer,
-            ),
-        ))
+        Ok(Box::new(crate::compatible::OpenAiCompatibleProvider::new(
+            "Moonshot",
+            url,
+            api_key,
+            AuthStyle::Bearer,
+        )))
     }
 }
 
@@ -434,10 +447,18 @@ impl ProviderFactory for QwenFactory {
 
     fn aliases(&self) -> &[&str] {
         &[
-            "dashscope", "qwen-cn", "dashscope-cn",
-            "qwen-intl", "dashscope-intl", "qwen-international", "dashscope-international",
-            "qwen-us", "dashscope-us",
-            "qwen-code", "qwen-oauth", "qwen_oauth",
+            "dashscope",
+            "qwen-cn",
+            "dashscope-cn",
+            "qwen-intl",
+            "dashscope-intl",
+            "qwen-international",
+            "dashscope-international",
+            "qwen-us",
+            "dashscope-us",
+            "qwen-code",
+            "qwen-oauth",
+            "qwen_oauth",
         ]
     }
 
@@ -517,14 +538,12 @@ impl ProviderFactory for ZaiFactory {
             crate::aliases::zai_base_url(provider_name)
                 .unwrap_or("https://api.z.ai/api/coding/paas/v4")
         });
-        Ok(Box::new(
-            crate::compatible::OpenAiCompatibleProvider::new(
-                "Z.AI",
-                url,
-                api_key,
-                AuthStyle::ZhipuJwt,
-            ),
-        ))
+        Ok(Box::new(crate::compatible::OpenAiCompatibleProvider::new(
+            "Z.AI",
+            url,
+            api_key,
+            AuthStyle::ZhipuJwt,
+        )))
     }
 }
 
@@ -547,14 +566,12 @@ impl ProviderFactory for QianfanFactory {
         _options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
         let qianfan_url = crate::aliases::qianfan_base_url(base_url);
-        Ok(Box::new(
-            crate::compatible::OpenAiCompatibleProvider::new(
-                "Qianfan",
-                &qianfan_url,
-                api_key,
-                AuthStyle::Bearer,
-            ),
-        ))
+        Ok(Box::new(crate::compatible::OpenAiCompatibleProvider::new(
+            "Qianfan",
+            &qianfan_url,
+            api_key,
+            AuthStyle::Bearer,
+        )))
     }
 }
 
@@ -577,14 +594,12 @@ impl ProviderFactory for DoubaoFactory {
         _options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
         let url = base_url.unwrap_or("https://ark.cn-beijing.volces.com/api/v3");
-        Ok(Box::new(
-            crate::compatible::OpenAiCompatibleProvider::new(
-                "Doubao",
-                url,
-                api_key,
-                AuthStyle::Bearer,
-            ),
-        ))
+        Ok(Box::new(crate::compatible::OpenAiCompatibleProvider::new(
+            "Doubao",
+            url,
+            api_key,
+            AuthStyle::Bearer,
+        )))
     }
 }
 
@@ -601,10 +616,14 @@ pub fn default_provider_factory_registry() -> ProviderFactoryRegistry {
 
     // ── OpenAI-compatible providers with known URLs ──
     reg.register(OpenAiCompatFactory::new(
-        "openrouter", "OpenRouter", "https://openrouter.ai/api/v1",
+        "openrouter",
+        "OpenRouter",
+        "https://openrouter.ai/api/v1",
     ));
     reg.register(OpenAiCompatFactory::new(
-        "openai", "OpenAI", "https://api.openai.com/v1",
+        "openai",
+        "OpenAI",
+        "https://api.openai.com/v1",
     ));
     reg.register(
         OpenAiCompatFactory::new("ollama", "Ollama", "http://localhost:11434/v1")
@@ -612,37 +631,52 @@ pub fn default_provider_factory_registry() -> ProviderFactoryRegistry {
             .aliases(&["llamacpp", "llama.cpp"]),
     );
     reg.register(OpenAiCompatFactory::new(
-        "deepseek", "DeepSeek", "https://api.deepseek.com/v1",
+        "deepseek",
+        "DeepSeek",
+        "https://api.deepseek.com/v1",
     ));
     reg.register(OpenAiCompatFactory::new(
-        "groq", "Groq", "https://api.groq.com/openai/v1",
+        "groq",
+        "Groq",
+        "https://api.groq.com/openai/v1",
     ));
     reg.register(OpenAiCompatFactory::new(
-        "mistral", "Mistral", "https://api.mistral.ai/v1",
+        "mistral",
+        "Mistral",
+        "https://api.mistral.ai/v1",
     ));
-    reg.register(
-        OpenAiCompatFactory::new("xai", "xAI", "https://api.x.ai/v1")
-            .aliases(&["grok"]),
-    );
+    reg.register(OpenAiCompatFactory::new("xai", "xAI", "https://api.x.ai/v1").aliases(&["grok"]));
     reg.register(OpenAiCompatFactory::new(
-        "venice", "Venice", "https://api.venice.ai/api/v1",
+        "venice",
+        "Venice",
+        "https://api.venice.ai/api/v1",
     ));
     reg.register(
         OpenAiCompatFactory::new("together", "Together", "https://api.together.xyz/v1")
             .aliases(&["together-ai"]),
     );
     reg.register(
-        OpenAiCompatFactory::new("fireworks", "Fireworks", "https://api.fireworks.ai/inference/v1")
-            .aliases(&["fireworks-ai"]),
+        OpenAiCompatFactory::new(
+            "fireworks",
+            "Fireworks",
+            "https://api.fireworks.ai/inference/v1",
+        )
+        .aliases(&["fireworks-ai"]),
     );
     reg.register(OpenAiCompatFactory::new(
-        "perplexity", "Perplexity", "https://api.perplexity.ai",
+        "perplexity",
+        "Perplexity",
+        "https://api.perplexity.ai",
     ));
     reg.register(OpenAiCompatFactory::new(
-        "cohere", "Cohere", "https://api.cohere.ai/v2",
+        "cohere",
+        "Cohere",
+        "https://api.cohere.ai/v2",
     ));
     reg.register(OpenAiCompatFactory::new(
-        "novita", "Novita", "https://api.novita.ai/v3/openai",
+        "novita",
+        "Novita",
+        "https://api.novita.ai/v3/openai",
     ));
     reg.register(
         OpenAiCompatFactory::new("nvidia", "NVIDIA", "https://integrate.api.nvidia.com/v1")
@@ -653,12 +687,20 @@ pub fn default_provider_factory_registry() -> ProviderFactoryRegistry {
             .aliases(&["github-copilot"]),
     );
     reg.register(
-        OpenAiCompatFactory::new("vercel", "Vercel AI Gateway", crate::aliases::VERCEL_AI_GATEWAY_BASE_URL)
-            .aliases(&["vercel-ai"]),
+        OpenAiCompatFactory::new(
+            "vercel",
+            "Vercel AI Gateway",
+            crate::aliases::VERCEL_AI_GATEWAY_BASE_URL,
+        )
+        .aliases(&["vercel-ai"]),
     );
     reg.register(
-        OpenAiCompatFactory::new("cloudflare", "Cloudflare AI", "https://gateway.ai.cloudflare.com/v1")
-            .aliases(&["cloudflare-ai"]),
+        OpenAiCompatFactory::new(
+            "cloudflare",
+            "Cloudflare AI",
+            "https://gateway.ai.cloudflare.com/v1",
+        )
+        .aliases(&["cloudflare-ai"]),
     );
 
     // ── Azure OpenAI ──
@@ -677,10 +719,26 @@ pub fn default_provider_factory_registry() -> ProviderFactoryRegistry {
     // ── Generic providers (base_url required, provider_name used as hint) ──
     reg.register(GenericCompatFactory {
         names: &[
-            "sglang", "vllm", "synthetic", "osaurus", "deepmyst", "deep-myst",
-            "ovhcloud", "ovh", "astrai", "avian", "aihubmix", "siliconflow",
-            "silicon-flow", "telnyx", "openai-codex", "openai_codex", "codex",
-            "kimi-code", "kimi_coding", "kimi_for_coding",
+            "sglang",
+            "vllm",
+            "synthetic",
+            "osaurus",
+            "deepmyst",
+            "deep-myst",
+            "ovhcloud",
+            "ovh",
+            "astrai",
+            "avian",
+            "aihubmix",
+            "siliconflow",
+            "silicon-flow",
+            "telnyx",
+            "openai-codex",
+            "openai_codex",
+            "codex",
+            "kimi-code",
+            "kimi_coding",
+            "kimi_for_coding",
         ],
     });
 

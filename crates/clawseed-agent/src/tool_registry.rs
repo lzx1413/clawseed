@@ -73,7 +73,11 @@ impl DefaultToolRegistry {
 
     /// Register a tool, replacing any existing tool with the same name.
     /// Returns the previous entry if one was replaced.
-    pub fn register_or_replace(&self, tool: Box<dyn Tool>, source: ToolSource) -> Option<ToolEntry> {
+    pub fn register_or_replace(
+        &self,
+        tool: Box<dyn Tool>,
+        source: ToolSource,
+    ) -> Option<ToolEntry> {
         let name = tool.name().to_string();
         let arc: Arc<dyn Tool> = Arc::from(tool);
         let entry = ToolEntry { source };
@@ -97,7 +101,9 @@ impl DefaultToolRegistry {
                 Entry::Occupied(_) => continue,
                 Entry::Vacant(entry) => {
                     let arc: Arc<dyn Tool> = Arc::from(tool);
-                    let entry_meta = ToolEntry { source: source.clone() };
+                    let entry_meta = ToolEntry {
+                        source: source.clone(),
+                    };
                     entry.insert((arc, entry_meta));
                     count += 1;
                 }
@@ -174,7 +180,9 @@ impl ToolRegistry for DefaultToolRegistry {
     }
 
     fn get_tool(&self, name: &str) -> Option<Arc<dyn Tool>> {
-        self.tools.get(name).map(|entry| Arc::clone(&entry.value().0))
+        self.tools
+            .get(name)
+            .map(|entry| Arc::clone(&entry.value().0))
     }
 
     fn tool_specs(&self) -> Vec<ToolSpec> {
@@ -219,7 +227,9 @@ mod tests {
 
     impl MockTool {
         fn new(name: &str) -> Self {
-            Self { name: name.to_string() }
+            Self {
+                name: name.to_string(),
+            }
         }
     }
 
@@ -234,8 +244,16 @@ mod tests {
         fn parameters_schema(&self) -> Value {
             serde_json::json!({"type": "object"})
         }
-        async fn execute(&self, _args: Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
-            Ok(ToolResult { success: true, output: "ok".into(), error: None })
+        async fn execute(
+            &self,
+            _args: Value,
+            _ctx: &dyn ToolContext,
+        ) -> anyhow::Result<ToolResult> {
+            Ok(ToolResult {
+                success: true,
+                output: "ok".into(),
+                error: None,
+            })
         }
     }
 
@@ -263,21 +281,48 @@ mod tests {
     fn test_register_or_replace() {
         let registry = DefaultToolRegistry::new();
         registry.register(Box::new(MockTool::new("foo")), ToolSource::BuiltIn);
-        let old = registry.register_or_replace(Box::new(MockTool::new("foo")), ToolSource::Remote { session: "s1".into() });
+        let old = registry.register_or_replace(
+            Box::new(MockTool::new("foo")),
+            ToolSource::Remote {
+                session: "s1".into(),
+            },
+        );
         assert!(old.is_some());
         assert_eq!(registry.len(), 1);
-        assert_eq!(registry.get_entry("foo").unwrap().source, ToolSource::Remote { session: "s1".into() });
+        assert_eq!(
+            registry.get_entry("foo").unwrap().source,
+            ToolSource::Remote {
+                session: "s1".into()
+            }
+        );
     }
 
     #[test]
     fn test_unregister_by_source() {
         let registry = DefaultToolRegistry::new();
         registry.register(Box::new(MockTool::new("a")), ToolSource::BuiltIn);
-        registry.register(Box::new(MockTool::new("b")), ToolSource::Mcp { server: "svc".into() });
-        registry.register(Box::new(MockTool::new("c")), ToolSource::Mcp { server: "svc".into() });
-        registry.register(Box::new(MockTool::new("d")), ToolSource::Mcp { server: "other".into() });
+        registry.register(
+            Box::new(MockTool::new("b")),
+            ToolSource::Mcp {
+                server: "svc".into(),
+            },
+        );
+        registry.register(
+            Box::new(MockTool::new("c")),
+            ToolSource::Mcp {
+                server: "svc".into(),
+            },
+        );
+        registry.register(
+            Box::new(MockTool::new("d")),
+            ToolSource::Mcp {
+                server: "other".into(),
+            },
+        );
 
-        let removed = registry.unregister_by_source(&ToolSource::Mcp { server: "svc".into() });
+        let removed = registry.unregister_by_source(&ToolSource::Mcp {
+            server: "svc".into(),
+        });
         assert_eq!(removed, 2);
         assert_eq!(registry.len(), 2);
         assert!(registry.get_tool("a").is_some());
@@ -299,10 +344,8 @@ mod tests {
     #[test]
     fn test_register_all() {
         let registry = DefaultToolRegistry::new();
-        let tools: Vec<Box<dyn Tool>> = vec![
-            Box::new(MockTool::new("a")),
-            Box::new(MockTool::new("b")),
-        ];
+        let tools: Vec<Box<dyn Tool>> =
+            vec![Box::new(MockTool::new("a")), Box::new(MockTool::new("b"))];
         let count = registry.register_all(tools, ToolSource::BuiltIn);
         assert_eq!(count, 2);
         assert_eq!(registry.len(), 2);

@@ -74,7 +74,6 @@ clawseed-api (zero deps, trait definitions only)
     ├← clawseed-tools       (tool implementations)
     ├← clawseed-memory       (storage backends)
     ├← clawseed-providers    (LLM providers)
-    ├← clawseed-parser       (message parsing)
     └← clawseed-agent        (agent core)
             ↑
             └← clawseed-config   (config loading)
@@ -110,8 +109,10 @@ Build system prompt (prompt.rs)
 Call LLM (Provider::chat())
   ↓
 Parse response (ToolDispatcher::parse_response())
-  ├── Text-only response → return to user
-  └── Contains tool calls → enter tool loop
+├── NativeToolDispatcher: extract directly from provider's native tool_calls
+└── XmlToolDispatcher: try ◁▷ format first, fallback to multi-format parser (12+ formats)
+    ├── Text-only response → return to user
+    └── Contains tool calls → enter tool loop
         ↓
   For each tool call:
     1. before_hook interception (can cancel/modify)
@@ -287,11 +288,10 @@ Key features:
 | Crate | Role | Depends on api | Depends on agent |
 |-------|------|:--------------:|:----------------:|
 | `clawseed-api` | Trait definitions only | — | — |
-| `clawseed-agent` | Agent loop, hooks, dispatch | yes | — |
+| `clawseed-agent` | Agent loop, hooks, dispatch, parsing | yes | — |
 | `clawseed-tools` | 25+ built-in tools | yes | no |
 | `clawseed-providers` | LLM provider implementations | yes | no |
 | `clawseed-memory` | SQLite-backed memory + vector search | yes | no |
 | `clawseed-config` | TOML config schema and loading | yes | no |
-| `clawseed-parser` | Tool call parsing | yes | no |
 | `clawseed-gateway` | Axum HTTP/WS server + remote tool bridge | yes | yes |
 | `clawseed` | Binary (CLI) | — | — |

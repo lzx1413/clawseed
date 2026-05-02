@@ -123,11 +123,16 @@ impl HookFactoryRegistry {
     }
 
     pub fn register(&mut self, factory: Box<dyn HookFactory>) {
-        self.factories.insert(factory.hook_type().to_string(), factory);
+        self.factories
+            .insert(factory.hook_type().to_string(), factory);
     }
 
     /// Create a hook from a declaration. Returns None if the type is unknown.
-    pub fn create_hook(&self, hook_type: &str, config: &serde_json::Value) -> Option<Box<dyn Hook>> {
+    pub fn create_hook(
+        &self,
+        hook_type: &str,
+        config: &serde_json::Value,
+    ) -> Option<Box<dyn Hook>> {
         self.factories.get(hook_type).and_then(|f| f.create(config))
     }
 }
@@ -152,7 +157,8 @@ impl HookFactory for SecurityPolicyHookFactory {
         } else {
             serde_json::from_value(config.clone()).ok()?
         };
-        let policy = crate::security::SecurityPolicy::from_config(&autonomy, std::path::Path::new("."));
+        let policy =
+            crate::security::SecurityPolicy::from_config(&autonomy, std::path::Path::new("."));
         Some(Box::new(policy))
     }
 }

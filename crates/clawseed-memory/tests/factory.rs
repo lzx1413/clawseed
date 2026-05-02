@@ -83,6 +83,8 @@ async fn create_memory_with_storage_and_routes() {
 
 #[test]
 fn should_skip_autosave_content_always_false() {
-    assert!(!clawseed_memory::should_skip_autosave_content("any content"));
+    assert!(!clawseed_memory::should_skip_autosave_content(
+        "any content"
+    ));
     assert!(!clawseed_memory::should_skip_autosave_content(""));
 }

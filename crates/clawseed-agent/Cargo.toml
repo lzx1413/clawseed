@@ -9,7 +9,6 @@ description = "Agent loop, tool dispatch, cost control, and cron engine for Claw
 [dependencies]
 clawseed-api = { workspace = true }
 clawseed-config = { workspace = true }
-clawseed-parser = { workspace = true }
 clawseed-providers = { workspace = true }
 clawseed-memory = { workspace = true }
 clawseed-tools = { workspace = true }
@@ -29,6 +28,7 @@ uuid = { workspace = true }
 parking_lot = { workspace = true }
 futures-util = { workspace = true }
 rand = { version = "0.9", features = ["std"] }
+regex = { workspace = true }
 hex = "0.4"
 dashmap = "6.1.0"
 glob-match = "0.2.1"

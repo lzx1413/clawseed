@@ -7,13 +7,7 @@ use clawseed_api::tool::ToolSpec;
 use serde_json::Value;
 use std::fmt::Write;
 
-/// A parsed tool call extracted from an LLM response.
-#[derive(Debug, Clone)]
-pub struct ParsedToolCall {
-    pub name: String,
-    pub arguments: Value,
-    pub tool_call_id: Option<String>,
-}
+pub use crate::parser::ParsedToolCall;
 
 /// Result of executing a tool.
 #[derive(Debug, Clone)]
@@ -42,7 +36,7 @@ impl XmlToolDispatcher {
     const TOOL_CALL_END: &'static str = "▷";
 
     fn parse_xml_tool_calls(response: &str) -> (String, Vec<ParsedToolCall>) {
-        let cleaned = Self::strip_think_tags(response);
+        let cleaned = crate::parser::strip_think_tags(response);
         let mut text_parts = Vec::new();
         let mut calls = Vec::new();
         let mut remaining = cleaned.as_str();
@@ -94,25 +88,6 @@ impl XmlToolDispatcher {
         (text_parts.join("\n"), calls)
     }
 
-    fn strip_think_tags(s: &str) -> String {
-        let mut result = String::with_capacity(s.len());
-        let mut rest = s;
-        loop {
-            if let Some(start) = rest.find("<think>") {
-                result.push_str(&rest[..start]);
-                if let Some(end) = rest[start..].find("</think>") {
-                    rest = &rest[start + end + "</think>".len()..];
-                } else {
-                    break;
-                }
-            } else {
-                result.push_str(rest);
-                break;
-            }
-        }
-        result
-    }
-
     pub fn tool_specs(tools: &[Box<dyn clawseed_api::tool::Tool>]) -> Vec<ToolSpec> {
         tools.iter().map(|tool| tool.spec()).collect()
     }
@@ -121,7 +96,12 @@ impl XmlToolDispatcher {
 impl ToolDispatcher for XmlToolDispatcher {
     fn parse_response(&self, response: &ChatResponse) -> (String, Vec<ParsedToolCall>) {
         let text = response.text_or_empty();
-        Self::parse_xml_tool_calls(text)
+        let (cleaned, calls) = Self::parse_xml_tool_calls(text);
+        if !calls.is_empty() {
+            return (cleaned, calls);
+        }
+        // Fallback: comprehensive multi-format parser for non-cooperative LLMs
+        crate::parser::parse_tool_calls(text)
     }
 
     fn format_results(&self, results: &[ToolExecutionResult]) -> ConversationMessage {

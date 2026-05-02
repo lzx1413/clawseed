@@ -82,7 +82,24 @@ let agent = Agent::from_config_with_registry(&config, Some(provider_factory_regi
 | 调度器 | 适用场景 | 工作方式 |
 |--------|---------|---------|
 | `NativeToolDispatcher` | 支持原生工具调用的 Provider | 直接从响应中提取 `tool_calls` |
-| `XmlToolDispatcher` | 不支持原生工具调用的 Provider | 从文本中解析 ◁▷ 标记包裹的 JSON |
+| `XmlToolDispatcher` | 不支持原生工具调用的 Provider | 先尝试 ◁▷ 格式，失败后 fallback 到多格式解析器 |
+
+### parser.rs — 工具调用解析器
+
+多格式工具调用解析，支持 12+ 种 LLM 输出格式：
+
+- OpenAI 原生 JSON `tool_calls` 数组
+- XML 标签：`<tool_call>`、`<toolcall>`、`<tool-call>`、`<invoke>`
+- MiniMax `<invoke>` 格式
+- Markdown 代码块（` ```tool_call `）
+- Anthropic `<FunctionCall>` 标签
+- GLM 缩短格式
+- Perl/哈希引用风格
+- xAI grok ` ```tool <name> ` 格式
+
+`XmlToolDispatcher::parse_response()` 先尝试 ◁▷ 格式（prompt 引导的确定性解析），失败后调用 `parser::parse_tool_calls()` 作为 fallback，用原始响应文本尝试多格式解析。
+
+**安全设计**：不提取无显式包裹的原始 JSON，防止提示注入攻击。
 
 ### context.rs — 工具上下文
 
@@ -169,4 +186,5 @@ pub trait HookFactory: Send + Sync {
 | `approval.rs` | 危险操作的审批工作流 |
 | `history.rs` | 对话历史管理 |
 | `prompt.rs` | 系统提示构建 |
+| `parser.rs` | 多格式工具调用解析（12+ 种 LLM 输出格式） |
 | `health.rs` | 健康检查存根 |

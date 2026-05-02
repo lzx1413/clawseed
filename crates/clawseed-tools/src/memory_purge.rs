@@ -145,18 +145,22 @@ mod tests {
     #[tokio::test]
     async fn purge_namespace_removes_all_memories() {
         let (_tmp, mem) = test_mem();
-        mem.store(
+        mem.store_with_metadata(
             "a1",
             "data1",
-            MemoryCategory::Custom("test_ns".into()),
+            MemoryCategory::Core,
+            None,
+            Some("test_ns"),
             None,
         )
         .await
         .unwrap();
-        mem.store(
+        mem.store_with_metadata(
             "a2",
             "data2",
-            MemoryCategory::Custom("test_ns".into()),
+            MemoryCategory::Core,
+            None,
+            Some("test_ns"),
             None,
         )
         .await

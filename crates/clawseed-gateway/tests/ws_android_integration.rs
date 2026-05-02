@@ -27,14 +27,50 @@ struct MockMemory;
 
 #[async_trait::async_trait]
 impl Memory for MockMemory {
-    fn name(&self) -> &str { "mock" }
-    async fn store(&self, _key: &str, _content: &str, _category: clawseed_api::memory_traits::MemoryCategory, _session_id: Option<&str>) -> anyhow::Result<()> { Ok(()) }
-    async fn recall(&self, _query: &str, _limit: usize, _session_id: Option<&str>, _since: Option<&str>, _until: Option<&str>) -> anyhow::Result<Vec<clawseed_api::memory_traits::MemoryEntry>> { Ok(Vec::new()) }
-    async fn get(&self, _key: &str) -> anyhow::Result<Option<clawseed_api::memory_traits::MemoryEntry>> { Ok(None) }
-    async fn list(&self, _category: Option<&clawseed_api::memory_traits::MemoryCategory>, _session_id: Option<&str>) -> anyhow::Result<Vec<clawseed_api::memory_traits::MemoryEntry>> { Ok(Vec::new()) }
-    async fn forget(&self, _key: &str) -> anyhow::Result<bool> { Ok(false) }
-    async fn count(&self) -> anyhow::Result<usize> { Ok(0) }
-    async fn health_check(&self) -> bool { true }
+    fn name(&self) -> &str {
+        "mock"
+    }
+    async fn store(
+        &self,
+        _key: &str,
+        _content: &str,
+        _category: clawseed_api::memory_traits::MemoryCategory,
+        _session_id: Option<&str>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn recall(
+        &self,
+        _query: &str,
+        _limit: usize,
+        _session_id: Option<&str>,
+        _since: Option<&str>,
+        _until: Option<&str>,
+    ) -> anyhow::Result<Vec<clawseed_api::memory_traits::MemoryEntry>> {
+        Ok(Vec::new())
+    }
+    async fn get(
+        &self,
+        _key: &str,
+    ) -> anyhow::Result<Option<clawseed_api::memory_traits::MemoryEntry>> {
+        Ok(None)
+    }
+    async fn list(
+        &self,
+        _category: Option<&clawseed_api::memory_traits::MemoryCategory>,
+        _session_id: Option<&str>,
+    ) -> anyhow::Result<Vec<clawseed_api::memory_traits::MemoryEntry>> {
+        Ok(Vec::new())
+    }
+    async fn forget(&self, _key: &str) -> anyhow::Result<bool> {
+        Ok(false)
+    }
+    async fn count(&self) -> anyhow::Result<usize> {
+        Ok(0)
+    }
+    async fn health_check(&self) -> bool {
+        true
+    }
 }
 
 // ── Mock OpenAI-compatible API server ─────────────────────────────────────────
@@ -91,37 +127,50 @@ async fn mock_chat_completions(
         // Content chunk
         if let Some(ref text) = content {
             if !text.is_empty() {
-                chunks.push(serde_json::json!({
-                    "id": chat_id,
-                    "object": "chat.completion.chunk",
-                    "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": null}]
-                }).to_string());
+                chunks.push(
+                    serde_json::json!({
+                        "id": chat_id,
+                        "object": "chat.completion.chunk",
+                        "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": null}]
+                    })
+                    .to_string(),
+                );
             }
         }
 
         // Tool calls chunks
         for (i, tc) in tool_calls.iter().enumerate() {
-            chunks.push(serde_json::json!({
-                "id": chat_id,
-                "object": "chat.completion.chunk",
-                "choices": [{"index": 0, "delta": {
-                    "tool_calls": [{
-                        "index": i,
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {"name": tc.name, "arguments": tc.arguments}
-                    }]
-                }, "finish_reason": null}]
-            }).to_string());
+            chunks.push(
+                serde_json::json!({
+                    "id": chat_id,
+                    "object": "chat.completion.chunk",
+                    "choices": [{"index": 0, "delta": {
+                        "tool_calls": [{
+                            "index": i,
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {"name": tc.name, "arguments": tc.arguments}
+                        }]
+                    }, "finish_reason": null}]
+                })
+                .to_string(),
+            );
         }
 
         // Final chunk
-        let finish = if tool_calls.is_empty() { "stop" } else { "tool_calls" };
-        chunks.push(serde_json::json!({
-            "id": chat_id,
-            "object": "chat.completion.chunk",
-            "choices": [{"index": 0, "delta": {}, "finish_reason": finish}]
-        }).to_string());
+        let finish = if tool_calls.is_empty() {
+            "stop"
+        } else {
+            "tool_calls"
+        };
+        chunks.push(
+            serde_json::json!({
+                "id": chat_id,
+                "object": "chat.completion.chunk",
+                "choices": [{"index": 0, "delta": {}, "finish_reason": finish}]
+            })
+            .to_string(),
+        );
 
         let sse_body = chunks
             .iter()
@@ -223,14 +272,16 @@ fn test_app_state(config: clawseed_config::schema::Config) -> clawseed_gateway::
             None,
             &clawseed_config::schema::ReliabilityConfig::default(),
             &clawseed_providers::ProviderRuntimeOptions::default(),
-        ).unwrap_or_else(|_| {
+        )
+        .unwrap_or_else(|_| {
             clawseed_providers::create_resilient_provider_with_options(
                 "ollama",
                 None,
                 Some("http://127.0.0.1:1/v1"),
                 &clawseed_config::schema::ReliabilityConfig::default(),
                 &clawseed_providers::ProviderRuntimeOptions::default(),
-            ).unwrap()
+            )
+            .unwrap()
         }),
     );
     clawseed_gateway::AppState {
@@ -245,7 +296,10 @@ fn test_app_state(config: clawseed_config::schema::Config) -> clawseed_gateway::
         trust_forwarded_headers: false,
         rate_limiter: Arc::new(clawseed_gateway::GatewayRateLimiter::new(100, 100, 100)),
         auth_limiter: Arc::new(clawseed_gateway::auth_rate_limit::AuthRateLimiter::new()),
-        idempotency_store: Arc::new(clawseed_gateway::IdempotencyStore::new(Duration::from_secs(300), 1000)),
+        idempotency_store: Arc::new(clawseed_gateway::IdempotencyStore::new(
+            Duration::from_secs(300),
+            1000,
+        )),
         observer: Arc::new(clawseed_agent::observability::NoopObserver),
         tool_registry: Arc::new(DefaultToolRegistry::new()),
         cost_tracker: None,
@@ -254,7 +308,9 @@ fn test_app_state(config: clawseed_config::schema::Config) -> clawseed_gateway::
         shutdown_tx: tokio::sync::watch::channel(false).0,
         node_registry: Arc::new(clawseed_gateway::NodeRegistry::new(16)),
         session_backend: None,
-        session_queue: Arc::new(clawseed_gateway::session_queue::SessionActorQueue::new(8, 30, 600)),
+        session_queue: Arc::new(clawseed_gateway::session_queue::SessionActorQueue::new(
+            8, 30, 600,
+        )),
         path_prefix: String::new(),
         web_dist_dir: None,
         canvas_store: clawseed_agent::tools::CanvasStore::new(),
@@ -289,7 +345,11 @@ async fn setup_test_env(responses: Vec<MockChatResponse>) -> TestContext {
         axum::serve(ws_listener, ws_app).await.unwrap();
     });
 
-    TestContext { ws_addr, api_addr, responses }
+    TestContext {
+        ws_addr,
+        api_addr,
+        responses,
+    }
 }
 
 /// Connect to the WebSocket and perform the connect handshake.
@@ -309,9 +369,7 @@ async fn ws_connect_with_handshake(
         >,
     >,
 ) {
-    let (stream, _) = connect_async(format!("ws://{addr}/ws/chat"))
-        .await
-        .unwrap();
+    let (stream, _) = connect_async(format!("ws://{addr}/ws/chat")).await.unwrap();
     let (mut tx, mut rx) = stream.split();
 
     // Receive session_start
@@ -323,7 +381,9 @@ async fn ws_connect_with_handshake(
         "device_name": "Test Device",
         "capabilities": ["remote_tools"]
     });
-    tx.send(Message::Text(connect_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(connect_msg.to_string().into()))
+        .await
+        .unwrap();
     let _ = expect_msg_type(&mut rx, "connected").await;
 
     (tx, rx)
@@ -381,16 +441,27 @@ async fn health_endpoint_returns_ok() {
     let state = test_app_state(config);
 
     let app = Router::new()
-        .route("/health", get(|axum::extract::State(_): axum::extract::State<clawseed_gateway::AppState>| async {
-            axum::Json(serde_json::json!({"status": "ok"}))
-        }))
+        .route(
+            "/health",
+            get(
+                |axum::extract::State(_): axum::extract::State<clawseed_gateway::AppState>| async {
+                    axum::Json(serde_json::json!({"status": "ok"}))
+                },
+            ),
+        )
         .with_state(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
 
     let client = reqwest::Client::new();
-    let resp = client.get(format!("http://{addr}/health")).send().await.unwrap();
+    let resp = client
+        .get(format!("http://{addr}/health"))
+        .send()
+        .await
+        .unwrap();
     assert!(resp.status().is_success());
     let body: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(body["status"], "ok");
@@ -400,7 +471,9 @@ async fn health_endpoint_returns_ok() {
 #[tokio::test]
 async fn ws_connect_receives_session_start() {
     let ctx = setup_test_env(vec![]).await;
-    let (stream, _) = connect_async(format!("ws://{}/ws/chat", ctx.ws_addr)).await.unwrap();
+    let (stream, _) = connect_async(format!("ws://{}/ws/chat", ctx.ws_addr))
+        .await
+        .unwrap();
     let (mut tx, mut rx) = stream.split();
 
     let msg = expect_msg_type(&mut rx, "session_start").await;
@@ -414,7 +487,9 @@ async fn ws_connect_receives_session_start() {
 #[tokio::test]
 async fn ws_connect_handshake_sends_connected_ack() {
     let ctx = setup_test_env(vec![]).await;
-    let (stream, _) = connect_async(format!("ws://{}/ws/chat", ctx.ws_addr)).await.unwrap();
+    let (stream, _) = connect_async(format!("ws://{}/ws/chat", ctx.ws_addr))
+        .await
+        .unwrap();
     let (mut tx, mut rx) = stream.split();
 
     let _ = expect_msg_type(&mut rx, "session_start").await;
@@ -425,7 +500,9 @@ async fn ws_connect_handshake_sends_connected_ack() {
         "device_name": "Pixel 8",
         "capabilities": ["remote_tools"]
     });
-    tx.send(Message::Text(connect_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(connect_msg.to_string().into()))
+        .await
+        .unwrap();
 
     let connected = expect_msg_type(&mut rx, "connected").await;
     assert_eq!(connected["message"], "Connection established");
@@ -458,7 +535,9 @@ async fn ws_register_tools_returns_acknowledgement() {
             }
         ]
     });
-    tx.send(Message::Text(register_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(register_msg.to_string().into()))
+        .await
+        .unwrap();
 
     let ack = expect_msg_type(&mut rx, "tools_registered").await;
     assert_eq!(ack["count"], 2);
@@ -481,11 +560,15 @@ async fn ws_get_registered_tools_returns_list() {
             "parameters": {"type": "object", "properties": {}}
         }]
     });
-    tx.send(Message::Text(register_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(register_msg.to_string().into()))
+        .await
+        .unwrap();
     let _ack = expect_msg_type(&mut rx, "tools_registered").await;
 
     let query_msg = serde_json::json!({"type": "get_registered_tools"});
-    tx.send(Message::Text(query_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(query_msg.to_string().into()))
+        .await
+        .unwrap();
 
     let response = expect_msg_type(&mut rx, "registered_tools").await;
     let tools = response["tools"].as_array().expect("tools array");
@@ -502,11 +585,14 @@ async fn ws_chat_message_streams_chunks_and_done() {
     let ctx = setup_test_env(vec![
         text_response("Hello from agent!"),
         text_response("Hello from agent!"),
-    ]).await;
+    ])
+    .await;
     let (mut tx, mut rx) = ws_connect_with_handshake(ctx.ws_addr).await;
 
     let chat_msg = serde_json::json!({"type": "message", "content": "Hello!"});
-    tx.send(Message::Text(chat_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(chat_msg.to_string().into()))
+        .await
+        .unwrap();
 
     let done = expect_msg_type(&mut rx, "done").await;
     assert_eq!(done["full_response"], "Hello from agent!");
@@ -535,7 +621,8 @@ async fn ws_full_remote_tool_round_trip() {
         text_response("Your device is a Pixel 8 running Android 14."),
         // Extra fallback for additional agent iterations
         text_response("Your device is a Pixel 8 running Android 14."),
-    ]).await;
+    ])
+    .await;
     let (mut tx, mut rx) = ws_connect_with_handshake(ctx.ws_addr).await;
 
     // Register the device_info tool (like Android MainActivity)
@@ -547,13 +634,17 @@ async fn ws_full_remote_tool_round_trip() {
             "parameters": {"type": "object", "properties": {}}
         }]
     });
-    tx.send(Message::Text(register_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(register_msg.to_string().into()))
+        .await
+        .unwrap();
     let tools_ack = expect_msg_type(&mut rx, "tools_registered").await;
     assert_eq!(tools_ack["registered"], 1);
 
     // Send a chat message that triggers the remote tool
     let chat_msg = serde_json::json!({"type": "message", "content": "What device am I using?"});
-    tx.send(Message::Text(chat_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(chat_msg.to_string().into()))
+        .await
+        .unwrap();
 
     // Receive tool_call_request
     let tool_call_req = expect_msg_type(&mut rx, "tool_call_request").await;
@@ -567,7 +658,9 @@ async fn ws_full_remote_tool_round_trip() {
         "output": "Model: Pixel 8, Manufacturer: Google, Android Version: 14",
         "success": true
     });
-    tx.send(Message::Text(tool_result_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(tool_result_msg.to_string().into()))
+        .await
+        .unwrap();
 
     // Receive result_acknowledged
     let ack = expect_msg_type(&mut rx, "result_acknowledged").await;
@@ -575,7 +668,10 @@ async fn ws_full_remote_tool_round_trip() {
 
     // Receive done with the final response
     let done = expect_msg_type(&mut rx, "done").await;
-    assert_eq!(done["full_response"], "Your device is a Pixel 8 running Android 14.");
+    assert_eq!(
+        done["full_response"],
+        "Your device is a Pixel 8 running Android 14."
+    );
 
     tx.close().await.unwrap();
 }
@@ -591,7 +687,8 @@ async fn ws_remote_tool_error_handled() {
         }]),
         text_response("抱歉，无法访问联系人：权限不足"),
         text_response("抱歉，无法访问联系人：权限不足"),
-    ]).await;
+    ])
+    .await;
     let (mut tx, mut rx) = ws_connect_with_handshake(ctx.ws_addr).await;
 
     // Register tool
@@ -603,12 +700,16 @@ async fn ws_remote_tool_error_handled() {
             "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}
         }]
     });
-    tx.send(Message::Text(register_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(register_msg.to_string().into()))
+        .await
+        .unwrap();
     let _ack = expect_msg_type(&mut rx, "tools_registered").await;
 
     // Chat
     let chat_msg = serde_json::json!({"type": "message", "content": "查一下张三的电话"});
-    tx.send(Message::Text(chat_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(chat_msg.to_string().into()))
+        .await
+        .unwrap();
 
     // Receive tool_call_request
     let tool_call_req = expect_msg_type(&mut rx, "tool_call_request").await;
@@ -622,7 +723,9 @@ async fn ws_remote_tool_error_handled() {
         "success": false,
         "error": "Permission denied: READ_CONTACTS required"
     });
-    tx.send(Message::Text(error_result.to_string().into())).await.unwrap();
+    tx.send(Message::Text(error_result.to_string().into()))
+        .await
+        .unwrap();
 
     let _ack = expect_msg_type(&mut rx, "result_acknowledged").await;
     let done = expect_msg_type(&mut rx, "done").await;
@@ -642,18 +745,23 @@ async fn ws_tool_error_message_type() {
         }]),
         text_response("Device info unavailable."),
         text_response("Device info unavailable."),
-    ]).await;
+    ])
+    .await;
     let (mut tx, mut rx) = ws_connect_with_handshake(ctx.ws_addr).await;
 
     let register_msg = serde_json::json!({
         "type": "register_tools",
         "tools": [{"name": "device_info", "description": "Device info", "parameters": {"type": "object", "properties": {}}}]
     });
-    tx.send(Message::Text(register_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(register_msg.to_string().into()))
+        .await
+        .unwrap();
     let _ack = expect_msg_type(&mut rx, "tools_registered").await;
 
     let chat_msg = serde_json::json!({"type": "message", "content": "Get device info"});
-    tx.send(Message::Text(chat_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(chat_msg.to_string().into()))
+        .await
+        .unwrap();
 
     let tool_call_req = expect_msg_type(&mut rx, "tool_call_request").await;
     let call_id = tool_call_req["id"].as_str().unwrap().to_string();
@@ -664,11 +772,18 @@ async fn ws_tool_error_message_type() {
         "id": call_id,
         "error": "Service unavailable"
     });
-    tx.send(Message::Text(tool_error_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(tool_error_msg.to_string().into()))
+        .await
+        .unwrap();
 
     let _ack = expect_msg_type(&mut rx, "result_acknowledged").await;
     let done = expect_msg_type(&mut rx, "done").await;
-    assert!(done["full_response"].as_str().unwrap().contains("unavailable"));
+    assert!(
+        done["full_response"]
+            .as_str()
+            .unwrap()
+            .contains("unavailable")
+    );
 
     tx.close().await.unwrap();
 }
@@ -680,7 +795,9 @@ async fn ws_empty_message_returns_error() {
     let (mut tx, mut rx) = ws_connect_with_handshake(ctx.ws_addr).await;
 
     let empty_msg = serde_json::json!({"type": "message", "content": ""});
-    tx.send(Message::Text(empty_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(empty_msg.to_string().into()))
+        .await
+        .unwrap();
 
     let error = expect_msg_type(&mut rx, "error").await;
     assert_eq!(error["code"], "EMPTY_CONTENT");
@@ -695,7 +812,9 @@ async fn ws_unsupported_message_type_returns_error() {
     let (mut tx, mut rx) = ws_connect_with_handshake(ctx.ws_addr).await;
 
     let bad_msg = serde_json::json!({"type": "unknown_type", "data": "test"});
-    tx.send(Message::Text(bad_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(bad_msg.to_string().into()))
+        .await
+        .unwrap();
 
     let error = expect_msg_type(&mut rx, "error").await;
     assert_eq!(error["code"], "UNKNOWN_MESSAGE_TYPE");
@@ -709,7 +828,9 @@ async fn ws_invalid_json_returns_error() {
     let ctx = setup_test_env(vec![]).await;
     let (mut tx, mut rx) = ws_connect_with_handshake(ctx.ws_addr).await;
 
-    tx.send(Message::Text("not json at all".into())).await.unwrap();
+    tx.send(Message::Text("not json at all".into()))
+        .await
+        .unwrap();
 
     let error = expect_msg_type(&mut rx, "error").await;
     assert_eq!(error["code"], "INVALID_JSON");
@@ -722,10 +843,12 @@ async fn ws_invalid_json_returns_error() {
 async fn ws_session_id_parameter_sets_session() {
     let ctx = setup_test_env(vec![]).await;
     let session_id = "android-demo-session-42";
-    let (stream, _) =
-        connect_async(format!("ws://{}/ws/chat?session_id={session_id}", ctx.ws_addr))
-            .await
-            .unwrap();
+    let (stream, _) = connect_async(format!(
+        "ws://{}/ws/chat?session_id={session_id}",
+        ctx.ws_addr
+    ))
+    .await
+    .unwrap();
     let (mut tx, mut rx) = stream.split();
 
     let session_start = expect_msg_type(&mut rx, "session_start").await;
@@ -745,7 +868,9 @@ async fn ws_multiple_tool_registrations_accumulate() {
         "type": "register_tools",
         "tools": [{"name": "device_info", "description": "Device info", "parameters": {"type": "object", "properties": {}}}]
     });
-    tx.send(Message::Text(reg1.to_string().into())).await.unwrap();
+    tx.send(Message::Text(reg1.to_string().into()))
+        .await
+        .unwrap();
     let ack1 = expect_msg_type(&mut rx, "tools_registered").await;
     assert_eq!(ack1["count"], 1);
     assert_eq!(ack1["registered"], 1);
@@ -755,14 +880,18 @@ async fn ws_multiple_tool_registrations_accumulate() {
         "type": "register_tools",
         "tools": [{"name": "local_contacts", "description": "Contacts", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}}}]
     });
-    tx.send(Message::Text(reg2.to_string().into())).await.unwrap();
+    tx.send(Message::Text(reg2.to_string().into()))
+        .await
+        .unwrap();
     let ack2 = expect_msg_type(&mut rx, "tools_registered").await;
     assert_eq!(ack2["count"], 1);
     assert_eq!(ack2["registered"], 2);
 
     // Verify both tools are in get_registered_tools
     let query = serde_json::json!({"type": "get_registered_tools"});
-    tx.send(Message::Text(query.to_string().into())).await.unwrap();
+    tx.send(Message::Text(query.to_string().into()))
+        .await
+        .unwrap();
     let tools = expect_msg_type(&mut rx, "registered_tools").await;
     let tool_names: Vec<&str> = tools["tools"]
         .as_array()
@@ -791,7 +920,9 @@ async fn ws_register_tools_after_connect_handshake() {
             "parameters": {"type": "object", "properties": {}}
         }]
     });
-    tx.send(Message::Text(register_msg.to_string().into())).await.unwrap();
+    tx.send(Message::Text(register_msg.to_string().into()))
+        .await
+        .unwrap();
     let ack = expect_msg_type(&mut rx, "tools_registered").await;
     assert_eq!(ack["registered"], 1);
 
@@ -810,7 +941,8 @@ async fn ws_agent_init_failure_sends_error() {
         Some("http://127.0.0.1:1/v1"),
         &clawseed_config::schema::ReliabilityConfig::default(),
         &clawseed_providers::ProviderRuntimeOptions::default(),
-    ).unwrap();
+    )
+    .unwrap();
     let state = clawseed_gateway::AppState {
         config: Arc::new(Mutex::new(config)),
         provider: Arc::from(ollama_provider),
@@ -823,7 +955,10 @@ async fn ws_agent_init_failure_sends_error() {
         trust_forwarded_headers: false,
         rate_limiter: Arc::new(clawseed_gateway::GatewayRateLimiter::new(100, 100, 100)),
         auth_limiter: Arc::new(clawseed_gateway::auth_rate_limit::AuthRateLimiter::new()),
-        idempotency_store: Arc::new(clawseed_gateway::IdempotencyStore::new(Duration::from_secs(300), 1000)),
+        idempotency_store: Arc::new(clawseed_gateway::IdempotencyStore::new(
+            Duration::from_secs(300),
+            1000,
+        )),
         observer: Arc::new(clawseed_agent::observability::NoopObserver),
         tool_registry: Arc::new(DefaultToolRegistry::new()),
         cost_tracker: None,
@@ -832,7 +967,9 @@ async fn ws_agent_init_failure_sends_error() {
         shutdown_tx: tokio::sync::watch::channel(false).0,
         node_registry: Arc::new(clawseed_gateway::NodeRegistry::new(16)),
         session_backend: None,
-        session_queue: Arc::new(clawseed_gateway::session_queue::SessionActorQueue::new(8, 30, 600)),
+        session_queue: Arc::new(clawseed_gateway::session_queue::SessionActorQueue::new(
+            8, 30, 600,
+        )),
         path_prefix: String::new(),
         web_dist_dir: None,
         canvas_store: clawseed_agent::tools::CanvasStore::new(),
@@ -843,7 +980,9 @@ async fn ws_agent_init_failure_sends_error() {
         .with_state(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
 
     let (stream, _) = connect_async(format!("ws://{addr}/ws/chat")).await.unwrap();
     let (mut tx, mut rx) = stream.split();

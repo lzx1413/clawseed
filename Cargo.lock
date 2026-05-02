@@ -402,7 +402,6 @@ dependencies = [
  "clawseed-api",
  "clawseed-config",
  "clawseed-memory",
- "clawseed-parser",
  "clawseed-providers",
  "clawseed-tools",
  "cron",
@@ -412,6 +411,7 @@ dependencies = [
  "hex",
  "parking_lot",
  "rand 0.9.4",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",
@@ -521,17 +521,6 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
-]
-
-[[package]]
-name = "clawseed-parser"
-version = "0.7.3"
-dependencies = [
- "anyhow",
- "regex",
- "serde",
- "serde_json",
- "tracing",
 ]
 
 [[package]]

@@ -176,7 +176,6 @@ pub struct Config {
     #[serde(default)]
     pub cost: CostConfig,
 
-
     /// Channel configuration.
     #[serde(default)]
     pub channels: ChannelsConfig,
@@ -1268,4 +1267,3 @@ pub struct AgentEntryConfig {
     #[serde(default)]
     pub api_key: Option<String>,
 }
-

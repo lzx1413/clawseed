@@ -123,13 +123,11 @@ The SDK also runs the gateway binary on-device as a foreground service — the e
 | Crate | Role | Depends on api | Depends on agent |
 |-------|------|:-:|:-:|
 | `clawseed-api` | Trait definitions only | — | — |
-| `clawseed-agent` | Agent loop, hooks, dispatch | yes | — |
+| `clawseed-agent` | Agent loop, hooks, dispatch, parsing | yes | — |
 | `clawseed-tools` | 25+ built-in tools | yes | no |
 | `clawseed-providers` | LLM provider implementations | yes | no |
 | `clawseed-memory` | SQLite-backed memory + vector search | yes | no |
 | `clawseed-config` | TOML config schema and loading | yes | no |
-| `clawseed-parser` | Tool call parsing | yes | no |
-| `clawseed-macros` | Procedural macros | no | no |
 | `clawseed-gateway` | Axum HTTP/WS server + remote tool bridge | yes | yes |
 | `clawseed` | Binary (CLI) | — | — |
 
@@ -232,7 +230,7 @@ Tools that the agent doesn't need are excluded by `allowed_tools` in config — 
 ## Security
 
 - **Autonomy levels** — `ReadOnly` / `Supervised` / `Full`, configured per deployment
-- **SecurityPolicy** — injected as a capability; tools check it via `ctx.get::<SecurityPolicy>()`
+- **SecurityPolicy** — implements the `Hook` trait to globally intercept tool calls before execution
 - **Command allowlists** — `allowed_commands` in SecurityPolicy validates shell commands
 - **Path guards** — `forbidden_path_argument()` blocks sensitive paths (`/etc/passwd`, `/root/.ssh`, etc.)
 - **Rate limiting** — `max_actions_per_hour` limits total actions per session
@@ -255,7 +253,7 @@ The key difference is positioning: ZeroClaw is an application (channels, dashboa
 - No bundled dashboard — applications build their own UI
 - Added native remote tool calls for mobile clients
 - Added unified `Hook` trait and `TypeId`-based capability injection
-- ~55K lines / 10 crates vs. ZeroClaw's ~225K lines / 18 crates
+- ~55K lines / 8 crates vs. ZeroClaw's ~225K lines / 18 crates
 
 ## License
 

@@ -184,10 +184,7 @@ mod tests {
 
     #[test]
     fn trim_history_no_system_message_under_limit() {
-        let mut history = vec![
-            ChatMessage::user("msg1"),
-            ChatMessage::user("msg2"),
-        ];
+        let mut history = vec![ChatMessage::user("msg1"), ChatMessage::user("msg2")];
         trim_history(&mut history, 50);
         assert_eq!(history.len(), 2);
     }

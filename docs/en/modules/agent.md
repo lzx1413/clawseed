@@ -82,7 +82,24 @@ Two implementations:
 | Dispatcher | Use Case | How It Works |
 |------------|----------|--------------|
 | `NativeToolDispatcher` | Providers with native tool calling | Extracts `tool_calls` directly from response |
-| `XmlToolDispatcher` | Providers without native tool calling | Parses ◁▷-wrapped JSON from text |
+| `XmlToolDispatcher` | Providers without native tool calling | Tries ◁▷ format first, falls back to multi-format parser |
+
+### parser.rs — Tool Call Parser
+
+Multi-format tool call parsing supporting 12+ LLM output formats:
+
+- OpenAI native JSON `tool_calls` array
+- XML tags: `◁▷`, `<toolcall>`, `<tool-call>`, `<invoke>`
+- MiniMax `<invoke>` format
+- Markdown code blocks (` ```tool_call `)
+- Anthropic `<FunctionCall>` tags
+- GLM shortened format
+- Perl/hash-ref style
+- xAI grok ` ```tool <name> ` format
+
+`XmlToolDispatcher::parse_response()` tries ◁▷ format first (deterministic prompt-guided parsing), then falls back to `parser::parse_tool_calls()` with the original response text for multi-format parsing.
+
+**Security design**: Raw JSON without explicit wrappers is never extracted, preventing prompt injection attacks.
 
 ### context.rs — Tool Context
 
@@ -169,4 +186,5 @@ pub trait HookFactory: Send + Sync {
 | `approval.rs` | Approval workflow for risky operations |
 | `history.rs` | Conversation history management |
 | `prompt.rs` | System prompt construction |
+| `parser.rs` | Multi-format tool call parsing (12+ LLM output formats) |
 | `health.rs` | Health check stubs |

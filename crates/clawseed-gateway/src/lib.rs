@@ -518,7 +518,10 @@ pub async fn run_gateway(
     // Build the shared tool registry from all sources
     let shared_tool_registry: Arc<dyn clawseed_api::tool_registry::ToolRegistry> = {
         let reg = clawseed_agent::tool_registry::DefaultToolRegistry::new();
-        reg.register_all(tools_registry_raw, clawseed_api::tool_registry::ToolSource::BuiltIn);
+        reg.register_all(
+            tools_registry_raw,
+            clawseed_api::tool_registry::ToolSource::BuiltIn,
+        );
         Arc::new(reg)
     };
 

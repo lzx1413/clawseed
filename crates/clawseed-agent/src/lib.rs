@@ -16,6 +16,7 @@ pub mod history;
 pub mod hooks;
 pub mod observability;
 pub mod observer;
+pub mod parser;
 pub mod prompt;
 pub mod security;
 pub mod tool_execution;

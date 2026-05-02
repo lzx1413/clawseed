@@ -2100,9 +2100,7 @@ mod tests {
         assert_eq!(mem.count().await.unwrap(), 3);
 
         let remaining = mem.list(None, None).await.unwrap();
-        assert!(
-            remaining.iter().all(|e| e.namespace != "ns1")
-        );
+        assert!(remaining.iter().all(|e| e.namespace != "ns1"));
     }
 
     #[tokio::test]

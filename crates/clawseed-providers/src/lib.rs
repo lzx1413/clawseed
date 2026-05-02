@@ -46,7 +46,9 @@ pub fn create_resilient_provider_with_registry(
     let resolved_key = resolve_provider_credential(provider_name, api_key);
     let key_ref = resolved_key.as_deref();
 
-    let provider: Box<dyn clawseed_api::provider::Provider> = if let Some(f) = registry.get(provider_name) {
+    let provider: Box<dyn clawseed_api::provider::Provider> = if let Some(f) =
+        registry.get(provider_name)
+    {
         f.create(provider_name, key_ref, base_url, options)?
     } else {
         // Fallback: treat as OpenAI-compatible

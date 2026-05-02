@@ -22,17 +22,16 @@ Run the gateway:
 
 ## Architecture
 
-ClawSeed is a Rust AI agent runtime with trait-based plugin architecture. 10 workspace crates with unidirectional dependency flow:
+ClawSeed is a Rust AI agent runtime with trait-based plugin architecture. 8 workspace crates with unidirectional dependency flow:
 
 ```
 clawseed-api (traits only, no impls)
-  ← clawseed-agent (orchestration: loop, hooks, dispatch, security)
+  ← clawseed-agent (orchestration: loop, hooks, dispatch, security, parser)
     ← clawseed-tools (25+ built-in tools)
     ← clawseed-providers (LLM backends: Anthropic, Gemini, OpenAI, Bedrock, Ollama, etc.)
     ← clawseed-memory (SQLite + vector/keyword search)
       ← clawseed-gateway (Axum HTTP/WS server, remote tool bridge)
   ← clawseed-config (TOML config, loaded from ~/.clawseed/config.toml)
-  ← clawseed-parser (tool call extraction from LLM output)
   ← clawseed (CLI binary)
 ```
 
@@ -51,7 +50,7 @@ All extensibility flows through these traits — new capabilities register imple
 
 1. Accept message → add to history
 2. Call provider with tool specs
-3. Parse response via ToolDispatcher (XmlToolDispatcher for prompt-guided, NativeToolDispatcher for Anthropic/Gemini/OpenAI)
+3. Parse response via ToolDispatcher (XmlToolDispatcher for prompt-guided with multi-format fallback, NativeToolDispatcher for Anthropic/Gemini/OpenAI)
 4. Dispatch tools (parallel when possible)
 5. Feed results back to provider
 6. Repeat until no tool calls or max iterations

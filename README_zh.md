@@ -123,13 +123,11 @@ SDK 还将网关二进制作为前台服务运行在设备上——整个 Agent 
 | Crate | 职责 | 依赖 api | 依赖 agent |
 |-------|------|:-:|:-:|
 | `clawseed-api` | 仅 trait 定义 | — | — |
-| `clawseed-agent` | Agent 循环、Hook、分发 | 是 | — |
+| `clawseed-agent` | Agent 循环、Hook、分发、解析 | 是 | — |
 | `clawseed-tools` | 25+ 内置工具 | 是 | 否 |
 | `clawseed-providers` | LLM 提供商实现 | 是 | 否 |
 | `clawseed-memory` | SQLite 存储 + 向量搜索 | 是 | 否 |
 | `clawseed-config` | TOML 配置 schema 与加载 | 是 | 否 |
-| `clawseed-parser` | 工具调用解析 | 是 | 否 |
-| `clawseed-macros` | 过程宏 | 否 | 否 |
 | `clawseed-gateway` | Axum HTTP/WS 服务器 + 远程工具桥接 | 是 | 是 |
 | `clawseed` | 二进制（CLI） | — | — |
 
@@ -232,7 +230,7 @@ Agent 不需要的工具通过配置中的 `allowed_tools` 排除——不会注
 ## 安全
 
 - **自主级别** — `ReadOnly` / `Supervised` / `Full`，按部署配置
-- **SecurityPolicy** — 以能力形式注入，工具通过 `ctx.get::<SecurityPolicy>()` 检查
+- **SecurityPolicy** — 实现 `Hook` trait 在工具执行前全局拦截
 - **命令白名单** — SecurityPolicy 中的 `allowed_commands` 验证 Shell 命令
 - **路径守卫** — `forbidden_path_argument()` 阻止敏感路径（`/etc/passwd`、`/root/.ssh` 等）
 - **频率限制** — `max_actions_per_hour` 限制每会话总操作数
@@ -255,7 +253,7 @@ ClawSeed 的 trait 驱动架构和 Provider/Tool/Memory 抽象模式源自 [Zero
 - 不捆绑面板——应用自己构建 UI
 - 新增原生远程工具调用，支持移动客户端
 - 新增统一的 `Hook` trait 和基于 `TypeId` 的能力注入
-- 约 55K 行 / 10 个 crate，对比 ZeroClaw 的约 225K 行 / 18 个 crate
+- 约 55K 行 / 8 个 crate，对比 ZeroClaw 的约 225K 行 / 18 个 crate
 
 ## 许可证
 

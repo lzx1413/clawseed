@@ -220,7 +220,10 @@ impl AgentBuilder {
         self
     }
 
-    pub fn mcp_tool_filters(mut self, filters: Option<std::collections::HashMap<String, Vec<String>>>) -> Self {
+    pub fn mcp_tool_filters(
+        mut self,
+        filters: Option<std::collections::HashMap<String, Vec<String>>>,
+    ) -> Self {
         self.mcp_tool_filters = filters;
         self
     }
@@ -298,7 +301,9 @@ impl Agent {
     /// use cases with minimal provider sets.
     pub async fn from_config_with_registry(
         config: &clawseed_config::schema::Config,
-        provider_factory_registry: Option<Arc<clawseed_providers::factory::ProviderFactoryRegistry>>,
+        provider_factory_registry: Option<
+            Arc<clawseed_providers::factory::ProviderFactoryRegistry>,
+        >,
     ) -> anyhow::Result<Self> {
         let fallback = config.providers.fallback_provider();
 
@@ -423,7 +428,12 @@ impl Agent {
     /// Add remote tools to the agent's tool registry.
     pub fn add_remote_tools(&mut self, tools: Vec<Box<dyn Tool>>, session: String) {
         for tool in tools {
-            self.tool_registry.register_or_replace(tool, ToolSource::Remote { session: session.clone() });
+            self.tool_registry.register_or_replace(
+                tool,
+                ToolSource::Remote {
+                    session: session.clone(),
+                },
+            );
         }
     }
 
@@ -575,33 +585,32 @@ impl Agent {
 
         // Execute the tool
         let ctx = self.build_tool_context();
-        let (result, success) =
-            if let Some(tool) = self.tool_registry.get_tool(&tool_name) {
-                match tool.execute(tool_args.clone(), &ctx).await {
-                    Ok(r) => {
-                        self.observer.record_event(&ObserverEvent::ToolCall {
-                            tool: tool_name.clone(),
-                            duration: start.elapsed(),
-                            success: r.success,
-                        });
-                        if r.success {
-                            (r.output, true)
-                        } else {
-                            (format!("Error: {}", r.error.unwrap_or(r.output)), false)
-                        }
-                    }
-                    Err(e) => {
-                        self.observer.record_event(&ObserverEvent::ToolCall {
-                            tool: tool_name.clone(),
-                            duration: start.elapsed(),
-                            success: false,
-                        });
-                        (format!("Error executing {}: {e}", tool_name), false)
+        let (result, success) = if let Some(tool) = self.tool_registry.get_tool(&tool_name) {
+            match tool.execute(tool_args.clone(), &ctx).await {
+                Ok(r) => {
+                    self.observer.record_event(&ObserverEvent::ToolCall {
+                        tool: tool_name.clone(),
+                        duration: start.elapsed(),
+                        success: r.success,
+                    });
+                    if r.success {
+                        (r.output, true)
+                    } else {
+                        (format!("Error: {}", r.error.unwrap_or(r.output)), false)
                     }
                 }
-            } else {
-                (format!("Unknown tool: {}", tool_name), false)
-            };
+                Err(e) => {
+                    self.observer.record_event(&ObserverEvent::ToolCall {
+                        tool: tool_name.clone(),
+                        duration: start.elapsed(),
+                        success: false,
+                    });
+                    (format!("Error executing {}: {e}", tool_name), false)
+                }
+            }
+        } else {
+            (format!("Unknown tool: {}", tool_name), false)
+        };
 
         let duration = start.elapsed();
 
@@ -1213,9 +1222,15 @@ mod tests {
             })
         };
 
-        agent.add_remote_tools(vec![make_named("tool_a"), make_named("tool_b")], "s1".to_string());
+        agent.add_remote_tools(
+            vec![make_named("tool_a"), make_named("tool_b")],
+            "s1".to_string(),
+        );
         assert_eq!(agent.tool_registry.len(), 2);
-        agent.add_remote_tools(vec![make_named("tool_a"), make_named("tool_b")], "s1".to_string());
+        agent.add_remote_tools(
+            vec![make_named("tool_a"), make_named("tool_b")],
+            "s1".to_string(),
+        );
         assert_eq!(agent.tool_registry.len(), 2);
     }
 }
