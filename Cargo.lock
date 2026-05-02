@@ -484,6 +484,7 @@ dependencies = [
  "rand 0.9.4",
  "rcgen",
  "reqwest",
+ "rusqlite",
  "rustls",
  "rustls-pemfile",
  "serde",

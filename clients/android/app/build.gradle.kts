@@ -1,7 +1,11 @@
+import java.time.LocalDate
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val buildDate: String = LocalDate.now().toString()
 
 android {
     namespace = "dev.clawseed.demo"
@@ -13,6 +17,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
     }
 
     buildTypes {
@@ -28,6 +33,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
@@ -53,6 +59,28 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
+    // Navigation
+    implementation("androidx.navigation:navigation-compose:2.9.0")
+
+    // ViewModel
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
+
+    // Material Icons (core only to control APK size)
+    implementation("androidx.compose.material:material-icons-core")
+
+    // Markdown rendering (M3 themed variant)
+    implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.30.0")
+
     // Coroutines for ClawseedService background work
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // OkHttp for REST API
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // DataStore (本地持久化)
+    implementation("androidx.datastore:datastore-preferences:1.1.4")
+
+    // Gson for JSON parsing
+    implementation("com.google.code.gson:gson:2.11.0")
 }

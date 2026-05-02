@@ -1263,7 +1263,11 @@ pub struct WebSearchConfig {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
     pub brave_api_key: Option<String>,
+    #[serde(default)]
+    pub searxng_instance_url: Option<String>,
 }
 
 /// Agent entry configuration (for named agents in the config).

@@ -4,6 +4,7 @@ pub enum WebSearchProviderRoute {
     Brave,
     SearXNG,
     Tavily,
+    Bing,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,6 +18,7 @@ pub const DEFAULT_WEB_SEARCH_PROVIDER: &str = "duckduckgo";
 const BRAVE_PROVIDER: &str = "brave";
 const SEARXNG_PROVIDER: &str = "searxng";
 const TAVILY_PROVIDER: &str = "tavily";
+const BING_PROVIDER: &str = "bing";
 
 pub fn resolve_web_search_provider(raw_provider: &str) -> WebSearchProviderResolution {
     let normalized = raw_provider.trim().to_ascii_lowercase();
@@ -43,8 +45,11 @@ pub fn resolve_web_search_provider(raw_provider: &str) -> WebSearchProviderResol
             canonical_provider: TAVILY_PROVIDER,
             used_fallback: false,
         },
-        // Warns for unknown providers, falls back to default.
-        // Known non-default providers: Brave, SearXNG, Tavily.
+        "bing" | "bing-search" | "bing_search" => WebSearchProviderResolution {
+            route: WebSearchProviderRoute::Bing,
+            canonical_provider: BING_PROVIDER,
+            used_fallback: false,
+        },
         _ => WebSearchProviderResolution {
             route: WebSearchProviderRoute::DuckDuckGo,
             canonical_provider: DEFAULT_WEB_SEARCH_PROVIDER,
@@ -91,8 +96,19 @@ mod tests {
     }
 
     #[test]
+    fn resolve_aliases_to_bing() {
+        let bing_aliases = ["bing", "bing-search", "bing_search"];
+        for alias in bing_aliases {
+            let resolved = resolve_web_search_provider(alias);
+            assert_eq!(resolved.route, WebSearchProviderRoute::Bing);
+            assert_eq!(resolved.canonical_provider, BING_PROVIDER);
+            assert!(!resolved.used_fallback);
+        }
+    }
+
+    #[test]
     fn resolve_unknown_provider_falls_back_to_default() {
-        let resolved = resolve_web_search_provider("bing");
+        let resolved = resolve_web_search_provider("yahoo");
         assert_eq!(resolved.route, WebSearchProviderRoute::DuckDuckGo);
         assert_eq!(resolved.canonical_provider, DEFAULT_WEB_SEARCH_PROVIDER);
         assert!(resolved.used_fallback);

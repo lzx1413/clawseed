@@ -44,6 +44,9 @@ credentials.json
 # Claude Code project settings (machine-specific directory config)
 .claude/settings.json
 
+# MCP server config (contains API keys)
+.mcp.json
+
 # Skill eval workspaces (test outputs, transcripts, grading)
 .claude/skills/*-workspace/
 

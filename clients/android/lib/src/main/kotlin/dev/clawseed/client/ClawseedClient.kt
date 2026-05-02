@@ -1,5 +1,12 @@
 package dev.clawseed.client
 
+import android.os.Handler
+import android.os.Looper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -7,7 +14,6 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 fun interface ToolCallHandler {
@@ -21,7 +27,9 @@ class ClawseedClient private constructor(
     private val toolCallHandler: ToolCallHandler?,
     private val onConnected: (() -> Unit)?,
     private val onDisconnected: (() -> Unit)?,
+    private val onSessionStart: ((sessionId: String, name: String?, resumed: Boolean, messageCount: Int) -> Unit)?,
     private val onChunk: ((String) -> Unit)?,
+    private val onChunkReset: (() -> Unit)?,
     private val onThinking: ((String) -> Unit)?,
     private val onDone: ((String) -> Unit)?,
     private val onToolCall: ((id: String, name: String, args: JSONObject) -> Unit)?,
@@ -33,20 +41,28 @@ class ClawseedClient private constructor(
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
 
-    private val executor = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     @Volatile private var webSocket: WebSocket? = null
+    @Volatile var sessionId: String? = null
+        private set
+    @Volatile private var intentionalDisconnect = false
 
     fun connect() {
+        if (!scope.toString().contains("Active")) {
+            scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        }
         val reqBuilder = Request.Builder().url(url)
         authToken?.let { reqBuilder.addHeader("Authorization", "Bearer $it") }
-        webSocket = httpClient.newWebSocket(reqBuilder.build(), Listener())
+        webSocket = httpClient.newWebSocket(reqBuilder.build(), WsListener())
     }
 
     fun disconnect() {
+        intentionalDisconnect = true
         webSocket?.close(1000, null)
         webSocket = null
-        executor.shutdown()
+        scope.cancel()
         httpClient.connectionPool.evictAll()
     }
 
@@ -68,45 +84,52 @@ class ClawseedClient private constructor(
             webSocket?.send(err.toJson(request.id).toString())
             return
         }
-        if (executor.isShutdown) return
-        executor.execute {
+        scope.launch {
             val result = runCatching { handler.handleToolCall(request) }
                 .getOrElse { ToolCallResult.Failure(it.message ?: "Handler threw exception") }
             webSocket?.send(result.toJson(request.id).toString())
         }
     }
 
-    private inner class Listener : WebSocketListener() {
+    private fun postOnMain(action: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            action()
+        } else {
+            mainHandler.post(action)
+        }
+    }
+
+    private inner class WsListener : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             if (tools.isNotEmpty()) registerTools()
-            onConnected?.invoke()
+            postOnMain { onConnected?.invoke() }
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
             when (val msg = IncomingMessage.parse(text)) {
-                is IncomingMessage.SessionStart -> Unit
-                is IncomingMessage.Connected -> Unit
-                is IncomingMessage.Chunk -> onChunk?.invoke(msg.text)
-                is IncomingMessage.Thinking -> onThinking?.invoke(msg.text)
-                is IncomingMessage.Done -> {
-                    onChunk?.invoke("") // signal end of streaming
-                    onDone?.invoke(msg.finalText)
+                is IncomingMessage.SessionStart -> postOnMain {
+                    sessionId = msg.sessionId
+                    onSessionStart?.invoke(msg.sessionId, msg.name, msg.resumed, msg.messageCount)
                 }
-                is IncomingMessage.ToolCallMsg -> onToolCall?.invoke(msg.id, msg.name, msg.args)
-                is IncomingMessage.ToolResultMsg -> onToolResult?.invoke(msg.id, msg.name, msg.output)
+                is IncomingMessage.Connected -> Unit
+                is IncomingMessage.Chunk -> postOnMain { onChunk?.invoke(msg.text) }
+                is IncomingMessage.Thinking -> postOnMain { onThinking?.invoke(msg.text) }
+                is IncomingMessage.Done -> postOnMain { onDone?.invoke(msg.finalText) }
+                is IncomingMessage.ToolCallMsg -> postOnMain { onToolCall?.invoke(msg.id, msg.name, msg.args) }
+                is IncomingMessage.ToolResultMsg -> postOnMain { onToolResult?.invoke(msg.id, msg.name, msg.output) }
                 is IncomingMessage.ToolCallRequestMsg -> dispatchToolCall(msg.request)
                 is IncomingMessage.ToolsRegistered -> Unit
                 is IncomingMessage.ResultAcknowledged -> Unit
-                is IncomingMessage.ChunkReset -> Unit
-                is IncomingMessage.Aborted -> onAborted?.invoke()
-                is IncomingMessage.Error -> onError?.invoke(msg.message)
+                is IncomingMessage.ChunkReset -> postOnMain { onChunkReset?.invoke() }
+                is IncomingMessage.Aborted -> postOnMain { onAborted?.invoke() }
+                is IncomingMessage.Error -> postOnMain { onError?.invoke(msg.message) }
                 null -> Unit
             }
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
             webSocket.close(1000, null)
-            onDisconnected?.invoke()
+            postOnMain { onDisconnected?.invoke() }
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
@@ -115,8 +138,12 @@ class ClawseedClient private constructor(
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             this@ClawseedClient.webSocket = null
-            onDisconnected?.invoke()
-            onError?.invoke(t.message ?: "WebSocket failure")
+            postOnMain {
+                onDisconnected?.invoke()
+                if (!intentionalDisconnect) {
+                    onError?.invoke(t.message ?: "WebSocket failure")
+                }
+            }
         }
     }
 
@@ -126,7 +153,9 @@ class ClawseedClient private constructor(
         private var toolCallHandler: ToolCallHandler? = null
         private var onConnected: (() -> Unit)? = null
         private var onDisconnected: (() -> Unit)? = null
+        private var onSessionStart: ((sessionId: String, name: String?, resumed: Boolean, messageCount: Int) -> Unit)? = null
         private var onChunk: ((String) -> Unit)? = null
+        private var onChunkReset: (() -> Unit)? = null
         private var onThinking: ((String) -> Unit)? = null
         private var onDone: ((String) -> Unit)? = null
         private var onToolCall: ((id: String, name: String, args: JSONObject) -> Unit)? = null
@@ -139,7 +168,9 @@ class ClawseedClient private constructor(
         fun toolCallHandler(handler: ToolCallHandler) = apply { toolCallHandler = handler }
         fun onConnected(callback: () -> Unit) = apply { onConnected = callback }
         fun onDisconnected(callback: () -> Unit) = apply { onDisconnected = callback }
+        fun onSessionStart(callback: (sessionId: String, name: String?, resumed: Boolean, messageCount: Int) -> Unit) = apply { onSessionStart = callback }
         fun onChunk(callback: (String) -> Unit) = apply { onChunk = callback }
+        fun onChunkReset(callback: () -> Unit) = apply { onChunkReset = callback }
         fun onThinking(callback: (String) -> Unit) = apply { onThinking = callback }
         fun onDone(callback: (String) -> Unit) = apply { onDone = callback }
         fun onToolCall(callback: (id: String, name: String, args: JSONObject) -> Unit) = apply { onToolCall = callback }
@@ -154,7 +185,9 @@ class ClawseedClient private constructor(
             toolCallHandler = toolCallHandler,
             onConnected = onConnected,
             onDisconnected = onDisconnected,
+            onSessionStart = onSessionStart,
             onChunk = onChunk,
+            onChunkReset = onChunkReset,
             onThinking = onThinking,
             onDone = onDone,
             onToolCall = onToolCall,

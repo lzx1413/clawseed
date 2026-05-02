@@ -191,6 +191,65 @@ impl WebSearchTool {
         Ok(lines.join("\n"))
     }
 
+    async fn search_bing(&self, query: &str) -> anyhow::Result<String> {
+        let encoded_query = urlencoding::encode(query);
+        let search_url = format!("https://www.bing.com/search?q={}&count={}", encoded_query, self.max_results);
+
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(self.timeout_secs))
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .build()?;
+
+        let response = client.get(&search_url).send().await?;
+
+        if !response.status().is_success() {
+            anyhow::bail!("Bing search failed with status: {}", response.status());
+        }
+
+        let html = response.text().await?;
+        self.parse_bing_results(&html, query)
+    }
+
+    fn parse_bing_results(&self, html: &str, query: &str) -> anyhow::Result<String> {
+        let result_regex = Regex::new(
+            r#"<li[^>]*class="b_algo"[^>]*>([\s\S]*?)</li>"#,
+        )?;
+        let link_regex = Regex::new(r#"<a[^>]*href="(https?://[^"]+)"[^>]*>([\s\S]*?)</a>"#)?;
+        let snippet_regex = Regex::new(r#"<p[^>]*>([\s\S]*?)</p>"#)?;
+
+        let results: Vec<_> = result_regex.captures_iter(html).take(self.max_results).collect();
+
+        if results.is_empty() {
+            return Ok(format!("No results found for: {}", query));
+        }
+
+        let mut lines = vec![format!("Search results for: {} (via Bing)", query)];
+
+        for (i, cap) in results.iter().enumerate() {
+            let block = &cap[1];
+            if let Some(link_cap) = link_regex.captures(block) {
+                let url = &link_cap[1];
+                let title = strip_tags(&link_cap[2]);
+                lines.push(format!("{}. {}", i + 1, title.trim()));
+                lines.push(format!("   {}", url));
+
+                if let Some(snippet_cap) = snippet_regex.captures(block) {
+                    let snippet = strip_tags(&snippet_cap[1]);
+                    let snippet = snippet.trim();
+                    if !snippet.is_empty() {
+                        lines.push(format!("   {}", snippet));
+                    }
+                }
+            }
+        }
+
+        if lines.len() == 1 {
+            return Ok(format!("No results found for: {}", query));
+        }
+
+        Ok(lines.join("\n"))
+    }
+
     /// Resolve the SearXNG instance URL from configuration.
     fn resolve_searxng_instance_url(&self) -> anyhow::Result<String> {
         self.searxng_instance_url
@@ -340,6 +399,7 @@ impl Tool for WebSearchTool {
             }
             WebSearchProviderRoute::Brave => self.search_brave(query).await?,
             WebSearchProviderRoute::SearXNG => self.search_searxng(query).await?,
+            WebSearchProviderRoute::Bing => self.search_bing(query).await?,
         };
 
         Ok(ToolResult {
