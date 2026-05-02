@@ -52,6 +52,7 @@ pub struct Config {
     pub transcription: TranscriptionConfig,
     pub web_search: WebSearchConfig,
     pub agents: HashMap<String, AgentEntryConfig>,
+    pub identity: IdentityConfig,
     pub locale: Option<String>,
     // ...
 }
@@ -241,6 +242,11 @@ max_actions_per_hour = 100
 max_retries = 2
 provider_backoff_ms = 500
 
+[identity]
+format = "openclaw"
+# format = "aieos"
+# aieos_path = "identity.json"
+
 [secrets]
 encrypt = true
 
@@ -254,6 +260,18 @@ type = "security_policy"
 type = "audit_log"
 config = { level = "info" }
 ```
+
+### IdentityConfig — 身份配置
+
+```rust
+pub struct IdentityConfig {
+    pub format: String,               // "openclaw"（默认）或 "aieos"
+    pub aieos_path: Option<String>,   // AIEOS JSON 文件路径（相对于工作区）
+    pub aieos_inline: Option<String>, // 内联 AIEOS JSON 字符串
+}
+```
+
+OpenClaw 模式（默认）使用工作区目录中的 Markdown 文件（`SOUL.md`、`IDENTITY.md` 等）。AIEOS 模式使用结构化 JSON 身份。详见[人格与身份教程](../tutorials/personality-and-identity.md)。
 
 ## 密钥管理
 

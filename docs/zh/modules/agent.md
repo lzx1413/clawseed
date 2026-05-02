@@ -176,6 +176,49 @@ pub trait HookFactory: Send + Sync {
   - `validate_shell_command()` — 安全策略检查
   - `add_shell_job_with_approval()` — 审批后持久化
 
+### prompt.rs — 模块化系统提示构建器
+
+系统提示通过可插拔的 `PromptSection` 实现由 `SystemPromptBuilder` 组装：
+
+```
+SystemPromptBuilder::with_defaults()
+  ├── DateTimeSection       — 当前日期和时间
+  ├── IdentitySection       — AIEOS 身份 + 人格 Markdown 文件
+  ├── WorkspaceSection      — 工作目录路径
+  ├── ToolsSection          — 可用工具描述
+  ├── SafetySection         — 安全规则（感知自主等级）
+  └── ToolHonestySection    — 工具诚实性约束
+```
+
+可通过 `SystemPromptBuilder::add_section()` 添加自定义分节。
+
+### personality.rs — 人格文件加载器
+
+从工作区目录加载预定义的 Markdown 文件：
+
+| 文件 | 用途 |
+|------|------|
+| `SOUL.md` | 核心人格和行为准则 |
+| `IDENTITY.md` | 名称、角色、背景 |
+| `USER.md` | 用户偏好和上下文 |
+| `AGENTS.md` | 多 Agent 协调规则 |
+| `TOOLS.md` | 工具使用指南 |
+| `HEARTBEAT.md` | 定期自检指令 |
+| `BOOTSTRAP.md` | 首次运行初始化指令 |
+| `MEMORY.md` | 记忆管理指南 |
+
+每个文件在 20K 字符处截断。首次运行时自动生成默认的 `SOUL.md`。
+
+### identity.rs — AIEOS 身份系统
+
+支持 AIEOS v1.1（AI Entity Object Specification）— 一种用于可移植 AI 身份的结构化 JSON 格式。涵盖身份、心理学、语言学、动机、能力、外貌、历史和兴趣。
+
+- `load_aieos_identity()` — 从文件或内联 JSON 加载
+- `aieos_to_system_prompt()` — 将 AIEOS 身份渲染为 Markdown
+- 通过归一化处理官方生成器输出和简化 JSON 格式
+
+详细文档参见[人格与身份教程](../tutorials/personality-and-identity.md)。
+
 ### 其他模块
 
 | 模块 | 职责 |
@@ -185,6 +228,5 @@ pub trait HookFactory: Send + Sync {
 | `observability.rs` | 重新导出 Observer 类型供外部消费者使用 |
 | `approval.rs` | 危险操作的审批工作流 |
 | `history.rs` | 对话历史管理 |
-| `prompt.rs` | 系统提示构建 |
 | `parser.rs` | 多格式工具调用解析（12+ 种 LLM 输出格式） |
 | `health.rs` | 健康检查存根 |

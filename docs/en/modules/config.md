@@ -52,6 +52,7 @@ pub struct Config {
     pub transcription: TranscriptionConfig,
     pub web_search: WebSearchConfig,
     pub agents: HashMap<String, AgentEntryConfig>,
+    pub identity: IdentityConfig,
     pub locale: Option<String>,
     // ...
 }
@@ -241,6 +242,11 @@ max_actions_per_hour = 100
 max_retries = 2
 provider_backoff_ms = 500
 
+[identity]
+format = "openclaw"
+# format = "aieos"
+# aieos_path = "identity.json"
+
 [secrets]
 encrypt = true
 
@@ -254,6 +260,18 @@ type = "security_policy"
 type = "audit_log"
 config = { level = "info" }
 ```
+
+### IdentityConfig — Identity Configuration
+
+```rust
+pub struct IdentityConfig {
+    pub format: String,               // "openclaw" (default) or "aieos"
+    pub aieos_path: Option<String>,   // Path to AIEOS JSON file (relative to workspace)
+    pub aieos_inline: Option<String>, // Inline AIEOS JSON string
+}
+```
+
+OpenClaw mode (default) uses markdown files in the workspace directory (`SOUL.md`, `IDENTITY.md`, etc.). AIEOS mode uses structured JSON identity. See [Personality & Identity Tutorial](../tutorials/personality-and-identity.md) for details.
 
 ## Secret Management
 

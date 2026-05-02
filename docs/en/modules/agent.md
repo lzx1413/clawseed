@@ -176,6 +176,49 @@ pub trait HookFactory: Send + Sync {
   - `validate_shell_command()` — Security policy check
   - `add_shell_job_with_approval()` — Approval before persistence
 
+### prompt.rs — Modular System Prompt Builder
+
+The system prompt is assembled from pluggable `PromptSection` implementations via `SystemPromptBuilder`:
+
+```
+SystemPromptBuilder::with_defaults()
+  ├── DateTimeSection       — Current date and time
+  ├── IdentitySection       — AIEOS identity + personality markdown files
+  ├── WorkspaceSection      — Working directory path
+  ├── ToolsSection          — Available tool descriptions
+  ├── SafetySection         — Safety rules (autonomy-level-aware)
+  └── ToolHonestySection    — Tool honesty constraints
+```
+
+Custom sections can be added via `SystemPromptBuilder::add_section()`.
+
+### personality.rs — Personality File Loader
+
+Loads well-known markdown files from the workspace directory:
+
+| File | Purpose |
+|------|---------|
+| `SOUL.md` | Core personality and behavioral guidelines |
+| `IDENTITY.md` | Name, role, background |
+| `USER.md` | User preferences and context |
+| `AGENTS.md` | Multi-agent coordination rules |
+| `TOOLS.md` | Tool usage guidelines |
+| `HEARTBEAT.md` | Periodic self-check instructions |
+| `BOOTSTRAP.md` | First-run initialization instructions |
+| `MEMORY.md` | Memory management guidelines |
+
+Files are truncated at 20K characters. A default `SOUL.md` is auto-generated on first run.
+
+### identity.rs — AIEOS Identity System
+
+Supports AIEOS v1.1 (AI Entity Object Specification) — a structured JSON format for portable AI identity. Covers identity, psychology, linguistics, motivations, capabilities, physicality, history, and interests.
+
+- `load_aieos_identity()` — loads from file or inline JSON
+- `aieos_to_system_prompt()` — renders AIEOS identity to markdown
+- Handles both official generator shape and simplified JSON formats via normalization
+
+See [Personality & Identity Tutorial](../tutorials/personality-and-identity.md) for full documentation.
+
 ### Other Modules
 
 | Module | Responsibility |
@@ -185,6 +228,5 @@ pub trait HookFactory: Send + Sync {
 | `observability.rs` | Re-exports Observer types for external consumers |
 | `approval.rs` | Approval workflow for risky operations |
 | `history.rs` | Conversation history management |
-| `prompt.rs` | System prompt construction |
 | `parser.rs` | Multi-format tool call parsing (12+ LLM output formats) |
 | `health.rs` | Health check stubs |
