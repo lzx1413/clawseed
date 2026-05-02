@@ -1,9 +1,9 @@
 use async_trait::async_trait;
-use serde_json::json;
-use std::sync::Arc;
+use clawseed_api::memory_traits::{ExportFilter, Memory, MemoryCategory};
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
-use clawseed_api::memory_traits::{ExportFilter, Memory, MemoryCategory};
+use serde_json::json;
+use std::sync::Arc;
 
 /// Bulk-export memories as a JSON array for GDPR Art. 20 data portability.
 pub struct MemoryExportTool {
@@ -56,7 +56,11 @@ impl Tool for MemoryExportTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        _ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let namespace = args
             .get("namespace")
             .and_then(|v| v.as_str())
@@ -107,8 +111,8 @@ impl Tool for MemoryExportTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use clawseed_memory::sqlite::SqliteMemory;
+    use tempfile::TempDir;
 
     fn test_mem() -> (TempDir, Arc<dyn Memory>) {
         let tmp = TempDir::new().unwrap();
@@ -119,8 +123,15 @@ mod tests {
     fn test_ctx() -> impl ToolContext {
         struct DummyCtx;
         impl ToolContext for DummyCtx {
-            fn workspace_dir(&self) -> &std::path::Path { std::path::Path::new("/tmp") }
-            fn get_any(&self, _type_id: std::any::TypeId) -> Option<&(dyn std::any::Any + Send + Sync)> { None }
+            fn workspace_dir(&self) -> &std::path::Path {
+                std::path::Path::new("/tmp")
+            }
+            fn get_any(
+                &self,
+                _type_id: std::any::TypeId,
+            ) -> Option<&(dyn std::any::Any + Send + Sync)> {
+                None
+            }
         }
         DummyCtx
     }
@@ -175,7 +186,10 @@ mod tests {
             .unwrap();
 
         let tool = MemoryExportTool::new(mem);
-        let result = tool.execute(json!({"category": "core"}), &test_ctx()).await.unwrap();
+        let result = tool
+            .execute(json!({"category": "core"}), &test_ctx())
+            .await
+            .unwrap();
         assert!(result.success);
         let parsed: serde_json::Value = serde_json::from_str(&result.output).unwrap();
         let arr = parsed.as_array().unwrap();
@@ -194,7 +208,10 @@ mod tests {
             .unwrap();
 
         let tool = MemoryExportTool::new(mem);
-        let result = tool.execute(json!({"session_id": "sess-a"}), &test_ctx()).await.unwrap();
+        let result = tool
+            .execute(json!({"session_id": "sess-a"}), &test_ctx())
+            .await
+            .unwrap();
         assert!(result.success);
         let parsed: serde_json::Value = serde_json::from_str(&result.output).unwrap();
         let arr = parsed.as_array().unwrap();

@@ -55,11 +55,12 @@ impl Tool for ModelRoutingConfigTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
-        let action = args
-            .get("action")
-            .and_then(|v| v.as_str())
-            .unwrap_or("get");
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        _ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
+        let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("get");
         Ok(ToolResult {
             success: false,
             output: String::new(),

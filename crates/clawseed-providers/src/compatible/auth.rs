@@ -1,4 +1,3 @@
-
 /// How the provider expects the API key to be sent.
 #[derive(Debug, Clone)]
 pub enum AuthStyle {
@@ -69,4 +68,3 @@ pub(super) fn apply_auth_to_request(
         },
     }
 }
-

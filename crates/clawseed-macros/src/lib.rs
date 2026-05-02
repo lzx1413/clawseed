@@ -2,7 +2,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Data, Fields};
+use syn::{Data, DeriveInput, Fields, parse_macro_input};
 
 /// `Configurable` derive macro — generates TOML config loading helpers.
 ///
@@ -14,15 +14,17 @@ pub fn derive_configurable(input: TokenStream) -> TokenStream {
 
     let defaults = match &input.data {
         Data::Struct(data) => match &data.fields {
-            Fields::Named(fields) => {
-                fields.named.iter().map(|field| {
+            Fields::Named(fields) => fields
+                .named
+                .iter()
+                .map(|field| {
                     let field_name = field.ident.as_ref().unwrap();
                     let field_type = &field.ty;
                     quote! {
                         #field_name: <#field_type>::default()
                     }
-                }).collect::<Vec<_>>()
-            }
+                })
+                .collect::<Vec<_>>(),
             _ => vec![],
         },
         _ => vec![],

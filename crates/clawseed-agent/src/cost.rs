@@ -33,8 +33,8 @@ impl TokenUsage {
         output_price: f64,
     ) -> Self {
         let total_tokens = input_tokens.saturating_add(output_tokens);
-        let cost_usd = (input_tokens as f64 * input_price + output_tokens as f64 * output_price)
-            / 1_000_000.0;
+        let cost_usd =
+            (input_tokens as f64 * input_price + output_tokens as f64 * output_price) / 1_000_000.0;
         Self {
             model: model.to_string(),
             input_tokens,
@@ -62,10 +62,12 @@ impl CostTracker {
     }
 
     pub fn record_usage(&self, usage: TokenUsage) -> anyhow::Result<()> {
-        self.total_tokens.fetch_add(usage.total_tokens, Ordering::Relaxed);
+        self.total_tokens
+            .fetch_add(usage.total_tokens, Ordering::Relaxed);
         // Store cost as micro-cents (multiply by 1e8 to get integer representation)
         let cost_microcents = (usage.cost_usd * 1e8) as u64;
-        self.total_cost_usd.fetch_add(cost_microcents, Ordering::Relaxed);
+        self.total_cost_usd
+            .fetch_add(cost_microcents, Ordering::Relaxed);
         Ok(())
     }
 
@@ -82,7 +84,10 @@ impl CostTracker {
     }
 
     /// Get or initialize a global cost tracker (stub).
-    pub fn get_or_init_global(_cost_config: clawseed_config::schema::CostConfig, _workspace_dir: &std::path::Path) -> std::sync::Arc<Self> {
+    pub fn get_or_init_global(
+        _cost_config: clawseed_config::schema::CostConfig,
+        _workspace_dir: &std::path::Path,
+    ) -> std::sync::Arc<Self> {
         std::sync::Arc::new(Self::new())
     }
 

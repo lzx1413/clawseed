@@ -1,5 +1,7 @@
 //! Shared builder helpers for constructing test agents.
 
+#![allow(dead_code)]
+
 use std::sync::Arc;
 
 use clawseed_agent::agent::Agent;
@@ -77,9 +79,7 @@ pub fn build_agent_with_sqlite_memory(
     tools: Vec<Box<dyn Tool>>,
     temp_dir: &std::path::Path,
 ) -> Agent {
-    let mem = Arc::new(
-        clawseed_memory::sqlite::SqliteMemory::new(temp_dir).unwrap(),
-    );
+    let mem = Arc::new(clawseed_memory::sqlite::SqliteMemory::new(temp_dir).unwrap());
     Agent::builder()
         .provider(provider)
         .tools(tools)

@@ -1,8 +1,8 @@
-use clawseed_api::provider::Provider;
 use super::traits::{
     ChatMessage, ChatRequest, ChatResponse, StreamChunk, StreamEvent, StreamOptions, StreamResult,
 };
 use async_trait::async_trait;
+use clawseed_api::provider::Provider;
 use futures_util::{StreamExt, stream};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -1296,9 +1296,9 @@ impl Provider for ReliableProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clawseed_api::tool::ToolSpec;
     use futures_util::StreamExt;
     use std::sync::Arc;
-    use clawseed_api::tool::ToolSpec;
 
     struct MockProvider {
         calls: Arc<AtomicUsize>,

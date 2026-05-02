@@ -17,6 +17,8 @@ pub mod static_files;
 pub mod tls;
 pub mod ws;
 
+use crate::session_backend::SessionBackend;
+use crate::session_sqlite::SqliteSessionBackend;
 use anyhow::{Context, Result};
 use axum::{
     Router,
@@ -25,6 +27,15 @@ use axum::{
     response::{IntoResponse, Json},
     routing::{delete, get, post, put},
 };
+use clawseed_agent::cost::CostTracker;
+use clawseed_agent::security::SecurityPolicy;
+use clawseed_agent::security::pairing::{PairingGuard, constant_time_eq, is_public_bind};
+use clawseed_agent::tools;
+use clawseed_agent::tools::CanvasStore;
+use clawseed_api::memory_traits::{Memory, MemoryCategory};
+use clawseed_api::provider::Provider;
+use clawseed_api::tool::ToolSpec;
+use clawseed_config::schema::Config;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
@@ -33,25 +44,26 @@ use std::time::{Duration, Instant};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::timeout::TimeoutLayer;
 use uuid::Uuid;
-use clawseed_api::tool::ToolSpec;
-use clawseed_agent::security::SecurityPolicy;
-use clawseed_config::schema::Config;
-use crate::session_backend::SessionBackend;
-use crate::session_sqlite::SqliteSessionBackend;
-use clawseed_api::memory_traits::{Memory, MemoryCategory};
-use clawseed_api::provider::Provider;
-use clawseed_agent::cost::CostTracker;
-use clawseed_agent::security::pairing::{PairingGuard, constant_time_eq, is_public_bind};
-use clawseed_agent::tools;
-use clawseed_agent::tools::CanvasStore;
 
 /// Minimal event buffer stub (replaces removed `sse::EventBuffer`).
-pub struct EventBuffer { _capacity: usize }
-impl EventBuffer { pub fn new(cap: usize) -> Self { Self { _capacity: cap } } }
+pub struct EventBuffer {
+    _capacity: usize,
+}
+impl EventBuffer {
+    pub fn new(cap: usize) -> Self {
+        Self { _capacity: cap }
+    }
+}
 
 /// Minimal node registry stub (replaces removed `nodes::NodeRegistry`).
-pub struct NodeRegistry { _max: usize }
-impl NodeRegistry { pub fn new(max: usize) -> Self { Self { _max: max } } }
+pub struct NodeRegistry {
+    _max: usize,
+}
+impl NodeRegistry {
+    pub fn new(max: usize) -> Self {
+        Self { _max: max }
+    }
+}
 
 /// Maximum request body size (64KB) — prevents memory exhaustion
 pub const MAX_BODY_SIZE: usize = 65_536;
@@ -372,11 +384,8 @@ pub async fn run_gateway(
     let config_state = Arc::new(Mutex::new(config.clone()));
 
     // ── Hooks ──────────────────────────────────────────────────────
-    let hooks: Option<std::sync::Arc<clawseed_agent::hooks::HookRunner>> = if config.hooks.enabled
-    {
-        Some(std::sync::Arc::new(
-            clawseed_agent::hooks::HookRunner::new(),
-        ))
+    let hooks: Option<std::sync::Arc<clawseed_agent::hooks::HookRunner>> = if config.hooks.enabled {
+        Some(std::sync::Arc::new(clawseed_agent::hooks::HookRunner::new()))
     } else {
         None
     };
@@ -510,7 +519,10 @@ pub async fn run_gateway(
         Arc::new(tools_registry_raw.iter().map(|t| t.spec()).collect());
 
     // Cost tracker — process-global singleton so channels share the same instance
-    let cost_tracker = Some(CostTracker::get_or_init_global(config.cost.clone(), &config.workspace_dir));
+    let cost_tracker = Some(CostTracker::get_or_init_global(
+        config.cost.clone(),
+        &config.workspace_dir,
+    ));
 
     // SSE broadcast channel for real-time events.
     // Use an externally provided sender (e.g. from the daemon) so that other
@@ -749,14 +761,26 @@ pub async fn run_gateway(
         .route("/api/channels", get(api::handle_api_channels))
         .route("/api/health", get(api::handle_api_health))
         .route("/api/sessions", get(api::handle_api_sessions_list))
-        .route("/api/sessions/running", get(api::handle_api_sessions_running))
+        .route(
+            "/api/sessions/running",
+            get(api::handle_api_sessions_running),
+        )
         .route(
             "/api/sessions/{id}/messages",
             get(api::handle_api_session_messages),
         )
-        .route("/api/sessions/{id}", delete(api::handle_api_session_delete).put(api::handle_api_session_rename))
-        .route("/api/sessions/{id}/state", get(api::handle_api_session_state))
-        .route("/api/sessions/{id}/abort", post(api::handle_api_session_abort));
+        .route(
+            "/api/sessions/{id}",
+            delete(api::handle_api_session_delete).put(api::handle_api_session_rename),
+        )
+        .route(
+            "/api/sessions/{id}/state",
+            get(api::handle_api_session_state),
+        )
+        .route(
+            "/api/sessions/{id}/abort",
+            post(api::handle_api_session_abort),
+        );
 
     let inner = inner
         // ── WebSocket agent chat ──
@@ -1165,19 +1189,19 @@ async fn handle_webhook(
     let model_label = state.model.clone();
     let started_at = Instant::now();
 
-    state.observer.record_event(
-        &clawseed_agent::observability::ObserverEvent::AgentStart {
+    state
+        .observer
+        .record_event(&clawseed_agent::observability::ObserverEvent::AgentStart {
             provider: provider_label.clone(),
             model: model_label.clone(),
-        },
-    );
-    state.observer.record_event(
-        &clawseed_agent::observability::ObserverEvent::LlmRequest {
+        });
+    state
+        .observer
+        .record_event(&clawseed_agent::observability::ObserverEvent::LlmRequest {
             provider: provider_label.clone(),
             model: model_label.clone(),
             messages_count: 1,
-        },
-    );
+        });
 
     match run_gateway_chat_with_tools(&state, message, session_id.as_deref()).await {
         Ok(response) => {
@@ -1196,15 +1220,15 @@ async fn handle_webhook(
             state.observer.record_metric(
                 &clawseed_agent::observability::traits::ObserverMetric::RequestLatency(duration),
             );
-            state.observer.record_event(
-                &clawseed_agent::observability::ObserverEvent::AgentEnd {
+            state
+                .observer
+                .record_event(&clawseed_agent::observability::ObserverEvent::AgentEnd {
                     provider: provider_label,
                     model: model_label,
                     duration,
                     tokens_used: None,
                     cost_usd: None,
-                },
-            );
+                });
 
             let body = serde_json::json!({"response": response, "model": state.model});
             (StatusCode::OK, Json(body))
@@ -1233,15 +1257,15 @@ async fn handle_webhook(
                     component: "gateway".to_string(),
                     message: sanitized.clone(),
                 });
-            state.observer.record_event(
-                &clawseed_agent::observability::ObserverEvent::AgentEnd {
+            state
+                .observer
+                .record_event(&clawseed_agent::observability::ObserverEvent::AgentEnd {
                     provider: provider_label,
                     model: model_label,
                     duration,
                     tokens_used: None,
                     cost_usd: None,
-                },
-            );
+                });
 
             tracing::error!("Webhook provider error: {}", sanitized);
             let err = serde_json::json!({"error": "LLM request failed"});
@@ -1386,12 +1410,11 @@ mod tests {
     use async_trait::async_trait;
     use axum::http::HeaderValue;
     use axum::response::IntoResponse;
+    use clawseed_api::memory_traits::{Memory, MemoryCategory, MemoryEntry};
+    use clawseed_api::provider::Provider;
     use http_body_util::BodyExt;
     use parking_lot::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use clawseed_api::channel::ChannelMessage;
-    use clawseed_api::memory_traits::{Memory, MemoryCategory, MemoryEntry};
-    use clawseed_api::provider::Provider;
 
     /// Generate a random hex secret at runtime to avoid hard-coded cryptographic values.
     fn generate_test_secret() -> String {

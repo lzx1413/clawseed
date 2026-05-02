@@ -7,14 +7,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use clawseed_api::provider::{
-    ChatRequest, ChatResponse, Provider,
-    ToolCall,
-};
-use clawseed_api::memory_traits::Memory;
 use clawseed_agent::agent::{Agent, TurnEvent};
 use clawseed_agent::dispatcher::NativeToolDispatcher;
 use clawseed_agent::observer::NoopObserver;
+use clawseed_api::memory_traits::Memory;
+use clawseed_api::provider::{ChatRequest, ChatResponse, Provider, ToolCall};
 use clawseed_gateway::remote_tool::{
     RemoteToolRegistryHandle, RemoteToolRequest, RemoteToolResult, RemoteToolSpec,
 };
@@ -261,15 +258,18 @@ async fn remote_tool_turn_events_include_tool_call_and_result() {
     // event_tx was dropped when turn_task completed; events_task will now drain.
     let events = events_task.await.unwrap();
 
-    let has_tool_call = events.iter().any(|e| {
-        matches!(e, TurnEvent::ToolCall { name, .. } if name == "local_contacts")
-    });
-    let has_tool_result = events.iter().any(|e| {
-        matches!(e, TurnEvent::ToolResult { name, .. } if name == "local_contacts")
-    });
+    let has_tool_call = events
+        .iter()
+        .any(|e| matches!(e, TurnEvent::ToolCall { name, .. } if name == "local_contacts"));
+    let has_tool_result = events
+        .iter()
+        .any(|e| matches!(e, TurnEvent::ToolResult { name, .. } if name == "local_contacts"));
 
     assert!(has_tool_call, "expected ToolCall event for local_contacts");
-    assert!(has_tool_result, "expected ToolResult event for local_contacts");
+    assert!(
+        has_tool_result,
+        "expected ToolResult event for local_contacts"
+    );
 }
 
 /// Timeout regression guard: the entire turn (including remote tool round-trip)

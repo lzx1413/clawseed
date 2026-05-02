@@ -4,6 +4,7 @@ use super::vector;
 use anyhow::Context;
 use async_trait::async_trait;
 use chrono::Local;
+use clawseed_config::schema::SearchMode;
 use parking_lot::Mutex;
 use rusqlite::{Connection, params};
 use std::fmt::Write as _;
@@ -13,7 +14,6 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 use uuid::Uuid;
-use clawseed_config::schema::SearchMode;
 
 /// Maximum allowed open timeout (seconds) to avoid unreasonable waits.
 const SQLITE_OPEN_TIMEOUT_CAP_SECS: u64 = 300;

@@ -4,10 +4,10 @@ use crate::context::AgentToolContext;
 use crate::dispatcher::ParsedToolCall;
 use crate::observer::{Observer, ObserverEvent};
 use anyhow::Result;
+use clawseed_api::tool::Tool;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
-use clawseed_api::tool::Tool;
 
 /// Look up a tool by name.
 pub fn find_tool<'a>(tools: &'a [Box<dyn Tool>], name: &str) -> Option<&'a dyn Tool> {
@@ -37,7 +37,8 @@ pub async fn execute_one_tool(
         observer,
         cancellation_token,
         &AgentToolContext::new(PathBuf::from(".")),
-    ).await
+    )
+    .await
 }
 
 /// Execute a single tool call with a provided context.

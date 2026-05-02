@@ -3,8 +3,8 @@
 //! Provides a pre-execution hook that prompts the user before tool calls,
 //! with session-scoped "Always" allowlists and audit logging.
 
-use clawseed_config::schema::AutonomyLevel;
 use chrono::Utc;
+use clawseed_config::schema::AutonomyLevel;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -48,7 +48,11 @@ pub struct ApprovalManager {
 
 impl ApprovalManager {
     /// Create an interactive (CLI) approval manager.
-    pub fn new(auto_approve: Vec<String>, always_ask: Vec<String>, autonomy_level: AutonomyLevel) -> Self {
+    pub fn new(
+        auto_approve: Vec<String>,
+        always_ask: Vec<String>,
+        autonomy_level: AutonomyLevel,
+    ) -> Self {
         Self {
             auto_approve: auto_approve.into_iter().collect(),
             always_ask: always_ask.into_iter().collect(),
@@ -60,7 +64,11 @@ impl ApprovalManager {
     }
 
     /// Create a non-interactive approval manager for channel-driven runs.
-    pub fn for_non_interactive(auto_approve: Vec<String>, always_ask: Vec<String>, autonomy_level: AutonomyLevel) -> Self {
+    pub fn for_non_interactive(
+        auto_approve: Vec<String>,
+        always_ask: Vec<String>,
+        autonomy_level: AutonomyLevel,
+    ) -> Self {
         Self {
             auto_approve: auto_approve.into_iter().collect(),
             always_ask: always_ask.into_iter().collect(),
@@ -232,7 +240,12 @@ mod tests {
         let (auto, ask, level) = supervised_config();
         let mgr = ApprovalManager::new(auto, ask, level);
         assert!(mgr.needs_approval("file_write"));
-        mgr.record_decision("file_write", &serde_json::json!({}), ApprovalResponse::Always, "cli");
+        mgr.record_decision(
+            "file_write",
+            &serde_json::json!({}),
+            ApprovalResponse::Always,
+            "cli",
+        );
         assert!(!mgr.needs_approval("file_write"));
     }
 
@@ -240,7 +253,12 @@ mod tests {
     fn always_ask_overrides_session_allowlist() {
         let (auto, ask, level) = supervised_config();
         let mgr = ApprovalManager::new(auto, ask, level);
-        mgr.record_decision("shell", &serde_json::json!({}), ApprovalResponse::Always, "cli");
+        mgr.record_decision(
+            "shell",
+            &serde_json::json!({}),
+            ApprovalResponse::Always,
+            "cli",
+        );
         assert!(mgr.needs_approval("shell"));
     }
 

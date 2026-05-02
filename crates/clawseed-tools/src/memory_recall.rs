@@ -1,10 +1,10 @@
 use async_trait::async_trait;
+use clawseed_api::memory_traits::Memory;
+use clawseed_api::tool::{Tool, ToolResult};
+use clawseed_api::tool_context::ToolContext;
 use serde_json::json;
 use std::fmt::Write;
 use std::sync::Arc;
-use clawseed_api::tool::{Tool, ToolResult};
-use clawseed_api::tool_context::ToolContext;
-use clawseed_api::memory_traits::Memory;
 
 /// Let the agent search its own memory
 pub struct MemoryRecallTool {
@@ -56,7 +56,11 @@ impl Tool for MemoryRecallTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        _ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
         let since = args.get("since").and_then(|v| v.as_str());
         let until = args.get("until").and_then(|v| v.as_str());
@@ -150,9 +154,9 @@ impl Tool for MemoryRecallTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use clawseed_api::memory_traits::MemoryCategory;
     use clawseed_memory::sqlite::SqliteMemory;
+    use tempfile::TempDir;
 
     fn seeded_mem() -> (TempDir, Arc<dyn Memory>) {
         let tmp = TempDir::new().unwrap();
@@ -163,8 +167,15 @@ mod tests {
     fn test_ctx() -> impl ToolContext {
         struct DummyCtx;
         impl ToolContext for DummyCtx {
-            fn workspace_dir(&self) -> &std::path::Path { std::path::Path::new("/tmp") }
-            fn get_any(&self, _type_id: std::any::TypeId) -> Option<&(dyn std::any::Any + Send + Sync)> { None }
+            fn workspace_dir(&self) -> &std::path::Path {
+                std::path::Path::new("/tmp")
+            }
+            fn get_any(
+                &self,
+                _type_id: std::any::TypeId,
+            ) -> Option<&(dyn std::any::Any + Send + Sync)> {
+                None
+            }
         }
         DummyCtx
     }
@@ -173,7 +184,10 @@ mod tests {
     async fn recall_empty() {
         let (_tmp, mem) = seeded_mem();
         let tool = MemoryRecallTool::new(mem);
-        let result = tool.execute(json!({"query": "anything"}), &test_ctx()).await.unwrap();
+        let result = tool
+            .execute(json!({"query": "anything"}), &test_ctx())
+            .await
+            .unwrap();
         assert!(result.success);
         assert!(result.output.contains("No memories found"));
     }
@@ -189,7 +203,10 @@ mod tests {
             .unwrap();
 
         let tool = MemoryRecallTool::new(mem);
-        let result = tool.execute(json!({"query": "Rust"}), &test_ctx()).await.unwrap();
+        let result = tool
+            .execute(json!({"query": "Rust"}), &test_ctx())
+            .await
+            .unwrap();
         assert!(result.success);
         assert!(result.output.contains("Rust"));
         assert!(result.output.contains("Found 1"));
@@ -236,7 +253,10 @@ mod tests {
         let tool = MemoryRecallTool::new(mem);
         // Time-only: since far in past
         let result = tool
-            .execute(json!({"since": "2020-01-01T00:00:00Z", "limit": 5}), &test_ctx())
+            .execute(
+                json!({"since": "2020-01-01T00:00:00Z", "limit": 5}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);

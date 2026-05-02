@@ -1,9 +1,9 @@
 use async_trait::async_trait;
+use clawseed_api::tool::{Tool, ToolResult};
+use clawseed_api::tool_context::ToolContext;
 use serde_json::json;
 use std::process::Stdio;
 use std::sync::OnceLock;
-use clawseed_api::tool::{Tool, ToolResult};
-use clawseed_api::tool_context::ToolContext;
 
 const MAX_RESULTS: usize = 1000;
 const MAX_OUTPUT_BYTES: usize = 1_048_576; // 1 MB
@@ -97,7 +97,11 @@ impl Tool for ContentSearchTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         // --- Parse parameters ---
         let pattern = args
             .get("pattern")

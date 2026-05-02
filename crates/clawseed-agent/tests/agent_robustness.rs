@@ -5,9 +5,9 @@
 
 mod common;
 
+use clawseed_api::provider::{ChatResponse, ToolCall};
 use common::helpers::{build_agent, text_response, tool_response};
 use common::mock_tools::{CountingTool, EchoTool, FailingTool};
-use clawseed_api::provider::{ChatResponse, ToolCall};
 
 // ═════════════════════════════════════════════════════════════════════════════
 // TG4.1: Malformed tool call recovery
@@ -16,9 +16,9 @@ use clawseed_api::provider::{ChatResponse, ToolCall};
 /// Agent should recover when LLM returns text with residual XML tags
 #[tokio::test]
 async fn agent_recovers_from_text_with_xml_residue() {
-    let provider = Box::new(common::mock_provider::MockProvider::new(vec![text_response(
-        "Here is the result. Some leftover ▷ text after.",
-    )]));
+    let provider = Box::new(common::mock_provider::MockProvider::new(vec![
+        text_response("Here is the result. Some leftover ▷ text after."),
+    ]));
 
     let mut agent = build_agent(provider, vec![Box::new(EchoTool)]);
     let response = agent.turn("test").await.unwrap();
@@ -158,12 +158,14 @@ async fn agent_respects_max_tool_iterations() {
 /// Agent should handle empty text response from provider
 #[tokio::test]
 async fn agent_handles_empty_provider_response() {
-    let provider = Box::new(common::mock_provider::MockProvider::new(vec![ChatResponse {
-        text: Some(String::new()),
-        tool_calls: vec![],
-        usage: None,
-        reasoning_content: None,
-    }]));
+    let provider = Box::new(common::mock_provider::MockProvider::new(vec![
+        ChatResponse {
+            text: Some(String::new()),
+            tool_calls: vec![],
+            usage: None,
+            reasoning_content: None,
+        },
+    ]));
 
     let mut agent = build_agent(provider, vec![Box::new(EchoTool)]);
     // Should not panic
@@ -173,12 +175,14 @@ async fn agent_handles_empty_provider_response() {
 /// Agent should handle None text response from provider
 #[tokio::test]
 async fn agent_handles_none_text_response() {
-    let provider = Box::new(common::mock_provider::MockProvider::new(vec![ChatResponse {
-        text: None,
-        tool_calls: vec![],
-        usage: None,
-        reasoning_content: None,
-    }]));
+    let provider = Box::new(common::mock_provider::MockProvider::new(vec![
+        ChatResponse {
+            text: None,
+            tool_calls: vec![],
+            usage: None,
+            reasoning_content: None,
+        },
+    ]));
 
     let mut agent = build_agent(provider, vec![Box::new(EchoTool)]);
     let _result = agent.turn("test").await;
@@ -187,9 +191,9 @@ async fn agent_handles_none_text_response() {
 /// Agent should handle whitespace-only response
 #[tokio::test]
 async fn agent_handles_whitespace_only_response() {
-    let provider = Box::new(common::mock_provider::MockProvider::new(vec![text_response(
-        "   \n\t  ",
-    )]));
+    let provider = Box::new(common::mock_provider::MockProvider::new(vec![
+        text_response("   \n\t  "),
+    ]));
 
     let mut agent = build_agent(provider, vec![Box::new(EchoTool)]);
     let _result = agent.turn("test").await;

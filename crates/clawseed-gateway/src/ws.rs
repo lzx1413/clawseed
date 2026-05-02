@@ -76,11 +76,14 @@ struct ConnectParams {
 // The handle contains an mpsc channel for sending requests to ws.rs,
 // and oneshot channels for waiting for responses.
 
-use crate::remote_tool::{RemoteToolRegistryHandle, RemoteToolRequest, RemoteToolResult, RemoteToolSpec};
+use crate::remote_tool::{
+    RemoteToolRegistryHandle, RemoteToolRequest, RemoteToolResult, RemoteToolSpec,
+};
 
 /// Pending remote tool calls awaiting response from WebSocket client.
 /// Keyed by call_id, contains oneshot sender to complete the tool execution.
-type PendingRemoteCalls = std::collections::HashMap<String, tokio::sync::oneshot::Sender<RemoteToolResult>>;
+type PendingRemoteCalls =
+    std::collections::HashMap<String, tokio::sync::oneshot::Sender<RemoteToolResult>>;
 
 /// The sub-protocol we support for the chat WebSocket.
 const WS_PROTOCOL: &str = "clawseed.v1";
@@ -224,9 +227,8 @@ async fn handle_socket(
         tokio::sync::mpsc::channel::<RemoteToolRequest>(32);
 
     // Pending calls awaiting response from client (call_id -> oneshot sender)
-    let pending_remote_calls: std::sync::Arc<
-        tokio::sync::RwLock<PendingRemoteCalls>,
-    > = std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
+    let pending_remote_calls: std::sync::Arc<tokio::sync::RwLock<PendingRemoteCalls>> =
+        std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
 
     // Shared handle for RemoteTool instances to send requests
     let remote_registry_handle = std::sync::Arc::new(tokio::sync::RwLock::new(
@@ -573,7 +575,10 @@ fn parse_mid_turn_message(
     parsed: &serde_json::Value,
 ) -> Option<(String, RemoteToolResult, serde_json::Value)> {
     let msg_type = parsed["type"].as_str()?;
-    let call_id = parsed["id"].as_str().filter(|id| !id.is_empty())?.to_string();
+    let call_id = parsed["id"]
+        .as_str()
+        .filter(|id| !id.is_empty())?
+        .to_string();
     let ack = serde_json::json!({ "type": "result_acknowledged", "id": call_id });
 
     let result = match msg_type {
@@ -581,10 +586,17 @@ fn parse_mid_turn_message(
             let output = parsed["output"].as_str().unwrap_or("").to_string();
             let success = parsed["success"].as_bool().unwrap_or(true);
             let error = parsed["error"].as_str().map(|e| e.to_string());
-            RemoteToolResult { success, output, error }
+            RemoteToolResult {
+                success,
+                output,
+                error,
+            }
         }
         "tool_error" => {
-            let error = parsed["error"].as_str().unwrap_or("Unknown error").to_string();
+            let error = parsed["error"]
+                .as_str()
+                .unwrap_or("Unknown error")
+                .to_string();
             RemoteToolResult {
                 success: false,
                 output: error.clone(),
@@ -699,8 +711,9 @@ async fn process_chat_message(
     // from the other branch.
     let content_owned = content.to_string();
     let turn_fut = async {
-        agent.turn_streamed(&content_owned, event_tx, Some(cancel_token.clone()))
-        .await
+        agent
+            .turn_streamed(&content_owned, event_tx, Some(cancel_token.clone()))
+            .await
     };
 
     // Drive both futures concurrently: the agent turn produces events
@@ -1086,7 +1099,10 @@ mod mid_turn_tests {
         let (_call_id, result, _ack) = parse_mid_turn_message(&parsed).unwrap();
         assert!(!result.success);
         assert_eq!(result.output, "failure description");
-        assert!(result.error.is_none(), "error should not be duplicated from output");
+        assert!(
+            result.error.is_none(),
+            "error should not be duplicated from output"
+        );
     }
 
     #[test]
@@ -1101,7 +1117,10 @@ mod mid_turn_tests {
         assert_eq!(call_id, "call_abc");
         assert!(!result.success);
         assert_eq!(result.output, "Permission denied: READ_CONTACTS required");
-        assert_eq!(result.error.as_deref(), Some("Permission denied: READ_CONTACTS required"));
+        assert_eq!(
+            result.error.as_deref(),
+            Some("Permission denied: READ_CONTACTS required")
+        );
         assert_eq!(ack["type"], "result_acknowledged");
     }
 

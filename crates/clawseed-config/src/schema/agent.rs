@@ -42,7 +42,9 @@ pub struct AgentConfig {
     pub turn_budget_usd: Option<f64>,
 }
 
-fn default_max_tool_iterations() -> usize { 25 }
+fn default_max_tool_iterations() -> usize {
+    25
+}
 
 impl Default for AgentConfig {
     fn default() -> Self {

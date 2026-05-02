@@ -1,9 +1,9 @@
 use async_trait::async_trait;
-use serde_json::json;
-use std::sync::Arc;
+use clawseed_api::memory_traits::Memory;
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
-use clawseed_api::memory_traits::Memory;
+use serde_json::json;
+use std::sync::Arc;
 
 /// Let the agent forget/delete a memory entry
 pub struct MemoryForgetTool {
@@ -39,7 +39,11 @@ impl Tool for MemoryForgetTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        _ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let key = args
             .get("key")
             .and_then(|v| v.as_str())
@@ -68,9 +72,9 @@ impl Tool for MemoryForgetTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
-    use clawseed_memory::sqlite::SqliteMemory;
     use clawseed_api::memory_traits::MemoryCategory;
+    use clawseed_memory::sqlite::SqliteMemory;
+    use tempfile::TempDir;
 
     fn test_mem() -> (TempDir, Arc<dyn Memory>) {
         let tmp = TempDir::new().unwrap();
@@ -81,8 +85,15 @@ mod tests {
     fn test_ctx() -> impl ToolContext {
         struct DummyCtx;
         impl ToolContext for DummyCtx {
-            fn workspace_dir(&self) -> &std::path::Path { std::path::Path::new("/tmp") }
-            fn get_any(&self, _type_id: std::any::TypeId) -> Option<&(dyn std::any::Any + Send + Sync)> { None }
+            fn workspace_dir(&self) -> &std::path::Path {
+                std::path::Path::new("/tmp")
+            }
+            fn get_any(
+                &self,
+                _type_id: std::any::TypeId,
+            ) -> Option<&(dyn std::any::Any + Send + Sync)> {
+                None
+            }
         }
         DummyCtx
     }
@@ -103,7 +114,10 @@ mod tests {
             .unwrap();
 
         let tool = MemoryForgetTool::new(mem.clone());
-        let result = tool.execute(json!({"key": "temp"}), &test_ctx()).await.unwrap();
+        let result = tool
+            .execute(json!({"key": "temp"}), &test_ctx())
+            .await
+            .unwrap();
         assert!(result.success);
         assert!(result.output.contains("Forgot"));
 
@@ -114,7 +128,10 @@ mod tests {
     async fn forget_nonexistent() {
         let (_tmp, mem) = test_mem();
         let tool = MemoryForgetTool::new(mem);
-        let result = tool.execute(json!({"key": "nope"}), &test_ctx()).await.unwrap();
+        let result = tool
+            .execute(json!({"key": "nope"}), &test_ctx())
+            .await
+            .unwrap();
         assert!(result.success);
         assert!(result.output.contains("No memory found"));
     }

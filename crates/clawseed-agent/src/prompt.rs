@@ -5,10 +5,10 @@
 //! or security policy injection.
 
 use anyhow::Result;
+use chrono::{Datelike, Timelike};
+use clawseed_api::tool::Tool;
 use std::fmt::Write;
 use std::path::Path;
-use clawseed_api::tool::Tool;
-use chrono::{Datelike, Timelike};
 
 /// Context for building the system prompt.
 pub struct PromptContext<'a> {
@@ -69,7 +69,9 @@ pub struct WorkspaceSection;
 pub struct DateTimeSection;
 
 impl PromptSection for ToolsSection {
-    fn name(&self) -> &str { "tools" }
+    fn name(&self) -> &str {
+        "tools"
+    }
 
     fn build(&self, ctx: &PromptContext<'_>) -> Result<String> {
         let mut out = String::from("## Tools\n\n");
@@ -91,20 +93,22 @@ impl PromptSection for ToolsSection {
 }
 
 impl PromptSection for SafetySection {
-    fn name(&self) -> &str { "safety" }
+    fn name(&self) -> &str {
+        "safety"
+    }
 
     fn build(&self, _ctx: &PromptContext<'_>) -> Result<String> {
-        Ok(
-            "## Safety\n\n- Do not exfiltrate private data.\n\
+        Ok("## Safety\n\n- Do not exfiltrate private data.\n\
              - Do not run destructive commands without asking.\n\
              - Prefer `trash` over `rm`.\n"
-                .into(),
-        )
+            .into())
     }
 }
 
 impl PromptSection for WorkspaceSection {
-    fn name(&self) -> &str { "workspace" }
+    fn name(&self) -> &str {
+        "workspace"
+    }
 
     fn build(&self, ctx: &PromptContext<'_>) -> Result<String> {
         Ok(format!(
@@ -115,7 +119,9 @@ impl PromptSection for WorkspaceSection {
 }
 
 impl PromptSection for DateTimeSection {
-    fn name(&self) -> &str { "datetime" }
+    fn name(&self) -> &str {
+        "datetime"
+    }
 
     fn build(&self, _ctx: &PromptContext<'_>) -> Result<String> {
         let now = chrono::Local::now();

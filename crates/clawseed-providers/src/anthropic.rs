@@ -5,10 +5,10 @@ use crate::traits::{
 };
 use async_trait::async_trait;
 use base64::Engine as _;
+use clawseed_api::tool::ToolSpec;
 use futures_util::stream::{self, StreamExt};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use clawseed_api::tool::ToolSpec;
 
 /// Anthropic's API documentation lists 1.0 as the default sampling temperature.
 const TEMPERATURE_DEFAULT: f64 = 1.0;

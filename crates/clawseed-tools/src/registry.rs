@@ -77,10 +77,9 @@ pub fn all_tools(workspace_dir: PathBuf, config: &Config) -> Vec<Box<dyn Tool>> 
             config.http_request.allowed_domains.clone()
         };
         tools.push(Box::new(HttpRequestTool::new(
-            domains,
-            1_048_576,           // max_response_size: 1 MB
-            30,                  // timeout_secs
-            false,               // allow_private_hosts
+            domains, 1_048_576, // max_response_size: 1 MB
+            30,        // timeout_secs
+            false,     // allow_private_hosts
         )));
     }
 
@@ -104,10 +103,10 @@ pub fn all_tools(workspace_dir: PathBuf, config: &Config) -> Vec<Box<dyn Tool>> 
         };
         tools.push(Box::new(WebFetchTool::new(
             domains,
-            Vec::new(),          // blocked_domains
-            1_048_576,           // max_response_size: 1 MB
-            30,                  // timeout_secs
-            Vec::new(),          // allowed_private_hosts
+            Vec::new(), // blocked_domains
+            1_048_576,  // max_response_size: 1 MB
+            30,         // timeout_secs
+            Vec::new(), // allowed_private_hosts
         )));
     }
 
@@ -116,8 +115,8 @@ pub fn all_tools(workspace_dir: PathBuf, config: &Config) -> Vec<Box<dyn Tool>> 
         tools.push(Box::new(WebSearchTool::new(
             "duckduckgo".to_string(),
             config.web_search.brave_api_key.clone(),
-            5,                        // max_results
-            15,                       // timeout_secs
+            5,  // max_results
+            15, // timeout_secs
         )));
     }
 

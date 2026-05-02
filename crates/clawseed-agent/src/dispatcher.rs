@@ -2,9 +2,7 @@
 //!
 //! Two implementations: XmlToolDispatcher (prompt-guided) and NativeToolDispatcher.
 
-use clawseed_api::provider::{
-    ChatMessage, ChatResponse, ConversationMessage, ToolResultMessage,
-};
+use clawseed_api::provider::{ChatMessage, ChatResponse, ConversationMessage, ToolResultMessage};
 use clawseed_api::tool::ToolSpec;
 use serde_json::Value;
 use std::fmt::Write;
@@ -268,8 +266,7 @@ mod tests {
     fn xml_dispatcher_parses_tool_calls() {
         let response = ChatResponse {
             text: Some(
-                "Checking\n◁{\"name\":\"shell\",\"arguments\":{\"command\":\"ls\"}}▷"
-                    .into(),
+                "Checking\n◁{\"name\":\"shell\",\"arguments\":{\"command\":\"ls\"}}▷".into(),
             ),
             tool_calls: vec![],
             usage: None,

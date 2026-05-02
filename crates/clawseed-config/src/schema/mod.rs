@@ -1,13 +1,13 @@
 //! Configuration schema — the main `Config` struct and sub-configs.
 
-mod providers;
 mod agent;
 mod gateway;
+mod providers;
 mod storage;
 
-pub use providers::*;
 pub use agent::*;
 pub use gateway::*;
+pub use providers::*;
 pub use storage::*;
 
 use std::path::PathBuf;
@@ -43,8 +43,12 @@ pub struct MultimodalConfig {
     pub allow_remote_fetch: bool,
 }
 
-fn default_max_images() -> usize { 4 }
-fn default_max_image_size_mb() -> usize { 5 }
+fn default_max_images() -> usize {
+    4
+}
+fn default_max_image_size_mb() -> usize {
+    5
+}
 
 impl Default for MultimodalConfig {
     fn default() -> Self {
@@ -62,10 +66,7 @@ impl MultimodalConfig {
     /// Guarantees at least 1 image and 1 MB so that zero-config
     /// doesn't silently disable multimodal entirely.
     pub fn effective_limits(&self) -> (usize, usize) {
-        (
-            self.max_images.max(1),
-            self.max_image_size_mb.max(1),
-        )
+        (self.max_images.max(1), self.max_image_size_mb.max(1))
     }
 }
 
@@ -224,7 +225,9 @@ pub struct SecretsConfig {
     pub encrypt: bool,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 /// Memory configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -258,11 +261,21 @@ pub struct MemoryConfig {
     pub qdrant: QdrantConfig,
 }
 
-fn default_memory_backend() -> String { "sqlite".into() }
-fn default_min_relevance() -> f64 { 0.3 }
-fn default_cache_ttl() -> u64 { 60 }
-fn default_cache_max() -> usize { 1000 }
-fn default_cache_hot() -> usize { 100 }
+fn default_memory_backend() -> String {
+    "sqlite".into()
+}
+fn default_min_relevance() -> f64 {
+    0.3
+}
+fn default_cache_ttl() -> u64 {
+    60
+}
+fn default_cache_max() -> usize {
+    1000
+}
+fn default_cache_hot() -> usize {
+    100
+}
 
 impl Default for MemoryConfig {
     fn default() -> Self {
@@ -357,7 +370,9 @@ pub struct CronConfig {
     pub jobs: Vec<CronJobDecl>,
 }
 
-fn default_max_run_history() -> u32 { 50 }
+fn default_max_run_history() -> u32 {
+    50
+}
 
 impl Default for CronConfig {
     fn default() -> Self {
@@ -397,7 +412,9 @@ pub struct CronJobDecl {
     pub delivery: Option<DeliveryConfigDecl>,
 }
 
-fn default_job_type_decl() -> String { "shell".into() }
+fn default_job_type_decl() -> String {
+    "shell".into()
+}
 
 /// Schedule variant for declarative cron jobs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -408,8 +425,12 @@ pub enum CronScheduleDecl {
         #[serde(default)]
         tz: Option<String>,
     },
-    Every { every_ms: u64 },
-    At { at: String },
+    Every {
+        every_ms: u64,
+    },
+    At {
+        at: String,
+    },
 }
 
 /// Delivery configuration for declarative cron jobs.
@@ -425,7 +446,9 @@ pub struct DeliveryConfigDecl {
     pub best_effort: bool,
 }
 
-fn default_delivery_mode() -> String { "none".into() }
+fn default_delivery_mode() -> String {
+    "none".into()
+}
 
 impl Default for DeliveryConfigDecl {
     fn default() -> Self {
@@ -449,7 +472,10 @@ pub struct ModelPricing {
 
 impl Default for ModelPricing {
     fn default() -> Self {
-        Self { input: 0.0, output: 0.0 }
+        Self {
+            input: 0.0,
+            output: 0.0,
+        }
     }
 }
 
@@ -482,8 +508,12 @@ pub struct SchedulerConfig {
     pub max_tasks: usize,
 }
 
-fn default_max_concurrent() -> usize { 4 }
-fn default_max_tasks() -> usize { 10 }
+fn default_max_concurrent() -> usize {
+    4
+}
+fn default_max_tasks() -> usize {
+    10
+}
 
 impl Default for SchedulerConfig {
     fn default() -> Self {
@@ -529,13 +559,25 @@ pub struct ReliabilityConfig {
     pub api_keys: Vec<String>,
 }
 
-fn default_scheduler_retries() -> u32 { 2 }
-fn default_provider_backoff_ms() -> u64 { 500 }
-fn default_max_actions_per_hour() -> u32 { 1000 }
+fn default_scheduler_retries() -> u32 {
+    2
+}
+fn default_provider_backoff_ms() -> u64 {
+    500
+}
+fn default_max_actions_per_hour() -> u32 {
+    1000
+}
 
-fn default_scheduler_poll_secs() -> u64 { 30 }
-fn default_max_retries() -> u32 { 3 }
-fn default_retry_delay_secs() -> u64 { 2 }
+fn default_scheduler_poll_secs() -> u64 {
+    30
+}
+fn default_max_retries() -> u32 {
+    3
+}
+fn default_retry_delay_secs() -> u64 {
+    2
+}
 
 impl Default for ReliabilityConfig {
     fn default() -> Self {
@@ -734,7 +776,10 @@ mod tests {
         let toml_str = toml::to_string(&config).unwrap();
         let parsed: Config = toml::from_str(&toml_str).unwrap();
         assert_eq!(parsed.gateway.port, config.gateway.port);
-        assert_eq!(parsed.agent.max_tool_iterations, config.agent.max_tool_iterations);
+        assert_eq!(
+            parsed.agent.max_tool_iterations,
+            config.agent.max_tool_iterations
+        );
     }
 
     #[test]
@@ -767,7 +812,10 @@ mod tests {
         let toml_str = Config::default_toml();
         let config: Config = toml::from_str(&toml_str).expect("default_toml should parse");
         assert_eq!(config.gateway.port, 42617);
-        assert_eq!(config.providers.fallback.as_deref(), Some("custom:https://api.deepseek.com"));
+        assert_eq!(
+            config.providers.fallback.as_deref(),
+            Some("custom:https://api.deepseek.com")
+        );
         assert_eq!(config.agent.max_tool_iterations, 10);
         assert!(config.memory.auto_save);
         assert_eq!(config.memory.backend, "sqlite");
@@ -825,11 +873,17 @@ pub struct ComposioConfig {
     pub entity_id: String,
 }
 
-fn default_entity_id() -> String { "default".into() }
+fn default_entity_id() -> String {
+    "default".into()
+}
 
 impl Default for ComposioConfig {
     fn default() -> Self {
-        Self { enabled: false, api_key: None, entity_id: default_entity_id() }
+        Self {
+            enabled: false,
+            api_key: None,
+            entity_id: default_entity_id(),
+        }
     }
 }
 
@@ -878,7 +932,9 @@ pub struct CloudflareTunnelConfig {
     pub token: String,
 }
 
-fn default_tunnel_provider() -> String { "none".into() }
+fn default_tunnel_provider() -> String {
+    "none".into()
+}
 
 /// Nodes configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -889,7 +945,9 @@ pub struct NodesConfig {
     pub max_nodes: usize,
 }
 
-fn default_max_nodes() -> usize { 16 }
+fn default_max_nodes() -> usize {
+    16
+}
 
 /// Cost tracking configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -1112,23 +1170,62 @@ impl ChannelsConfig {
     /// Iterate over configured channels with their presence status.
     pub fn channels(&self) -> Vec<(ChannelInfo, bool)> {
         let mut result = Vec::new();
-        if self.webhook.is_some() { result.push((ChannelInfo { name: "webhook" }, true)); }
-        if self.telegram.is_some() { result.push((ChannelInfo { name: "telegram" }, true)); }
-        if self.discord.is_some() { result.push((ChannelInfo { name: "discord" }, true)); }
-        if self.slack.is_some() { result.push((ChannelInfo { name: "slack" }, true)); }
-        if self.mattermost.is_some() { result.push((ChannelInfo { name: "mattermost" }, true)); }
-        if self.matrix.is_some() { result.push((ChannelInfo { name: "matrix" }, true)); }
-        if self.whatsapp.is_some() { result.push((ChannelInfo { name: "whatsapp" }, true)); }
-        if self.linq.is_some() { result.push((ChannelInfo { name: "linq" }, true)); }
-        if self.nextcloud_talk.is_some() { result.push((ChannelInfo { name: "nextcloud_talk" }, true)); }
-        if self.wati.is_some() { result.push((ChannelInfo { name: "wati" }, true)); }
-        if self.irc.is_some() { result.push((ChannelInfo { name: "irc" }, true)); }
-        if self.lark.is_some() { result.push((ChannelInfo { name: "lark" }, true)); }
-        if self.feishu.is_some() { result.push((ChannelInfo { name: "feishu" }, true)); }
-        if self.dingtalk.is_some() { result.push((ChannelInfo { name: "dingtalk" }, true)); }
-        if self.qq.is_some() { result.push((ChannelInfo { name: "qq" }, true)); }
-        if self.clawdtalk.is_some() { result.push((ChannelInfo { name: "clawdtalk" }, true)); }
-        if self.email.is_some() { result.push((ChannelInfo { name: "email" }, true)); }
+        if self.webhook.is_some() {
+            result.push((ChannelInfo { name: "webhook" }, true));
+        }
+        if self.telegram.is_some() {
+            result.push((ChannelInfo { name: "telegram" }, true));
+        }
+        if self.discord.is_some() {
+            result.push((ChannelInfo { name: "discord" }, true));
+        }
+        if self.slack.is_some() {
+            result.push((ChannelInfo { name: "slack" }, true));
+        }
+        if self.mattermost.is_some() {
+            result.push((ChannelInfo { name: "mattermost" }, true));
+        }
+        if self.matrix.is_some() {
+            result.push((ChannelInfo { name: "matrix" }, true));
+        }
+        if self.whatsapp.is_some() {
+            result.push((ChannelInfo { name: "whatsapp" }, true));
+        }
+        if self.linq.is_some() {
+            result.push((ChannelInfo { name: "linq" }, true));
+        }
+        if self.nextcloud_talk.is_some() {
+            result.push((
+                ChannelInfo {
+                    name: "nextcloud_talk",
+                },
+                true,
+            ));
+        }
+        if self.wati.is_some() {
+            result.push((ChannelInfo { name: "wati" }, true));
+        }
+        if self.irc.is_some() {
+            result.push((ChannelInfo { name: "irc" }, true));
+        }
+        if self.lark.is_some() {
+            result.push((ChannelInfo { name: "lark" }, true));
+        }
+        if self.feishu.is_some() {
+            result.push((ChannelInfo { name: "feishu" }, true));
+        }
+        if self.dingtalk.is_some() {
+            result.push((ChannelInfo { name: "dingtalk" }, true));
+        }
+        if self.qq.is_some() {
+            result.push((ChannelInfo { name: "qq" }, true));
+        }
+        if self.clawdtalk.is_some() {
+            result.push((ChannelInfo { name: "clawdtalk" }, true));
+        }
+        if self.email.is_some() {
+            result.push((ChannelInfo { name: "email" }, true));
+        }
         result
     }
 }
@@ -1140,7 +1237,9 @@ pub struct ChannelInfo {
 }
 
 impl ChannelInfo {
-    pub fn name(&self) -> &str { self.name }
+    pub fn name(&self) -> &str {
+        self.name
+    }
 }
 
 /// Webhook channel configuration.
@@ -1165,7 +1264,7 @@ pub struct ComputerUseConfig {
 }
 
 /// HTTP request configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HttpRequestConfig {
     /// Whether the HTTP request tool is enabled.
     #[serde(default)]
@@ -1175,14 +1274,8 @@ pub struct HttpRequestConfig {
     pub allowed_domains: Vec<String>,
 }
 
-impl Default for HttpRequestConfig {
-    fn default() -> Self {
-        Self { enabled: false, allowed_domains: Vec::new() }
-    }
-}
-
 /// Web fetch configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WebFetchConfig {
     /// Whether the web fetch tool is enabled.
     #[serde(default)]
@@ -1190,12 +1283,6 @@ pub struct WebFetchConfig {
     /// Allowed domains (empty = allow all when enabled).
     #[serde(default)]
     pub allowed_domains: Vec<String>,
-}
-
-impl Default for WebFetchConfig {
-    fn default() -> Self {
-        Self { enabled: false, allowed_domains: Vec::new() }
-    }
 }
 
 /// Transcription configuration.
@@ -1206,19 +1293,13 @@ pub struct TranscriptionConfig {
 }
 
 /// Web search configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WebSearchConfig {
     /// Whether the web search tool is enabled.
     #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
     pub brave_api_key: Option<String>,
-}
-
-impl Default for WebSearchConfig {
-    fn default() -> Self {
-        Self { enabled: false, brave_api_key: None }
-    }
 }
 
 /// Agent entry configuration (for named agents in the config).
@@ -1242,7 +1323,6 @@ pub mod security {
     /// Minimal security policy configuration.
     #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
     pub struct SecurityPolicy {}
-
 }
 
 /// Migration stubs.
@@ -1302,12 +1382,28 @@ pub mod scattered_types {
         pub max_attachment_bytes: usize,
     }
 
-    fn default_imap_port() -> u16 { 993 }
-    fn default_imap_folder() -> String { "INBOX".into() }
-    fn default_smtp_port() -> u16 { 465 }
-    fn default_idle_timeout() -> u64 { 1740 }
-    fn default_poll_interval() -> u64 { 60 }
-    fn default_email_subject() -> String { "ClawSeed Message".into() }
-    fn default_max_attachment_bytes() -> usize { 25 * 1024 * 1024 }
-    fn default_true() -> bool { true }
+    fn default_imap_port() -> u16 {
+        993
+    }
+    fn default_imap_folder() -> String {
+        "INBOX".into()
+    }
+    fn default_smtp_port() -> u16 {
+        465
+    }
+    fn default_idle_timeout() -> u64 {
+        1740
+    }
+    fn default_poll_interval() -> u64 {
+        60
+    }
+    fn default_email_subject() -> String {
+        "ClawSeed Message".into()
+    }
+    fn default_max_attachment_bytes() -> usize {
+        25 * 1024 * 1024
+    }
+    fn default_true() -> bool {
+        true
+    }
 }

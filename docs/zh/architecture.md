@@ -4,7 +4,40 @@
 
 ClawSeed 是一个用 Rust 编写的 AI Agent 运行时。它连接 LLM 提供商（Anthropic、Gemini、Bedrock、OpenAI 兼容端点等），通过可插拔的工具（Tool）执行操作，并通过 HTTP/WebSocket 为客户端提供服务。
 
-核心设计理念：**trait 在边界，实现在外部，核心永不修改**。
+核心设计理念：**是运行时，不是应用**。ClawSeed 提供 crate 供应用组装——它不捆绑渠道、面板或集成。详见下文[运行时 vs 应用](#运行时-vs-应用)。
+
+## 运行时 vs 应用
+
+一个 agent **运行时**应该只做三件事：接收消息、调用 LLM、执行工具。其他一切——消息从哪来、结果怎么展示、接入哪些集成——都属于应用层。
+
+ClawSeed 是运行时。基于它构建的应用自己决定：
+
+- 用户如何交互（CLI、手机 App、聊天机器人、Web 面板）
+- 接入哪些渠道（Discord、Telegram、邮件——或者不接入）
+- 暴露哪些工具（内置的、移动端远程的、自定义的）
+- 如何处理安全和审批流程
+
+```toml
+# 一个 Discord 机器人应用
+[dependencies]
+clawseed-agent = "0.7"
+clawseed-providers = "0.7"
+serenity = "0.12"          # 应用自己选择 Discord SDK
+
+# 一个 Android 应用
+[dependencies]
+clawseed-gateway = "0.7"
+clawseed-agent = "0.7"
+
+# 一个 CLI 工具
+[dependencies]
+clawseed-agent = "0.7"
+clawseed-tools = "0.7"
+```
+
+这是 ClawSeed 与 ZeroClaw 最根本的架构分野。ZeroClaw 把 40+ 渠道适配器、硬件外设、TUI、Web 面板、SOP 引擎都塞进同一个二进制——这做的是应用，不是运行时。加一个新渠道要改运行时代码，加一个新集成要理解整个系统。
+
+ClawSeed 的方式：**运行时提供稳定的 trait crate，应用自己组装。** 新需求来了，写一个新应用——不需要改运行时。
 
 ## 架构总览
 

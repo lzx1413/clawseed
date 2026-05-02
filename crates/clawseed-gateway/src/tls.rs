@@ -5,6 +5,7 @@
 //! with optional certificate pinning (SHA-256 fingerprint matching).
 
 use anyhow::{Context, Result};
+use clawseed_config::schema::{GatewayClientAuthConfig, GatewayTlsConfig};
 use rustls::RootCertStore;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::server::WebPkiClientVerifier;
@@ -12,7 +13,6 @@ use rustls::server::danger::{ClientCertVerified, ClientCertVerifier};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use tokio_rustls::TlsAcceptor;
-use clawseed_config::schema::{GatewayClientAuthConfig, GatewayTlsConfig};
 
 /// Build a [`TlsAcceptor`] from the gateway TLS configuration.
 pub fn build_tls_acceptor(config: &GatewayTlsConfig) -> Result<TlsAcceptor> {

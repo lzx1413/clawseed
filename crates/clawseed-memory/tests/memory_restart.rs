@@ -3,9 +3,9 @@
 //! Tests SqliteMemory deduplication on restart, session scoping, concurrent
 //! message ordering, and recall behavior after re-initialization.
 
-use std::sync::Arc;
-use clawseed_memory::sqlite::SqliteMemory;
 use clawseed_api::memory_traits::{Memory, MemoryCategory};
+use clawseed_memory::sqlite::SqliteMemory;
+use std::sync::Arc;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Deduplication: same key overwrites instead of duplicating

@@ -90,11 +90,19 @@ pub struct PairingDashboardConfig {
     pub max_pending_codes: usize,
 }
 
-fn default_max_pending_codes() -> usize { 10 }
+fn default_max_pending_codes() -> usize {
+    10
+}
 
-fn default_pair_rate_limit() -> u32 { 10 }
-fn default_webhook_rate_limit() -> u32 { 30 }
-fn default_idempotency_ttl_secs() -> u64 { 300 }
+fn default_pair_rate_limit() -> u32 {
+    10
+}
+fn default_webhook_rate_limit() -> u32 {
+    30
+}
+fn default_idempotency_ttl_secs() -> u64 {
+    300
+}
 
 /// TLS configuration for the gateway.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,11 +130,21 @@ pub struct GatewayClientAuthConfig {
     pub pinned_certs: Vec<String>,
 }
 
-fn default_host() -> String { "127.0.0.1".into() }
-fn default_port() -> u16 { 42617 }
-fn default_timeout_secs() -> u64 { 300 }
-fn default_session_ttl_hours() -> u32 { 24 }
-fn default_true() -> bool { true }
+fn default_host() -> String {
+    "127.0.0.1".into()
+}
+fn default_port() -> u16 {
+    42617
+}
+fn default_timeout_secs() -> u64 {
+    300
+}
+fn default_session_ttl_hours() -> u32 {
+    24
+}
+fn default_true() -> bool {
+    true
+}
 
 impl Default for GatewayConfig {
     fn default() -> Self {

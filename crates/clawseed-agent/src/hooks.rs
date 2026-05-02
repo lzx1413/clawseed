@@ -12,7 +12,10 @@ use clawseed_api::hook::{Hook, HookResult, ToolCall as HookToolCall, ToolExecuti
 /// the individual hook's `Continue` is a unit variant.
 pub enum HookRunnerResult {
     /// All hooks passed — proceed with the (possibly modified) call.
-    Continue { name: String, arguments: serde_json::Value },
+    Continue {
+        name: String,
+        arguments: serde_json::Value,
+    },
     /// A hook cancelled the call.
     Cancel(String),
 }

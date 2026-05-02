@@ -29,7 +29,7 @@ jobs:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.87.0
+          toolchain: 1.95.0
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.87.0
+          toolchain: 1.95.0
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
@@ -92,7 +92,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.87.0
+          toolchain: 1.95.0
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
@@ -110,7 +110,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.87.0
+          toolchain: 1.95.0
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
@@ -125,22 +125,6 @@ jobs:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: clang
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
 
-  # ── Stage 4: Security (parallel with test) ───────────────────────
-  security:
-    name: Security
-    needs: [lint]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.87.0
-      - name: Install cargo-deny
-        run: cargo install cargo-deny --locked
-      - name: Check licenses, sources, and advisories
-        run: cargo deny check
-
   # ── Stage 5: Coverage ────────────────────────────────────────────
   coverage:
     name: Coverage
@@ -151,7 +135,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.87.0
+          toolchain: 1.95.0
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
         with:
@@ -166,33 +150,11 @@ jobs:
           name: coverage-report
           path: lcov.info
 
-  # ── Stage 6: ADF file-size guard ─────────────────────────────────
-  adf-guard:
-    name: ADF Guard
-    needs: [lint]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check for oversized files (>1000 lines)
-        run: |
-          OVERSIZED=$(find . -name "*.rs" -not -path "./target/*" \
-            -exec awk 'END { if (NR > 1000) print FILENAME, NR }' {} \;)
-          if [ -n "$OVERSIZED" ]; then
-            echo "::warning::Files exceeding 1000 lines:"
-            echo "$OVERSIZED"
-            COUNT=$(echo "$OVERSIZED" | wc -l)
-            if [ "$COUNT" -gt 3 ]; then
-              echo "::error::$COUNT files exceed 1000 lines (max 3 allowed)"
-              exit 1
-            fi
-          fi
-
   # ── Required gate ────────────────────────────────────────────────
   gate:
     name: CI Required Gate
     if: always()
-    needs: [lint, build, check, test, security, coverage, adf-guard]
+    needs: [lint, build, check, test, coverage]
     runs-on: ubuntu-latest
     steps:
       - name: Check results

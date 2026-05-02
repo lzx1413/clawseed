@@ -4,31 +4,41 @@
 //! parses tool calls, dispatches to registered tools, and loops until done.
 
 use crate::context::{AgentToolContext, ContextProvider};
-use crate::dispatcher::{
-    ParsedToolCall, ToolDispatcher, ToolExecutionResult,
-};
+use crate::dispatcher::{ParsedToolCall, ToolDispatcher, ToolExecutionResult};
 use crate::hooks::HookRunner;
 use crate::observer::{Observer, ObserverEvent};
 use crate::security::SecurityPolicy;
-use clawseed_config::schema::AutonomyLevel;
+use anyhow::Result;
+use chrono::{Datelike, Timelike};
+use clawseed_api::memory_traits::{Memory, MemoryCategory};
 use clawseed_api::provider::{
     ChatMessage, ChatRequest, ChatResponse, ConversationMessage, Provider,
 };
 use clawseed_api::tool::{Tool, ToolResult, ToolSpec};
-use anyhow::Result;
+use clawseed_config::schema::AutonomyLevel;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
-use clawseed_api::memory_traits::{Memory, MemoryCategory};
-use chrono::{Datelike, Timelike};
 
 /// Streaming events emitted during an agent turn.
 #[derive(Debug, Clone)]
 pub enum TurnEvent {
-    Chunk { delta: String },
-    Thinking { delta: String },
-    ToolCall { id: String, name: String, args: serde_json::Value },
-    ToolResult { id: String, name: String, output: String },
+    Chunk {
+        delta: String,
+    },
+    Thinking {
+        delta: String,
+    },
+    ToolCall {
+        id: String,
+        name: String,
+        args: serde_json::Value,
+    },
+    ToolResult {
+        id: String,
+        name: String,
+        output: String,
+    },
 }
 
 /// The core Agent struct — a registry of tools, hooks, and context providers.
@@ -447,7 +457,7 @@ impl Agent {
         Ok(output)
     }
 
-/// Build the tool context for a single tool execution.
+    /// Build the tool context for a single tool execution.
     fn build_tool_context(&self) -> AgentToolContext {
         let mut ctx = AgentToolContext::new(self.workspace_dir.clone());
         for (type_id, arc) in &self.capabilities {
@@ -463,7 +473,10 @@ impl Agent {
         let mut tool_name = call.name.clone();
         let mut tool_args = call.arguments.clone();
         if let Some(ref hooks) = self.hook_runner {
-            match hooks.run_before_tool_call(tool_name.clone(), tool_args.clone()).await {
+            match hooks
+                .run_before_tool_call(tool_name.clone(), tool_args.clone())
+                .await
+            {
                 crate::hooks::HookRunnerResult::Continue { name, arguments } => {
                     tool_name = name;
                     tool_args = arguments;
@@ -519,7 +532,9 @@ impl Agent {
                 output: result.clone(),
                 error: None,
             };
-            hooks.fire_after_tool_call(&tool_name, &tool_result_obj, duration).await;
+            hooks
+                .fire_after_tool_call(&tool_name, &tool_result_obj, duration)
+                .await;
         }
 
         ToolExecutionResult {
@@ -548,7 +563,9 @@ impl Agent {
         if self.history.is_empty() {
             let system_prompt = self.build_system_prompt()?;
             self.history
-                .push(ConversationMessage::Chat(ChatMessage::system(system_prompt)));
+                .push(ConversationMessage::Chat(ChatMessage::system(
+                    system_prompt,
+                )));
         }
 
         // Auto-save user message to memory
@@ -651,7 +668,9 @@ impl Agent {
         if self.history.is_empty() {
             let system_prompt = self.build_system_prompt()?;
             self.history
-                .push(ConversationMessage::Chat(ChatMessage::system(system_prompt)));
+                .push(ConversationMessage::Chat(ChatMessage::system(
+                    system_prompt,
+                )));
         }
 
         if self.auto_save {
@@ -725,13 +744,16 @@ impl Agent {
                         clawseed_api::provider::StreamEvent::TextDelta(chunk) => {
                             if let Some(reasoning) = chunk.reasoning {
                                 if !reasoning.is_empty() {
-                                    let _ = event_tx.send(TurnEvent::Thinking { delta: reasoning }).await;
+                                    let _ = event_tx
+                                        .send(TurnEvent::Thinking { delta: reasoning })
+                                        .await;
                                 }
                             }
                             if !chunk.delta.is_empty() {
                                 got_stream = true;
                                 streamed_text.push_str(&chunk.delta);
-                                let _ = event_tx.send(TurnEvent::Chunk { delta: chunk.delta }).await;
+                                let _ =
+                                    event_tx.send(TurnEvent::Chunk { delta: chunk.delta }).await;
                             }
                         }
                         clawseed_api::provider::StreamEvent::ToolCall(tc) => {
@@ -740,19 +762,26 @@ impl Agent {
                         }
                         clawseed_api::provider::StreamEvent::PreExecutedToolCall { name, args } => {
                             let call_id = uuid::Uuid::new_v4().to_string();
-                            let _ = event_tx.send(TurnEvent::ToolCall {
-                                id: call_id,
-                                name,
-                                args: serde_json::from_str(&args).unwrap_or_default(),
-                            }).await;
+                            let _ = event_tx
+                                .send(TurnEvent::ToolCall {
+                                    id: call_id,
+                                    name,
+                                    args: serde_json::from_str(&args).unwrap_or_default(),
+                                })
+                                .await;
                         }
-                        clawseed_api::provider::StreamEvent::PreExecutedToolResult { name, output } => {
+                        clawseed_api::provider::StreamEvent::PreExecutedToolResult {
+                            name,
+                            output,
+                        } => {
                             let result_id = uuid::Uuid::new_v4().to_string();
-                            let _ = event_tx.send(TurnEvent::ToolResult {
-                                id: result_id,
-                                name,
-                                output,
-                            }).await;
+                            let _ = event_tx
+                                .send(TurnEvent::ToolResult {
+                                    id: result_id,
+                                    name,
+                                    output,
+                                })
+                                .await;
                         }
                         clawseed_api::provider::StreamEvent::Final => break,
                     },
@@ -797,7 +826,11 @@ impl Agent {
                 };
 
                 if !got_stream && !final_text.is_empty() {
-                    let _ = event_tx.send(TurnEvent::Chunk { delta: final_text.clone() }).await;
+                    let _ = event_tx
+                        .send(TurnEvent::Chunk {
+                            delta: final_text.clone(),
+                        })
+                        .await;
                 }
 
                 self.history
@@ -823,22 +856,26 @@ impl Agent {
 
             for call in &calls {
                 let call_id = call.tool_call_id.as_ref().unwrap().clone();
-                let _ = event_tx.send(TurnEvent::ToolCall {
-                    id: call_id,
-                    name: call.name.clone(),
-                    args: call.arguments.clone(),
-                }).await;
+                let _ = event_tx
+                    .send(TurnEvent::ToolCall {
+                        id: call_id,
+                        name: call.name.clone(),
+                        args: call.arguments.clone(),
+                    })
+                    .await;
             }
 
             let results = self.execute_tools(&calls).await;
 
             for result in &results {
                 let result_id = result.tool_call_id.as_ref().unwrap().clone();
-                let _ = event_tx.send(TurnEvent::ToolResult {
-                    id: result_id,
-                    name: result.name.clone(),
-                    output: result.output.clone(),
-                }).await;
+                let _ = event_tx
+                    .send(TurnEvent::ToolResult {
+                        id: result_id,
+                        name: result.name.clone(),
+                        output: result.output.clone(),
+                    })
+                    .await;
             }
 
             let formatted = self.tool_dispatcher.format_results(&results);
@@ -861,7 +898,6 @@ impl Agent {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use clawseed_api::provider::ProviderCapabilities;
     use parking_lot::Mutex;
 
     use crate::dispatcher::{NativeToolDispatcher, XmlToolDispatcher};
@@ -905,9 +941,15 @@ mod tests {
 
     #[async_trait]
     impl Tool for MockTool {
-        fn name(&self) -> &str { "echo" }
-        fn description(&self) -> &str { "echo" }
-        fn parameters_schema(&self) -> serde_json::Value { serde_json::json!({"type": "object"}) }
+        fn name(&self) -> &str {
+            "echo"
+        }
+        fn description(&self) -> &str {
+            "echo"
+        }
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object"})
+        }
 
         async fn execute(
             &self,
@@ -1041,18 +1083,36 @@ mod tests {
 
     #[test]
     fn add_remote_tools_no_duplicates_on_repeated_calls() {
-        struct NamedMockTool { name: String }
+        struct NamedMockTool {
+            name: String,
+        }
         #[async_trait]
         impl Tool for NamedMockTool {
-            fn name(&self) -> &str { &self.name }
-            fn description(&self) -> &str { "mock" }
-            fn parameters_schema(&self) -> serde_json::Value { serde_json::json!({"type": "object"}) }
-            async fn execute(&self, _args: serde_json::Value, _ctx: &dyn clawseed_api::tool_context::ToolContext) -> Result<ToolResult> {
-                Ok(ToolResult { success: true, output: "ok".into(), error: None })
+            fn name(&self) -> &str {
+                &self.name
+            }
+            fn description(&self) -> &str {
+                "mock"
+            }
+            fn parameters_schema(&self) -> serde_json::Value {
+                serde_json::json!({"type": "object"})
+            }
+            async fn execute(
+                &self,
+                _args: serde_json::Value,
+                _ctx: &dyn clawseed_api::tool_context::ToolContext,
+            ) -> Result<ToolResult> {
+                Ok(ToolResult {
+                    success: true,
+                    output: "ok".into(),
+                    error: None,
+                })
             }
         }
 
-        let provider = Box::new(MockProvider { responses: Mutex::new(vec![]) });
+        let provider = Box::new(MockProvider {
+            responses: Mutex::new(vec![]),
+        });
         let observer: Arc<dyn Observer> = Arc::new(crate::observer::NoopObserver);
         let mut agent = Agent::builder()
             .provider(provider)
@@ -1065,7 +1125,9 @@ mod tests {
             .expect("agent builder should succeed");
 
         let make_named = |n: &str| -> Box<dyn Tool> {
-            Box::new(NamedMockTool { name: n.to_string() })
+            Box::new(NamedMockTool {
+                name: n.to_string(),
+            })
         };
 
         agent.add_remote_tools(vec![make_named("tool_a"), make_named("tool_b")]);

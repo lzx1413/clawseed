@@ -8,9 +8,9 @@
 
 mod common;
 
+use clawseed_api::provider::ToolCall;
 use common::helpers::{build_agent_with_sqlite_memory, text_response, tool_response};
 use common::mock_tools::{CountingTool, EchoTool, RecordingTool};
-use clawseed_api::provider::{ConversationMessage, ToolCall};
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Full-stack system tests
@@ -19,9 +19,9 @@ use clawseed_api::provider::{ConversationMessage, ToolCall};
 /// Simplest system test: inject message → MockProvider returns text → verify response.
 #[tokio::test]
 async fn system_simple_text_response() {
-    let provider = Box::new(common::mock_provider::MockProvider::new(vec![text_response(
-        "System test response",
-    )]));
+    let provider = Box::new(common::mock_provider::MockProvider::new(vec![
+        text_response("System test response"),
+    ]));
 
     let temp_dir = tempfile::tempdir().unwrap();
     let mut agent =

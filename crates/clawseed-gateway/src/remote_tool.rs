@@ -10,8 +10,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use tokio::sync::{mpsc, oneshot};
 use clawseed_api::tool::{Tool, ToolResult};
+use tokio::sync::{mpsc, oneshot};
 
 /// Default timeout for remote tool invocations (30 seconds).
 const REMOTE_TOOL_TIMEOUT_SECS: u64 = 30;
@@ -149,7 +149,11 @@ impl Tool for RemoteTool {
         self.parameters.clone()
     }
 
-    async fn execute(&self, args: serde_json::Value, _ctx: &dyn clawseed_api::tool_context::ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        _ctx: &dyn clawseed_api::tool_context::ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let call_id = uuid::Uuid::new_v4().to_string();
         let (response_tx, response_rx) = oneshot::channel();
 
@@ -170,11 +174,7 @@ impl Tool for RemoteTool {
         }
 
         // Wait for response with timeout
-        match tokio::time::timeout(
-            Duration::from_secs(REMOTE_TOOL_TIMEOUT_SECS),
-            response_rx,
-        )
-            .await
+        match tokio::time::timeout(Duration::from_secs(REMOTE_TOOL_TIMEOUT_SECS), response_rx).await
         {
             Ok(Ok(result)) => Ok(ToolResult {
                 success: result.success,
@@ -201,7 +201,6 @@ impl Tool for RemoteTool {
 mod tests {
     use super::*;
     use clawseed_api::tool_context::ToolContext;
-    use std::path::PathBuf;
 
     /// Minimal ToolContext stub for tests.
     struct StubToolContext;
@@ -212,7 +211,10 @@ mod tests {
             &EMPTY
         }
 
-        fn get_any(&self, _type_id: std::any::TypeId) -> Option<&(dyn std::any::Any + Send + Sync)> {
+        fn get_any(
+            &self,
+            _type_id: std::any::TypeId,
+        ) -> Option<&(dyn std::any::Any + Send + Sync)> {
             None
         }
     }
@@ -270,7 +272,10 @@ mod tests {
         // The tool.execute() sends request, then waits on response_rx.
         // When the spawned task drops response_tx (by exiting the closure),
         // the oneshot channel closes and execute() receives an Err.
-        let result = tool.execute(serde_json::json!({}), &StubToolContext).await.unwrap();
+        let result = tool
+            .execute(serde_json::json!({}), &StubToolContext)
+            .await
+            .unwrap();
 
         // When the spawned task drops response_tx, execute() gets Err from recv
         // and returns a ToolResult with error "Response channel closed"
@@ -301,7 +306,10 @@ mod tests {
             }
         });
 
-        let result = tool.execute(serde_json::json!({"arg": "value"}), &StubToolContext).await.unwrap();
+        let result = tool
+            .execute(serde_json::json!({"arg": "value"}), &StubToolContext)
+            .await
+            .unwrap();
         assert!(result.success);
         assert_eq!(result.output, "success output");
         assert!(result.error.is_none());
@@ -330,7 +338,10 @@ mod tests {
             }
         });
 
-        let result = tool.execute(serde_json::json!({}), &StubToolContext).await.unwrap();
+        let result = tool
+            .execute(serde_json::json!({}), &StubToolContext)
+            .await
+            .unwrap();
         assert!(!result.success);
         assert_eq!(result.error.unwrap(), "Permission denied");
     }
@@ -350,7 +361,10 @@ mod tests {
         // Drop receiver to close the channel
         drop(rx);
 
-        let result = tool.execute(serde_json::json!({}), &StubToolContext).await.unwrap();
+        let result = tool
+            .execute(serde_json::json!({}), &StubToolContext)
+            .await
+            .unwrap();
         assert!(!result.success);
         assert!(result.error.unwrap().contains("not available"));
     }

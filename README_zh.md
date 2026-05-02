@@ -14,11 +14,31 @@
 
 ---
 
-ClawSeed 是一个用 Rust 编写的 AI Agent 运行时。它连接 LLM 提供商（Anthropic、Gemini、Bedrock、OpenAI 兼容接口等），通过可插拔的工具执行操作，并通过 HTTP/WebSocket 服务客户端。
+ClawSeed 是一个 AI Agent **运行时**，用 Rust 编写。它连接 LLM 提供商（Anthropic、Gemini、Bedrock、OpenAI 兼容接口等），通过可插拔的工具执行操作，并通过 HTTP/WebSocket 服务客户端。
+
+一个 agent 运行时应该只做三件事：接收消息、调用 LLM、执行工具。其他一切——渠道、面板、集成——都属于应用层。ClawSeed 提供稳定的 trait crate，应用自己组装。
+
+```toml
+# 一个 Discord 机器人应用
+[dependencies]
+clawseed-agent = "0.7"
+clawseed-providers = "0.7"
+serenity = "0.12"          # 应用自己选择 SDK
+
+# 一个 Android 应用
+[dependencies]
+clawseed-gateway = "0.7"
+clawseed-agent = "0.7"
+
+# 一个 CLI 工具
+[dependencies]
+clawseed-agent = "0.7"
+clawseed-tools = "0.7"
+```
 
 Agent 运行在服务端，但移动客户端（Android、iOS）可以通过 WebSocket 注册自己的工具。当 Agent 调用这些工具时，网关将请求转发给客户端执行。这使得 Agent 可以访问设备能力——通讯录、摄像头、传感器——而无需在服务端编写设备特定代码。
 
-ClawSeed 的 trait 驱动架构借鉴自 [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw)，在更小的范围内做了一些结构调整：统一的 `Hook` trait、基于 `TypeId` 的能力注入、以及原生的远程工具调用支持。
+ClawSeed 的 trait 驱动架构借鉴自 [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw)，但定位不同：ZeroClaw 把渠道、面板、硬件、SOP 引擎都塞进一个二进制（做的是应用）；ClawSeed 提供 crate 让应用自己组装（做的是运行时）。
 
 ## 架构
 
@@ -222,13 +242,15 @@ Agent 不需要的工具通过配置中的 `allowed_tools` 排除——不会注
 
 ## 致谢
 
-ClawSeed 的 trait 驱动架构和 Provider/Tool/Memory 抽象模式源自 [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw)。与 ZeroClaw 的主要区别：
+ClawSeed 的 trait 驱动架构和 Provider/Tool/Memory 抽象模式源自 [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw)。
 
-- 移除了渠道编排器、硬件外设、SOP 引擎、语音/画布子系统
-- 新增原生远程工具调用支持（移动客户端 → 网关桥接）
-- 新增统一的 `Hook` trait 用于工具调用拦截
-- 将构造函数注入替换为基于 `TypeId` 的能力查找（`ctx.get::<T>()`）
-- 从约 225K 行 / 18 个 crate 精简至约 55K 行 / 10 个 crate
+根本区别在于定位：ZeroClaw 是一个应用（渠道、面板、硬件、SOP 塞进一个二进制）；ClawSeed 是一个运行时（提供 crate 让应用自己组装）。这意味着：
+
+- 不捆绑渠道——应用自己集成消息 SDK
+- 不捆绑面板——应用自己构建 UI
+- 新增原生远程工具调用，支持移动客户端
+- 新增统一的 `Hook` trait 和基于 `TypeId` 的能力注入
+- 约 55K 行 / 10 个 crate，对比 ZeroClaw 的约 225K 行 / 18 个 crate
 
 ## 许可证
 

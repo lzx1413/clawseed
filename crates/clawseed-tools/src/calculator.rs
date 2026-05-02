@@ -93,7 +93,11 @@ impl Tool for CalculatorTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        _ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let function = match args.get("function").and_then(|v| v.as_str()) {
             Some(f) => f,
             None => {
@@ -466,20 +470,28 @@ mod tests {
         fn workspace_dir(&self) -> &std::path::Path {
             &self.workspace
         }
-        fn get_any(&self, _type_id: std::any::TypeId) -> Option<&(dyn std::any::Any + Send + Sync)> {
+        fn get_any(
+            &self,
+            _type_id: std::any::TypeId,
+        ) -> Option<&(dyn std::any::Any + Send + Sync)> {
             None
         }
     }
 
     fn test_ctx() -> TestToolContext {
-        TestToolContext { workspace: std::env::temp_dir() }
+        TestToolContext {
+            workspace: std::env::temp_dir(),
+        }
     }
 
     #[tokio::test]
     async fn test_add() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "add", "values": [1.0, 2.0, 3.5]}), &test_ctx())
+            .execute(
+                json!({"function": "add", "values": [1.0, 2.0, 3.5]}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -490,7 +502,10 @@ mod tests {
     async fn test_subtract() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "subtract", "values": [10.0, 3.0, 1.5]}), &test_ctx())
+            .execute(
+                json!({"function": "subtract", "values": [10.0, 3.0, 1.5]}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -501,7 +516,10 @@ mod tests {
     async fn test_divide() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "divide", "values": [100.0, 4.0]}), &test_ctx())
+            .execute(
+                json!({"function": "divide", "values": [100.0, 4.0]}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -512,7 +530,10 @@ mod tests {
     async fn test_divide_by_zero() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "divide", "values": [10.0, 0.0]}), &test_ctx())
+            .execute(
+                json!({"function": "divide", "values": [10.0, 0.0]}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(!result.success);
@@ -523,7 +544,10 @@ mod tests {
     async fn test_multiply() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "multiply", "values": [3.0, 4.0, 5.0]}), &test_ctx())
+            .execute(
+                json!({"function": "multiply", "values": [3.0, 4.0, 5.0]}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -577,7 +601,10 @@ mod tests {
     async fn test_modulo() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "modulo", "a": 17.0, "b": 5.0}), &test_ctx())
+            .execute(
+                json!({"function": "modulo", "a": 17.0, "b": 5.0}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -588,7 +615,10 @@ mod tests {
     async fn test_round() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "round", "x": 2.715, "decimals": 2}), &test_ctx())
+            .execute(
+                json!({"function": "round", "x": 2.715, "decimals": 2}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -610,7 +640,10 @@ mod tests {
     async fn test_log_custom_base() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "log", "x": 8.0, "base": 2.0}), &test_ctx())
+            .execute(
+                json!({"function": "log", "x": 8.0, "base": 2.0}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -654,7 +687,10 @@ mod tests {
     async fn test_average() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "average", "values": [10.0, 20.0, 30.0]}), &test_ctx())
+            .execute(
+                json!({"function": "average", "values": [10.0, 20.0, 30.0]}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -665,7 +701,10 @@ mod tests {
     async fn test_median_odd() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "median", "values": [3.0, 1.0, 2.0]}), &test_ctx())
+            .execute(
+                json!({"function": "median", "values": [3.0, 1.0, 2.0]}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -676,7 +715,10 @@ mod tests {
     async fn test_median_even() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "median", "values": [4.0, 1.0, 3.0, 2.0]}), &test_ctx())
+            .execute(
+                json!({"function": "median", "values": [4.0, 1.0, 3.0, 2.0]}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -687,7 +729,10 @@ mod tests {
     async fn test_mode() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "mode", "values": [1.0, 2.0, 2.0, 3.0, 3.0, 3.0]}), &test_ctx())
+            .execute(
+                json!({"function": "mode", "values": [1.0, 2.0, 2.0, 3.0, 3.0, 3.0]}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -698,7 +743,10 @@ mod tests {
     async fn test_min() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "min", "values": [5.0, 2.0, 8.0, 1.0]}), &test_ctx())
+            .execute(
+                json!({"function": "min", "values": [5.0, 2.0, 8.0, 1.0]}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -709,7 +757,10 @@ mod tests {
     async fn test_max() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "max", "values": [5.0, 2.0, 8.0, 1.0]}), &test_ctx())
+            .execute(
+                json!({"function": "max", "values": [5.0, 2.0, 8.0, 1.0]}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -720,7 +771,10 @@ mod tests {
     async fn test_range() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "range", "values": [1.0, 5.0, 10.0]}), &test_ctx())
+            .execute(
+                json!({"function": "range", "values": [1.0, 5.0, 10.0]}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -733,7 +787,7 @@ mod tests {
         let result = tool
             .execute(
                 json!({"function": "variance", "values": [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]}),
-                &test_ctx()
+                &test_ctx(),
             )
             .await
             .unwrap();
@@ -747,7 +801,7 @@ mod tests {
         let result = tool
             .execute(
                 json!({"function": "stdev", "values": [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]}),
-                &test_ctx()
+                &test_ctx(),
             )
             .await
             .unwrap();
@@ -761,7 +815,7 @@ mod tests {
         let result = tool
             .execute(
                 json!({"function": "percentile", "values": [1.0, 2.0, 3.0, 4.0, 5.0], "p": 50}),
-                &test_ctx()
+                &test_ctx(),
             )
             .await
             .unwrap();
@@ -773,7 +827,10 @@ mod tests {
     async fn test_count() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "count", "values": [1.0, 2.0, 3.0, 4.0, 5.0]}), &test_ctx())
+            .execute(
+                json!({"function": "count", "values": [1.0, 2.0, 3.0, 4.0, 5.0]}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -784,7 +841,10 @@ mod tests {
     async fn test_percentage_change() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "percentage_change", "a": 50.0, "b": 75.0}), &test_ctx())
+            .execute(
+                json!({"function": "percentage_change", "a": 50.0, "b": 75.0}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -795,7 +855,10 @@ mod tests {
     async fn test_clamp_within_range() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "clamp", "x": 5.0, "min_val": 1.0, "max_val": 10.0}), &test_ctx())
+            .execute(
+                json!({"function": "clamp", "x": 5.0, "min_val": 1.0, "max_val": 10.0}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -806,7 +869,10 @@ mod tests {
     async fn test_clamp_below_min() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "clamp", "x": -5.0, "min_val": 0.0, "max_val": 10.0}), &test_ctx())
+            .execute(
+                json!({"function": "clamp", "x": -5.0, "min_val": 0.0, "max_val": 10.0}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -817,7 +883,10 @@ mod tests {
     async fn test_clamp_above_max() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "clamp", "x": 15.0, "min_val": 0.0, "max_val": 10.0}), &test_ctx())
+            .execute(
+                json!({"function": "clamp", "x": 15.0, "min_val": 0.0, "max_val": 10.0}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -827,7 +896,10 @@ mod tests {
     #[tokio::test]
     async fn test_unknown_function() {
         let tool = CalculatorTool::new();
-        let result = tool.execute(json!({"function": "unknown"}), &test_ctx()).await.unwrap();
+        let result = tool
+            .execute(json!({"function": "unknown"}), &test_ctx())
+            .await
+            .unwrap();
         assert!(!result.success);
         assert!(result.error.as_ref().unwrap().contains("Unknown function"));
     }
@@ -836,7 +908,10 @@ mod tests {
     async fn test_sum() {
         let tool = CalculatorTool::new();
         let result = tool
-            .execute(json!({"function": "sum", "values": [1.0, 2.0, 3.0, 4.0, 5.0]}), &test_ctx())
+            .execute(
+                json!({"function": "sum", "values": [1.0, 2.0, 3.0, 4.0, 5.0]}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);

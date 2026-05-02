@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use serde_json::json;
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
+use serde_json::json;
 
 /// Write file contents with path sandboxing
 pub struct FileWriteTool;
@@ -45,7 +45,11 @@ impl Tool for FileWriteTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let path = args
             .get("path")
             .and_then(|v| v.as_str())

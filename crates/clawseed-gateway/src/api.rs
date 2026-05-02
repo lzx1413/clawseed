@@ -1617,16 +1617,16 @@ pub async fn handle_claude_code_hook(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AppState, GatewayRateLimiter, IdempotencyStore, NodeRegistry};
+    use crate::{AppState, GatewayRateLimiter, IdempotencyStore};
     use async_trait::async_trait;
     use axum::response::IntoResponse;
+    use clawseed_agent::security::pairing::PairingGuard;
+    use clawseed_api::memory_traits::{Memory, MemoryCategory, MemoryEntry};
+    use clawseed_api::provider::Provider;
     use http_body_util::BodyExt;
     use parking_lot::Mutex;
     use std::sync::Arc;
     use std::time::Duration;
-    use clawseed_api::memory_traits::{Memory, MemoryCategory, MemoryEntry};
-    use clawseed_api::provider::Provider;
-    use clawseed_agent::security::pairing::PairingGuard;
 
     struct MockMemory;
 
@@ -2337,11 +2337,7 @@ mod tests {
         );
 
         let config = state.config.lock().clone();
-        assert!(
-            clawseed_agent::cron::list_jobs(&config)
-                .unwrap()
-                .is_empty()
-        );
+        assert!(clawseed_agent::cron::list_jobs(&config).unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -2385,10 +2381,6 @@ mod tests {
         );
 
         let config = state.config.lock().clone();
-        assert!(
-            clawseed_agent::cron::list_jobs(&config)
-                .unwrap()
-                .is_empty()
-        );
+        assert!(clawseed_agent::cron::list_jobs(&config).unwrap().is_empty());
     }
 }

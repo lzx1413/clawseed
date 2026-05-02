@@ -64,6 +64,7 @@ sha2 = "0.10"
 which = "8.0"
 tempfile = "3.26"
 wiremock = "0.6"
+pdf-extract = "0.7"
 
 [profile.dev]
 incremental = true

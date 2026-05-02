@@ -8,7 +8,9 @@ const MAX_FILE_SIZE_BYTES: u64 = 10 * 1024 * 1024;
 pub struct FileReadTool;
 
 impl FileReadTool {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for FileReadTool {
@@ -19,8 +21,12 @@ impl Default for FileReadTool {
 
 #[async_trait]
 impl Tool for FileReadTool {
-    fn name(&self) -> &str { "file_read" }
-    fn description(&self) -> &str { "Read the contents of a file" }
+    fn name(&self) -> &str {
+        "file_read"
+    }
+    fn description(&self) -> &str {
+        "Read the contents of a file"
+    }
     fn parameters_schema(&self) -> Value {
         serde_json::json!({
             "type": "object",
@@ -48,7 +54,8 @@ impl Tool for FileReadTool {
                 });
             }
         };
-        let workspace_canon = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
+        let workspace_canon =
+            std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
         if !canonical.starts_with(&workspace_canon) {
             return Ok(ToolResult {
                 success: false,
@@ -62,11 +69,19 @@ impl Tool for FileReadTool {
             return Ok(ToolResult {
                 success: false,
                 output: String::new(),
-                error: Some(format!("File too large: {} bytes (max {})", metadata.len(), MAX_FILE_SIZE_BYTES)),
+                error: Some(format!(
+                    "File too large: {} bytes (max {})",
+                    metadata.len(),
+                    MAX_FILE_SIZE_BYTES
+                )),
             });
         }
 
         let content = std::fs::read_to_string(&canonical)?;
-        Ok(ToolResult { success: true, output: content, error: None })
+        Ok(ToolResult {
+            success: true,
+            output: content,
+            error: None,
+        })
     }
 }

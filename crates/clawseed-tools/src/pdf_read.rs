@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use serde_json::json;
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
+use serde_json::json;
 
 /// Maximum PDF file size (50 MB).
 const MAX_PDF_BYTES: u64 = 50 * 1024 * 1024;
@@ -62,7 +62,11 @@ impl Tool for PdfReadTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let path = args
             .get("path")
             .and_then(|v| v.as_str())

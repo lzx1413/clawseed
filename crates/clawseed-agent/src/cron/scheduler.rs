@@ -6,13 +6,13 @@ use crate::cron::{
 use crate::security::SecurityPolicy;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use clawseed_config::schema::Config;
+use clawseed_config::schema::{CronJobDecl, CronScheduleDecl};
 use futures_util::{StreamExt, stream};
 use std::process::Stdio;
 use std::sync::Arc;
 use tokio::process::Command;
 use tokio::time::{self, Duration};
-use clawseed_config::schema::Config;
-use clawseed_config::schema::{CronJobDecl, CronScheduleDecl};
 
 const MIN_POLL_SECONDS: u64 = 5;
 const SHELL_JOB_TIMEOUT_SECS: u64 = 120;
@@ -493,7 +493,8 @@ static DELIVERY_FN: std::sync::OnceLock<DeliveryFn> = std::sync::OnceLock::new()
 pub type AgentRunnerFn = Box<
     dyn Fn(
             String,
-        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>>
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>>
         + Send
         + Sync,
 >;
@@ -510,8 +511,7 @@ pub fn register_agent_runner(f: AgentRunnerFn) {
 #[allow(clippy::type_complexity)]
 fn run_agent_job_impl(
     prompt: &str,
-) -> Option<std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>>>
-{
+) -> Option<std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>>> {
     let runner = AGENT_RUNNER_FN.get()?;
     Some(runner(prompt.to_string()))
 }
@@ -680,8 +680,8 @@ mod tests {
     use crate::cron::{self, DeliveryConfig};
     use crate::security::SecurityPolicy;
     use chrono::{Duration as ChronoDuration, Utc};
-    use tempfile::TempDir;
     use clawseed_config::schema::Config;
+    use tempfile::TempDir;
 
     async fn test_config(tmp: &TempDir) -> Config {
         let config = Config {
@@ -919,7 +919,10 @@ mod tests {
         assert!(!success);
         assert!(output.contains("blocked by security policy"));
         // The minimal security policy catches /etc/passwd via forbidden_path_argument
-        assert!(output.contains("forbidden path argument") || output.to_lowercase().contains("not allowed"));
+        assert!(
+            output.contains("forbidden path argument")
+                || output.to_lowercase().contains("not allowed")
+        );
     }
 
     #[tokio::test]

@@ -1,10 +1,10 @@
 use super::web_search_provider_routing::{WebSearchProviderRoute, resolve_web_search_provider};
 use async_trait::async_trait;
+use clawseed_api::tool::{Tool, ToolResult};
+use clawseed_api::tool_context::ToolContext;
 use regex::Regex;
 use serde_json::json;
 use std::time::Duration;
-use clawseed_api::tool::{Tool, ToolResult};
-use clawseed_api::tool_context::ToolContext;
 
 /// Web search tool for searching the internet.
 /// Supports multiple providers: DuckDuckGo (free), Brave (requires API key),
@@ -309,7 +309,11 @@ impl Tool for WebSearchTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        _ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let query = args
             .get("query")
             .and_then(|q| q.as_str())
@@ -424,8 +428,15 @@ mod tests {
         let tool = WebSearchTool::new("duckduckgo".to_string(), None, 5, 15);
         struct DummyCtx;
         impl ToolContext for DummyCtx {
-            fn workspace_dir(&self) -> &std::path::Path { std::path::Path::new("/tmp") }
-            fn get_any(&self, _type_id: std::any::TypeId) -> Option<&(dyn std::any::Any + Send + Sync)> { None }
+            fn workspace_dir(&self) -> &std::path::Path {
+                std::path::Path::new("/tmp")
+            }
+            fn get_any(
+                &self,
+                _type_id: std::any::TypeId,
+            ) -> Option<&(dyn std::any::Any + Send + Sync)> {
+                None
+            }
         }
         let result = tool.execute(json!({}), &DummyCtx).await;
         assert!(result.is_err());
@@ -436,8 +447,15 @@ mod tests {
         let tool = WebSearchTool::new("brave".to_string(), None, 5, 15);
         struct DummyCtx;
         impl ToolContext for DummyCtx {
-            fn workspace_dir(&self) -> &std::path::Path { std::path::Path::new("/tmp") }
-            fn get_any(&self, _type_id: std::any::TypeId) -> Option<&(dyn std::any::Any + Send + Sync)> { None }
+            fn workspace_dir(&self) -> &std::path::Path {
+                std::path::Path::new("/tmp")
+            }
+            fn get_any(
+                &self,
+                _type_id: std::any::TypeId,
+            ) -> Option<&(dyn std::any::Any + Send + Sync)> {
+                None
+            }
         }
         let result = tool.execute(json!({"query": "test"}), &DummyCtx).await;
         assert!(result.is_err());

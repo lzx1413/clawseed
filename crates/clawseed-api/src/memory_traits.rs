@@ -141,24 +141,37 @@ pub trait Memory: Send + Sync {
         since: Option<&str>,
         until: Option<&str>,
     ) -> anyhow::Result<Vec<MemoryEntry>> {
-        let entries = self.recall(query, limit * 2, session_id, since, until).await?;
-        let filtered: Vec<MemoryEntry> =
-            entries.into_iter().filter(|e| e.namespace == namespace).take(limit).collect();
+        let entries = self
+            .recall(query, limit * 2, session_id, since, until)
+            .await?;
+        let filtered: Vec<MemoryEntry> = entries
+            .into_iter()
+            .filter(|e| e.namespace == namespace)
+            .take(limit)
+            .collect();
         Ok(filtered)
     }
 
     async fn export(&self, filter: &ExportFilter) -> anyhow::Result<Vec<MemoryEntry>> {
-        let entries = self.list(filter.category.as_ref(), filter.session_id.as_deref()).await?;
+        let entries = self
+            .list(filter.category.as_ref(), filter.session_id.as_deref())
+            .await?;
         let filtered: Vec<MemoryEntry> = entries
             .into_iter()
             .filter(|e| {
-                if let Some(ref ns) = filter.namespace && e.namespace != *ns {
+                if let Some(ref ns) = filter.namespace
+                    && e.namespace != *ns
+                {
                     return false;
                 }
-                if let Some(ref since) = filter.since && e.timestamp.as_str() < since.as_str() {
+                if let Some(ref since) = filter.since
+                    && e.timestamp.as_str() < since.as_str()
+                {
                     return false;
                 }
-                if let Some(ref until) = filter.until && e.timestamp.as_str() > until.as_str() {
+                if let Some(ref until) = filter.until
+                    && e.timestamp.as_str() > until.as_str()
+                {
                     return false;
                 }
                 true

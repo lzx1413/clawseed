@@ -394,6 +394,7 @@ impl OpenAiCompatibleProvider {
     }
 
     #[cfg(test)]
+    #[allow(dead_code)]
     fn tool_specs_to_openai_format(
         tools: &[clawseed_api::tool::ToolSpec],
     ) -> Vec<serde_json::Value> {

@@ -5,9 +5,9 @@
 //! a missing-tool confusion.
 
 use async_trait::async_trait;
-use serde_json::json;
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
+use serde_json::json;
 
 /// Tool that runs a single prompt through an LLM (stub -- backend not yet wired).
 pub struct LlmTaskTool;
@@ -61,7 +61,11 @@ impl Tool for LlmTaskTool {
         })
     }
 
-    async fn execute(&self, _args: serde_json::Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        _args: serde_json::Value,
+        _ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         Ok(ToolResult {
             success: false,
             output: String::new(),

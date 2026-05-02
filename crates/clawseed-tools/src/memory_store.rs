@@ -1,9 +1,9 @@
 use async_trait::async_trait;
-use serde_json::json;
-use std::sync::Arc;
+use clawseed_api::memory_traits::{Memory, MemoryCategory};
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
-use clawseed_api::memory_traits::{Memory, MemoryCategory};
+use serde_json::json;
+use std::sync::Arc;
 
 /// Let the agent store memories -- its own brain writes
 pub struct MemoryStoreTool {
@@ -47,7 +47,11 @@ impl Tool for MemoryStoreTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        _ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let key = args
             .get("key")
             .and_then(|v| v.as_str())
@@ -83,8 +87,8 @@ impl Tool for MemoryStoreTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use clawseed_memory::sqlite::SqliteMemory;
+    use tempfile::TempDir;
 
     fn test_mem() -> (TempDir, Arc<dyn Memory>) {
         let tmp = TempDir::new().unwrap();
@@ -95,8 +99,15 @@ mod tests {
     fn test_ctx() -> impl ToolContext {
         struct DummyCtx;
         impl ToolContext for DummyCtx {
-            fn workspace_dir(&self) -> &std::path::Path { std::path::Path::new("/tmp") }
-            fn get_any(&self, _type_id: std::any::TypeId) -> Option<&(dyn std::any::Any + Send + Sync)> { None }
+            fn workspace_dir(&self) -> &std::path::Path {
+                std::path::Path::new("/tmp")
+            }
+            fn get_any(
+                &self,
+                _type_id: std::any::TypeId,
+            ) -> Option<&(dyn std::any::Any + Send + Sync)> {
+                None
+            }
         }
         DummyCtx
     }
@@ -116,7 +127,10 @@ mod tests {
         let (_tmp, mem) = test_mem();
         let tool = MemoryStoreTool::new(mem.clone());
         let result = tool
-            .execute(json!({"key": "lang", "content": "Prefers Rust"}), &test_ctx())
+            .execute(
+                json!({"key": "lang", "content": "Prefers Rust"}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -132,7 +146,10 @@ mod tests {
         let (_tmp, mem) = test_mem();
         let tool = MemoryStoreTool::new(mem.clone());
         let result = tool
-            .execute(json!({"key": "note", "content": "Fixed bug", "category": "daily"}), &test_ctx())
+            .execute(
+                json!({"key": "note", "content": "Fixed bug", "category": "daily"}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -160,7 +177,9 @@ mod tests {
     async fn store_missing_key() {
         let (_tmp, mem) = test_mem();
         let tool = MemoryStoreTool::new(mem);
-        let result = tool.execute(json!({"content": "no key"}), &test_ctx()).await;
+        let result = tool
+            .execute(json!({"content": "no key"}), &test_ctx())
+            .await;
         assert!(result.is_err());
     }
 
@@ -168,7 +187,9 @@ mod tests {
     async fn store_missing_content() {
         let (_tmp, mem) = test_mem();
         let tool = MemoryStoreTool::new(mem);
-        let result = tool.execute(json!({"key": "no_content"}), &test_ctx()).await;
+        let result = tool
+            .execute(json!({"key": "no_content"}), &test_ctx())
+            .await;
         assert!(result.is_err());
     }
 }

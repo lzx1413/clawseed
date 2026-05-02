@@ -1,11 +1,10 @@
 use std::path::PathBuf;
 
 use crate::aliases::{
-    is_bailian_alias, is_doubao_alias, is_glm_alias, is_minimax_alias, is_moonshot_alias,
-    is_qianfan_alias, is_qwen_alias, is_zai_alias, is_minimax_oauth_placeholder,
-    MINIMAX_OAUTH_TOKEN_ENV, MINIMAX_API_KEY_ENV,
+    MAX_API_ERROR_CHARS, MINIMAX_API_KEY_ENV, MINIMAX_OAUTH_TOKEN_ENV, is_bailian_alias,
+    is_doubao_alias, is_glm_alias, is_minimax_alias, is_minimax_oauth_placeholder,
+    is_moonshot_alias, is_qianfan_alias, is_qwen_alias, is_zai_alias,
     resolve_minimax_oauth_refresh_token, resolve_minimax_static_credential,
-    MAX_API_ERROR_CHARS,
 };
 
 #[derive(Debug, Clone)]
@@ -191,7 +190,10 @@ pub async fn api_error(provider: &str, response: reqwest::Response) -> anyhow::E
 /// For MiniMax, OAuth mode supports `api_key = "minimax-oauth"`, resolving credentials from
 /// `MINIMAX_OAUTH_TOKEN` first, then `MINIMAX_API_KEY`, and finally
 /// `MINIMAX_OAUTH_REFRESH_TOKEN` (automatic access-token refresh).
-pub fn resolve_provider_credential(name: &str, credential_override: Option<&str>) -> Option<String> {
+pub fn resolve_provider_credential(
+    name: &str,
+    credential_override: Option<&str>,
+) -> Option<String> {
     let mut minimax_oauth_placeholder_requested = false;
 
     if let Some(raw_override) = credential_override {

@@ -1,10 +1,10 @@
 use async_trait::async_trait;
+use clawseed_api::tool::{Tool, ToolResult};
+use clawseed_api::tool_context::ToolContext;
 use serde_json::json;
 use sha2::Digest;
 use std::path::{Path, PathBuf};
 use tokio::fs;
-use clawseed_api::tool::{Tool, ToolResult};
-use clawseed_api::tool_context::ToolContext;
 
 /// Workspace backup tool: create, list, verify, and restore timestamped backups
 /// with SHA-256 manifest integrity checking.
@@ -99,7 +99,8 @@ impl BackupTool {
             let manifest_path = d.join("manifest.json");
             let file_count = if manifest_path.is_file() {
                 let data = fs::read_to_string(&manifest_path).await?;
-                let map: std::collections::HashMap<String, String> = serde_json::from_str(&data).unwrap_or_default();
+                let map: std::collections::HashMap<String, String> =
+                    serde_json::from_str(&data).unwrap_or_default();
                 map.len()
             } else {
                 0
@@ -123,7 +124,11 @@ impl BackupTool {
         })
     }
 
-    async fn cmd_verify(&self, workspace_dir: &Path, backup_name: &str) -> anyhow::Result<ToolResult> {
+    async fn cmd_verify(
+        &self,
+        workspace_dir: &Path,
+        backup_name: &str,
+    ) -> anyhow::Result<ToolResult> {
         let backup_dir = Self::backups_dir(workspace_dir).join(backup_name);
         if !backup_dir.is_dir() {
             return Ok(ToolResult {
@@ -170,7 +175,12 @@ impl BackupTool {
         })
     }
 
-    async fn cmd_restore(&self, workspace_dir: &Path, backup_name: &str, confirm: bool) -> anyhow::Result<ToolResult> {
+    async fn cmd_restore(
+        &self,
+        workspace_dir: &Path,
+        backup_name: &str,
+        confirm: bool,
+    ) -> anyhow::Result<ToolResult> {
         let backup_dir = Self::backups_dir(workspace_dir).join(backup_name);
         if !backup_dir.is_dir() {
             return Ok(ToolResult {
@@ -255,7 +265,11 @@ impl Tool for BackupTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let workspace_dir = ctx.workspace_dir();
         let command = match args.get("command").and_then(|v| v.as_str()) {
             Some(c) => c,
@@ -315,7 +329,9 @@ async fn copy_dir_recursive(src: &Path, dst: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn compute_checksums(dir: &Path) -> anyhow::Result<std::collections::HashMap<String, String>> {
+async fn compute_checksums(
+    dir: &Path,
+) -> anyhow::Result<std::collections::HashMap<String, String>> {
     let mut map = std::collections::HashMap::new();
     let base = dir.to_path_buf();
     walk_and_hash(&base, dir, &mut map).await?;
@@ -364,7 +380,10 @@ mod tests {
         fn workspace_dir(&self) -> &Path {
             &self.workspace
         }
-        fn get_any(&self, _type_id: std::any::TypeId) -> Option<&(dyn std::any::Any + Send + Sync)> {
+        fn get_any(
+            &self,
+            _type_id: std::any::TypeId,
+        ) -> Option<&(dyn std::any::Any + Send + Sync)> {
             None
         }
     }
@@ -389,7 +408,10 @@ mod tests {
         std::fs::write(cfg_dir.join("a.toml"), "key = 1").unwrap();
 
         let tool = make_tool(&tmp);
-        let res = tool.execute(json!({"command": "create"}), &ctx(tmp.path().to_path_buf())).await.unwrap();
+        let res = tool
+            .execute(json!({"command": "create"}), &ctx(tmp.path().to_path_buf()))
+            .await
+            .unwrap();
         assert!(res.success, "create failed: {:?}", res.error);
 
         let parsed: serde_json::Value = serde_json::from_str(&res.output).unwrap();
@@ -412,7 +434,10 @@ mod tests {
         std::fs::write(cfg_dir.join("a.toml"), "original").unwrap();
 
         let tool = make_tool(&tmp);
-        let res = tool.execute(json!({"command": "create"}), &ctx(tmp.path().to_path_buf())).await.unwrap();
+        let res = tool
+            .execute(json!({"command": "create"}), &ctx(tmp.path().to_path_buf()))
+            .await
+            .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&res.output).unwrap();
         let name = parsed["backup"].as_str().unwrap();
 
@@ -421,7 +446,10 @@ mod tests {
         std::fs::write(&backed_up, "corrupted").unwrap();
 
         let res = tool
-            .execute(json!({"command": "verify", "backup_name": name}), &ctx(tmp.path().to_path_buf()))
+            .execute(
+                json!({"command": "verify", "backup_name": name}),
+                &ctx(tmp.path().to_path_buf()),
+            )
             .await
             .unwrap();
         assert!(!res.success);
@@ -437,13 +465,19 @@ mod tests {
         std::fs::write(cfg_dir.join("a.toml"), "v1").unwrap();
 
         let tool = make_tool(&tmp);
-        let res = tool.execute(json!({"command": "create"}), &ctx(tmp.path().to_path_buf())).await.unwrap();
+        let res = tool
+            .execute(json!({"command": "create"}), &ctx(tmp.path().to_path_buf()))
+            .await
+            .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&res.output).unwrap();
         let name = parsed["backup"].as_str().unwrap();
 
         // Without confirm: dry-run.
         let res = tool
-            .execute(json!({"command": "restore", "backup_name": name}), &ctx(tmp.path().to_path_buf()))
+            .execute(
+                json!({"command": "restore", "backup_name": name}),
+                &ctx(tmp.path().to_path_buf()),
+            )
             .await
             .unwrap();
         assert!(res.success);
@@ -452,7 +486,10 @@ mod tests {
 
         // With confirm: actual restore.
         let res = tool
-            .execute(json!({"command": "restore", "backup_name": name, "confirm": true}), &ctx(tmp.path().to_path_buf()))
+            .execute(
+                json!({"command": "restore", "backup_name": name, "confirm": true}),
+                &ctx(tmp.path().to_path_buf()),
+            )
             .await
             .unwrap();
         assert!(res.success);
@@ -468,12 +505,19 @@ mod tests {
         std::fs::write(cfg_dir.join("a.toml"), "v1").unwrap();
 
         let tool = make_tool(&tmp);
-        tool.execute(json!({"command": "create"}), &ctx(tmp.path().to_path_buf())).await.unwrap();
+        tool.execute(json!({"command": "create"}), &ctx(tmp.path().to_path_buf()))
+            .await
+            .unwrap();
         // Delay to ensure different second-resolution timestamps.
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        tool.execute(json!({"command": "create"}), &ctx(tmp.path().to_path_buf())).await.unwrap();
+        tool.execute(json!({"command": "create"}), &ctx(tmp.path().to_path_buf()))
+            .await
+            .unwrap();
 
-        let res = tool.execute(json!({"command": "list"}), &ctx(tmp.path().to_path_buf())).await.unwrap();
+        let res = tool
+            .execute(json!({"command": "list"}), &ctx(tmp.path().to_path_buf()))
+            .await
+            .unwrap();
         assert!(res.success);
         let items: Vec<serde_json::Value> = serde_json::from_str(&res.output).unwrap();
         assert_eq!(items.len(), 2);

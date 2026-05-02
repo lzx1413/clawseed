@@ -1,8 +1,8 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use reqwest::Client;
-use std::path::Path;
 use clawseed_api::provider::ChatMessage;
 use clawseed_config::schema::{MultimodalConfig, build_runtime_proxy_client_with_timeouts};
+use reqwest::Client;
+use std::path::Path;
 
 const IMAGE_MARKER_PREFIX: &str = "[IMAGE:";
 const ALLOWED_IMAGE_MIME_TYPES: &[&str] = &[
@@ -838,7 +838,6 @@ mod tests {
             max_images: 2,
             max_image_size_mb: 5,
             allow_remote_fetch: false,
-            ..Default::default()
         };
 
         let result = prepare_messages_for_provider(&messages, &config)
@@ -888,7 +887,6 @@ mod tests {
             max_images: 4,
             max_image_size_mb: 1,
             allow_remote_fetch: false,
-            ..Default::default()
         };
 
         let error = prepare_messages_for_provider(&messages, &config)

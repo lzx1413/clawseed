@@ -1,8 +1,8 @@
 use async_trait::async_trait;
-use serde_json::json;
-use std::path::{Path, PathBuf};
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
+use serde_json::json;
+use std::path::{Path, PathBuf};
 
 const MAX_RESULTS: usize = 1000;
 
@@ -69,7 +69,11 @@ impl Tool for GlobSearchTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let pattern = args
             .get("pattern")
             .and_then(|v| v.as_str())
@@ -153,13 +157,20 @@ impl Tool for GlobSearchTool {
                     use std::fmt::Write;
                     let mut buf = results.join("\n");
                     if truncated {
-                        let _ = write!(buf, "\n\n[Results truncated: showing first {MAX_RESULTS} of more matches]");
+                        let _ = write!(
+                            buf,
+                            "\n\n[Results truncated: showing first {MAX_RESULTS} of more matches]"
+                        );
                     }
                     let _ = write!(buf, "\n\nTotal: {} files", results.len());
                     buf
                 };
 
-                return Ok(ToolResult { success: true, output, error: None });
+                return Ok(ToolResult {
+                    success: true,
+                    output,
+                    error: None,
+                });
             }
         };
 
@@ -236,7 +247,10 @@ mod tests {
         fn workspace_dir(&self) -> &Path {
             &self.workspace
         }
-        fn get_any(&self, _type_id: std::any::TypeId) -> Option<&(dyn std::any::Any + Send + Sync)> {
+        fn get_any(
+            &self,
+            _type_id: std::any::TypeId,
+        ) -> Option<&(dyn std::any::Any + Send + Sync)> {
             None
         }
     }
@@ -266,7 +280,13 @@ mod tests {
         std::fs::write(dir.path().join("hello.txt"), "content").unwrap();
 
         let tool = GlobSearchTool::new();
-        let result = tool.execute(json!({"pattern": "hello.txt"}), &ctx(dir.path().to_path_buf())).await.unwrap();
+        let result = tool
+            .execute(
+                json!({"pattern": "hello.txt"}),
+                &ctx(dir.path().to_path_buf()),
+            )
+            .await
+            .unwrap();
 
         assert!(result.success);
         assert!(result.output.contains("hello.txt"));
@@ -280,7 +300,10 @@ mod tests {
         std::fs::write(dir.path().join("c.rs"), "").unwrap();
 
         let tool = GlobSearchTool::new();
-        let result = tool.execute(json!({"pattern": "*.txt"}), &ctx(dir.path().to_path_buf())).await.unwrap();
+        let result = tool
+            .execute(json!({"pattern": "*.txt"}), &ctx(dir.path().to_path_buf()))
+            .await
+            .unwrap();
 
         assert!(result.success);
         assert!(result.output.contains("a.txt"));
@@ -294,7 +317,10 @@ mod tests {
 
         let tool = GlobSearchTool::new();
         let result = tool
-            .execute(json!({"pattern": "*.nonexistent"}), &ctx(dir.path().to_path_buf()))
+            .execute(
+                json!({"pattern": "*.nonexistent"}),
+                &ctx(dir.path().to_path_buf()),
+            )
             .await
             .unwrap();
 
@@ -312,7 +338,10 @@ mod tests {
     #[tokio::test]
     async fn glob_search_rejects_absolute_path() {
         let tool = GlobSearchTool::new();
-        let result = tool.execute(json!({"pattern": "/etc/**/*"}), &ctx(std::env::temp_dir())).await.unwrap();
+        let result = tool
+            .execute(json!({"pattern": "/etc/**/*"}), &ctx(std::env::temp_dir()))
+            .await
+            .unwrap();
 
         assert!(!result.success);
         assert!(result.error.as_ref().unwrap().contains("Absolute paths"));
@@ -322,7 +351,10 @@ mod tests {
     async fn glob_search_rejects_path_traversal() {
         let tool = GlobSearchTool::new();
         let result = tool
-            .execute(json!({"pattern": "../../../etc/passwd"}), &ctx(std::env::temp_dir()))
+            .execute(
+                json!({"pattern": "../../../etc/passwd"}),
+                &ctx(std::env::temp_dir()),
+            )
             .await
             .unwrap();
 
@@ -333,7 +365,10 @@ mod tests {
     #[tokio::test]
     async fn glob_search_rejects_dotdot_only() {
         let tool = GlobSearchTool::new();
-        let result = tool.execute(json!({"pattern": ".."}), &ctx(std::env::temp_dir())).await.unwrap();
+        let result = tool
+            .execute(json!({"pattern": ".."}), &ctx(std::env::temp_dir()))
+            .await
+            .unwrap();
 
         assert!(!result.success);
         assert!(result.error.as_ref().unwrap().contains("Path traversal"));
@@ -347,7 +382,10 @@ mod tests {
         std::fs::write(dir.path().join("b.txt"), "").unwrap();
 
         let tool = GlobSearchTool::new();
-        let result = tool.execute(json!({"pattern": "*.txt"}), &ctx(dir.path().to_path_buf())).await.unwrap();
+        let result = tool
+            .execute(json!({"pattern": "*.txt"}), &ctx(dir.path().to_path_buf()))
+            .await
+            .unwrap();
 
         assert!(result.success);
         let lines: Vec<&str> = result.output.lines().collect();
@@ -364,7 +402,10 @@ mod tests {
         std::fs::write(dir.path().join("file.txt"), "").unwrap();
 
         let tool = GlobSearchTool::new();
-        let result = tool.execute(json!({"pattern": "*"}), &ctx(dir.path().to_path_buf())).await.unwrap();
+        let result = tool
+            .execute(json!({"pattern": "*"}), &ctx(dir.path().to_path_buf()))
+            .await
+            .unwrap();
 
         assert!(result.success);
         assert!(result.output.contains("file.txt"));
@@ -376,7 +417,13 @@ mod tests {
         let dir = TempDir::new().unwrap();
 
         let tool = GlobSearchTool::new();
-        let result = tool.execute(json!({"pattern": "[invalid"}), &ctx(dir.path().to_path_buf())).await.unwrap();
+        let result = tool
+            .execute(
+                json!({"pattern": "[invalid"}),
+                &ctx(dir.path().to_path_buf()),
+            )
+            .await
+            .unwrap();
 
         assert!(!result.success);
         assert!(

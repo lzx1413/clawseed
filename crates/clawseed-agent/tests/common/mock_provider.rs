@@ -1,11 +1,11 @@
 //! Shared mock provider implementations for integration tests.
 
+#![allow(dead_code)]
+
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use clawseed_api::provider::{
-    ChatMessage, ChatRequest, ChatResponse, Provider, TokenUsage, ToolCall,
-};
+use clawseed_api::provider::{ChatMessage, ChatRequest, ChatResponse, Provider};
 
 /// Mock provider that returns scripted responses in FIFO order.
 pub struct MockProvider {

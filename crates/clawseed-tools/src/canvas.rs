@@ -1,12 +1,12 @@
 use async_trait::async_trait;
+use clawseed_api::tool::{Tool, ToolResult};
+use clawseed_api::tool_context::ToolContext;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use clawseed_api::tool::{Tool, ToolResult};
-use clawseed_api::tool_context::ToolContext;
 
 /// Maximum content size per canvas frame (256 KB).
 pub const MAX_CONTENT_SIZE: usize = 256 * 1024;
@@ -226,7 +226,11 @@ impl Tool for CanvasTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        _ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let action = match args.get("action").and_then(|v| v.as_str()) {
             Some(a) => a,
             None => {
@@ -383,13 +387,18 @@ mod tests {
         fn workspace_dir(&self) -> &std::path::Path {
             &self.workspace
         }
-        fn get_any(&self, _type_id: std::any::TypeId) -> Option<&(dyn std::any::Any + Send + Sync)> {
+        fn get_any(
+            &self,
+            _type_id: std::any::TypeId,
+        ) -> Option<&(dyn std::any::Any + Send + Sync)> {
             None
         }
     }
 
     fn test_ctx() -> TestToolContext {
-        TestToolContext { workspace: std::env::temp_dir() }
+        TestToolContext {
+            workspace: std::env::temp_dir(),
+        }
     }
 
     #[test]
@@ -478,12 +487,15 @@ mod tests {
         let store = CanvasStore::new();
         let tool = CanvasTool::new(store.clone());
         let result = tool
-            .execute(json!({
-                "action": "render",
-                "canvas_id": "test",
-                "content_type": "html",
-                "content": "<h1>Hello World</h1>"
-            }), &test_ctx())
+            .execute(
+                json!({
+                    "action": "render",
+                    "canvas_id": "test",
+                    "content_type": "html",
+                    "content": "<h1>Hello World</h1>"
+                }),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -499,7 +511,10 @@ mod tests {
         store.render("test", "html", "<p>snap</p>");
         let tool = CanvasTool::new(store);
         let result = tool
-            .execute(json!({"action": "snapshot", "canvas_id": "test"}), &test_ctx())
+            .execute(
+                json!({"action": "snapshot", "canvas_id": "test"}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -511,7 +526,10 @@ mod tests {
         let store = CanvasStore::new();
         let tool = CanvasTool::new(store);
         let result = tool
-            .execute(json!({"action": "snapshot", "canvas_id": "empty"}), &test_ctx())
+            .execute(
+                json!({"action": "snapshot", "canvas_id": "empty"}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -537,11 +555,14 @@ mod tests {
         let store = CanvasStore::new();
         let tool = CanvasTool::new(store.clone());
         let result = tool
-            .execute(json!({
-                "action": "eval",
-                "canvas_id": "test",
-                "expression": "document.title"
-            }), &test_ctx())
+            .execute(
+                json!({
+                    "action": "eval",
+                    "canvas_id": "test",
+                    "expression": "document.title"
+                }),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);
@@ -556,7 +577,10 @@ mod tests {
     async fn canvas_tool_unknown_action() {
         let store = CanvasStore::new();
         let tool = CanvasTool::new(store);
-        let result = tool.execute(json!({"action": "invalid"}), &test_ctx()).await.unwrap();
+        let result = tool
+            .execute(json!({"action": "invalid"}), &test_ctx())
+            .await
+            .unwrap();
         assert!(!result.success);
         assert!(result.error.as_ref().unwrap().contains("Unknown action"));
     }
@@ -575,7 +599,10 @@ mod tests {
         let store = CanvasStore::new();
         let tool = CanvasTool::new(store);
         let result = tool
-            .execute(json!({"action": "render", "canvas_id": "test"}), &test_ctx())
+            .execute(
+                json!({"action": "render", "canvas_id": "test"}),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(!result.success);
@@ -588,11 +615,14 @@ mod tests {
         let tool = CanvasTool::new(store);
         let big_content = "x".repeat(MAX_CONTENT_SIZE + 1);
         let result = tool
-            .execute(json!({
-                "action": "render",
-                "canvas_id": "test",
-                "content": big_content
-            }), &test_ctx())
+            .execute(
+                json!({
+                    "action": "render",
+                    "canvas_id": "test",
+                    "content": big_content
+                }),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(!result.success);
@@ -604,11 +634,14 @@ mod tests {
         let store = CanvasStore::new();
         let tool = CanvasTool::new(store.clone());
         let result = tool
-            .execute(json!({
-                "action": "render",
-                "content_type": "html",
-                "content": "<p>default</p>"
-            }), &test_ctx())
+            .execute(
+                json!({
+                    "action": "render",
+                    "content_type": "html",
+                    "content": "<p>default</p>"
+                }),
+                &test_ctx(),
+            )
             .await
             .unwrap();
         assert!(result.success);

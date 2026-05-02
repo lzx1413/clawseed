@@ -71,11 +71,7 @@ impl SecurityPolicy {
     ///
     /// Checks the allowlist when one is defined. If no allowlist is set,
     /// all commands are allowed (supervised/full autonomy).
-    pub fn validate_command_execution(
-        &self,
-        command: &str,
-        approved: bool,
-    ) -> Result<(), String> {
+    pub fn validate_command_execution(&self, command: &str, approved: bool) -> Result<(), String> {
         if self.autonomy_level == AutonomyLevel::ReadOnly {
             return Err("autonomy is read-only".to_string());
         }
@@ -109,12 +105,7 @@ impl SecurityPolicy {
     /// Returns `Some(path)` if a forbidden path is found, `None` otherwise.
     /// Also checks for input redirection to sensitive paths (e.g. `cat </etc/passwd`).
     pub fn forbidden_path_argument(&self, command: &str) -> Option<String> {
-        let sensitive_paths = [
-            "/etc/passwd",
-            "/etc/shadow",
-            "/etc/ssh",
-            "/root/.ssh",
-        ];
+        let sensitive_paths = ["/etc/passwd", "/etc/shadow", "/etc/ssh", "/root/.ssh"];
 
         // Check for paths in the command string (including after redirection operators)
         for sensitive in &sensitive_paths {

@@ -21,7 +21,9 @@ pub struct StorageProviderEntry {
     pub config: StorageProviderConfig,
 }
 
-fn default_storage_provider() -> String { "sqlite".into() }
+fn default_storage_provider() -> String {
+    "sqlite".into()
+}
 
 impl Default for StorageProviderEntry {
     fn default() -> Self {
@@ -56,9 +58,15 @@ pub struct StorageConfig {
     pub table: String,
 }
 
-fn default_backend() -> String { "sqlite".into() }
-fn default_schema() -> String { "clawseed".into() }
-fn default_table() -> String { "memories".into() }
+fn default_backend() -> String {
+    "sqlite".into()
+}
+fn default_schema() -> String {
+    "clawseed".into()
+}
+fn default_table() -> String {
+    "memories".into()
+}
 
 impl Default for StorageConfig {
     fn default() -> Self {

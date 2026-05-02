@@ -18,19 +18,31 @@ pub struct ChatMessage {
 
 impl ChatMessage {
     pub fn system(content: impl Into<String>) -> Self {
-        Self { role: "system".into(), content: content.into() }
+        Self {
+            role: "system".into(),
+            content: content.into(),
+        }
     }
 
     pub fn user(content: impl Into<String>) -> Self {
-        Self { role: "user".into(), content: content.into() }
+        Self {
+            role: "user".into(),
+            content: content.into(),
+        }
     }
 
     pub fn assistant(content: impl Into<String>) -> Self {
-        Self { role: "assistant".into(), content: content.into() }
+        Self {
+            role: "assistant".into(),
+            content: content.into(),
+        }
     }
 
     pub fn tool(content: impl Into<String>) -> Self {
-        Self { role: "tool".into(), content: content.into() }
+        Self {
+            role: "tool".into(),
+            content: content.into(),
+        }
     }
 }
 
@@ -107,19 +119,39 @@ pub struct StreamChunk {
 
 impl StreamChunk {
     pub fn delta(text: impl Into<String>) -> Self {
-        Self { delta: text.into(), reasoning: None, is_final: false, token_count: 0 }
+        Self {
+            delta: text.into(),
+            reasoning: None,
+            is_final: false,
+            token_count: 0,
+        }
     }
 
     pub fn reasoning(text: impl Into<String>) -> Self {
-        Self { delta: String::new(), reasoning: Some(text.into()), is_final: false, token_count: 0 }
+        Self {
+            delta: String::new(),
+            reasoning: Some(text.into()),
+            is_final: false,
+            token_count: 0,
+        }
     }
 
     pub fn final_chunk() -> Self {
-        Self { delta: String::new(), reasoning: None, is_final: true, token_count: 0 }
+        Self {
+            delta: String::new(),
+            reasoning: None,
+            is_final: true,
+            token_count: 0,
+        }
     }
 
     pub fn error(message: impl Into<String>) -> Self {
-        Self { delta: message.into(), reasoning: None, is_final: true, token_count: 0 }
+        Self {
+            delta: message.into(),
+            reasoning: None,
+            is_final: true,
+            token_count: 0,
+        }
     }
 
     pub fn with_token_estimate(mut self) -> Self {
@@ -140,7 +172,11 @@ pub enum StreamEvent {
 
 impl StreamEvent {
     pub fn from_chunk(chunk: StreamChunk) -> Self {
-        if chunk.is_final { Self::Final } else { Self::TextDelta(chunk) }
+        if chunk.is_final {
+            Self::Final
+        } else {
+            Self::TextDelta(chunk)
+        }
     }
 }
 
@@ -153,7 +189,10 @@ pub struct StreamOptions {
 
 impl StreamOptions {
     pub fn new(enabled: bool) -> Self {
-        Self { enabled, count_tokens: false }
+        Self {
+            enabled,
+            count_tokens: false,
+        }
     }
 }
 
@@ -195,10 +234,18 @@ pub struct ProviderCapabilities {
 /// Provider-specific tool payload formats.
 #[derive(Debug, Clone)]
 pub enum ToolsPayload {
-    Gemini { function_declarations: Vec<serde_json::Value> },
-    Anthropic { tools: Vec<serde_json::Value> },
-    OpenAI { tools: Vec<serde_json::Value> },
-    PromptGuided { instructions: String },
+    Gemini {
+        function_declarations: Vec<serde_json::Value>,
+    },
+    Anthropic {
+        tools: Vec<serde_json::Value>,
+    },
+    OpenAI {
+        tools: Vec<serde_json::Value>,
+    },
+    PromptGuided {
+        instructions: String,
+    },
 }
 
 /// Industry-neutral default temperature.
@@ -238,7 +285,9 @@ pub trait Provider: Send + Sync {
     }
 
     fn convert_tools(&self, tools: &[ToolSpec]) -> ToolsPayload {
-        ToolsPayload::PromptGuided { instructions: build_tool_instructions_text(tools) }
+        ToolsPayload::PromptGuided {
+            instructions: build_tool_instructions_text(tools),
+        }
     }
 
     async fn simple_chat(
@@ -247,7 +296,8 @@ pub trait Provider: Send + Sync {
         model: &str,
         temperature: Option<f64>,
     ) -> anyhow::Result<String> {
-        self.chat_with_system(None, message, model, temperature).await
+        self.chat_with_system(None, message, model, temperature)
+            .await
     }
 
     async fn chat_with_system(
@@ -268,10 +318,17 @@ pub trait Provider: Send + Sync {
         model: &str,
         temperature: Option<f64>,
     ) -> anyhow::Result<String> {
-        let system = messages.iter().find(|m| m.role == "system").map(|m| m.content.as_str());
-        let last_user =
-            messages.iter().rfind(|m| m.role == "user").map(|m| m.content.as_str()).unwrap_or("");
-        self.chat_with_system(system, last_user, model, temperature).await
+        let system = messages
+            .iter()
+            .find(|m| m.role == "system")
+            .map(|m| m.content.as_str());
+        let last_user = messages
+            .iter()
+            .rfind(|m| m.role == "user")
+            .map(|m| m.content.as_str())
+            .unwrap_or("");
+        self.chat_with_system(system, last_user, model, temperature)
+            .await
     }
 
     async fn chat(
@@ -293,7 +350,8 @@ pub trait Provider: Send + Sync {
                 }
             };
             let mut modified_messages = request.messages.to_vec();
-            if let Some(system_message) = modified_messages.iter_mut().find(|m| m.role == "system") {
+            if let Some(system_message) = modified_messages.iter_mut().find(|m| m.role == "system")
+            {
                 if !system_message.content.is_empty() {
                     system_message.content.push_str("\n\n");
                 }
@@ -301,7 +359,9 @@ pub trait Provider: Send + Sync {
             } else {
                 modified_messages.insert(0, ChatMessage::system(tool_instructions));
             }
-            let text = self.chat_with_history(&modified_messages, model, temperature).await?;
+            let text = self
+                .chat_with_history(&modified_messages, model, temperature)
+                .await?;
             return Ok(ChatResponse {
                 text: Some(text),
                 tool_calls: Vec::new(),
@@ -309,7 +369,9 @@ pub trait Provider: Send + Sync {
                 reasoning_content: None,
             });
         }
-        let text = self.chat_with_history(request.messages, model, temperature).await?;
+        let text = self
+            .chat_with_history(request.messages, model, temperature)
+            .await?;
         Ok(ChatResponse {
             text: Some(text),
             tool_calls: Vec::new(),
@@ -372,9 +434,15 @@ pub trait Provider: Send + Sync {
         temperature: Option<f64>,
         options: StreamOptions,
     ) -> stream::BoxStream<'static, StreamResult<StreamChunk>> {
-        let system = messages.iter().find(|m| m.role == "system").map(|m| m.content.as_str());
-        let last_user =
-            messages.iter().rfind(|m| m.role == "user").map(|m| m.content.as_str()).unwrap_or("");
+        let system = messages
+            .iter()
+            .find(|m| m.role == "system")
+            .map(|m| m.content.as_str());
+        let last_user = messages
+            .iter()
+            .rfind(|m| m.role == "user")
+            .map(|m| m.content.as_str())
+            .unwrap_or("");
         self.stream_chat_with_system(system, last_user, model, temperature, options)
     }
 
@@ -394,61 +462,121 @@ pub trait Provider: Send + Sync {
 /// Blanket impl: `Arc<T>` delegates to `T`.
 #[async_trait]
 impl<T: Provider + ?Sized> Provider for Arc<T> {
-    fn capabilities(&self) -> ProviderCapabilities { self.as_ref().capabilities() }
-    fn default_temperature(&self) -> f64 { self.as_ref().default_temperature() }
-    fn default_max_tokens(&self) -> u32 { self.as_ref().default_max_tokens() }
-    fn default_timeout_secs(&self) -> u64 { self.as_ref().default_timeout_secs() }
-    fn default_base_url(&self) -> Option<&str> { self.as_ref().default_base_url() }
-    fn default_wire_api(&self) -> &str { self.as_ref().default_wire_api() }
-    fn convert_tools(&self, tools: &[ToolSpec]) -> ToolsPayload { self.as_ref().convert_tools(tools) }
-    fn supports_native_tools(&self) -> bool { self.as_ref().supports_native_tools() }
-    fn supports_vision(&self) -> bool { self.as_ref().supports_vision() }
+    fn capabilities(&self) -> ProviderCapabilities {
+        self.as_ref().capabilities()
+    }
+    fn default_temperature(&self) -> f64 {
+        self.as_ref().default_temperature()
+    }
+    fn default_max_tokens(&self) -> u32 {
+        self.as_ref().default_max_tokens()
+    }
+    fn default_timeout_secs(&self) -> u64 {
+        self.as_ref().default_timeout_secs()
+    }
+    fn default_base_url(&self) -> Option<&str> {
+        self.as_ref().default_base_url()
+    }
+    fn default_wire_api(&self) -> &str {
+        self.as_ref().default_wire_api()
+    }
+    fn convert_tools(&self, tools: &[ToolSpec]) -> ToolsPayload {
+        self.as_ref().convert_tools(tools)
+    }
+    fn supports_native_tools(&self) -> bool {
+        self.as_ref().supports_native_tools()
+    }
+    fn supports_vision(&self) -> bool {
+        self.as_ref().supports_vision()
+    }
 
     async fn chat_with_system(
-        &self, system_prompt: Option<&str>, message: &str, model: &str, temperature: Option<f64>,
+        &self,
+        system_prompt: Option<&str>,
+        message: &str,
+        model: &str,
+        temperature: Option<f64>,
     ) -> anyhow::Result<String> {
-        self.as_ref().chat_with_system(system_prompt, message, model, temperature).await
+        self.as_ref()
+            .chat_with_system(system_prompt, message, model, temperature)
+            .await
     }
 
     async fn chat_with_history(
-        &self, messages: &[ChatMessage], model: &str, temperature: Option<f64>,
+        &self,
+        messages: &[ChatMessage],
+        model: &str,
+        temperature: Option<f64>,
     ) -> anyhow::Result<String> {
-        self.as_ref().chat_with_history(messages, model, temperature).await
+        self.as_ref()
+            .chat_with_history(messages, model, temperature)
+            .await
     }
 
     async fn chat(
-        &self, request: ChatRequest<'_>, model: &str, temperature: Option<f64>,
+        &self,
+        request: ChatRequest<'_>,
+        model: &str,
+        temperature: Option<f64>,
     ) -> anyhow::Result<ChatResponse> {
         self.as_ref().chat(request, model, temperature).await
     }
 
-    async fn warmup(&self) -> anyhow::Result<()> { self.as_ref().warmup().await }
-
-    async fn chat_with_tools(
-        &self, messages: &[ChatMessage], tools: &[serde_json::Value], model: &str, temperature: Option<f64>,
-    ) -> anyhow::Result<ChatResponse> {
-        self.as_ref().chat_with_tools(messages, tools, model, temperature).await
+    async fn warmup(&self) -> anyhow::Result<()> {
+        self.as_ref().warmup().await
     }
 
-    fn supports_streaming(&self) -> bool { self.as_ref().supports_streaming() }
-    fn supports_streaming_tool_events(&self) -> bool { self.as_ref().supports_streaming_tool_events() }
+    async fn chat_with_tools(
+        &self,
+        messages: &[ChatMessage],
+        tools: &[serde_json::Value],
+        model: &str,
+        temperature: Option<f64>,
+    ) -> anyhow::Result<ChatResponse> {
+        self.as_ref()
+            .chat_with_tools(messages, tools, model, temperature)
+            .await
+    }
+
+    fn supports_streaming(&self) -> bool {
+        self.as_ref().supports_streaming()
+    }
+    fn supports_streaming_tool_events(&self) -> bool {
+        self.as_ref().supports_streaming_tool_events()
+    }
 
     fn stream_chat_with_system(
-        &self, system_prompt: Option<&str>, message: &str, model: &str, temperature: Option<f64>, options: StreamOptions,
+        &self,
+        system_prompt: Option<&str>,
+        message: &str,
+        model: &str,
+        temperature: Option<f64>,
+        options: StreamOptions,
     ) -> stream::BoxStream<'static, StreamResult<StreamChunk>> {
-        self.as_ref().stream_chat_with_system(system_prompt, message, model, temperature, options)
+        self.as_ref()
+            .stream_chat_with_system(system_prompt, message, model, temperature, options)
     }
 
     fn stream_chat_with_history(
-        &self, messages: &[ChatMessage], model: &str, temperature: Option<f64>, options: StreamOptions,
+        &self,
+        messages: &[ChatMessage],
+        model: &str,
+        temperature: Option<f64>,
+        options: StreamOptions,
     ) -> stream::BoxStream<'static, StreamResult<StreamChunk>> {
-        self.as_ref().stream_chat_with_history(messages, model, temperature, options)
+        self.as_ref()
+            .stream_chat_with_history(messages, model, temperature, options)
     }
 
     fn stream_chat(
-        &self, request: ChatRequest<'_>, model: &str, temperature: Option<f64>, options: StreamOptions,
+        &self,
+        request: ChatRequest<'_>,
+        model: &str,
+        temperature: Option<f64>,
+        options: StreamOptions,
     ) -> stream::BoxStream<'static, StreamResult<StreamEvent>> {
-        self.as_ref().stream_chat(request, model, temperature, options)
+        self.as_ref()
+            .stream_chat(request, model, temperature, options)
     }
 }
 
@@ -462,7 +590,8 @@ pub fn build_tool_instructions_text(tools: &[ToolSpec]) -> String {
     instructions.push_str("\n▷\n\n");
     instructions.push_str("You may use multiple tool calls in a single response. ");
     instructions.push_str("After tool execution, results appear in <tool_result> tags. ");
-    instructions.push_str("Continue reasoning with the results until you can give a final answer.\n\n");
+    instructions
+        .push_str("Continue reasoning with the results until you can give a final answer.\n\n");
     instructions.push_str("### Available Tools\n\n");
     for tool in tools {
         writeln!(&mut instructions, "**{}**: {}", tool.name, tool.description)

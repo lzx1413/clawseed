@@ -40,18 +40,21 @@ pub trait ToolContextExt {
 
 impl ToolContextExt for dyn ToolContext {
     fn get<T: 'static>(&self) -> Option<&T> {
-        self.get_any(TypeId::of::<T>()).and_then(|any| any.downcast_ref::<T>())
+        self.get_any(TypeId::of::<T>())
+            .and_then(|any| any.downcast_ref::<T>())
     }
 }
 
 impl ToolContextExt for dyn ToolContext + Send {
     fn get<T: 'static>(&self) -> Option<&T> {
-        self.get_any(TypeId::of::<T>()).and_then(|any| any.downcast_ref::<T>())
+        self.get_any(TypeId::of::<T>())
+            .and_then(|any| any.downcast_ref::<T>())
     }
 }
 
 impl ToolContextExt for dyn ToolContext + Send + Sync {
     fn get<T: 'static>(&self) -> Option<&T> {
-        self.get_any(TypeId::of::<T>()).and_then(|any| any.downcast_ref::<T>())
+        self.get_any(TypeId::of::<T>())
+            .and_then(|any| any.downcast_ref::<T>())
     }
 }

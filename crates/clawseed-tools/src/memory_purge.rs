@@ -1,9 +1,9 @@
 use async_trait::async_trait;
-use serde_json::json;
-use std::sync::Arc;
+use clawseed_api::memory_traits::Memory;
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
-use clawseed_api::memory_traits::Memory;
+use serde_json::json;
+use std::sync::Arc;
 
 /// Let the agent bulk-delete memories by namespace or session
 pub struct MemoryPurgeTool {
@@ -43,7 +43,11 @@ impl Tool for MemoryPurgeTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        _ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let namespace = args.get("namespace").and_then(|v| v.as_str());
         let session_id = args.get("session_id").and_then(|v| v.as_str());
 
@@ -103,9 +107,9 @@ impl Tool for MemoryPurgeTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use clawseed_api::memory_traits::MemoryCategory;
     use clawseed_memory::sqlite::SqliteMemory;
+    use tempfile::TempDir;
 
     fn test_mem() -> (TempDir, Arc<dyn Memory>) {
         let tmp = TempDir::new().unwrap();
@@ -116,8 +120,15 @@ mod tests {
     fn test_ctx() -> impl ToolContext {
         struct DummyCtx;
         impl ToolContext for DummyCtx {
-            fn workspace_dir(&self) -> &std::path::Path { std::path::Path::new("/tmp") }
-            fn get_any(&self, _type_id: std::any::TypeId) -> Option<&(dyn std::any::Any + Send + Sync)> { None }
+            fn workspace_dir(&self) -> &std::path::Path {
+                std::path::Path::new("/tmp")
+            }
+            fn get_any(
+                &self,
+                _type_id: std::any::TypeId,
+            ) -> Option<&(dyn std::any::Any + Send + Sync)> {
+                None
+            }
         }
         DummyCtx
     }
@@ -155,7 +166,10 @@ mod tests {
             .unwrap();
 
         let tool = MemoryPurgeTool::new(mem.clone());
-        let result = tool.execute(json!({"namespace": "test_ns"}), &test_ctx()).await.unwrap();
+        let result = tool
+            .execute(json!({"namespace": "test_ns"}), &test_ctx())
+            .await
+            .unwrap();
         assert!(result.success);
         assert!(result.output.contains("2 memories"));
 
@@ -176,7 +190,10 @@ mod tests {
             .unwrap();
 
         let tool = MemoryPurgeTool::new(mem.clone());
-        let result = tool.execute(json!({"session_id": "sess-x"}), &test_ctx()).await.unwrap();
+        let result = tool
+            .execute(json!({"session_id": "sess-x"}), &test_ctx())
+            .await
+            .unwrap();
         assert!(result.success);
         assert!(result.output.contains("2 memories"));
 

@@ -7,9 +7,9 @@
 // Re-export CanvasStore from clawseed-tools
 pub use clawseed_tools::canvas::CanvasStore;
 
-use std::sync::Arc;
-use clawseed_api::tool::{Tool, ToolSpec, ToolResult};
+use clawseed_api::tool::{Tool, ToolResult, ToolSpec};
 use clawseed_api::tool_context::ToolContext;
+use std::sync::Arc;
 
 /// Wire built-in tools from clawseed_tools into the gateway.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
@@ -48,9 +48,7 @@ impl<T: Tool + Send + Sync> DynTool for T {}
 pub struct McpRegistry;
 
 impl McpRegistry {
-    pub async fn connect_all(
-        _servers: &[clawseed_config::schema::Config],
-    ) -> anyhow::Result<Self> {
+    pub async fn connect_all(_servers: &[clawseed_config::schema::Config]) -> anyhow::Result<Self> {
         Ok(Self)
     }
 
@@ -105,24 +103,32 @@ pub struct McpToolWrapper {
 }
 
 impl McpToolWrapper {
-    pub fn new(
-        name: String,
-        _def: ToolSpec,
-        _registry: Arc<McpRegistry>,
-    ) -> Self {
+    pub fn new(name: String, _def: ToolSpec, _registry: Arc<McpRegistry>) -> Self {
         Self { name }
     }
 }
 
 #[async_trait::async_trait]
 impl Tool for McpToolWrapper {
-    fn name(&self) -> &str { &self.name }
-    fn description(&self) -> &str { "MCP stub" }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn description(&self) -> &str {
+        "MCP stub"
+    }
     fn parameters_schema(&self) -> serde_json::Value {
         serde_json::json!({"type": "object"})
     }
-    async fn execute(&self, _args: serde_json::Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
-        Ok(ToolResult { success: false, output: String::new(), error: Some("MCP stub".into()) })
+    async fn execute(
+        &self,
+        _args: serde_json::Value,
+        _ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
+        Ok(ToolResult {
+            success: false,
+            output: String::new(),
+            error: Some("MCP stub".into()),
+        })
     }
 }
 
@@ -140,13 +146,25 @@ impl ToolSearchTool {
 
 #[async_trait::async_trait]
 impl Tool for ToolSearchTool {
-    fn name(&self) -> &str { "tool_search_stub" }
-    fn description(&self) -> &str { "Tool search stub" }
+    fn name(&self) -> &str {
+        "tool_search_stub"
+    }
+    fn description(&self) -> &str {
+        "Tool search stub"
+    }
     fn parameters_schema(&self) -> serde_json::Value {
         serde_json::json!({"type": "object"})
     }
-    async fn execute(&self, _args: serde_json::Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
-        Ok(ToolResult { success: false, output: String::new(), error: Some("Tool search stub".into()) })
+    async fn execute(
+        &self,
+        _args: serde_json::Value,
+        _ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
+        Ok(ToolResult {
+            success: false,
+            output: String::new(),
+            error: Some("Tool search stub".into()),
+        })
     }
 }
 
@@ -155,10 +173,20 @@ pub struct ArcToolRef(pub Arc<dyn DynTool>);
 
 #[async_trait::async_trait]
 impl Tool for ArcToolRef {
-    fn name(&self) -> &str { self.0.name() }
-    fn description(&self) -> &str { self.0.description() }
-    fn parameters_schema(&self) -> serde_json::Value { self.0.parameters_schema() }
-    async fn execute(&self, args: serde_json::Value, ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+    fn description(&self) -> &str {
+        self.0.description()
+    }
+    fn parameters_schema(&self) -> serde_json::Value {
+        self.0.parameters_schema()
+    }
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         self.0.execute(args, ctx).await
     }
 }

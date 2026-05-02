@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use serde_json::json;
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
+use serde_json::json;
 
 /// Git operations tool for structured repository management.
 /// Provides safe, parsed git operations with JSON output.
@@ -559,7 +559,11 @@ impl Tool for GitOperationsTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        _ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let operation = match args.get("operation").and_then(|v| v.as_str()) {
             Some(op) => op,
             None => {
@@ -629,18 +633,29 @@ impl Tool for GitOperationsTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
-    use std::path::PathBuf;
     use clawseed_api::tool_context::ToolContext;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
 
-    struct TestToolContext { workspace: PathBuf }
-
-    impl ToolContext for TestToolContext {
-        fn workspace_dir(&self) -> &std::path::Path { &self.workspace }
-        fn get_any(&self, _type_id: std::any::TypeId) -> Option<&(dyn std::any::Any + Send + Sync)> { None }
+    struct TestToolContext {
+        workspace: PathBuf,
     }
 
-    fn test_ctx(workspace: PathBuf) -> TestToolContext { TestToolContext { workspace } }
+    impl ToolContext for TestToolContext {
+        fn workspace_dir(&self) -> &std::path::Path {
+            &self.workspace
+        }
+        fn get_any(
+            &self,
+            _type_id: std::any::TypeId,
+        ) -> Option<&(dyn std::any::Any + Send + Sync)> {
+            None
+        }
+    }
+
+    fn test_ctx(workspace: PathBuf) -> TestToolContext {
+        TestToolContext { workspace }
+    }
 
     fn test_tool(dir: &std::path::Path) -> GitOperationsTool {
         GitOperationsTool::new(dir.to_path_buf())
@@ -768,8 +783,11 @@ mod tests {
 
         let tool = GitOperationsTool::new(tmp.path().to_path_buf());
 
-        let result = tool
-            .execute(json!({"operation": "commit", "message": "test"}), &test_ctx(tmp.path().to_path_buf()))
+        let _result = tool
+            .execute(
+                json!({"operation": "commit", "message": "test"}),
+                &test_ctx(tmp.path().to_path_buf()),
+            )
             .await
             .unwrap();
         // Without SecurityPolicy, write ops succeed (no autonomy blocking)
@@ -788,7 +806,13 @@ mod tests {
 
         let tool = GitOperationsTool::new(tmp.path().to_path_buf());
 
-        let result = tool.execute(json!({"operation": "branch"}), &test_ctx(tmp.path().to_path_buf())).await.unwrap();
+        let result = tool
+            .execute(
+                json!({"operation": "branch"}),
+                &test_ctx(tmp.path().to_path_buf()),
+            )
+            .await
+            .unwrap();
         // Branch listing must not be blocked by read-only autonomy
         let error_msg = result.error.as_deref().unwrap_or("");
         assert!(
@@ -803,7 +827,13 @@ mod tests {
         let tool = GitOperationsTool::new(tmp.path().to_path_buf());
 
         // This will fail because there's no git repo
-        let result = tool.execute(json!({"operation": "status"}), &test_ctx(tmp.path().to_path_buf())).await.unwrap();
+        let result = tool
+            .execute(
+                json!({"operation": "status"}),
+                &test_ctx(tmp.path().to_path_buf()),
+            )
+            .await
+            .unwrap();
         assert!(!result.success, "Expected failure due to missing git repo");
     }
 
@@ -812,7 +842,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let tool = test_tool(tmp.path());
 
-        let result = tool.execute(json!({}), &test_ctx(tmp.path().to_path_buf())).await.unwrap();
+        let result = tool
+            .execute(json!({}), &test_ctx(tmp.path().to_path_buf()))
+            .await
+            .unwrap();
         assert!(!result.success);
         assert!(
             result
@@ -835,7 +868,13 @@ mod tests {
 
         let tool = test_tool(tmp.path());
 
-        let result = tool.execute(json!({"operation": "push"}), &test_ctx(tmp.path().to_path_buf())).await.unwrap();
+        let result = tool
+            .execute(
+                json!({"operation": "push"}),
+                &test_ctx(tmp.path().to_path_buf()),
+            )
+            .await
+            .unwrap();
         assert!(!result.success);
         assert!(
             result
@@ -921,7 +960,10 @@ mod tests {
         let tool = test_tool(tmp.path());
 
         let result = tool
-            .execute(json!({"operation": "status", "path": "nested"}), &test_ctx(tmp.path().to_path_buf()))
+            .execute(
+                json!({"operation": "status", "path": "nested"}),
+                &test_ctx(tmp.path().to_path_buf()),
+            )
             .await
             .unwrap();
         assert!(

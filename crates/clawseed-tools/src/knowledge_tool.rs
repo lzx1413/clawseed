@@ -5,9 +5,9 @@
 //! a missing-tool confusion.
 
 use async_trait::async_trait;
-use serde_json::json;
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
+use serde_json::json;
 
 /// Tool for managing a knowledge graph (stub -- backend not yet wired).
 pub struct KnowledgeTool;
@@ -96,7 +96,11 @@ impl Tool for KnowledgeTool {
         })
     }
 
-    async fn execute(&self, _args: serde_json::Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        _args: serde_json::Value,
+        _ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         Ok(ToolResult {
             success: false,
             output: String::new(),

@@ -15,9 +15,9 @@ pub mod sqlite;
 pub mod traits;
 pub mod vector;
 
-use std::sync::Arc;
 use clawseed_api::memory_traits::Memory;
 use clawseed_config::schema::MemoryConfig;
+use std::sync::Arc;
 
 /// Create a memory backend based on the configuration.
 ///
@@ -36,7 +36,9 @@ pub fn create_memory(
             match sqlite::SqliteMemory::new(workspace_dir) {
                 Ok(m) => Ok(Arc::new(m)),
                 Err(e) => {
-                    tracing::warn!("Failed to create SQLite memory, falling back to NoneMemory: {e}");
+                    tracing::warn!(
+                        "Failed to create SQLite memory, falling back to NoneMemory: {e}"
+                    );
                     Ok(Arc::new(none::NoneMemory::new()))
                 }
             }

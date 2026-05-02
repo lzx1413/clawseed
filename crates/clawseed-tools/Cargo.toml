@@ -32,9 +32,11 @@ sha2 = { workspace = true }
 parking_lot = { workspace = true }
 futures-util = { workspace = true }
 
+pdf-extract = { workspace = true, optional = true }
+
 [dev-dependencies]
 tempfile = { workspace = true }
 wiremock = { workspace = true }
 
 [features]
-rag-pdf = []
+rag-pdf = ["pdf-extract"]

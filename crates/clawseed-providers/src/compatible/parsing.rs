@@ -1,6 +1,5 @@
 use crate::traits::{
-    ChatMessage, StreamChunk, StreamError, StreamEvent, StreamResult,
-    ToolCall as ProviderToolCall,
+    ChatMessage, StreamChunk, StreamError, StreamEvent, StreamResult, ToolCall as ProviderToolCall,
 };
 use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
@@ -791,7 +790,9 @@ pub(super) fn first_nonempty(text: Option<&str>) -> Option<String> {
     })
 }
 
-pub(super) fn build_responses_prompt(messages: &[ChatMessage]) -> (Option<String>, Vec<ResponsesInput>) {
+pub(super) fn build_responses_prompt(
+    messages: &[ChatMessage],
+) -> (Option<String>, Vec<ResponsesInput>) {
     let mut instructions_parts = Vec::new();
     let mut input = Vec::new();
 
@@ -856,7 +857,10 @@ pub(super) fn compact_sanitized_body_snippet(body: &str) -> String {
         .join(" ")
 }
 
-pub(super) fn parse_chat_response_body(provider_name: &str, body: &str) -> anyhow::Result<ApiChatResponse> {
+pub(super) fn parse_chat_response_body(
+    provider_name: &str,
+    body: &str,
+) -> anyhow::Result<ApiChatResponse> {
     serde_json::from_str::<ApiChatResponse>(body).map_err(|error| {
         let snippet = compact_sanitized_body_snippet(body);
         anyhow::anyhow!(
@@ -876,4 +880,3 @@ pub(super) fn parse_responses_response_body(
         )
     })
 }
-

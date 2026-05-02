@@ -1,6 +1,6 @@
+use super::OpenAiCompatibleProvider;
 use super::auth::apply_auth_to_request;
 use super::parsing::*;
-use super::OpenAiCompatibleProvider;
 use crate::multimodal;
 use crate::traits::{
     ChatMessage, ChatRequest as ProviderChatRequest, ChatResponse as ProviderChatResponse,
@@ -1129,4 +1129,3 @@ impl Provider for OpenAiCompatibleProvider {
         Ok(())
     }
 }
-

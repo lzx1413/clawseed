@@ -6,10 +6,12 @@
 
 mod common;
 
-use common::helpers::{build_agent, build_agent_xml, build_recording_agent, text_response, tool_response};
+use clawseed_api::provider::{ChatMessage, ChatResponse, ConversationMessage, ToolCall};
+use common::helpers::{
+    build_agent, build_agent_xml, build_recording_agent, text_response, tool_response,
+};
 use common::mock_provider::RecordingProvider;
 use common::mock_tools::{CountingTool, EchoTool};
-use clawseed_api::provider::{ChatMessage, ChatResponse, ConversationMessage, ToolCall};
 
 // ═════════════════════════════════════════════════════════════════════════════
 // E2E smoke tests — full agent turn cycle
@@ -18,9 +20,9 @@ use clawseed_api::provider::{ChatMessage, ChatResponse, ConversationMessage, Too
 /// Validates the simplest happy path: user message → LLM text response.
 #[tokio::test]
 async fn e2e_simple_text_response() {
-    let provider = Box::new(common::mock_provider::MockProvider::new(vec![text_response(
-        "Hello from mock provider",
-    )]));
+    let provider = Box::new(common::mock_provider::MockProvider::new(vec![
+        text_response("Hello from mock provider"),
+    ]));
     let mut agent = build_agent(provider, vec![Box::new(EchoTool)]);
 
     let response = agent.turn("hi").await.unwrap();
@@ -84,7 +86,7 @@ async fn e2e_xml_dispatcher_tool_call() {
                 r#"◁
 {"name": "echo", "arguments": {"message": "xml dispatch"}}
 ▷"#
-                    .into(),
+                .into(),
             ),
             tool_calls: vec![],
             usage: None,

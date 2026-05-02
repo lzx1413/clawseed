@@ -6,9 +6,9 @@
 //!
 //! Uses the same client credentials as Gemini CLI for compatibility.
 
-use crate::auth::oauth_common::{PkceState, parse_query_params, url_decode, url_encode};
 #[cfg(test)]
 use crate::auth::oauth_common::generate_pkce_state;
+use crate::auth::oauth_common::{PkceState, parse_query_params, url_decode, url_encode};
 use crate::auth::profiles::TokenSet;
 use anyhow::{Context, Result};
 use base64::Engine;

@@ -14,11 +14,31 @@
 
 ---
 
-ClawSeed is an AI agent runtime written in Rust. It connects to LLM providers (Anthropic, Gemini, Bedrock, OpenAI-compatible, and more), acts through pluggable tools, and serves clients over HTTP/WebSocket.
+ClawSeed is an AI agent **runtime** written in Rust. It connects to LLM providers (Anthropic, Gemini, Bedrock, OpenAI-compatible, and more), acts through pluggable tools, and serves clients over HTTP/WebSocket.
+
+An agent runtime should do three things: receive messages, call an LLM, execute tools. Everything else — channels, dashboards, integrations — belongs to the application layer. ClawSeed provides crates with stable traits; applications compose them.
+
+```toml
+# A Discord bot application
+[dependencies]
+clawseed-agent = "0.7"
+clawseed-providers = "0.7"
+serenity = "0.12"          # App chooses its own SDK
+
+# An Android application
+[dependencies]
+clawseed-gateway = "0.7"
+clawseed-agent = "0.7"
+
+# A CLI tool
+[dependencies]
+clawseed-agent = "0.7"
+clawseed-tools = "0.7"
+```
 
 The agent runs server-side, but mobile clients (Android, iOS) can register their own tools over WebSocket. When the agent calls one of these tools, the gateway forwards the request to the client for execution. This lets the agent access device capabilities — contacts, camera, sensors — without device-specific code on the server.
 
-ClawSeed borrows its trait-based architecture from [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw), with a smaller scope and some structural changes: a unified `Hook` trait, `TypeId`-based capability injection, and native remote tool call support.
+ClawSeed borrows its trait-based architecture from [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw), with a smaller scope and a different positioning: ZeroClaw bundled channels, dashboards, hardware, and SOP into one binary (an application); ClawSeed provides crates for applications to assemble (a runtime).
 
 ## Architecture
 
@@ -222,13 +242,15 @@ Tools that the agent doesn't need are excluded by `allowed_tools` in config — 
 
 ## Acknowledgments
 
-ClawSeed's trait-based architecture and provider/tool/memory abstraction patterns are derived from [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw). Key differences from ZeroClaw:
+ClawSeed's trait-based architecture and provider/tool/memory abstraction patterns are derived from [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw).
 
-- Removed channels orchestrator, hardware peripherals, SOP engine, voice/canvas subsystems
-- Added native remote tool call support (mobile client → gateway bridge)
-- Added unified `Hook` trait for tool call interception
-- Replaced constructor injection with `TypeId`-based capability lookup (`ctx.get::<T>()`)
-- Reduced from ~225K lines / 18 crates to ~55K lines / 10 crates
+The key difference is positioning: ZeroClaw is an application (channels, dashboards, hardware, and SOP bundled into one binary); ClawSeed is a runtime (crates that applications assemble). This means:
+
+- No bundled channels — applications integrate their own messaging SDKs
+- No bundled dashboard — applications build their own UI
+- Added native remote tool calls for mobile clients
+- Added unified `Hook` trait and `TypeId`-based capability injection
+- ~55K lines / 10 crates vs. ZeroClaw's ~225K lines / 18 crates
 
 ## License
 

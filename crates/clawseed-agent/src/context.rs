@@ -107,8 +107,7 @@ mod tests {
         let policy = Arc::new(FakePolicy {
             name: "test".into(),
         });
-        let ctx = AgentToolContext::new(PathBuf::from("/tmp"))
-            .with_capability(policy);
+        let ctx = AgentToolContext::new(PathBuf::from("/tmp")).with_capability(policy);
 
         // Use the dyn ToolContext to access get() via the extension trait
         let ctx_ref: &dyn clawseed_api::tool_context::ToolContext = &ctx;

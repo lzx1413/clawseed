@@ -47,7 +47,10 @@ impl PairingGuard {
             return false;
         }
         let inner = self.inner.lock();
-        inner.paired_tokens.iter().any(|t| constant_time_eq(t, token))
+        inner
+            .paired_tokens
+            .iter()
+            .any(|t| constant_time_eq(t, token))
     }
 
     /// Get the current pairing code, if any.

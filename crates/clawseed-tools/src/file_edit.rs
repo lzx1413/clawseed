@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use serde_json::json;
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
+use serde_json::json;
 
 /// Edit a file by replacing an exact string match with new content.
 pub struct FileEditTool;
@@ -49,7 +49,11 @@ impl Tool for FileEditTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let path = args
             .get("path")
             .and_then(|v| v.as_str())
@@ -99,9 +103,7 @@ impl Tool for FileEditTool {
             return Ok(ToolResult {
                 success: false,
                 output: String::new(),
-                error: Some(format!(
-                    "old_string found {count} times; must be unique"
-                )),
+                error: Some(format!("old_string found {count} times; must be unique")),
             });
         }
 

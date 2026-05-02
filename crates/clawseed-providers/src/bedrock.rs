@@ -11,11 +11,11 @@ use crate::traits::{
     Provider, ProviderCapabilities, TokenUsage, ToolCall as ProviderToolCall, ToolsPayload,
 };
 use async_trait::async_trait;
+use clawseed_api::tool::ToolSpec;
 use hmac::{Hmac, Mac};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use clawseed_api::tool::ToolSpec;
 
 /// Hostname prefix for the Bedrock Runtime endpoint.
 const ENDPOINT_PREFIX: &str = "bedrock-runtime";

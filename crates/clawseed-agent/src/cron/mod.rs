@@ -1,4 +1,5 @@
-use crate::security::SecurityPolicy;use anyhow::{Result, anyhow, bail};
+use crate::security::SecurityPolicy;
+use anyhow::{Result, anyhow, bail};
 use clawseed_config::schema::Config;
 
 mod schedule;
@@ -7,9 +8,7 @@ mod types;
 
 pub mod scheduler;
 
-pub use schedule::{
-    next_run_for_schedule, schedule_cron_expression, validate_schedule,
-};
+pub use schedule::{next_run_for_schedule, schedule_cron_expression, validate_schedule};
 pub use store::{
     add_agent_job, all_overdue_jobs, due_jobs, get_job, list_jobs, list_runs, record_last_run,
     record_run, remove_job, reschedule_after_run, sync_declarative_jobs, update_job,
@@ -269,8 +268,15 @@ pub fn handle_command(cmd: CronCommands, config: &Config) -> Result<()> {
             allowed_tools,
         } => {
             // Need at least one field to update
-            if expression.is_none() && tz.is_none() && command.is_none() && name.is_none() && allowed_tools.is_empty() {
-                anyhow::bail!("At least one of expression, tz, command, name, or allowed_tools is required");
+            if expression.is_none()
+                && tz.is_none()
+                && command.is_none()
+                && name.is_none()
+                && allowed_tools.is_empty()
+            {
+                anyhow::bail!(
+                    "At least one of expression, tz, command, name, or allowed_tools is required"
+                );
             }
 
             // Validate command if changed (unapproved — CLI path requires explicit approval for medium-risk)
@@ -280,14 +286,20 @@ pub fn handle_command(cmd: CronCommands, config: &Config) -> Result<()> {
 
             // Build schedule patch: resolve existing job when tz-only or expression-only update
             let schedule = match (expression, tz) {
-                (Some(expr), Some(tz_val)) => Some(Schedule::Cron { expr, tz: Some(tz_val) }),
+                (Some(expr), Some(tz_val)) => Some(Schedule::Cron {
+                    expr,
+                    tz: Some(tz_val),
+                }),
                 (Some(expr), None) => {
                     let existing = get_job(config, &id).ok();
                     let existing_tz = existing.and_then(|j| match &j.schedule {
                         Schedule::Cron { tz, .. } => tz.clone(),
                         _ => None,
                     });
-                    Some(Schedule::Cron { expr, tz: existing_tz })
+                    Some(Schedule::Cron {
+                        expr,
+                        tz: existing_tz,
+                    })
                 }
                 (None, Some(tz_val)) => {
                     let existing = get_job(config, &id)?;
@@ -295,7 +307,10 @@ pub fn handle_command(cmd: CronCommands, config: &Config) -> Result<()> {
                         Schedule::Cron { expr, .. } => expr.clone(),
                         _ => anyhow::bail!("Cannot set tz on non-cron schedule"),
                     };
-                    Some(Schedule::Cron { expr: existing_expr, tz: Some(tz_val) })
+                    Some(Schedule::Cron {
+                        expr: existing_expr,
+                        tz: Some(tz_val),
+                    })
                 }
                 _ => None,
             };

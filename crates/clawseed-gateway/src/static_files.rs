@@ -1,11 +1,11 @@
 //! Static file serving for the web dashboard.
 
+use super::AppState;
 use axum::{
     extract::State,
     http::{StatusCode, header},
     response::{Html, IntoResponse},
 };
-use super::AppState;
 
 /// GET /_app/{*path} — serve static assets from web/dist
 pub async fn handle_static(
@@ -21,7 +21,12 @@ pub async fn handle_static(
     match tokio::fs::read(&file_path).await {
         Ok(bytes) => {
             let content_type = guess_content_type(&path);
-            (StatusCode::OK, [(header::CONTENT_TYPE, content_type)], bytes).into_response()
+            (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, content_type)],
+                bytes,
+            )
+                .into_response()
         }
         Err(_) => (StatusCode::NOT_FOUND, "File not found").into_response(),
     }

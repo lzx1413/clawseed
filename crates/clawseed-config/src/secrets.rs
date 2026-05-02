@@ -52,11 +52,7 @@ impl SecretStore {
                 let ciphertext = cipher
                     .encrypt(&nonce, plaintext.as_bytes())
                     .map_err(|e| anyhow::anyhow!("encryption failed: {e}"))?;
-                Ok(format!(
-                    "{}{}",
-                    ENCRYPTION_PREFIX,
-                    hex::encode(ciphertext)
-                ))
+                Ok(format!("{}{}", ENCRYPTION_PREFIX, hex::encode(ciphertext)))
             }
             None => Ok(plaintext.to_string()),
         }

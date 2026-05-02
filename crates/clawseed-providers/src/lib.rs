@@ -21,8 +21,11 @@ pub mod traits;
 
 // Re-export utility functions so that submodules can reference them as
 // `crate::sanitize_api_error`, `super::api_error`, etc.
-pub use options::{api_error, provider_runtime_options_from_config, resolve_provider_credential, sanitize_api_error, ProviderRuntimeOptions};
 pub use aliases::MAX_API_ERROR_CHARS;
+pub use options::{
+    ProviderRuntimeOptions, api_error, provider_runtime_options_from_config,
+    resolve_provider_credential, sanitize_api_error,
+};
 
 /// Create a resilient provider with fallback and retry.
 ///
@@ -122,7 +125,9 @@ pub fn create_resilient_provider_with_options(
 
         // ── China-region providers (resolved via aliases) ──
         name if aliases::is_glm_alias(name) => {
-            let url = base_url.unwrap_or_else(|| aliases::glm_base_url(name).unwrap_or("https://api.z.ai/api/paas/v4"));
+            let url = base_url.unwrap_or_else(|| {
+                aliases::glm_base_url(name).unwrap_or("https://api.z.ai/api/paas/v4")
+            });
             Box::new(OpenAiCompatibleProvider::new(
                 "GLM",
                 url,
@@ -131,16 +136,18 @@ pub fn create_resilient_provider_with_options(
             ))
         }
         name if aliases::is_minimax_alias(name) => {
-            let url = base_url.unwrap_or_else(|| aliases::minimax_base_url(name).unwrap_or("https://api.minimax.io/v1"));
-            Box::new(OpenAiCompatibleProvider::new(
-                "MiniMax",
-                url,
-                key_ref,
-                AuthStyle::Bearer,
-            ).with_merge_system_into_user())
+            let url = base_url.unwrap_or_else(|| {
+                aliases::minimax_base_url(name).unwrap_or("https://api.minimax.io/v1")
+            });
+            Box::new(
+                OpenAiCompatibleProvider::new("MiniMax", url, key_ref, AuthStyle::Bearer)
+                    .with_merge_system_into_user(),
+            )
         }
         name if aliases::is_moonshot_alias(name) => {
-            let url = base_url.unwrap_or_else(|| aliases::moonshot_base_url(name).unwrap_or("https://api.moonshot.cn/v1"));
+            let url = base_url.unwrap_or_else(|| {
+                aliases::moonshot_base_url(name).unwrap_or("https://api.moonshot.cn/v1")
+            });
             Box::new(OpenAiCompatibleProvider::new(
                 "Moonshot",
                 url,
@@ -149,7 +156,10 @@ pub fn create_resilient_provider_with_options(
             ))
         }
         name if aliases::is_qwen_alias(name) => {
-            let url = base_url.unwrap_or_else(|| aliases::qwen_base_url(name).unwrap_or("https://dashscope.aliyuncs.com/compatible-mode/v1"));
+            let url = base_url.unwrap_or_else(|| {
+                aliases::qwen_base_url(name)
+                    .unwrap_or("https://dashscope.aliyuncs.com/compatible-mode/v1")
+            });
             Box::new(OpenAiCompatibleProvider::new_with_vision(
                 "Qwen",
                 url,
@@ -169,7 +179,9 @@ pub fn create_resilient_provider_with_options(
             ))
         }
         name if aliases::is_zai_alias(name) => {
-            let url = base_url.unwrap_or_else(|| aliases::zai_base_url(name).unwrap_or("https://api.z.ai/api/coding/paas/v4"));
+            let url = base_url.unwrap_or_else(|| {
+                aliases::zai_base_url(name).unwrap_or("https://api.z.ai/api/coding/paas/v4")
+            });
             Box::new(OpenAiCompatibleProvider::new(
                 "Z.AI",
                 url,
@@ -257,11 +269,10 @@ pub fn create_resilient_provider_with_options(
             key_ref,
             AuthStyle::Bearer,
         )),
-        "sglang" | "vllm" | "synthetic" | "osaurus" | "deepmyst" | "deep-myst"
-        | "ovhcloud" | "ovh" | "astrai" | "avian" | "aihubmix"
-        | "siliconflow" | "silicon-flow" | "telnyx"
-        | "openai-codex" | "openai_codex" | "codex"
-        | "kimi-code" | "kimi_coding" | "kimi_for_coding" => {
+        "sglang" | "vllm" | "synthetic" | "osaurus" | "deepmyst" | "deep-myst" | "ovhcloud"
+        | "ovh" | "astrai" | "avian" | "aihubmix" | "siliconflow" | "silicon-flow" | "telnyx"
+        | "openai-codex" | "openai_codex" | "codex" | "kimi-code" | "kimi_coding"
+        | "kimi_for_coding" => {
             // These providers all use the OpenAI-compatible format.
             // base_url is required (or must come from config/env).
             let url = base_url.unwrap_or_else(|| {
@@ -301,7 +312,8 @@ pub fn create_resilient_provider_with_options(
                 Some(u) => u.to_string(),
                 None => {
                     // If the provider name looks like a URL, use it directly.
-                    if provider_name.starts_with("http://") || provider_name.starts_with("https://") {
+                    if provider_name.starts_with("http://") || provider_name.starts_with("https://")
+                    {
                         provider_name.to_string()
                     } else {
                         anyhow::bail!(

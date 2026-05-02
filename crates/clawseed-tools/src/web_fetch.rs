@@ -1,9 +1,9 @@
 use async_trait::async_trait;
+use clawseed_api::tool::{Tool, ToolResult};
+use clawseed_api::tool_context::ToolContext;
 use futures_util::StreamExt;
 use serde_json::json;
 use std::time::Duration;
-use clawseed_api::tool::{Tool, ToolResult};
-use clawseed_api::tool_context::ToolContext;
 
 /// Default maximum response size (1 MB).
 const _DEFAULT_MAX_RESPONSE_SIZE: usize = 1_048_576;
@@ -190,7 +190,11 @@ impl Tool for WebFetchTool {
         })
     }
 
-    async fn execute(&self, args: serde_json::Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        _ctx: &dyn ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let url = args
             .get("url")
             .and_then(|v| v.as_str())
@@ -645,13 +649,7 @@ mod tests {
 
     #[test]
     fn validate_requires_allowlist() {
-        let tool = WebFetchTool::new(
-            vec![],
-            vec![],
-            500_000,
-            30,
-            vec![],
-        );
+        let tool = WebFetchTool::new(vec![], vec![], 500_000, 30, vec![]);
         let err = tool
             .validate_url("https://example.com")
             .unwrap_err()
@@ -763,13 +761,7 @@ mod tests {
 
     #[test]
     fn truncate_over_limit() {
-        let tool = WebFetchTool::new(
-            vec!["example.com".into()],
-            vec![],
-            10,
-            30,
-            vec![],
-        );
+        let tool = WebFetchTool::new(vec!["example.com".into()], vec![], 10, 30, vec![]);
         let text = "hello world this is long";
         let truncated = tool.truncate_response(text);
         assert!(truncated.contains("[Response truncated"));

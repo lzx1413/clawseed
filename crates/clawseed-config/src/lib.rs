@@ -108,9 +108,14 @@ pub fn load_or_init_config() -> Result<Config> {
     }
 
     // No config file found — create default directory and config
-    let config_dir = default_config_dir().context("Cannot determine home directory for ~/.clawseed/")?;
-    std::fs::create_dir_all(&config_dir)
-        .with_context(|| format!("Failed to create config directory: {}", config_dir.display()))?;
+    let config_dir =
+        default_config_dir().context("Cannot determine home directory for ~/.clawseed/")?;
+    std::fs::create_dir_all(&config_dir).with_context(|| {
+        format!(
+            "Failed to create config directory: {}",
+            config_dir.display()
+        )
+    })?;
 
     let config_path = config_dir.join("clawseed.toml");
     let default_toml = Config::default_toml();

@@ -4,7 +4,40 @@
 
 ClawSeed is an AI agent runtime written in Rust. It connects to LLM providers (Anthropic, Gemini, Bedrock, OpenAI-compatible endpoints, and more), acts through pluggable tools, and serves clients over HTTP/WebSocket.
 
-Core design principle: **traits at boundaries, implementations outside, core never changes**.
+Core design principle: **runtime, not application**. ClawSeed provides crates that applications assemble — it does not bundle channels, dashboards, or integrations. See [Runtime vs Application](#runtime-vs-application) below.
+
+## Runtime vs Application
+
+An agent **runtime** should do exactly three things: receive messages, call an LLM, and execute tools. Everything else — where messages come from, how results are displayed, which integrations are wired up — belongs to the application layer.
+
+ClawSeed is a runtime. Applications built on it decide:
+
+- How users interact (CLI, mobile app, chat bot, web dashboard)
+- Which channels to connect (Discord, Telegram, email — or none)
+- Which tools to expose (built-in, remote from mobile, custom)
+- How to handle security and approval flows
+
+```toml
+# A Discord bot application
+[dependencies]
+clawseed-agent = "0.7"
+clawseed-providers = "0.7"
+serenity = "0.12"          # App chooses its own Discord SDK
+
+# An Android application
+[dependencies]
+clawseed-gateway = "0.7"
+clawseed-agent = "0.7"
+
+# A CLI tool
+[dependencies]
+clawseed-agent = "0.7"
+clawseed-tools = "0.7"
+```
+
+This is the fundamental architectural split from ZeroClaw. ZeroClaw bundled 40+ channel adapters, hardware peripherals, a TUI, a web dashboard, and an SOP engine into a single binary — making it an application, not a runtime. Adding a new channel meant modifying the runtime. Adding a new integration meant understanding the entire system.
+
+ClawSeed's approach: **the runtime provides crates with stable traits; applications compose them.** When a new need arises, you write a new application — you don't modify the runtime.
 
 ## Architecture Overview
 
