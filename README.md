@@ -138,11 +138,15 @@ git clone https://github.com/clawseed-labs/clawseed.git
 cd clawseed
 cargo build --release
 
-# Run the gateway
+# Run the gateway (HTTP/WebSocket server for mobile clients)
 ./target/release/clawseed gateway --host 0.0.0.0 --port 3000
+
+# Or start a local interactive chat session (no server needed)
+./target/release/clawseed chat
+./target/release/clawseed chat --model gpt-4o --temperature 0.5
 ```
 
-The gateway reads `~/.clawseed/config.toml`. Minimal config:
+Both modes read `~/.clawseed/config.toml`. Minimal config:
 
 ```toml
 [providers.models.default]

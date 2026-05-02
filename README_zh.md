@@ -138,11 +138,15 @@ git clone https://github.com/clawseed-labs/clawseed.git
 cd clawseed
 cargo build --release
 
-# 启动网关
+# 启动网关（HTTP/WebSocket 服务器，供移动客户端连接）
 ./target/release/clawseed gateway --host 0.0.0.0 --port 3000
+
+# 或启动本地交互式对话（无需启动服务器）
+./target/release/clawseed chat
+./target/release/clawseed chat --model gpt-4o --temperature 0.5
 ```
 
-网关读取 `~/.clawseed/config.toml`。最小配置：
+两种模式都读取 `~/.clawseed/config.toml`。最小配置：
 
 ```toml
 [providers.models.default]

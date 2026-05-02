@@ -61,6 +61,7 @@ which = "8.0"
 tempfile = "3.26"
 wiremock = "0.6"
 pdf-extract = "0.7"
+rustyline = "15"
 
 [profile.dev]
 incremental = true

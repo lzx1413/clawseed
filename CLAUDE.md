@@ -20,6 +20,14 @@ Run the gateway:
 ./target/release/clawseed gateway --host 0.0.0.0 --port 3000
 ```
 
+Run local interactive chat:
+```bash
+./target/release/clawseed chat                              # Default config
+./target/release/clawseed chat --model gpt-4o               # Override model
+./target/release/clawseed chat --temperature 0.5             # Override temperature
+./target/release/clawseed chat --system-prompt "You are..."  # Override system prompt
+```
+
 ## Architecture
 
 ClawSeed is a Rust AI agent runtime with trait-based plugin architecture. 8 workspace crates with unidirectional dependency flow:
