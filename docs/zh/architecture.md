@@ -209,6 +209,71 @@ Agent::from_config_with_registry(&config, Some(Arc::new(reg))).await?;
 - **Hook 管线**：`Hook::before_tool_call()` 可取消或修改任何工具调用；SecurityPolicy 始终作为管线的第一个 Hook
 - **工具过滤**：`allowed_tools` / `denied_tools` glob 模式过滤，`mcp_tool_filters` 按 MCP 服务器过滤
 
+## 会话历史管理
+
+每次 agent turn 都会向对话历史（`Vec<ChatMessage>`）追加消息，并在每次请求时发送给 LLM。无限增长的历史会导致 token 溢出和成本失控，因此 agent 会自动裁剪：
+
+- **`trim_history()`** — 当历史消息数超过 `max_history`（默认 50）时，删除最早的非 system 消息，始终保留位置 0 的 system prompt
+- **`truncate_tool_result()`** — 将过大的工具输出截断到 `max_chars`，保留头部（2/3）和尾部（1/3），中间插入 `[... N characters truncated ...]` 标记
+- **`estimate_history_tokens()`** — 粗略估算 token 数（每条消息 `content.len() / 4 + 4`），用于预算决策
+
+```
+System prompt（始终保留）
+  ↓
+用户消息 ─→ LLM 响应 ─→ 工具结果 ─→ ...
+  ↑                                      │
+  └──── trim_history() 删除最早的消息 ───┘
+```
+
+这确保长时间运行的会话保持在 token 预算内，同时不丢失 system prompt。
+
+## 记忆系统
+
+历史（History）是发送给 LLM 的短期对话上下文；记忆（Memory）是跨会话持久化的长期知识存储。它们服务于不同目的：
+
+| | 历史（History） | 记忆（Memory） |
+|---|---------|--------|
+| **范围** | 当前会话 | 跨会话，持久化 |
+| **存储** | 内存 `Vec<ChatMessage>` | SQLite 数据库 |
+| **生命周期** | 会话结束时清除 | 重启后依然存在 |
+| **访问方式** | 自动（每轮发送给 LLM） | 显式（工具调用 `memory.recall()`） |
+| **内容** | 完整对话文本 | 带元数据的结构化条目 |
+
+记忆由 `clawseed-memory` 实现，遵循 `clawseed-api` 中的 `Memory` trait：
+
+```
+┌─────────────────────────────────────┐
+│            Memory trait              │
+│  store / recall / get / list /      │
+│  forget / count / health_check      │
+└─────────────┬───────────────────────┘
+              │
+     ┌────────┴────────┐
+     │                  │
+┌────┴─────┐     ┌─────┴──────┐
+│SqliteMemory│    │ NoneMemory │
+│  (默认)    │    │  (兜底)    │
+└────┬──────┘    └────────────┘
+     │
+┌────┴──────────────────────────────┐
+│            检索引擎                │
+│  ┌──────────────┐ ┌─────────────┐ │
+│  │  向量相似度   │ │  BM25 关键词│ │
+│  │  (embedding) │ │    搜索     │ │
+│  └──────┬───────┘ └──────┬──────┘ │
+│         └────┬───────────┘        │
+│              ↓                     │
+│         混合排序 (Hybrid)          │
+└────────────────────────────────────┘
+```
+
+核心特性：
+- **混合检索**：向量相似度（语义）与 BM25（关键词）加权融合，由 `SearchMode` 枚举控制（`Hybrid` / `Embedding` / `Bm25`）
+- **记忆分类**：`Core`（持久化知识）、`Daily`（临时信息）、`Conversation`（对话上下文）、`Custom(String)`（用户自定义）
+- **命名空间隔离**：`recall_namespaced()` 按命名空间过滤，支持多租户或按用户隔离
+- **导出**：`export()` 配合 `ExportFilter` 支持按命名空间、会话、分类和时间范围过滤
+- **优雅降级**：SQLite 初始化失败时使用 `NoneMemory` 作为无操作兜底——依赖记忆的工具直接跳过该功能
+
 ## 设计原则
 
 1. **显式优于隐式** — `all_tools()` 列出每个工具，能力集一目了然

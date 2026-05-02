@@ -209,6 +209,72 @@ Replaces the previous 300+ line match chain. Android/embedded scenarios can pass
 - **Hook pipeline**: `Hook::before_tool_call()` can cancel or modify any tool call; SecurityPolicy is always the first hook in the pipeline
 - **Tool filtering**: `allowed_tools` / `denied_tools` glob patterns, `mcp_tool_filters` per MCP server
 
+## History Management
+
+Each agent turn appends messages to a conversation history (`Vec<ChatMessage>`) that is sent to the LLM on every request. Unbounded history growth causes token overflow and cost escalation, so the agent applies automatic trimming:
+
+- **`trim_history()`** — Drops the oldest non-system messages when history exceeds `max_history` (default 50), always preserving the system prompt at position 0
+- **`truncate_tool_result()`** — Truncates oversized tool output to `max_chars`, keeping the head (2/3) and tail (1/3) with a `[... N characters truncated ...]` marker
+- **`estimate_history_tokens()`** — Rough token count estimation (`content.len() / 4 + 4` per message) for budget decisions
+
+```
+System prompt (always kept)
+  ↓
+User message ─→ LLM response ─→ tool result ─→ ...
+  ↑                                            │
+  └──── trim_history() removes oldest ─────────┘
+```
+
+This ensures long-running sessions remain within token budgets without losing the system prompt.
+
+## Memory System
+
+History is the short-term conversation context sent to the LLM; Memory is the long-term knowledge store that persists across sessions. They serve different purposes:
+
+| | History | Memory |
+|---|---------|--------|
+| **Scope** | Current session | Cross-session, persistent |
+| **Storage** | In-memory `Vec<ChatMessage>` | SQLite database |
+| **Lifecycle** | Cleared when session ends | Survives restarts |
+| **Access** | Automatic (sent to LLM each turn) | Explicit (tools call `memory.recall()`) |
+| **Content** | Full conversation text | Structured entries with metadata |
+
+Memory is backed by `clawseed-memory`, implementing the `Memory` trait from `clawseed-api`:
+
+```
+┌─────────────────────────────────────┐
+│            Memory trait              │
+│  store / recall / get / list /      │
+│  forget / count / health_check      │
+└─────────────┬───────────────────────┘
+              │
+     ┌────────┴────────┐
+     │                  │
+┌────┴─────┐     ┌─────┴──────┐
+│SqliteMemory│    │ NoneMemory │
+│ (default)  │    │ (fallback) │
+└────┬──────┘    └────────────┘
+     │
+┌────┴──────────────────────────────┐
+│          Retrieval Engine          │
+│  ┌──────────────┐ ┌─────────────┐ │
+│  │   Vector     │ │    BM25     │ │
+│  │  Similarity  │ │  Keyword    │ │
+│  │  (embedding) │ │  Search     │ │
+│  └──────┬───────┘ └──────┬──────┘ │
+│         └────┬───────────┘        │
+│              ↓                     │
+│        Hybrid Ranking              │
+└────────────────────────────────────┘
+```
+
+Key features:
+- **Hybrid search**: Combines vector similarity (semantic) and BM25 (keyword) with configurable weights; controlled by `SearchMode` enum (`Hybrid` / `Embedding` / `Bm25`)
+- **Memory categories**: `Core` (persistent knowledge), `Daily` (ephemeral), `Conversation` (context), `Custom(String)` (user-defined)
+- **Namespace isolation**: `recall_namespaced()` filters by namespace for multi-tenant or per-user separation
+- **Export**: `export()` with `ExportFilter` supports filtering by namespace, session, category, and time range
+- **Graceful degradation**: If SQLite initialization fails, `NoneMemory` is used as a no-op fallback — tools that depend on memory simply skip the feature
+
 ## Design Principles
 
 1. **Explicit over implicit** — `all_tools()` lists every tool; the full capability set is visible at a glance

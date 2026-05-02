@@ -954,7 +954,7 @@ impl Memory for SqliteMemory {
         tokio::task::spawn_blocking(move || -> anyhow::Result<usize> {
             let conn = conn.lock();
             let affected = conn.execute(
-                "DELETE FROM memories WHERE category = ?1",
+                "DELETE FROM memories WHERE namespace = ?1",
                 params![namespace],
             )?;
             #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
@@ -2064,13 +2064,13 @@ mod tests {
     #[tokio::test]
     async fn sqlite_purge_namespace_removes_all_matching_entries() {
         let (_tmp, mem) = temp_sqlite();
-        mem.store("a1", "data1", MemoryCategory::Custom("ns1".into()), None)
+        mem.store_with_metadata("a1", "data1", MemoryCategory::Core, None, Some("ns1"), None)
             .await
             .unwrap();
-        mem.store("a2", "data2", MemoryCategory::Custom("ns1".into()), None)
+        mem.store_with_metadata("a2", "data2", MemoryCategory::Core, None, Some("ns1"), None)
             .await
             .unwrap();
-        mem.store("b1", "data3", MemoryCategory::Custom("ns2".into()), None)
+        mem.store_with_metadata("b1", "data3", MemoryCategory::Core, None, Some("ns2"), None)
             .await
             .unwrap();
 
@@ -2082,10 +2082,10 @@ mod tests {
     #[tokio::test]
     async fn sqlite_purge_namespace_preserves_other_namespaces() {
         let (_tmp, mem) = temp_sqlite();
-        mem.store("a1", "data1", MemoryCategory::Custom("ns1".into()), None)
+        mem.store_with_metadata("a1", "data1", MemoryCategory::Core, None, Some("ns1"), None)
             .await
             .unwrap();
-        mem.store("b1", "data2", MemoryCategory::Custom("ns2".into()), None)
+        mem.store_with_metadata("b1", "data2", MemoryCategory::Core, None, Some("ns2"), None)
             .await
             .unwrap();
         mem.store("c1", "data3", MemoryCategory::Core, None)
@@ -2101,9 +2101,7 @@ mod tests {
 
         let remaining = mem.list(None, None).await.unwrap();
         assert!(
-            remaining
-                .iter()
-                .all(|e| e.category != MemoryCategory::Custom("ns1".into()))
+            remaining.iter().all(|e| e.namespace != "ns1")
         );
     }
 
@@ -2111,10 +2109,12 @@ mod tests {
     async fn sqlite_purge_namespace_returns_count() {
         let (_tmp, mem) = temp_sqlite();
         for i in 0..5 {
-            mem.store(
+            mem.store_with_metadata(
                 &format!("k{i}"),
                 "data",
-                MemoryCategory::Custom("target".into()),
+                MemoryCategory::Core,
+                None,
+                Some("target"),
                 None,
             )
             .await
