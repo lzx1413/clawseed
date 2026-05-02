@@ -40,3 +40,4 @@ wiremock = { workspace = true }
 
 [features]
 rag-pdf = ["pdf-extract"]
+android = []

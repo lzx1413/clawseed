@@ -41,10 +41,12 @@ http-body-util = "0.1"
 rcgen = { version = "0.13", optional = true }
 tempfile = { workspace = true, optional = true }
 chrono = { workspace = true }
+rusqlite = { workspace = true }
 rand = "0.9"
 
 [features]
 default = []
+android = ["clawseed-agent/android", "clawseed-tools/android"]
 channel-nostr = []
 observability-prometheus = []
 tls-tests = ["dep:rcgen", "dep:tempfile"]

@@ -25,4 +25,4 @@ rustyline = { workspace = true }
 
 [features]
 default = ["android"]
-android = []
+android = ["clawseed-agent/android", "clawseed-gateway/android"]

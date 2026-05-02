@@ -5,18 +5,26 @@ use clawseed_config::schema::Config;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+#[cfg(not(feature = "android"))]
 use crate::backup_tool::BackupTool;
 use crate::calculator::CalculatorTool;
 use crate::content_search::ContentSearchTool;
+#[cfg(not(feature = "android"))]
 use crate::cron_add::CronAddTool;
+#[cfg(not(feature = "android"))]
 use crate::cron_list::CronListTool;
+#[cfg(not(feature = "android"))]
 use crate::cron_remove::CronRemoveTool;
+#[cfg(not(feature = "android"))]
 use crate::cron_run::CronRunTool;
+#[cfg(not(feature = "android"))]
 use crate::cron_runs::CronRunsTool;
+#[cfg(not(feature = "android"))]
 use crate::cron_update::CronUpdateTool;
 use crate::file_edit::FileEditTool;
 use crate::file_read::FileReadTool;
 use crate::file_write::FileWriteTool;
+#[cfg(not(feature = "android"))]
 use crate::git_operations::GitOperationsTool;
 use crate::glob_search::GlobSearchTool;
 use crate::http_request::HttpRequestTool;
@@ -48,26 +56,30 @@ use crate::web_search_tool::WebSearchTool;
 /// Network tools (http_request, web_fetch, web_search) are included only
 /// when their `enabled` flag is set in the config. When `allowed_domains`
 /// is empty and the tool is enabled, all domains are permitted.
-pub fn all_tools(workspace_dir: PathBuf, config: &Config) -> Vec<Box<dyn Tool>> {
+pub fn all_tools(#[cfg_attr(feature = "android", allow(unused))] workspace_dir: PathBuf, config: &Config) -> Vec<Box<dyn Tool>> {
     let none_memory = Arc::new(clawseed_memory::none::NoneMemory::new())
         as Arc<dyn clawseed_api::memory_traits::Memory>;
 
     let mut tools: Vec<Box<dyn Tool>> = vec![
-        Box::new(BackupTool::new(workspace_dir.clone(), Vec::new(), 10)),
         Box::new(CalculatorTool::new()),
         Box::new(ContentSearchTool::new()),
-        Box::new(CronAddTool::new()),
-        Box::new(CronListTool::new()),
-        Box::new(CronRemoveTool::new()),
-        Box::new(CronRunTool::new()),
-        Box::new(CronRunsTool::new()),
-        Box::new(CronUpdateTool::new()),
         Box::new(FileEditTool::new()),
         Box::new(FileReadTool::new()),
         Box::new(FileWriteTool::new()),
-        Box::new(GitOperationsTool::new(workspace_dir.clone())),
         Box::new(GlobSearchTool::new()),
     ];
+
+    #[cfg(not(feature = "android"))]
+    {
+        tools.push(Box::new(BackupTool::new(workspace_dir.clone(), Vec::new(), 10)));
+        tools.push(Box::new(CronAddTool::new()));
+        tools.push(Box::new(CronListTool::new()));
+        tools.push(Box::new(CronRemoveTool::new()));
+        tools.push(Box::new(CronRunTool::new()));
+        tools.push(Box::new(CronRunsTool::new()));
+        tools.push(Box::new(CronUpdateTool::new()));
+        tools.push(Box::new(GitOperationsTool::new(workspace_dir.clone())));
+    }
 
     // http_request: only include when enabled
     if config.http_request.enabled {
@@ -112,9 +124,11 @@ pub fn all_tools(workspace_dir: PathBuf, config: &Config) -> Vec<Box<dyn Tool>> 
 
     // web_search: only include when enabled
     if config.web_search.enabled {
-        tools.push(Box::new(WebSearchTool::new(
-            "duckduckgo".to_string(),
+        let provider = config.web_search.provider.clone().unwrap_or_default();
+        tools.push(Box::new(WebSearchTool::new_with_config(
+            provider,
             config.web_search.brave_api_key.clone(),
+            config.web_search.searxng_instance_url.clone(),
             5,  // max_results
             15, // timeout_secs
         )));

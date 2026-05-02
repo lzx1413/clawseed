@@ -4,19 +4,27 @@
 //! Runtime capabilities (LLM, memory, security) are accessed via
 //! `ctx.get::<T>()` from ToolContext.
 
+#[cfg(not(feature = "android"))]
 pub mod backup_tool;
 pub mod calculator;
 pub mod canvas;
 pub mod content_search;
+#[cfg(not(feature = "android"))]
 pub mod cron_add;
+#[cfg(not(feature = "android"))]
 pub mod cron_list;
+#[cfg(not(feature = "android"))]
 pub mod cron_remove;
+#[cfg(not(feature = "android"))]
 pub mod cron_run;
+#[cfg(not(feature = "android"))]
 pub mod cron_runs;
+#[cfg(not(feature = "android"))]
 pub mod cron_update;
 pub mod file_edit;
 pub mod file_read;
 pub mod file_write;
+#[cfg(not(feature = "android"))]
 pub mod git_operations;
 pub mod glob_search;
 pub mod http_request;

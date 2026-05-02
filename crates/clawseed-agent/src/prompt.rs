@@ -40,6 +40,7 @@ impl SystemPromptBuilder {
             sections: vec![
                 Box::new(DateTimeSection),
                 Box::new(IdentitySection),
+                Box::new(PlatformSection),
                 Box::new(WorkspaceSection),
                 Box::new(ToolsSection),
                 Box::new(SafetySection),
@@ -71,6 +72,7 @@ impl SystemPromptBuilder {
 
 pub struct DateTimeSection;
 pub struct IdentitySection;
+pub struct PlatformSection;
 pub struct WorkspaceSection;
 pub struct ToolsSection;
 pub struct SafetySection;
@@ -94,6 +96,36 @@ impl PromptSection for DateTimeSection {
              Date: {year:04}-{month:02}-{day:02}\n\
              Time: {hour:02}:{minute:02}:{second:02} ({tz})"
         ))
+    }
+}
+
+impl PromptSection for PlatformSection {
+    fn name(&self) -> &str {
+        "platform"
+    }
+
+    fn build(&self, _ctx: &PromptContext<'_>) -> Result<String> {
+        let os = std::env::consts::OS;
+        let arch = std::env::consts::ARCH;
+
+        #[allow(unused_mut)]
+        let mut out = format!("## Platform Environment\n\nOS: {os} ({arch})\n");
+
+        #[cfg(feature = "android")]
+        {
+            out.push_str(
+                "Shell: /system/bin/sh (mksh) — toybox commands only\n\
+                 Available commands: ls, cat, grep, cp, mv, mkdir, rm, rmdir, chmod, chown, \
+                 ps, id, wc, sort, head, tail, find, xargs, sed, awk, df, du, mount, \
+                 ping, ifconfig, echo, env, date, stat, touch, ln, basename, dirname, \
+                 readlink, realpath, md5sum, sha256sum, sleep, kill, pidof, uname, whoami\n\
+                 IMPORTANT: Full Linux tools (bash, python, git, curl, apt, pip, npm, wget, \
+                 ssh, systemctl) are NOT available. Only generate commands using the tools \
+                 listed above.",
+            );
+        }
+
+        Ok(out)
     }
 }
 
@@ -225,6 +257,7 @@ mod tests {
 
         let prompt = builder.build(&ctx).unwrap();
         assert!(prompt.contains("## CRITICAL CONTEXT"));
+        assert!(prompt.contains("## Platform Environment"));
         assert!(prompt.contains("## Workspace"));
         assert!(prompt.contains("## Tools"));
         assert!(prompt.contains("## Safety"));
