@@ -2,14 +2,6 @@
 
 use async_trait::async_trait;
 
-/// A message from a channel.
-#[derive(Debug, Clone)]
-pub struct ChannelMessage {
-    pub content: String,
-    pub sender: Option<String>,
-    pub channel_name: Option<String>,
-}
-
 /// Channel trait for receiving and sending messages.
 #[async_trait]
 pub trait Channel: Send + Sync + 'static {

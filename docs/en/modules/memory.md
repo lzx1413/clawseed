@@ -34,16 +34,20 @@
 
 ## Core Modules
 
-### traits.rs — Memory Trait
+### Memory Trait (defined in clawseed-api)
 
 ```rust
 #[async_trait]
 pub trait Memory: Send + Sync {
-    async fn store(&self, content: &str, category: &str) -> Result<String>;
-    async fn recall(&self, query: &str, limit: usize) -> Result<Vec<MemoryEntry>>;
-    async fn forget(&self, id: &str) -> Result<()>;
-    async fn purge(&self, before: DateTime<Utc>) -> Result<usize>;
-    async fn export(&self) -> Result<Vec<MemoryEntry>>;
+    fn name(&self) -> &str;
+    async fn store(&self, key: &str, content: &str, category: MemoryCategory, session_id: Option<&str>) -> Result<()>;
+    async fn recall(&self, query: &str, limit: usize, session_id: Option<&str>, since: Option<&str>, until: Option<&str>) -> Result<Vec<MemoryEntry>>;
+    async fn get(&self, key: &str) -> Result<Option<MemoryEntry>>;
+    async fn list(&self, category: Option<&MemoryCategory>, session_id: Option<&str>) -> Result<Vec<MemoryEntry>>;
+    async fn forget(&self, key: &str) -> Result<bool>;
+    async fn count(&self) -> Result<usize>;
+    async fn health_check(&self) -> bool;
+    // ... more methods with defaults: purge_namespace, purge_session, recall_namespaced, export, store_with_metadata
 }
 ```
 
@@ -53,8 +57,10 @@ pub trait Memory: Send + Sync {
 
 | Table | Fields | Description |
 |-------|--------|-------------|
-| `messages` | id, content, category, metadata, created_at | Message storage |
-| `embeddings` | id, message_id, vector, model | Vector embeddings |
+| `memories` | id, key, content, category, timestamp, session_id, namespace, importance, superseded_by | Memory storage |
+| `embeddings` | id, memory_id, vector, model | Vector embeddings |
+
+Uses FTS5 virtual table for BM25 keyword search, and BLOB-stored vectors for cosine similarity.
 
 ### retrieval.rs — Hybrid Retrieval
 
@@ -104,9 +110,10 @@ Filter memories via the `category` field:
 
 | Category | Description |
 |----------|-------------|
-| `context` | Conversation context |
-| `user_profile` | User preferences |
-| `tool_output` | Tool output |
+| `Core` | Core persistent knowledge |
+| `Daily` | Daily/ephemeral information |
+| `Conversation` | Conversation context |
+| `Custom(String)` | User-defined categories |
 
 ## Factory Function
 
@@ -123,9 +130,5 @@ pub fn create_memory(config: &MemoryConfig) -> Arc<dyn Memory>
 ```toml
 [memory]
 backend = "sqlite"
-search_mode = "hybrid"    # hybrid / embedding / bm25
-
-[memory.embedding]
-endpoint = "http://localhost:11434/api/embeddings"
-model = "nomic-embed-text"
+auto_save = true
 ```

@@ -30,9 +30,29 @@ pub struct Config {
     pub providers: ProvidersConfig,
     pub agent: AgentConfig,
     pub gateway: GatewayConfig,
+    pub storage: StorageConfig,
+    pub reliability: ReliabilityConfig,
+    pub secrets: SecretsConfig,
+    pub runtime: RuntimeConfig,
     pub memory: MemoryConfig,
     pub autonomy: AutonomyConfig,
-    pub reliability: ReliabilityConfig,
+    pub cron: CronConfig,
+    pub scheduler: SchedulerConfig,
+    pub backup: BackupConfig,
+    pub composio: ComposioConfig,
+    pub mcp: McpConfig,
+    pub hooks: HooksConfig,
+    pub tunnel: TunnelConfig,
+    pub nodes: NodesConfig,
+    pub cost: CostConfig,
+    pub channels: ChannelsConfig,
+    pub browser: BrowserConfig,
+    pub http_request: HttpRequestConfig,
+    pub web_fetch: WebFetchConfig,
+    pub transcription: TranscriptionConfig,
+    pub web_search: WebSearchConfig,
+    pub agents: HashMap<String, AgentEntryConfig>,
+    pub locale: Option<String>,
     // ...
 }
 ```
@@ -41,16 +61,33 @@ pub struct Config {
 
 ```rust
 pub struct ProvidersConfig {
+    pub default: Option<String>,
+    pub default_model: Option<String>,
+    pub default_api_key: Option<String>,
+    pub default_base_url: Option<String>,
+    pub default_timeout_secs: Option<u64>,
+    pub extra_headers: HashMap<String, String>,
+    pub models: HashMap<String, ModelProviderConfig>,
+    pub model_routes: Vec<ModelRouteConfig>,
+    pub embedding_routes: Vec<EmbeddingRouteConfig>,
     pub fallback: Option<String>,
-    pub models: HashMap<String, ModelConfig>,
+    pub reasoning_effort: Option<String>,
+    pub reasoning_enabled: Option<bool>,
 }
 
-pub struct ModelConfig {
-    pub provider: String,        // "anthropic", "gemini", "openai", etc.
-    pub model: String,           // 模型名称
-    pub api_key: Option<String>, // API 密钥（支持 ${ENV_VAR} 引用）
-    pub base_url: Option<String>,// 自定义端点
-    pub temperature: Option<f32>,// 温度
+pub struct ModelProviderConfig {
+    pub api_key: Option<String>,
+    pub name: Option<String>,
+    pub base_url: Option<String>,
+    pub api_path: Option<String>,
+    pub model: Option<String>,
+    pub temperature: Option<f64>,
+    pub timeout_secs: Option<u64>,
+    pub extra_headers: HashMap<String, String>,
+    pub wire_api: Option<String>,
+    pub max_tokens: Option<u32>,
+    pub provider_extra: Option<serde_json::Value>,
+    pub merge_system_into_user: bool,
 }
 ```
 
@@ -79,8 +116,23 @@ pub struct AgentConfig {
 pub struct GatewayConfig {
     pub host: String,
     pub port: u16,
-    pub tls: Option<TlsConfig>,
-    pub session_backend: SessionBackendConfig,
+    pub timeout_secs: u64,
+    pub path_prefix: Option<String>,
+    pub session_persistence: bool,
+    pub session_ttl_hours: u32,
+    pub tls: Option<GatewayTlsConfig>,
+    pub enable_cors: bool,
+    pub require_pairing: bool,
+    pub paired_tokens: Vec<String>,
+    pub allow_public_bind: bool,
+    pub pair_rate_limit_per_minute: u32,
+    pub webhook_rate_limit_per_minute: u32,
+    pub rate_limit_max_keys: usize,
+    pub idempotency_ttl_secs: u64,
+    pub idempotency_max_keys: usize,
+    pub trust_forwarded_headers: bool,
+    pub web_dist_dir: Option<String>,
+    pub pairing_dashboard: PairingDashboardConfig,
 }
 ```
 
@@ -89,8 +141,14 @@ pub struct GatewayConfig {
 ```rust
 pub struct MemoryConfig {
     pub backend: String,           // "sqlite" / "none"
-    pub search_mode: SearchMode,   // Hybrid / Embedding / Bm25
-    pub embedding: EmbeddingConfig,
+    pub auto_save: bool,
+    pub min_relevance_score: f64,
+    pub response_cache_enabled: bool,
+    pub response_cache_ttl_minutes: u64,
+    pub response_cache_max_entries: usize,
+    pub response_cache_hot_entries: usize,
+    pub namespace: Option<String>,
+    pub qdrant: QdrantConfig,
 }
 ```
 
@@ -99,8 +157,11 @@ pub struct MemoryConfig {
 ```rust
 pub struct AutonomyConfig {
     pub level: AutonomyLevel,      // ReadOnly / Supervised / Full
+    pub auto_approve: Vec<String>,
+    pub always_ask: Vec<String>,
     pub allowed_commands: Vec<String>,
-    pub max_actions_per_hour: Option<u32>,
+    pub non_cli_excluded_tools: Vec<String>,
+    pub max_actions_per_hour: u32,
 }
 ```
 
@@ -108,8 +169,13 @@ pub struct AutonomyConfig {
 
 ```rust
 pub struct ReliabilityConfig {
-    pub max_retries: usize,
-    pub fallback_model: Option<String>,
+    pub max_retries: u32,
+    pub retry_delay_secs: u64,
+    pub scheduler_poll_secs: u64,
+    pub enable_fallback: bool,
+    pub scheduler_retries: u32,
+    pub provider_backoff_ms: u64,
+    pub api_keys: Vec<String>,
 }
 ```
 
@@ -123,10 +189,15 @@ pub struct ReliabilityConfig {
 | `CLAWSEED_MODEL` | 默认模型 |
 | `CLAWSEED_API_KEY` | API 密钥 |
 | `CLAWSEED_PROVIDER_URL` | 提供商 URL |
+| `CLAWSEED_PROVIDER_TIMEOUT_SECS` | 提供商超时 |
 | `CLAWSEED_GATEWAY_HOST` | 网关监听地址 |
 | `CLAWSEED_GATEWAY_PORT` | 网关监听端口 |
 | `CLAWSEED_WORKSPACE` | 工作目录 |
-| `CLAWSEED_CONFIG_DIR` | 配置文件目录 |
+| `CLAWSEED_EXTRA_HEADERS` | 额外 HTTP 头（逗号分隔 key=value） |
+| `CLAWSEED_TEMPERATURE` | 采样温度 |
+| `CLAWSEED_STORAGE_DB_URL` | 存储 DB URL |
+| `CLAWSEED_WEB_SEARCH_ENABLED` | 启用网页搜索 |
+| `CLAWSEED_WEB_SEARCH_PROVIDER` | 网页搜索提供商 |
 
 ## 配置示例
 
@@ -159,7 +230,7 @@ port = 3000
 
 [memory]
 backend = "sqlite"
-search_mode = "hybrid"
+auto_save = true
 
 [autonomy]
 level = "supervised"
@@ -167,8 +238,11 @@ allowed_commands = ["ls", "cat", "grep", "find", "git"]
 max_actions_per_hour = 100
 
 [reliability]
-max_retries = 3
-fallback_model = "fast"
+max_retries = 2
+provider_backoff_ms = 500
+
+[secrets]
+encrypt = true
 
 [hooks]
 enabled = true

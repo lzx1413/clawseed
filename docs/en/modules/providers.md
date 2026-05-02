@@ -45,17 +45,20 @@ Venice, Together, Fireworks, Perplexity, Cohere, Novita, NVIDIA, GitHub Copilot,
 
 ## Core Modules
 
-### traits.rs — Provider Trait
+### Provider Trait (defined in clawseed-api)
 
 ```rust
 #[async_trait]
 pub trait Provider: Send + Sync {
-    async fn chat(&self, request: ChatRequest) -> Result<ChatResponse>;
+    async fn chat_with_system(&self, system_prompt: Option<&str>, message: &str, model: &str, temperature: Option<f64>) -> Result<String>;
+    async fn chat(&self, request: ChatRequest<'_>, model: &str, temperature: Option<f64>) -> Result<ChatResponse>;
     fn supports_native_tools(&self) -> bool;
+    fn stream_chat(&self, request: ChatRequest<'_>, model: &str, temperature: Option<f64>, options: StreamOptions) -> BoxStream<'static, StreamResult<StreamEvent>>;
+    // ... more methods with defaults
 }
 ```
 
-### compatible.rs — OpenAI-Compatible Client
+### compatible/mod.rs — OpenAI-Compatible Client
 
 A generic client that adapts to different providers through configuration:
 

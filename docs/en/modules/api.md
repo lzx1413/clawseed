@@ -13,13 +13,18 @@
 ```rust
 #[async_trait]
 pub trait Provider: Send + Sync {
-    async fn chat(&self, request: ChatRequest) -> Result<ChatResponse>;
+    async fn chat_with_system(&self, system_prompt: Option<&str>, message: &str, model: &str, temperature: Option<f64>) -> Result<String>;
+    async fn chat(&self, request: ChatRequest<'_>, model: &str, temperature: Option<f64>) -> Result<ChatResponse>;
     fn supports_native_tools(&self) -> bool;
+    fn stream_chat(&self, request: ChatRequest<'_>, model: &str, temperature: Option<f64>, options: StreamOptions) -> BoxStream<'static, StreamResult<StreamEvent>>;
+    // ... more methods with defaults
 }
 ```
 
-- `chat()` — Send a chat request, return the LLM response
+- `chat_with_system()` — Core chat method; all other chat methods delegate to this
+- `chat()` — Full chat with tool specs; returns `ChatResponse` with optional tool calls
 - `supports_native_tools()` — Whether the provider supports native tool calling protocol (e.g., Anthropic's tool_use)
+- `stream_chat()` — Streaming variant returning `BoxStream<StreamEvent>`
 - Providers without native tool support use `XmlToolDispatcher` (◁▷ markers)
 
 ### Tool — Agent-Callable Capability
@@ -67,32 +72,17 @@ pub enum HookResult {
 ```rust
 #[async_trait]
 pub trait Memory: Send + Sync {
-    async fn store(&self, content: &str, category: &str) -> Result<String>;
-    async fn recall(&self, query: &str, limit: usize) -> Result<Vec<MemoryEntry>>;
-    async fn forget(&self, id: &str) -> Result<()>;
-    async fn purge(&self, before: DateTime<Utc>) -> Result<usize>;
-    async fn export(&self) -> Result<Vec<MemoryEntry>>;
+    fn name(&self) -> &str;
+    async fn store(&self, key: &str, content: &str, category: MemoryCategory, session_id: Option<&str>) -> Result<()>;
+    async fn recall(&self, query: &str, limit: usize, session_id: Option<&str>, since: Option<&str>, until: Option<&str>) -> Result<Vec<MemoryEntry>>;
+    async fn get(&self, key: &str) -> Result<Option<MemoryEntry>>;
+    async fn list(&self, category: Option<&MemoryCategory>, session_id: Option<&str>) -> Result<Vec<MemoryEntry>>;
+    async fn forget(&self, key: &str) -> Result<bool>;
+    async fn count(&self) -> Result<usize>;
+    async fn health_check(&self) -> bool;
+    // ... more methods with defaults: purge_namespace, purge_session, recall_namespaced, export, store_with_metadata
 }
 ```
-
-### Observer — Metrics and Tracing
-
-```rust
-pub trait Observer: Send + Sync {
-    fn on_event(&self, event: &Event);
-}
-```
-
-### ContextProvider — Capability Injection
-
-```rust
-pub trait ContextProvider: Send + Sync {
-    fn provided_type_id(&self) -> TypeId;
-    fn into_any_arc(self: Box<Self>) -> Arc<dyn Any + Send + Sync>;
-}
-```
-
-Tools look up injected capabilities via `ctx.get::<T>()`.
 
 ### ToolRegistry — Unified Tool Registration
 
@@ -136,26 +126,33 @@ pub struct ToolEntry {
 
 ```rust
 pub struct ChatMessage {
-    pub role: Role,        // System / User / Assistant / Tool
+    pub role: String,        // "system" / "user" / "assistant" / "tool"
     pub content: String,
-    pub tool_calls: Option<Vec<ToolCall>>,
-    pub tool_call_id: Option<String>,
 }
 
 pub struct ChatResponse {
-    pub message: ChatMessage,
-    pub usage: Option<Usage>,
-    pub stop_reason: Option<StopReason>,
+    pub text: Option<String>,
+    pub tool_calls: Vec<ToolCall>,
+    pub usage: Option<TokenUsage>,
+    pub reasoning_content: Option<String>,
 }
 ```
 
 ### Tool Types
 
 ```rust
+// From provider.rs — LLM-requested tool call
 pub struct ToolCall {
     pub id: String,
     pub name: String,
-    pub arguments: Value,
+    pub arguments: String,   // JSON string
+}
+
+// From hook.rs — hook interception tool call
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: Value,    // Parsed JSON value
 }
 
 pub struct ToolResult {
@@ -175,9 +172,7 @@ pub struct ToolSpec {
 
 `clawseed-api` uses task-local variables for cross-call context:
 
-- `TOOL_LOOP_THREAD_ID` — Current tool loop thread identifier
 - `TOOL_CHOICE_OVERRIDE` — Override tool selection strategy
-- `TOOL_LOOP_SESSION_KEY` — Current session key
 
 ## Dependencies
 
@@ -185,3 +180,5 @@ Only depends on:
 - `async-trait` — Async trait support
 - `serde` / `serde_json` — Serialization
 - `anyhow` — Error handling
+- `tokio` — Task-local storage
+- `futures-util` — Stream types

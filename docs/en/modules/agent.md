@@ -164,7 +164,8 @@ pub trait HookFactory: Send + Sync {
 | Module | Responsibility |
 |--------|---------------|
 | `cost.rs` | Token-based cost tracking |
-| `observer.rs` | Event emission (no-op by default) |
+| `observer.rs` | Event emission (NoopObserver by default, defined locally in clawseed-agent) |
+| `observability.rs` | Re-exports Observer types for external consumers |
 | `approval.rs` | Approval workflow for risky operations |
 | `history.rs` | Conversation history management |
 | `prompt.rs` | System prompt construction |

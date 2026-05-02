@@ -13,13 +13,18 @@
 ```rust
 #[async_trait]
 pub trait Provider: Send + Sync {
-    async fn chat(&self, request: ChatRequest) -> Result<ChatResponse>;
+    async fn chat_with_system(&self, system_prompt: Option<&str>, message: &str, model: &str, temperature: Option<f64>) -> Result<String>;
+    async fn chat(&self, request: ChatRequest<'_>, model: &str, temperature: Option<f64>) -> Result<ChatResponse>;
     fn supports_native_tools(&self) -> bool;
+    fn stream_chat(&self, request: ChatRequest<'_>, model: &str, temperature: Option<f64>, options: StreamOptions) -> BoxStream<'static, StreamResult<StreamEvent>>;
+    // ... 更多带默认实现的方法
 }
 ```
 
-- `chat()` — 发送对话请求，返回 LLM 响应
+- `chat_with_system()` — 核心聊天方法，其他聊天方法均委托于此
+- `chat()` — 完整对话，支持工具规格，返回 `ChatResponse`（可能包含工具调用）
 - `supports_native_tools()` — 是否支持原生工具调用协议（如 Anthropic 的 tool_use）
+- `stream_chat()` — 流式变体，返回 `BoxStream<StreamEvent>`
 - 不支持原生工具的提供商使用 `XmlToolDispatcher`（◁▷ 标记）
 
 ### Tool — Agent 可调用的能力
@@ -67,32 +72,17 @@ pub enum HookResult {
 ```rust
 #[async_trait]
 pub trait Memory: Send + Sync {
-    async fn store(&self, content: &str, category: &str) -> Result<String>;
-    async fn recall(&self, query: &str, limit: usize) -> Result<Vec<MemoryEntry>>;
-    async fn forget(&self, id: &str) -> Result<()>;
-    async fn purge(&self, before: DateTime<Utc>) -> Result<usize>;
-    async fn export(&self) -> Result<Vec<MemoryEntry>>;
+    fn name(&self) -> &str;
+    async fn store(&self, key: &str, content: &str, category: MemoryCategory, session_id: Option<&str>) -> Result<()>;
+    async fn recall(&self, query: &str, limit: usize, session_id: Option<&str>, since: Option<&str>, until: Option<&str>) -> Result<Vec<MemoryEntry>>;
+    async fn get(&self, key: &str) -> Result<Option<MemoryEntry>>;
+    async fn list(&self, category: Option<&MemoryCategory>, session_id: Option<&str>) -> Result<Vec<MemoryEntry>>;
+    async fn forget(&self, key: &str) -> Result<bool>;
+    async fn count(&self) -> Result<usize>;
+    async fn health_check(&self) -> bool;
+    // ... 更多带默认实现的方法：purge_namespace, purge_session, recall_namespaced, export, store_with_metadata
 }
 ```
-
-### Observer — 指标和追踪
-
-```rust
-pub trait Observer: Send + Sync {
-    fn on_event(&self, event: &Event);
-}
-```
-
-### ContextProvider — 能力注入
-
-```rust
-pub trait ContextProvider: Send + Sync {
-    fn provided_type_id(&self) -> TypeId;
-    fn into_any_arc(self: Box<Self>) -> Arc<dyn Any + Send + Sync>;
-}
-```
-
-工具通过 `ctx.get::<T>()` 查找注入的能力。
 
 ### ToolRegistry — 统一工具注册
 
@@ -136,26 +126,33 @@ pub struct ToolEntry {
 
 ```rust
 pub struct ChatMessage {
-    pub role: Role,        // System / User / Assistant / Tool
+    pub role: String,        // "system" / "user" / "assistant" / "tool"
     pub content: String,
-    pub tool_calls: Option<Vec<ToolCall>>,
-    pub tool_call_id: Option<String>,
 }
 
 pub struct ChatResponse {
-    pub message: ChatMessage,
-    pub usage: Option<Usage>,
-    pub stop_reason: Option<StopReason>,
+    pub text: Option<String>,
+    pub tool_calls: Vec<ToolCall>,
+    pub usage: Option<TokenUsage>,
+    pub reasoning_content: Option<String>,
 }
 ```
 
 ### 工具类型
 
 ```rust
+// provider.rs 中的 ToolCall — LLM 请求的工具调用
 pub struct ToolCall {
     pub id: String,
     pub name: String,
-    pub arguments: Value,
+    pub arguments: String,   // JSON 字符串
+}
+
+// hook.rs 中的 ToolCall — hook 拦截的工具调用
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: Value,    // 已解析的 JSON 值
 }
 
 pub struct ToolResult {
@@ -175,9 +172,7 @@ pub struct ToolSpec {
 
 `clawseed-api` 使用 task-local 变量传递跨调用上下文：
 
-- `TOOL_LOOP_THREAD_ID` — 当前工具循环线程标识
 - `TOOL_CHOICE_OVERRIDE` — 覆盖工具选择策略
-- `TOOL_LOOP_SESSION_KEY` — 当前会话密钥
 
 ## 依赖
 
@@ -185,3 +180,5 @@ pub struct ToolSpec {
 - `async-trait` — 异步 trait 支持
 - `serde` / `serde_json` — 序列化
 - `anyhow` — 错误处理
+- `tokio` — Task-local 存储
+- `futures-util` — Stream 类型

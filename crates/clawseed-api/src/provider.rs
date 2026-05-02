@@ -214,15 +214,6 @@ pub enum StreamError {
     Io(#[from] std::io::Error),
 }
 
-/// Structured error for unsupported provider capabilities.
-#[derive(Debug, Clone, thiserror::Error)]
-#[error("provider_capability_error provider={provider} capability={capability} message={message}")]
-pub struct ProviderCapabilityError {
-    pub provider: String,
-    pub capability: String,
-    pub message: String,
-}
-
 /// Provider capabilities declaration.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProviderCapabilities {
@@ -252,10 +243,6 @@ pub enum ToolsPayload {
 pub const BASELINE_TEMPERATURE: f64 = 0.7;
 /// Default max output tokens.
 pub const BASELINE_MAX_TOKENS: u32 = 4096;
-/// Default HTTP timeout for cloud inference.
-pub const BASELINE_TIMEOUT_SECS: u64 = 120;
-/// Default wire protocol.
-pub const BASELINE_WIRE_API: &str = "chat_completions";
 
 /// Provider trait — every LLM provider implements this.
 #[async_trait]
@@ -273,7 +260,7 @@ pub trait Provider: Send + Sync {
     }
 
     fn default_timeout_secs(&self) -> u64 {
-        BASELINE_TIMEOUT_SECS
+        120
     }
 
     fn default_base_url(&self) -> Option<&str> {
@@ -281,7 +268,7 @@ pub trait Provider: Send + Sync {
     }
 
     fn default_wire_api(&self) -> &str {
-        BASELINE_WIRE_API
+        "chat_completions"
     }
 
     fn convert_tools(&self, tools: &[ToolSpec]) -> ToolsPayload {

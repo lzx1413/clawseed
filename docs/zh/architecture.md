@@ -97,8 +97,6 @@ ClawSeed 的所有扩展点都是 trait：
 | `ToolRegistry` | 统一工具注册与查找 | 在 `clawseed-agent` 中提供 `DefaultToolRegistry`，支持 BuiltIn / MCP / Remote 三种来源 |
 | `Hook` | 工具调用拦截器 | 实现 `before_tool_call` / `after_tool_call`，或通过 `HookFactory` 从配置声明式创建 |
 | `Memory` | 对话记忆后端 | 在 `clawseed-memory` 中实现 |
-| `Observer` | 指标和追踪 | 实现 `on_event()` |
-| `ContextProvider` | 能力注入 | 将 `Send + Sync + 'static` 类型注入 Agent |
 
 ## Agent 循环
 

@@ -164,7 +164,8 @@ pub trait HookFactory: Send + Sync {
 | 模块 | 职责 |
 |------|------|
 | `cost.rs` | 令牌计费追踪 |
-| `observer.rs` | 事件发射（默认 no-op） |
+| `observer.rs` | 事件发射（默认 NoopObserver，定义在 clawseed-agent 本地） |
+| `observability.rs` | 重新导出 Observer 类型供外部消费者使用 |
 | `approval.rs` | 危险操作的审批工作流 |
 | `history.rs` | 对话历史管理 |
 | `prompt.rs` | 系统提示构建 |

@@ -45,17 +45,20 @@ Venice、Together、Fireworks、Perplexity、Cohere、Novita、NVIDIA、GitHub C
 
 ## 核心模块
 
-### traits.rs — Provider trait
+### Provider trait（定义在 clawseed-api）
 
 ```rust
 #[async_trait]
 pub trait Provider: Send + Sync {
-    async fn chat(&self, request: ChatRequest) -> Result<ChatResponse>;
+    async fn chat_with_system(&self, system_prompt: Option<&str>, message: &str, model: &str, temperature: Option<f64>) -> Result<String>;
+    async fn chat(&self, request: ChatRequest<'_>, model: &str, temperature: Option<f64>) -> Result<ChatResponse>;
     fn supports_native_tools(&self) -> bool;
+    fn stream_chat(&self, request: ChatRequest<'_>, model: &str, temperature: Option<f64>, options: StreamOptions) -> BoxStream<'static, StreamResult<StreamEvent>>;
+    // ... 更多带默认实现的方法
 }
 ```
 
-### compatible.rs — OpenAI 兼容客户端
+### compatible/mod.rs — OpenAI 兼容客户端
 
 通用客户端，通过配置适配不同提供商：
 

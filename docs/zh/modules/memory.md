@@ -33,16 +33,20 @@
 
 ## 核心模块
 
-### traits.rs — Memory trait
+### Memory trait（定义在 clawseed-api）
 
 ```rust
 #[async_trait]
 pub trait Memory: Send + Sync {
-    async fn store(&self, content: &str, category: &str) -> Result<String>;
-    async fn recall(&self, query: &str, limit: usize) -> Result<Vec<MemoryEntry>>;
-    async fn forget(&self, id: &str) -> Result<()>;
-    async fn purge(&self, before: DateTime<Utc>) -> Result<usize>;
-    async fn export(&self) -> Result<Vec<MemoryEntry>>;
+    fn name(&self) -> &str;
+    async fn store(&self, key: &str, content: &str, category: MemoryCategory, session_id: Option<&str>) -> Result<()>;
+    async fn recall(&self, query: &str, limit: usize, session_id: Option<&str>, since: Option<&str>, until: Option<&str>) -> Result<Vec<MemoryEntry>>;
+    async fn get(&self, key: &str) -> Result<Option<MemoryEntry>>;
+    async fn list(&self, category: Option<&MemoryCategory>, session_id: Option<&str>) -> Result<Vec<MemoryEntry>>;
+    async fn forget(&self, key: &str) -> Result<bool>;
+    async fn count(&self) -> Result<usize>;
+    async fn health_check(&self) -> bool;
+    // ... 更多带默认实现的方法：purge_namespace, purge_session, recall_namespaced, export, store_with_metadata
 }
 ```
 
@@ -52,8 +56,10 @@ pub trait Memory: Send + Sync {
 
 | 表 | 字段 | 说明 |
 |----|------|------|
-| `messages` | id, content, category, metadata, created_at | 消息存储 |
-| `embeddings` | id, message_id, vector, model | 向量嵌入 |
+| `memories` | id, key, content, category, timestamp, session_id, namespace, importance, superseded_by | 记忆存储 |
+| `embeddings` | id, memory_id, vector, model | 向量嵌入 |
+
+使用 FTS5 虚拟表实现 BM25 关键词搜索，BLOB 存储向量实现余弦相似度。
 
 ### retrieval.rs — 混合检索
 
@@ -103,9 +109,10 @@ pub trait Memory: Send + Sync {
 
 | 分类 | 说明 |
 |------|------|
-| `context` | 对话上下文 |
-| `user_profile` | 用户偏好 |
-| `tool_output` | 工具输出 |
+| `Core` | 核心持久化知识 |
+| `Daily` | 日常/临时信息 |
+| `Conversation` | 对话上下文 |
+| `Custom(String)` | 用户自定义分类 |
 
 ## 工厂函数
 
@@ -122,9 +129,5 @@ pub fn create_memory(config: &MemoryConfig) -> Arc<dyn Memory>
 ```toml
 [memory]
 backend = "sqlite"
-search_mode = "hybrid"    # hybrid / embedding / bm25
-
-[memory.embedding]
-endpoint = "http://localhost:11434/api/embeddings"
-model = "nomic-embed-text"
+auto_save = true
 ```

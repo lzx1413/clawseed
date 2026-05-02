@@ -97,8 +97,6 @@ All extension points in ClawSeed are traits:
 | `ToolRegistry` | Unified tool registration and lookup | `DefaultToolRegistry` in `clawseed-agent`; supports BuiltIn / MCP / Remote sources |
 | `Hook` | Tool call interceptor | Implement `before_tool_call` / `after_tool_call`, or create declaratively via `HookFactory` from config |
 | `Memory` | Conversation memory backend | Implement in `clawseed-memory` |
-| `Observer` | Metrics and tracing | Implement `on_event()` |
-| `ContextProvider` | Capability injection | Inject any `Send + Sync + 'static` type into the agent |
 
 ## Agent Loop
 
