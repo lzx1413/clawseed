@@ -104,7 +104,9 @@ pub fn find_config_path() -> Option<PathBuf> {
 /// `clawseed.toml` with sensible provider and gateway values.
 pub fn load_or_init_config() -> Result<Config> {
     if let Some(path) = find_config_path() {
-        return Config::from_file(&path);
+        let config = Config::from_file(&path)?;
+        init_workspace_defaults(&config);
+        return Ok(config);
     }
 
     // No config file found — create default directory and config
@@ -124,8 +126,54 @@ pub fn load_or_init_config() -> Result<Config> {
 
     tracing::info!("Created default config at {}", config_path.display());
 
-    Config::from_file(&config_path)
+    let config = Config::from_file(&config_path)?;
+    init_workspace_defaults(&config);
+    Ok(config)
 }
+
+/// Ensure the workspace directory exists and seed default personality files
+/// (SOUL.md) on first run.
+fn init_workspace_defaults(config: &Config) {
+    let workspace = resolve_workspace_dir(config);
+    if let Err(e) = std::fs::create_dir_all(&workspace) {
+        tracing::warn!("Failed to create workspace directory: {e}");
+        return;
+    }
+
+    let soul_path = workspace.join("SOUL.md");
+    if !soul_path.exists() {
+        let default_soul = DEFAULT_SOUL_MD;
+        if let Err(e) = std::fs::write(&soul_path, default_soul) {
+            tracing::warn!("Failed to write default SOUL.md: {e}");
+        } else {
+            tracing::info!("Created default SOUL.md at {}", soul_path.display());
+        }
+    }
+}
+
+const DEFAULT_SOUL_MD: &str = r#"# Soul
+
+You are ClawSeed, an AI assistant.
+
+## Core Principles
+
+- Be helpful, accurate, and concise.
+- When unsure, say so honestly rather than guessing.
+- Respect the user's time — avoid unnecessary verbosity.
+- Use tools when they can provide better answers than pure reasoning.
+
+## Communication Style
+
+- Respond in the same language the user uses.
+- Be direct and clear. Skip pleasantries unless the user initiates them.
+- When explaining technical topics, adjust depth to the user's apparent level.
+
+## Safety
+
+- Never fabricate information or tool results.
+- Refuse requests that could cause harm.
+- Protect user privacy — do not exfiltrate or expose private data.
+"#;
 
 /// Load configuration from the default path with environment variable overrides.
 ///

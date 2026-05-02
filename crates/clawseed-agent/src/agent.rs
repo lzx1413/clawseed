@@ -7,6 +7,7 @@ use crate::context::{AgentToolContext, ContextProvider};
 use crate::dispatcher::{ParsedToolCall, ToolDispatcher, ToolExecutionResult};
 use crate::hooks::HookRunner;
 use crate::observer::{Observer, ObserverEvent};
+use crate::prompt::{PromptContext, SystemPromptBuilder};
 use crate::security::SecurityPolicy;
 use crate::tool_registry::DefaultToolRegistry;
 use anyhow::Result;
@@ -17,7 +18,7 @@ use clawseed_api::provider::{
 };
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_registry::{ToolRegistry, ToolSource};
-use clawseed_config::schema::AutonomyLevel;
+use clawseed_config::schema::{AutonomyLevel, IdentityConfig};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -56,6 +57,7 @@ pub struct Agent {
     temperature: f64,
     workspace_dir: std::path::PathBuf,
     autonomy_level: AutonomyLevel,
+    identity_config: IdentityConfig,
     auto_save: bool,
     memory_session_id: Option<String>,
     history: Vec<ConversationMessage>,
@@ -78,6 +80,7 @@ pub struct AgentBuilder {
     temperature: Option<f64>,
     workspace_dir: Option<std::path::PathBuf>,
     autonomy_level: Option<AutonomyLevel>,
+    identity_config: Option<IdentityConfig>,
     auto_save: Option<bool>,
     memory_session_id: Option<String>,
     available_hints: Option<Vec<String>>,
@@ -109,6 +112,7 @@ impl AgentBuilder {
             temperature: None,
             workspace_dir: None,
             autonomy_level: None,
+            identity_config: None,
             auto_save: None,
             memory_session_id: None,
             available_hints: None,
@@ -187,6 +191,11 @@ impl AgentBuilder {
 
     pub fn autonomy_level(mut self, level: AutonomyLevel) -> Self {
         self.autonomy_level = Some(level);
+        self
+    }
+
+    pub fn identity_config(mut self, config: IdentityConfig) -> Self {
+        self.identity_config = Some(config);
         self
     }
 
@@ -274,6 +283,7 @@ impl AgentBuilder {
                 .workspace_dir
                 .unwrap_or_else(|| std::path::PathBuf::from(".")),
             autonomy_level: self.autonomy_level.unwrap_or_default(),
+            identity_config: self.identity_config.unwrap_or_default(),
             auto_save: self.auto_save.unwrap_or(false),
             memory_session_id: self.memory_session_id,
             history: Vec::new(),
@@ -400,6 +410,7 @@ impl Agent {
             .temperature(temperature)
             .workspace_dir(config.workspace_dir.clone())
             .autonomy_level(config.autonomy.level)
+            .identity_config(config.identity.clone())
             .auto_save(config.memory.auto_save)
             .allowed_tools(allowed)
             .denied_tools(denied)
@@ -488,63 +499,19 @@ impl Agent {
     }
 
     fn build_system_prompt(&self) -> Result<String> {
-        let mut output = String::new();
-
-        // Date/time
-        let now = chrono::Local::now();
-        let (year, month, day) = (now.year(), now.month(), now.day());
-        let (hour, minute, second) = (now.hour(), now.minute(), now.second());
-        let tz = now.format("%Z");
-        output.push_str(&format!(
-            "## CRITICAL CONTEXT: CURRENT DATE & TIME\n\n\
-             The following is the ABSOLUTE TRUTH regarding the current date and time. \
-             Use this for all relative time calculations.\n\n\
-             Date: {year:04}-{month:02}-{day:02}\n\
-             Time: {hour:02}:{minute:02}:{second:02} ({tz})\n\n"
-        ));
-
-        // Workspace
-        output.push_str(&format!(
-            "## Workspace\n\nWorking directory: `{}`\n\n",
-            self.workspace_dir.display()
-        ));
-
-        // Tools
-        output.push_str("## Tools\n\n");
         let specs = self.tool_registry.tool_specs();
-        for spec in &specs {
-            output.push_str(&format!(
-                "- **{}**: {}\n  Parameters: `{}`\n",
-                spec.name, spec.description, spec.parameters
-            ));
-        }
-
-        // Dispatcher instructions
         let instructions = self.tool_dispatcher.prompt_instructions(&specs);
-        if !instructions.is_empty() {
-            output.push_str(&instructions);
-            output.push_str("\n\n");
-        }
 
-        // Safety
-        output.push_str("## Safety\n\n- Do not exfiltrate private data.\n");
-        if self.autonomy_level != AutonomyLevel::Full {
-            output.push_str(
-                "- Do not run destructive commands without asking.\n\
-                 - Do not bypass oversight or approval mechanisms.\n",
-            );
-        }
-        output.push_str("- Prefer `trash` over `rm`.\n");
+        let ctx = PromptContext {
+            workspace_dir: &self.workspace_dir,
+            model_name: &self.model_name,
+            tool_specs: &specs,
+            dispatcher_instructions: &instructions,
+            identity_config: &self.identity_config,
+            autonomy_level: self.autonomy_level,
+        };
 
-        // Tool honesty
-        output.push_str(
-            "\n## CRITICAL: Tool Honesty\n\n\
-             - NEVER fabricate, invent, or guess tool results.\n\
-             - If a tool call fails, report the error — never make up data.\n\
-             - When unsure, ask the user rather than guessing.\n",
-        );
-
-        Ok(output)
+        SystemPromptBuilder::with_defaults().build(&ctx)
     }
 
     /// Build the tool context for a single tool execution.

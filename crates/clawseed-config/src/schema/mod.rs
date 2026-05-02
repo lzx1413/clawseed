@@ -207,6 +207,10 @@ pub struct Config {
     /// Locale override (e.g. "en-US").
     #[serde(default)]
     pub locale: Option<String>,
+
+    /// Identity / persona configuration.
+    #[serde(default)]
+    pub identity: IdentityConfig,
 }
 
 /// Secrets / encryption configuration.
@@ -598,6 +602,7 @@ impl Default for Config {
             web_search: WebSearchConfig::default(),
             agents: std::collections::HashMap::new(),
             locale: None,
+            identity: IdentityConfig::default(),
         }
     }
 }
@@ -1266,4 +1271,37 @@ pub struct WebSearchConfig {
 pub struct AgentEntryConfig {
     #[serde(default)]
     pub api_key: Option<String>,
+}
+
+/// Identity / persona configuration.
+///
+/// Supports two formats:
+/// - `"openclaw"` (default): loads markdown files (SOUL.md, IDENTITY.md, etc.)
+///   from the workspace directory.
+/// - `"aieos"`: loads an AIEOS v1.1 JSON identity from a file or inline string.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdentityConfig {
+    /// Identity format: `"openclaw"` (default) or `"aieos"`.
+    #[serde(default = "default_identity_format")]
+    pub format: String,
+    /// Path to AIEOS JSON file (relative to workspace directory).
+    #[serde(default)]
+    pub aieos_path: Option<String>,
+    /// Inline AIEOS JSON (alternative to file path).
+    #[serde(default)]
+    pub aieos_inline: Option<String>,
+}
+
+fn default_identity_format() -> String {
+    "openclaw".into()
+}
+
+impl Default for IdentityConfig {
+    fn default() -> Self {
+        Self {
+            format: default_identity_format(),
+            aieos_path: None,
+            aieos_inline: None,
+        }
+    }
 }
