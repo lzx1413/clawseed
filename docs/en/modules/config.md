@@ -2,7 +2,7 @@
 
 ## Overview
 
-`clawseed-config` handles TOML configuration file discovery, loading, and environment variable overrides. Configuration structs use the `Configurable` derive macro from `clawseed-macros`.
+`clawseed-config` handles TOML configuration file discovery, loading, and environment variable overrides.
 
 ## Config Discovery
 

@@ -2,7 +2,6 @@
 members = [
     "crates/clawseed",
     "crates/clawseed-api",
-    "crates/clawseed-macros",
     "crates/clawseed-parser",
     "crates/clawseed-config",
     "crates/clawseed-providers",
@@ -22,7 +21,6 @@ rust-version = "1.87"
 
 [workspace.dependencies]
 clawseed-api = { path = "crates/clawseed-api" }
-clawseed-macros = { path = "crates/clawseed-macros" }
 clawseed-parser = { path = "crates/clawseed-parser" }
 clawseed-config = { path = "crates/clawseed-config" }
 clawseed-providers = { path = "crates/clawseed-providers" }

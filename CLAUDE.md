@@ -33,7 +33,6 @@ clawseed-api (traits only, no impls)
       ← clawseed-gateway (Axum HTTP/WS server, remote tool bridge)
   ← clawseed-config (TOML config, loaded from ~/.clawseed/config.toml)
   ← clawseed-parser (tool call extraction from LLM output)
-  ← clawseed-macros (proc macros)
   ← clawseed (CLI binary)
 ```
 

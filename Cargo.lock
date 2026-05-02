@@ -502,15 +502,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "clawseed-macros"
-version = "0.7.3"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "clawseed-memory"
 version = "0.7.3"
 dependencies = [

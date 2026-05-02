@@ -2,7 +2,7 @@
 
 ## 概述
 
-`clawseed-config` 负责 TOML 配置文件的发现、加载和环境变量覆盖。配置结构使用 `clawseed-macros` 的 `Configurable` 派生宏。
+`clawseed-config` 负责 TOML 配置文件的发现、加载和环境变量覆盖。
 
 ## 配置发现
 

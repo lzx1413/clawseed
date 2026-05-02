@@ -293,6 +293,5 @@ Key features:
 | `clawseed-memory` | SQLite-backed memory + vector search | yes | no |
 | `clawseed-config` | TOML config schema and loading | yes | no |
 | `clawseed-parser` | Tool call parsing | yes | no |
-| `clawseed-macros` | Procedural macros | no | no |
 | `clawseed-gateway` | Axum HTTP/WS server + remote tool bridge | yes | yes |
 | `clawseed` | Binary (CLI) | — | — |

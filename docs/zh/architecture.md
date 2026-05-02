@@ -292,6 +292,5 @@ System prompt（始终保留）
 | `clawseed-memory` | SQLite 存储 + 向量搜索 | yes | no |
 | `clawseed-config` | TOML 配置加载 | yes | no |
 | `clawseed-parser` | 工具调用解析 | yes | no |
-| `clawseed-macros` | 过程宏 | no | no |
 | `clawseed-gateway` | Axum HTTP/WS 服务器 + 远程工具桥 | yes | yes |
 | `clawseed` | 二进制（CLI） | — | — |
