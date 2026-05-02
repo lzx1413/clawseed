@@ -568,7 +568,6 @@ dependencies = [
  "clawseed-api",
  "clawseed-config",
  "clawseed-memory",
- "clawseed-providers",
  "futures-util",
  "glob",
  "hex",

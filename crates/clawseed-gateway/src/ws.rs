@@ -418,26 +418,6 @@ async fn handle_socket(
 
                 let msg_type = parsed["type"].as_str().unwrap_or("");
 
-                // ── Voice duplex event dispatch (gated by feature flag + runtime config) ──
-                #[cfg(feature = "gateway-voice-duplex")]
-                {
-                    let duplex_enabled = state
-                        .config
-                        .lock()
-                        .channels
-                        .voice_duplex
-                        .as_ref()
-                        .is_some_and(|v| v.enabled);
-                    if duplex_enabled {
-                        if let Some(voice_event) = crate::voice_duplex::try_parse_voice_event(&msg) {
-                            if let Some(error_frame) = crate::voice_duplex::handle_voice_event(voice_event) {
-                                let _ = sender.send(Message::Text(error_frame.to_string().into())).await;
-                            }
-                            continue;
-                        }
-                    }
-                }
-
                 // ── Remote tool protocol (Android integration PoC) ────────────────
                 // Handle register_tools: client registers tools it can execute locally
                 if msg_type == "register_tools" {
@@ -718,12 +698,8 @@ async fn process_chat_message(
     // instead — `turn_streamed` writes to the channel and we drain it
     // from the other branch.
     let content_owned = content.to_string();
-    let session_key_owned = session_key.to_string();
     let turn_fut = async {
-        clawseed_agent::agent_loop::scope_session_key(
-            Some(session_key_owned),
-            agent.turn_streamed(&content_owned, event_tx, Some(cancel_token.clone())),
-        )
+        agent.turn_streamed(&content_owned, event_tx, Some(cancel_token.clone()))
         .await
     };
 
@@ -841,7 +817,7 @@ async fn process_chat_message(
     // Check if this turn was cancelled. `turn_streamed` propagates
     // `ToolLoopCancelled` through anyhow, so we detect it here.
     let was_cancelled = match &result {
-        Err(e) => clawseed_agent::agent_loop::is_tool_loop_cancelled(e),
+        Err(e) => e.to_string().contains("ToolLoopCancelled"),
         Ok(_) => false,
     };
 

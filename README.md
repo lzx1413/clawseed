@@ -1,0 +1,235 @@
+<p align="center">
+  <strong>ClawSeed</strong>
+</p>
+
+<p align="center">
+  <strong>A Rust AI agent runtime with remote tool execution.</strong>
+</p>
+
+<p align="center">
+  <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache%202.0-blue.svg" alt="License" /></a>
+  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-edition%202024-orange?logo=rust" alt="Rust Edition 2024" /></a>
+  <strong>English</strong> | <a href="README_zh.md">中文</a>
+</p>
+
+---
+
+ClawSeed is an AI agent runtime written in Rust. It connects to LLM providers (Anthropic, Gemini, Bedrock, OpenAI-compatible, and more), acts through pluggable tools, and serves clients over HTTP/WebSocket.
+
+The agent runs server-side, but mobile clients (Android, iOS) can register their own tools over WebSocket. When the agent calls one of these tools, the gateway forwards the request to the client for execution. This lets the agent access device capabilities — contacts, camera, sensors — without device-specific code on the server.
+
+ClawSeed borrows its trait-based architecture from [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw), with a smaller scope and some structural changes: a unified `Hook` trait, `TypeId`-based capability injection, and native remote tool call support.
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                  gateway (REST / WebSocket)               │
+│                       ↓                                   │
+│  ┌──────────────────────────────────────────────────┐    │
+│  │              Agent (stable core)                  │    │
+│  │     turn → LLM → dispatch → execute → loop       │    │
+│  └──┬──────────┬──────────┬──────────┬─────────────┘    │
+│     │          │          │          │                    │
+│  provider    tools      memory    hooks                  │
+│  (dyn)     (dyn)       (dyn)    (pipeline)               │
+│     │          │          │          │                    │
+│  Anthropic   25+        SQLite   security                │
+│  Gemini      built-in   vector   audit                   │
+│  Bedrock                search   approval                │
+│  OpenAI*     + remote ──→ mobile client                  │
+│  Ollama                                                  │
+│  DeepSeek                                                │
+│  Groq                                                    │
+└──────────────────────────────────────────────────────────┘
+   * and any OpenAI-compatible endpoint
+```
+
+Dependency flow is one-way: **api ← agent ← tools / providers / memory ← gateway**. Nothing points back up.
+
+## Remote tool calls
+
+Mobile clients register tool specs when they connect over WebSocket. The gateway wraps each spec as a `RemoteTool` — a `Tool` trait implementation that bridges execution to the client:
+
+```
+┌──────────────┐     register_tools       ┌──────────────┐
+│   Mobile     │ ───────────────────────→ │   Gateway    │
+│   Client     │                          │              │
+│              │ ←── tool_call_request ── │   Agent      │
+│  (executes   │ ──── tool_result ──────→ │   calls it   │
+│   on device) │                          │   like any   │
+│              │ ←── result_acknowledged─ │   other tool │
+└──────────────┘                          └──────────────┘
+```
+
+Flow:
+
+1. Client connects and sends `register_tools` with tool specs (name, description, JSON Schema)
+2. Gateway creates a `RemoteTool` for each spec, adds to agent's tool list
+3. Agent calls the tool; `RemoteTool::execute()` sends `tool_call_request` to client over WebSocket
+4. Client executes locally, responds with `tool_result` or `tool_error`
+5. Gateway correlates response by call ID (30s timeout), returns result to agent
+
+The agent loop has no branching for remote vs. local tools — both implement the `Tool` trait. Remote tools do not use `ToolContext` (no access to server-side memory, security policy, or other capabilities).
+
+### Android SDK
+
+```kotlin
+val client = ClawseedClient(
+    gatewayUrl = "ws://localhost:3000/ws/chat",
+    tools = listOf(
+        ToolSpec("local_contacts", "Query phone contacts", contactsSchema),
+        ToolSpec("camera", "Take a photo", cameraSchema),
+    )
+) { request ->
+    when (request.name) {
+        "local_contacts" -> ToolCallResult.Success(queryContacts(request.args))
+        "camera" -> ToolCallResult.Success(takePhoto(request.args))
+        else -> ToolCallResult.Failure("unknown tool")
+    }
+}
+client.connect()
+```
+
+The SDK also runs the gateway binary on-device as a foreground service — the entire agent stack runs on the Android device, with the LLM provider accessed over the network.
+
+## Crates
+
+| Crate | Role | Depends on api | Depends on agent |
+|-------|------|:-:|:-:|
+| `clawseed-api` | Trait definitions only | — | — |
+| `clawseed-agent` | Agent loop, hooks, dispatch | yes | — |
+| `clawseed-tools` | 25+ built-in tools | yes | no |
+| `clawseed-providers` | LLM provider implementations | yes | no |
+| `clawseed-memory` | SQLite-backed memory + vector search | yes | no |
+| `clawseed-config` | TOML config schema and loading | yes | no |
+| `clawseed-parser` | Tool call parsing | yes | no |
+| `clawseed-macros` | Procedural macros | no | no |
+| `clawseed-gateway` | Axum HTTP/WS server + remote tool bridge | yes | yes |
+| `clawseed` | Binary (CLI) | — | — |
+
+## Quick start
+
+```bash
+git clone https://github.com/clawseed-labs/clawseed.git
+cd clawseed
+cargo build --release
+
+# Run the gateway
+./target/release/clawseed gateway --host 0.0.0.0 --port 3000
+```
+
+The gateway reads `~/.clawseed/config.toml`. Minimal config:
+
+```toml
+[providers.models.default]
+provider = "anthropic"
+model = "claude-sonnet-4-20250514"
+api_key = "${ANTHROPIC_API_KEY}"
+
+[agent]
+workspace_dir = "/home/user/workspace"
+```
+
+## Extending ClawSeed
+
+### Add a tool
+
+Implement the `Tool` trait in `clawseed-tools`, register in `all_tools()`:
+
+```rust
+pub struct MyTool;
+
+impl Tool for MyTool {
+    fn name(&self) -> &str { "my_tool" }
+    fn description(&self) -> &str { "Does something useful" }
+    fn parameters_schema(&self) -> Value { /* JSON Schema */ }
+    async fn execute(&self, args: Value, ctx: &dyn ToolContext) -> Result<ToolResult> {
+        if let Some(policy) = ctx.get::<SecurityPolicy>() {
+            policy.can_act()?;
+        }
+        // ...
+    }
+}
+```
+
+### Add a hook
+
+Implement the `Hook` trait to intercept tool calls:
+
+```rust
+pub struct AuditHook;
+
+impl Hook for AuditHook {
+    fn before_tool_call(&self, call: &mut ToolCall) -> HookResult {
+        log::info!("tool {} called", call.name);
+        HookResult::Continue
+    }
+
+    fn after_tool_call(&self, result: &ToolExecutionResult) -> HookResult {
+        log::info!("tool {} → {:?}", result.name, result.status);
+        HookResult::Continue
+    }
+}
+```
+
+`HookResult` has three variants: `Continue`, `Cancel(String)`, `Modify(ToolCall)`.
+
+### Add a provider
+
+Implement the `Provider` trait in `clawseed-providers`, add to the factory. Supports native tool calling, streaming, vision, and prompt caching.
+
+### Add a capability
+
+Inject any `Send + Sync + 'static` type into the agent — tools discover it at runtime:
+
+```rust
+// At construction (gateway)
+agent_builder.capability(Arc::new(my_custom_service));
+
+// At execution (tool)
+if let Some(svc) = ctx.get::<MyCustomService>() {
+    svc.do_thing();
+}
+```
+
+## Built-in tools
+
+**File operations** — read, write, edit, glob search, content search
+**Web** — HTTP request, web fetch, web search (DuckDuckGo)
+**Memory** — store, recall, forget, purge, export
+**Automation** — cron add / list / remove / run / update
+**Development** — shell, git operations, PDF read
+**Utilities** — calculator, LLM sub-task, knowledge base, model routing, backup
+
+Tools that the agent doesn't need are excluded by `allowed_tools` in config — they don't register, don't consume tokens.
+
+## Security
+
+- **Autonomy levels** — `ReadOnly` / `Supervised` / `Full`, configured per deployment
+- **SecurityPolicy** — injected as a capability; tools check it via `ctx.get::<SecurityPolicy>()`
+- **Command allowlists** — `allowed_commands` in SecurityPolicy validates shell commands
+- **Path guards** — `forbidden_path_argument()` blocks sensitive paths (`/etc/passwd`, `/root/.ssh`, etc.)
+- **Rate limiting** — `max_actions_per_hour` limits total actions per session
+- **Hook pipeline** — `Hook::before_tool_call()` can cancel or modify any tool call before execution
+
+## Design principles
+
+1. **Explicit over implicit** — `all_tools()` lists every tool; the full capability set is visible at a glance
+2. **Declarative over imperative** — config drives composition, not code changes
+3. **Traits at boundaries** — core depends on abstractions; implementations live outside
+4. **Graceful degradation** — missing capability → tool skips the feature; failed memory → NoneMemory fallback; flaky provider → ReliableProvider retries
+
+## Acknowledgments
+
+ClawSeed's trait-based architecture and provider/tool/memory abstraction patterns are derived from [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw). Key differences from ZeroClaw:
+
+- Removed channels orchestrator, hardware peripherals, SOP engine, voice/canvas subsystems
+- Added native remote tool call support (mobile client → gateway bridge)
+- Added unified `Hook` trait for tool call interception
+- Replaced constructor injection with `TypeId`-based capability lookup (`ctx.get::<T>()`)
+- Reduced from ~225K lines / 18 crates to ~55K lines / 10 crates
+
+## License
+
+Dual-licensed: [MIT](LICENSE-MIT) OR [Apache 2.0](LICENSE-APACHE). You may choose either.

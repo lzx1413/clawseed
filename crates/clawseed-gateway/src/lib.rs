@@ -8,22 +8,13 @@
 //! - Header sanitization (handled by axum/hyper)
 
 pub mod api;
-pub mod api_pairing;
-#[cfg(feature = "webauthn")]
-pub mod api_webauthn;
 pub mod auth_rate_limit;
-pub mod canvas;
-pub mod node_tool;
-pub mod nodes;
 pub mod remote_tool;
 pub mod session_backend;
 pub mod session_queue;
 pub mod session_sqlite;
-pub mod sse;
 pub mod static_files;
 pub mod tls;
-#[cfg(feature = "gateway-voice-duplex")]
-pub mod voice_duplex;
 pub mod ws;
 
 use anyhow::{Context, Result};
@@ -50,10 +41,17 @@ use crate::session_sqlite::SqliteSessionBackend;
 use clawseed_api::memory_traits::{Memory, MemoryCategory};
 use clawseed_api::provider::Provider;
 use clawseed_agent::cost::CostTracker;
-use clawseed_agent::platform;
 use clawseed_agent::security::pairing::{PairingGuard, constant_time_eq, is_public_bind};
 use clawseed_agent::tools;
 use clawseed_agent::tools::CanvasStore;
+
+/// Minimal event buffer stub (replaces removed `sse::EventBuffer`).
+pub struct EventBuffer { _capacity: usize }
+impl EventBuffer { pub fn new(cap: usize) -> Self { Self { _capacity: cap } } }
+
+/// Minimal node registry stub (replaces removed `nodes::NodeRegistry`).
+pub struct NodeRegistry { _max: usize }
+impl NodeRegistry { pub fn new(max: usize) -> Self { Self { _max: max } } }
 
 /// Maximum request body size (64KB) — prevents memory exhaustion
 pub const MAX_BODY_SIZE: usize = 65_536;
@@ -329,11 +327,11 @@ pub struct AppState {
     /// SSE broadcast channel for real-time events
     pub event_tx: tokio::sync::broadcast::Sender<serde_json::Value>,
     /// Ring buffer of recent events for history replay
-    pub event_buffer: Arc<sse::EventBuffer>,
+    pub event_buffer: Arc<EventBuffer>,
     /// Shutdown signal sender for graceful shutdown
     pub shutdown_tx: tokio::sync::watch::Sender<bool>,
     /// Registry of dynamically connected nodes
-    pub node_registry: Arc<nodes::NodeRegistry>,
+    pub node_registry: Arc<NodeRegistry>,
     /// Path prefix for reverse-proxy deployments (empty string = no prefix)
     pub path_prefix: String,
     /// Filesystem path to `web/dist/` for serving the dashboard (None = API-only)
@@ -342,15 +340,8 @@ pub struct AppState {
     pub session_backend: Option<Arc<dyn SessionBackend>>,
     /// Per-session actor queue for serializing concurrent turns
     pub session_queue: Arc<session_queue::SessionActorQueue>,
-    /// Device registry for paired device management
-    pub device_registry: Option<Arc<api_pairing::DeviceRegistry>>,
-    /// Pending pairing request store
-    pub pending_pairings: Option<Arc<api_pairing::PairingStore>>,
     /// Shared canvas store for Live Canvas (A2UI) system
     pub canvas_store: CanvasStore,
-    /// WebAuthn state for hardware key authentication (optional, requires `webauthn` feature)
-    #[cfg(feature = "webauthn")]
-    pub webauthn: Option<Arc<api_webauthn::WebAuthnState>>,
     /// Per-session cancellation tokens for aborting in-flight agent responses.
     /// Key is session_key (e.g. `gw_<session_id>`), value is the token for the
     /// current turn. Entries are inserted before each turn and removed after
@@ -415,8 +406,7 @@ pub async fn run_gateway(
         &config.workspace_dir,
         fallback.and_then(|e| e.api_key.as_deref()),
     )?;
-    let runtime: Box<dyn platform::RuntimeAdapter> =
-        platform::create_runtime(&config)?;
+    let runtime: Box<dyn std::any::Any> = Box::new(());
     let security = Arc::new(SecurityPolicy::from_config(
         &config.autonomy,
         &config.workspace_dir,
@@ -529,7 +519,7 @@ pub async fn run_gateway(
         let (tx, _rx) = tokio::sync::broadcast::channel::<serde_json::Value>(256);
         tx
     });
-    let event_buffer = Arc::new(sse::EventBuffer::new(500));
+    let event_buffer = Arc::new(EventBuffer::new(500));
     // Extract webhook secret for authentication
     let webhook_secret_hash: Option<Arc<str>> =
         config.channels.webhook.as_ref().and_then(|webhook| {
@@ -593,22 +583,7 @@ pub async fn run_gateway(
         .filter(|p| !p.is_empty());
 
     // ── Tunnel ────────────────────────────────────────────────
-    let tunnel = clawseed_agent::tunnel::create_tunnel(&config)?;
-    let mut tunnel_url: Option<String> = None;
-
-    if let Some(ref tun) = tunnel {
-        println!("🔗 Starting {} tunnel...", tun.name());
-        match tun.start(host, actual_port).await {
-            Ok(url) => {
-                println!("🌐 Tunnel active: {url}");
-                tunnel_url = Some(url);
-            }
-            Err(e) => {
-                println!("⚠️  Tunnel failed to start: {e}");
-                println!("   Falling back to local-only mode.");
-            }
-        }
-    }
+    let tunnel_url: Option<String> = None;
 
     // Resolve web_dist_dir: explicit config → auto-detect common locations
     let web_dist_dir: Option<std::path::PathBuf> = config
@@ -680,7 +655,7 @@ pub async fn run_gateway(
     println!("  GET  {pfx}/metrics   — Prometheus metrics");
     println!("  Press Ctrl+C to stop.\n");
 
-    clawseed_agent::health::mark_component_ok("gateway");
+    // Gateway is ready.
 
     // Fire gateway start hook
     if let Some(ref hooks) = hooks {
@@ -689,32 +664,11 @@ pub async fn run_gateway(
 
     // Wrap observer with broadcast capability for SSE
     let broadcast_observer: Arc<dyn clawseed_agent::observability::Observer> =
-        Arc::new(sse::BroadcastObserver::new(
-            clawseed_agent::observability::create_observer(&config),
-            event_tx.clone(),
-            event_buffer.clone(),
-        ));
+        Arc::new(clawseed_agent::observability::NoopObserver);
 
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
 
-    // Node registry for dynamic node discovery
-    let node_registry = Arc::new(nodes::NodeRegistry::new(config.nodes.max_nodes));
-
-    // Device registry and pairing store (only when pairing is required)
-    let device_registry = if config.gateway.require_pairing {
-        Some(Arc::new(api_pairing::DeviceRegistry::new(
-            &config.workspace_dir,
-        )))
-    } else {
-        None
-    };
-    let pending_pairings = if config.gateway.require_pairing {
-        Some(Arc::new(api_pairing::PairingStore::new(
-            config.gateway.pairing_dashboard.max_pending_codes,
-        )))
-    } else {
-        None
-    };
+    let node_registry = Arc::new(NodeRegistry::new(config.nodes.max_nodes));
 
     let state = AppState {
         config: config_state,
@@ -738,36 +692,10 @@ pub async fn run_gateway(
         node_registry,
         session_backend,
         session_queue: Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
-        device_registry,
-        pending_pairings,
         path_prefix: path_prefix.unwrap_or("").to_string(),
         web_dist_dir,
         canvas_store,
         cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-        #[cfg(feature = "webauthn")]
-        webauthn: if config.security.webauthn.enabled {
-            let secret_store = Arc::new(clawseed_agent::security::SecretStore::new(
-                &config.workspace_dir,
-                true,
-            ));
-            let wa_config = clawseed_agent::security::webauthn::WebAuthnConfig {
-                enabled: true,
-                rp_id: config.security.webauthn.rp_id.clone(),
-                rp_origin: config.security.webauthn.rp_origin.clone(),
-                rp_name: config.security.webauthn.rp_name.clone(),
-            };
-            Some(Arc::new(api_webauthn::WebAuthnState {
-                manager: clawseed_agent::security::webauthn::WebAuthnManager::new(
-                    wa_config,
-                    secret_store,
-                    &config.workspace_dir,
-                ),
-                pending_registrations: parking_lot::Mutex::new(std::collections::HashMap::new()),
-                pending_authentications: parking_lot::Mutex::new(std::collections::HashMap::new()),
-            }))
-        } else {
-            None
-        },
     };
 
     // Config PUT needs larger body limit (1MB)
@@ -828,67 +756,11 @@ pub async fn run_gateway(
         )
         .route("/api/sessions/{id}", delete(api::handle_api_session_delete).put(api::handle_api_session_rename))
         .route("/api/sessions/{id}/state", get(api::handle_api_session_state))
-        .route("/api/sessions/{id}/abort", post(api::handle_api_session_abort))
-        // ── Pairing + Device management API ──
-        .route("/api/pairing/initiate", post(api_pairing::initiate_pairing))
-        .route("/api/pair", post(api_pairing::submit_pairing_enhanced))
-        .route("/api/devices", get(api_pairing::list_devices))
-        .route("/api/devices/{id}", delete(api_pairing::revoke_device))
-        .route(
-            "/api/devices/{id}/token/rotate",
-            post(api_pairing::rotate_token),
-        )
-        // ── Live Canvas (A2UI) routes ──
-        .route("/api/canvas", get(canvas::handle_canvas_list))
-        .route(
-            "/api/canvas/{id}",
-            get(canvas::handle_canvas_get)
-                .post(canvas::handle_canvas_post)
-                .delete(canvas::handle_canvas_clear),
-        )
-        .route(
-            "/api/canvas/{id}/history",
-            get(canvas::handle_canvas_history),
-        );
-
-    // ── WebAuthn hardware key authentication API (requires webauthn feature) ──
-    #[cfg(feature = "webauthn")]
-    let inner = inner
-        .route(
-            "/api/webauthn/register/start",
-            post(api_webauthn::handle_register_start),
-        )
-        .route(
-            "/api/webauthn/register/finish",
-            post(api_webauthn::handle_register_finish),
-        )
-        .route(
-            "/api/webauthn/auth/start",
-            post(api_webauthn::handle_auth_start),
-        )
-        .route(
-            "/api/webauthn/auth/finish",
-            post(api_webauthn::handle_auth_finish),
-        )
-        .route(
-            "/api/webauthn/credentials",
-            get(api_webauthn::handle_list_credentials),
-        )
-        .route(
-            "/api/webauthn/credentials/{id}",
-            delete(api_webauthn::handle_delete_credential),
-        );
+        .route("/api/sessions/{id}/abort", post(api::handle_api_session_abort));
 
     let inner = inner
-        // ── SSE event stream ──
-        .route("/api/events", get(sse::handle_sse_events))
-        .route("/api/events/history", get(sse::handle_events_history))
         // ── WebSocket agent chat ──
         .route("/ws/chat", get(ws::handle_ws_chat))
-        // ── WebSocket canvas updates ──
-        .route("/ws/canvas/{id}", get(canvas::handle_ws_canvas))
-        // ── WebSocket node discovery ──
-        .route("/ws/nodes", get(nodes::handle_ws_nodes))
         // ── Static assets (web dashboard) ──
         .route("/_app/{*path}", get(static_files::handle_static))
         // ── Config PUT with larger body limit ──
@@ -1004,7 +876,7 @@ async fn handle_health(State(state): State<AppState>) -> impl IntoResponse {
         "status": "ok",
         "paired": state.pairing.is_paired(),
         "require_pairing": state.pairing.require_pairing(),
-        "runtime": clawseed_agent::health::snapshot_json(),
+        "runtime": serde_json::json!({}),
     });
     Json(body)
 }
@@ -1025,17 +897,6 @@ fn prometheus_observer_from_state(
     observer
         .as_any()
         .downcast_ref::<clawseed_agent::observability::PrometheusObserver>()
-        .or_else(|| {
-            observer
-                .as_any()
-                .downcast_ref::<sse::BroadcastObserver>()
-                .and_then(|broadcast| {
-                    broadcast
-                        .inner()
-                        .as_any()
-                        .downcast_ref::<clawseed_agent::observability::PrometheusObserver>()
-                })
-        })
 }
 
 /// GET /metrics — Prometheus text exposition format
@@ -1155,7 +1016,7 @@ async fn persist_pairing_tokens(config: Arc<Mutex<Config>>, pairing: &PairingGua
 
 /// Full-featured chat with tools for channel and webhook handlers.
 async fn run_gateway_chat_with_tools(
-    state: &AppState,
+    _state: &AppState,
     message: &str,
     session_id: Option<&str>,
 ) -> anyhow::Result<String> {
@@ -1165,19 +1026,20 @@ async fn run_gateway_chat_with_tools(
     #[cfg(test)]
     {
         let _ = session_id;
-        return state
+        return _state
             .provider
-            .chat_with_system(None, message, &state.model, Some(state.temperature))
+            .chat_with_system(None, message, &_state.model, Some(_state.temperature))
             .await;
     }
 
     #[cfg(not(test))]
     {
-        let config = state.config.lock().clone();
-        Box::pin(clawseed_agent::agent_loop::process_message(
-            config, message, session_id,
-        ))
-        .await
+        let config = _state.config.lock().clone();
+        let mut agent = clawseed_agent::agent::Agent::from_config(&config).await?;
+        if let Some(sid) = session_id {
+            agent.set_memory_session_id(Some(sid.to_string()));
+        }
+        agent.turn(message).await
     }
 }
 
@@ -1592,21 +1454,17 @@ mod tests {
             tools_registry: Arc::new(Vec::new()),
             cost_tracker: None,
             event_tx: tokio::sync::broadcast::channel(16).0,
-            event_buffer: Arc::new(sse::EventBuffer::new(16)),
+            event_buffer: Arc::new(EventBuffer::new(16)),
             shutdown_tx: tokio::sync::watch::channel(false).0,
-            node_registry: Arc::new(nodes::NodeRegistry::new(16)),
+            node_registry: Arc::new(NodeRegistry::new(16)),
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
             session_queue: std::sync::Arc::new(crate::session_queue::SessionActorQueue::new(
                 8, 30, 600,
             )),
-            device_registry: None,
-            pending_pairings: None,
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            #[cfg(feature = "webauthn")]
-            webauthn: None,
         };
 
         let response = handle_metrics(State(state)).await.into_response();
@@ -1627,13 +1485,7 @@ mod tests {
     #[cfg(feature = "observability-prometheus")]
     #[tokio::test]
     async fn metrics_endpoint_renders_prometheus_output() {
-        let event_tx = tokio::sync::broadcast::channel(16).0;
-        let event_buffer = Arc::new(sse::EventBuffer::new(16));
-        let wrapped = sse::BroadcastObserver::new(
-            Box::new(clawseed_agent::observability::PrometheusObserver::new()),
-            event_tx.clone(),
-            event_buffer,
-        );
+        let wrapped = clawseed_agent::observability::PrometheusObserver::new();
         clawseed_agent::observability::Observer::record_event(
             &wrapped,
             &clawseed_agent::observability::ObserverEvent::HeartbeatTick,
@@ -1657,21 +1509,17 @@ mod tests {
             tools_registry: Arc::new(Vec::new()),
             cost_tracker: None,
             event_tx,
-            event_buffer: Arc::new(sse::EventBuffer::new(16)),
+            event_buffer: Arc::new(EventBuffer::new(16)),
             shutdown_tx: tokio::sync::watch::channel(false).0,
-            node_registry: Arc::new(nodes::NodeRegistry::new(16)),
+            node_registry: Arc::new(NodeRegistry::new(16)),
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
             session_queue: std::sync::Arc::new(crate::session_queue::SessionActorQueue::new(
                 8, 30, 600,
             )),
-            device_registry: None,
-            pending_pairings: None,
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            #[cfg(feature = "webauthn")]
-            webauthn: None,
         };
 
         let response = handle_metrics(State(state)).await.into_response();
@@ -2090,21 +1938,17 @@ mod tests {
             tools_registry: Arc::new(Vec::new()),
             cost_tracker: None,
             event_tx: tokio::sync::broadcast::channel(16).0,
-            event_buffer: Arc::new(sse::EventBuffer::new(16)),
+            event_buffer: Arc::new(EventBuffer::new(16)),
             shutdown_tx: tokio::sync::watch::channel(false).0,
-            node_registry: Arc::new(nodes::NodeRegistry::new(16)),
+            node_registry: Arc::new(NodeRegistry::new(16)),
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
             session_queue: std::sync::Arc::new(crate::session_queue::SessionActorQueue::new(
                 8, 30, 600,
             )),
-            device_registry: None,
-            pending_pairings: None,
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            #[cfg(feature = "webauthn")]
-            webauthn: None,
         };
 
         let mut headers = HeaderMap::new();
@@ -2163,21 +2007,17 @@ mod tests {
             tools_registry: Arc::new(Vec::new()),
             cost_tracker: None,
             event_tx: tokio::sync::broadcast::channel(16).0,
-            event_buffer: Arc::new(sse::EventBuffer::new(16)),
+            event_buffer: Arc::new(EventBuffer::new(16)),
             shutdown_tx: tokio::sync::watch::channel(false).0,
-            node_registry: Arc::new(nodes::NodeRegistry::new(16)),
+            node_registry: Arc::new(NodeRegistry::new(16)),
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
             session_queue: std::sync::Arc::new(crate::session_queue::SessionActorQueue::new(
                 8, 30, 600,
             )),
-            device_registry: None,
-            pending_pairings: None,
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            #[cfg(feature = "webauthn")]
-            webauthn: None,
         };
 
         let headers = HeaderMap::new();
@@ -2248,21 +2088,17 @@ mod tests {
             tools_registry: Arc::new(Vec::new()),
             cost_tracker: None,
             event_tx: tokio::sync::broadcast::channel(16).0,
-            event_buffer: Arc::new(sse::EventBuffer::new(16)),
+            event_buffer: Arc::new(EventBuffer::new(16)),
             shutdown_tx: tokio::sync::watch::channel(false).0,
-            node_registry: Arc::new(nodes::NodeRegistry::new(16)),
+            node_registry: Arc::new(NodeRegistry::new(16)),
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
             session_queue: std::sync::Arc::new(crate::session_queue::SessionActorQueue::new(
                 8, 30, 600,
             )),
-            device_registry: None,
-            pending_pairings: None,
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            #[cfg(feature = "webauthn")]
-            webauthn: None,
         };
 
         let response = handle_webhook(
@@ -2305,21 +2141,17 @@ mod tests {
             tools_registry: Arc::new(Vec::new()),
             cost_tracker: None,
             event_tx: tokio::sync::broadcast::channel(16).0,
-            event_buffer: Arc::new(sse::EventBuffer::new(16)),
+            event_buffer: Arc::new(EventBuffer::new(16)),
             shutdown_tx: tokio::sync::watch::channel(false).0,
-            node_registry: Arc::new(nodes::NodeRegistry::new(16)),
+            node_registry: Arc::new(NodeRegistry::new(16)),
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
             session_queue: std::sync::Arc::new(crate::session_queue::SessionActorQueue::new(
                 8, 30, 600,
             )),
-            device_registry: None,
-            pending_pairings: None,
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            #[cfg(feature = "webauthn")]
-            webauthn: None,
         };
 
         let mut headers = HeaderMap::new();
@@ -2367,21 +2199,17 @@ mod tests {
             tools_registry: Arc::new(Vec::new()),
             cost_tracker: None,
             event_tx: tokio::sync::broadcast::channel(16).0,
-            event_buffer: Arc::new(sse::EventBuffer::new(16)),
+            event_buffer: Arc::new(EventBuffer::new(16)),
             shutdown_tx: tokio::sync::watch::channel(false).0,
-            node_registry: Arc::new(nodes::NodeRegistry::new(16)),
+            node_registry: Arc::new(NodeRegistry::new(16)),
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
             session_queue: std::sync::Arc::new(crate::session_queue::SessionActorQueue::new(
                 8, 30, 600,
             )),
-            device_registry: None,
-            pending_pairings: None,
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            #[cfg(feature = "webauthn")]
-            webauthn: None,
         };
 
         let mut headers = HeaderMap::new();
@@ -2438,9 +2266,9 @@ mod tests {
     //         tools_registry: Arc::new(Vec::new()),
     //         cost_tracker: None,
     //         event_tx: tokio::sync::broadcast::channel(16).0,
-    //         event_buffer: Arc::new(sse::EventBuffer::new(16)),
+    //         event_buffer: Arc::new(EventBuffer::new(16)),
     //         shutdown_tx: tokio::sync::watch::channel(false).0,
-    //         node_registry: Arc::new(nodes::NodeRegistry::new(16)),
+    //         node_registry: Arc::new(NodeRegistry::new(16)),
     //         path_prefix: String::new(),
     //         web_dist_dir: None,
     //         session_backend: None,
@@ -2502,9 +2330,9 @@ mod tests {
     //         tools_registry: Arc::new(Vec::new()),
     //         cost_tracker: None,
     //         event_tx: tokio::sync::broadcast::channel(16).0,
-    //         event_buffer: Arc::new(sse::EventBuffer::new(16)),
+    //         event_buffer: Arc::new(EventBuffer::new(16)),
     //         shutdown_tx: tokio::sync::watch::channel(false).0,
-    //         node_registry: Arc::new(nodes::NodeRegistry::new(16)),
+    //         node_registry: Arc::new(NodeRegistry::new(16)),
     //         path_prefix: String::new(),
     //         web_dist_dir: None,
     //         session_backend: None,

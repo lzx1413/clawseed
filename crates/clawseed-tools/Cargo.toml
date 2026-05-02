@@ -9,7 +9,6 @@ description = "Built-in tool implementations for ClawSeed"
 [dependencies]
 clawseed-api = { workspace = true }
 clawseed-config = { workspace = true }
-clawseed-providers = { workspace = true }
 clawseed-memory = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

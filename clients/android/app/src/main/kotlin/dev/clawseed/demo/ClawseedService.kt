@@ -76,12 +76,20 @@ class ClawseedService : Service() {
             ensureConfig()
             updateNotification("Gateway 运行中 :42617")
 
-            process = ProcessBuilder(binary.absolutePath, "gateway")
+            process = ProcessBuilder(binary.absolutePath, "gateway", "--port", "42617")
                 .redirectErrorStream(true)
                 .also { pb ->
                     pb.environment()["HOME"] = filesDir.absolutePath
                     pb.environment()["XDG_CONFIG_HOME"] = filesDir.absolutePath
                     pb.environment()["XDG_DATA_HOME"] = filesDir.absolutePath
+                    val apiKeyFile = File(filesDir, ".clawseed/api_key")
+                    if (apiKeyFile.exists()) {
+                        val key = apiKeyFile.readText().trim()
+                        if (key.isNotEmpty()) {
+                            pb.environment()["CLAWSEED_API_KEY"] = key
+                            Log.i(TAG, "API key loaded from file")
+                        }
+                    }
                 }
                 .start()
 
@@ -101,10 +109,25 @@ class ClawseedService : Service() {
     private fun ensureConfig() {
         val configDir = File(filesDir, ".clawseed")
         configDir.mkdirs()
+
+        // Ensure workspace directory exists so file tools can read/write
+        val workspaceDir = File(configDir, "workspace")
+        if (!workspaceDir.exists()) {
+            workspaceDir.mkdirs()
+            Log.i(TAG, "Created workspace directory: ${workspaceDir.absolutePath}")
+        }
+
         val configFile = File(configDir, "config.toml")
         if (configFile.exists()) {
             var content = configFile.readText()
             var changed = false
+
+            // Ensure workspace_dir is set in config
+            if (!content.contains("workspace_dir")) {
+                content = "workspace_dir = \"${workspaceDir.absolutePath}\"\n$content"
+                changed = true
+                Log.i(TAG, "Added workspace_dir to config")
+            }
 
             for ((section, patch) in WEB_FEATURE_PATCHES) {
                 val patched = enableSectionIfPresent(content, section, patch)
@@ -116,7 +139,7 @@ class ClawseedService : Service() {
 
             if (changed) configFile.writeText(content)
         } else {
-            configFile.writeText(INITIAL_CONFIG)
+            configFile.writeText(INITIAL_CONFIG.replace("{WORKSPACE_DIR}", workspaceDir.absolutePath))
             Log.i(TAG, "Created initial config")
         }
     }
@@ -131,6 +154,11 @@ class ClawseedService : Service() {
         if (section.contains(patch.first)) {
             section = section.replace(patch.first, patch.second)
             Log.i(TAG, "Patched config: $sectionHeader ${patch.second}")
+        }
+        // Ensure allowed_domains is present for network tool sections
+        if (sectionHeader in listOf("[http_request]", "[web_fetch]") && !section.contains("allowed_domains")) {
+            section = section.trimEnd() + "\nallowed_domains = [\"*\"]\n"
+            Log.i(TAG, "Added allowed_domains to $sectionHeader")
         }
         return before + section + after
     }
@@ -149,13 +177,17 @@ class ClawseedService : Service() {
         )
 
         private val INITIAL_CONFIG = """
+workspace_dir = "{WORKSPACE_DIR}"
+
 [gateway]
 
 [web_fetch]
 enabled = true
+allowed_domains = ["*"]
 
 [http_request]
 enabled = true
+allowed_domains = ["*"]
 
 [web_search]
 enabled = true

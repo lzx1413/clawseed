@@ -1,35 +1,36 @@
-//! Agent loop utilities needed by the gateway.
+//! Minimal agent_loop shim — provides the symbols the gateway depends on.
 //!
-//! Re-exports and stubs for functions referenced by the gateway.
+//! The original 4300-line monolithic agent loop was replaced by the registry-based
+//! `Agent` in `agent.rs`. This module provides backwards-compatible shims for
+//! gateway integration.
 
-use clawseed_api::TOOL_LOOP_SESSION_KEY;
+use std::future::Future;
 
-/// Set the session key for the duration of the given future.
-pub async fn scope_session_key<F>(key: Option<String>, fut: F) -> F::Output
-where
-    F: std::future::Future,
-{
-    match key {
-        Some(k) => TOOL_LOOP_SESSION_KEY.scope(Some(k), fut).await,
-        None => fut.await,
+/// Error type for cancelled tool loops.
+#[derive(Debug)]
+pub struct ToolLoopCancelled;
+
+impl std::fmt::Display for ToolLoopCancelled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("tool loop cancelled")
     }
 }
 
-/// Check if an error represents a cancelled tool loop.
+impl std::error::Error for ToolLoopCancelled {}
+
+/// Check if an error was caused by tool-loop cancellation.
 pub fn is_tool_loop_cancelled(err: &anyhow::Error) -> bool {
-    err.to_string().contains("ToolLoopCancelled")
-        || err.to_string().contains("cancelled")
-        || err.chain().any(|e| {
-            e.to_string().contains("ToolLoopCancelled")
-                || e.to_string().contains("cancelled")
-        })
+    err.chain().any(|source| source.is::<ToolLoopCancelled>())
 }
 
-/// Process a message through the agent loop (stub).
-pub async fn process_message(
-    _config: clawseed_config::schema::Config,
-    _message: &str,
-    _session_id: Option<&str>,
-) -> anyhow::Result<String> {
-    Ok(String::new())
+/// Scope a session key around an async operation.
+///
+/// In the registry-based agent, session scoping is handled by the
+/// `memory_session_id` field on the Agent struct. This shim exists
+/// solely for gateway compatibility — it simply runs the future as-is.
+pub async fn scope_session_key<F, T>(_key: Option<String>, fut: F) -> T
+where
+    F: Future<Output = T>,
+{
+    fut.await
 }

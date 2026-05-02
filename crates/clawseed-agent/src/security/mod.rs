@@ -74,7 +74,7 @@ impl SecurityPolicy {
     pub fn validate_command_execution(
         &self,
         command: &str,
-        _approved: bool,
+        approved: bool,
     ) -> Result<(), String> {
         if self.autonomy_level == AutonomyLevel::ReadOnly {
             return Err("autonomy is read-only".to_string());
@@ -90,6 +90,14 @@ impl SecurityPolicy {
             .iter()
             .any(|allowed| cmd_binary == allowed.as_str())
         {
+            // Allowed by command allowlist, but medium-risk commands
+            // (like touch, rm, cp, mv) still need explicit approval.
+            let medium_risk = ["touch", "rm", "cp", "mv", "mkdir", "chmod", "chown", "kill"];
+            if medium_risk.contains(&cmd_binary) && !approved {
+                return Err(format!(
+                    "command '{cmd_binary}' requires explicit approval (medium risk)"
+                ));
+            }
             return Ok(());
         }
 

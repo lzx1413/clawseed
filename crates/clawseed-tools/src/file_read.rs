@@ -38,9 +38,18 @@ impl Tool for FileReadTool {
         let full_path = workspace.join(path);
 
         // Sandbox: path must be within workspace
-        let canonical = std::fs::canonicalize(&full_path)
-            .map_err(|e| anyhow::anyhow!("Cannot read path {}: {}", path, e))?;
-        if !canonical.starts_with(workspace) {
+        let canonical = match std::fs::canonicalize(&full_path) {
+            Ok(c) => c,
+            Err(e) => {
+                return Ok(ToolResult {
+                    success: false,
+                    output: String::new(),
+                    error: Some(format!("Cannot read path {}: {}", path, e)),
+                });
+            }
+        };
+        let workspace_canon = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
+        if !canonical.starts_with(&workspace_canon) {
             return Ok(ToolResult {
                 success: false,
                 output: String::new(),

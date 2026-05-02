@@ -42,3 +42,4 @@ async-trait = { workspace = true }
 parking_lot = { workspace = true }
 uuid = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
+clawseed-memory = { workspace = true }

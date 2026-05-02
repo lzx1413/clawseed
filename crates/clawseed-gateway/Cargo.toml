@@ -45,8 +45,6 @@ rand = "0.9"
 
 [features]
 default = []
-webauthn = []
-gateway-voice-duplex = []
 channel-nostr = []
 observability-prometheus = []
 tls-tests = ["dep:rcgen", "dep:tempfile"]
@@ -55,3 +53,7 @@ tls-tests = ["dep:rcgen", "dep:tempfile"]
 tempfile = { workspace = true }
 rcgen = "0.13"
 tokio = { workspace = true, features = ["rt", "macros"] }
+clawseed-agent = { workspace = true }
+clawseed-memory = { workspace = true }
+async-trait = { workspace = true }
+parking_lot = { workspace = true }

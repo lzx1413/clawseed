@@ -1,8 +1,10 @@
 //! Tool execution helpers.
 
+use crate::context::AgentToolContext;
 use crate::dispatcher::ParsedToolCall;
 use crate::observer::{Observer, ObserverEvent};
 use anyhow::Result;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 use clawseed_api::tool::Tool;
@@ -28,6 +30,25 @@ pub async fn execute_one_tool(
     observer: &dyn Observer,
     cancellation_token: Option<&CancellationToken>,
 ) -> Result<ToolExecutionOutcome> {
+    execute_one_tool_with_context(
+        call_name,
+        call_arguments,
+        tools_registry,
+        observer,
+        cancellation_token,
+        &AgentToolContext::new(PathBuf::from(".")),
+    ).await
+}
+
+/// Execute a single tool call with a provided context.
+pub async fn execute_one_tool_with_context(
+    call_name: &str,
+    call_arguments: serde_json::Value,
+    tools_registry: &[Box<dyn Tool>],
+    observer: &dyn Observer,
+    cancellation_token: Option<&CancellationToken>,
+    ctx: &dyn clawseed_api::tool_context::ToolContext,
+) -> Result<ToolExecutionOutcome> {
     let args_summary = truncate_with_ellipsis(&call_arguments.to_string(), 300);
     observer.record_event(&ObserverEvent::ToolCallStart {
         tool: call_name.to_string(),
@@ -51,7 +72,7 @@ pub async fn execute_one_tool(
         });
     };
 
-    let tool_future = tool.execute(call_arguments.clone(), &NoopToolContext);
+    let tool_future = tool.execute(call_arguments.clone(), ctx);
     let tool_result = if let Some(token) = cancellation_token {
         tokio::select! {
             () = token.cancelled() => anyhow::bail!("tool loop cancelled"),
@@ -175,18 +196,5 @@ fn truncate_with_ellipsis(s: &str, max_len: usize) -> String {
         s.to_string()
     } else {
         format!("{}...", &s[..max_len])
-    }
-}
-
-/// No-op tool context for execution.
-struct NoopToolContext;
-
-impl clawseed_api::tool_context::ToolContext for NoopToolContext {
-    fn workspace_dir(&self) -> &std::path::Path {
-        std::path::Path::new(".")
-    }
-
-    fn get_any(&self, _type_id: std::any::TypeId) -> Option<&(dyn std::any::Any + Send + Sync)> {
-        None
     }
 }

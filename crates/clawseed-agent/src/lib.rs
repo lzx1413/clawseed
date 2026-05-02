@@ -6,13 +6,11 @@
 
 pub mod agent;
 pub mod agent_loop;
-pub mod turn;
-pub mod turn_streaming;
-pub mod tool_loop;
 pub mod context;
 pub mod dispatcher;
 pub mod tool_execution;
 pub mod history;
+pub mod health;
 pub mod prompt;
 pub mod cost;
 pub mod hooks;
@@ -20,11 +18,5 @@ pub mod observer;
 pub mod observability;
 pub mod approval;
 pub mod security;
-pub mod health;
 pub mod cron;
-pub mod doctor;
-pub mod integrations;
-pub mod platform;
-pub mod i18n;
-pub mod tunnel;
 pub mod tools;

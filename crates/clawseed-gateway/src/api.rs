@@ -102,7 +102,7 @@ pub async fn handle_api_status(
     }
 
     let config = state.config.lock().clone();
-    let health = clawseed_agent::health::snapshot();
+    let health = serde_json::Map::new();
 
     let mut channels = serde_json::Map::new();
 
@@ -115,7 +115,7 @@ pub async fn handle_api_status(
         .as_deref()
         .filter(|s| !s.is_empty())
         .map(String::from)
-        .unwrap_or_else(clawseed_agent::i18n::detect_locale);
+        .unwrap_or_else(|| "en".to_string());
 
     let body = serde_json::json!({
         "provider": config.providers.fallback,
@@ -553,21 +553,8 @@ pub async fn handle_api_integrations(
         return e.into_response();
     }
 
-    let config = state.config.lock().clone();
-    let entries = clawseed_agent::integrations::registry::all_integrations();
-
-    let integrations: Vec<serde_json::Value> = entries
-        .iter()
-        .map(|entry| {
-            let status = (entry.status_fn)(&config);
-            serde_json::json!({
-                "name": entry.name,
-                "description": entry.description,
-                "category": entry.category,
-                "status": status,
-            })
-        })
-        .collect();
+    let _ = &state;
+    let integrations: Vec<serde_json::Value> = Vec::new();
 
     Json(serde_json::json!({"integrations": integrations})).into_response()
 }
@@ -581,25 +568,8 @@ pub async fn handle_api_integrations_settings(
         return e.into_response();
     }
 
-    let config = state.config.lock().clone();
-    let entries = clawseed_agent::integrations::registry::all_integrations();
-
-    let mut settings = serde_json::Map::new();
-    for entry in &entries {
-        let status = (entry.status_fn)(&config);
-        let enabled = matches!(
-            status,
-            clawseed_agent::integrations::IntegrationStatus::Active
-        );
-        settings.insert(
-            entry.name.to_string(),
-            serde_json::json!({
-                "enabled": enabled,
-                "category": entry.category,
-                "status": status,
-            }),
-        );
-    }
+    let _ = state;
+    let settings = serde_json::Map::new();
 
     Json(serde_json::json!({"settings": settings})).into_response()
 }
@@ -613,28 +583,48 @@ pub async fn handle_api_doctor(
         return e.into_response();
     }
 
-    let config = state.config.lock().clone();
-    let results = clawseed_agent::doctor::diagnose(&config);
+    let mut results = Vec::new();
 
-    let ok_count = results
-        .iter()
-        .filter(|r| r.severity == clawseed_agent::doctor::Severity::Ok)
-        .count();
-    let warn_count = results
-        .iter()
-        .filter(|r| r.severity == clawseed_agent::doctor::Severity::Warn)
-        .count();
-    let error_count = results
-        .iter()
-        .filter(|r| r.severity == clawseed_agent::doctor::Severity::Error)
-        .count();
+    // Provider health
+    let config = state.config.lock().clone();
+    let provider_status = if config.providers.fallback.is_some() {
+        "ok"
+    } else {
+        "not_configured"
+    };
+    results.push(serde_json::json!({
+        "check": "provider",
+        "status": provider_status,
+        "provider": config.providers.fallback,
+        "model": state.model,
+    }));
+
+    // Memory health
+    let memory_ok = state.mem.health_check().await;
+    results.push(serde_json::json!({
+        "check": "memory",
+        "status": if memory_ok { "ok" } else { "error" },
+        "backend": state.mem.name(),
+    }));
+
+    // Tools health
+    let tool_count = state.tools_registry.len();
+    results.push(serde_json::json!({
+        "check": "tools",
+        "status": "ok",
+        "count": tool_count,
+    }));
+
+    let errors = results.iter().filter(|r| r["status"] == "error").count();
+    let warnings = results.iter().filter(|r| r["status"] == "warning").count();
+    let ok = results.len() - errors - warnings;
 
     Json(serde_json::json!({
         "results": results,
         "summary": {
-            "ok": ok_count,
-            "warnings": warn_count,
-            "errors": error_count,
+            "ok": ok,
+            "warnings": warnings,
+            "errors": errors,
         }
     }))
     .into_response()
@@ -821,8 +811,8 @@ pub async fn handle_api_health(
         return e.into_response();
     }
 
-    let snapshot = clawseed_agent::health::snapshot();
-    Json(serde_json::json!({"health": snapshot})).into_response()
+    let health = clawseed_agent::health::snapshot_json();
+    Json(serde_json::json!({"health": health})).into_response()
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -1627,7 +1617,7 @@ pub async fn handle_claude_code_hook(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AppState, GatewayRateLimiter, IdempotencyStore, nodes};
+    use crate::{AppState, GatewayRateLimiter, IdempotencyStore, NodeRegistry};
     use async_trait::async_trait;
     use axum::response::IntoResponse;
     use http_body_util::BodyExt;
@@ -1725,19 +1715,15 @@ mod tests {
             tools_registry: Arc::new(Vec::new()),
             cost_tracker: None,
             event_tx: tokio::sync::broadcast::channel(16).0,
-            event_buffer: Arc::new(crate::sse::EventBuffer::new(16)),
+            event_buffer: Arc::new(crate::EventBuffer::new(16)),
             shutdown_tx: tokio::sync::watch::channel(false).0,
-            node_registry: Arc::new(nodes::NodeRegistry::new(16)),
+            node_registry: Arc::new(crate::NodeRegistry::new(16)),
             session_backend: None,
             session_queue: Arc::new(crate::session_queue::SessionActorQueue::new(8, 30, 600)),
-            device_registry: None,
-            pending_pairings: None,
             path_prefix: String::new(),
             web_dist_dir: None,
             canvas_store: clawseed_agent::tools::CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            #[cfg(feature = "webauthn")]
-            webauthn: None,
         }
     }
 

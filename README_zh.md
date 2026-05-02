@@ -1,0 +1,235 @@
+<p align="center">
+  <strong>ClawSeed</strong>
+</p>
+
+<p align="center">
+  <strong>支持远程工具调用的 Rust AI Agent 运行时。</strong>
+</p>
+
+<p align="center">
+  <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache%202.0-blue.svg" alt="License" /></a>
+  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-edition%202024-orange?logo=rust" alt="Rust Edition 2024" /></a>
+  <a href="README.md">English</a> | <strong>中文</strong>
+</p>
+
+---
+
+ClawSeed 是一个用 Rust 编写的 AI Agent 运行时。它连接 LLM 提供商（Anthropic、Gemini、Bedrock、OpenAI 兼容接口等），通过可插拔的工具执行操作，并通过 HTTP/WebSocket 服务客户端。
+
+Agent 运行在服务端，但移动客户端（Android、iOS）可以通过 WebSocket 注册自己的工具。当 Agent 调用这些工具时，网关将请求转发给客户端执行。这使得 Agent 可以访问设备能力——通讯录、摄像头、传感器——而无需在服务端编写设备特定代码。
+
+ClawSeed 的 trait 驱动架构借鉴自 [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw)，在更小的范围内做了一些结构调整：统一的 `Hook` trait、基于 `TypeId` 的能力注入、以及原生的远程工具调用支持。
+
+## 架构
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                  gateway (REST / WebSocket)               │
+│                       ↓                                   │
+│  ┌──────────────────────────────────────────────────┐    │
+│  │              Agent (稳定核心)                      │    │
+│  │     turn → LLM → dispatch → execute → loop       │    │
+│  └──┬──────────┬──────────┬──────────┬─────────────┘    │
+│     │          │          │          │                    │
+│  provider    tools      memory    hooks                  │
+│  (dyn)     (dyn)       (dyn)    (pipeline)               │
+│     │          │          │          │                    │
+│  Anthropic   25+        SQLite   security                │
+│  Gemini      内置       向量搜索  audit                   │
+│  Bedrock                search   approval                │
+│  OpenAI*     + remote ──→ 移动客户端                     │
+│  Ollama                                                  │
+│  DeepSeek                                                │
+│  Groq                                                    │
+└──────────────────────────────────────────────────────────┘
+   * 及任何 OpenAI 兼容接口
+```
+
+依赖流是单向的：**api ← agent ← tools / providers / memory ← gateway**。没有反向依赖。
+
+## 远程工具调用
+
+移动客户端通过 WebSocket 连接时注册工具规格。网关将每个规格包装为 `RemoteTool`——一个 `Tool` trait 实现，将执行桥接到客户端：
+
+```
+┌──────────────┐     register_tools       ┌──────────────┐
+│   移动客户端  │ ───────────────────────→ │    网关      │
+│              │                          │              │
+│              │ ←── tool_call_request ── │   Agent      │
+│  (设备端执行) │ ──── tool_result ──────→ │   像调用     │
+│              │                          │   普通工具   │
+│              │ ←── result_acknowledged─ │   一样调用   │
+└──────────────┘                          └──────────────┘
+```
+
+流程：
+
+1. 客户端连接并发送 `register_tools`，包含工具规格（名称、描述、JSON Schema）
+2. 网关为每个规格创建 `RemoteTool`，加入 Agent 的工具列表
+3. Agent 调用工具；`RemoteTool::execute()` 通过 WebSocket 向客户端发送 `tool_call_request`
+4. 客户端本地执行，以 `tool_result` 或 `tool_error` 响应
+5. 网关通过 call ID 关联回调（30 秒超时），将结果返回给 Agent
+
+Agent 循环对远程和本地工具没有分支——两者实现同一个 `Tool` trait。远程工具不使用 `ToolContext`（无法访问服务端的内存、安全策略等能力）。
+
+### Android SDK
+
+```kotlin
+val client = ClawseedClient(
+    gatewayUrl = "ws://localhost:3000/ws/chat",
+    tools = listOf(
+        ToolSpec("local_contacts", "查询手机通讯录", contactsSchema),
+        ToolSpec("camera", "拍照", cameraSchema),
+    )
+) { request ->
+    when (request.name) {
+        "local_contacts" -> ToolCallResult.Success(queryContacts(request.args))
+        "camera" -> ToolCallResult.Success(takePhoto(request.args))
+        else -> ToolCallResult.Failure("unknown tool")
+    }
+}
+client.connect()
+```
+
+SDK 还将网关二进制作为前台服务运行在设备上——整个 Agent 栈运行在 Android 设备上，通过网络访问 LLM 提供商。
+
+## Crate 组成
+
+| Crate | 职责 | 依赖 api | 依赖 agent |
+|-------|------|:-:|:-:|
+| `clawseed-api` | 仅 trait 定义 | — | — |
+| `clawseed-agent` | Agent 循环、Hook、分发 | 是 | — |
+| `clawseed-tools` | 25+ 内置工具 | 是 | 否 |
+| `clawseed-providers` | LLM 提供商实现 | 是 | 否 |
+| `clawseed-memory` | SQLite 存储 + 向量搜索 | 是 | 否 |
+| `clawseed-config` | TOML 配置 schema 与加载 | 是 | 否 |
+| `clawseed-parser` | 工具调用解析 | 是 | 否 |
+| `clawseed-macros` | 过程宏 | 否 | 否 |
+| `clawseed-gateway` | Axum HTTP/WS 服务器 + 远程工具桥接 | 是 | 是 |
+| `clawseed` | 二进制（CLI） | — | — |
+
+## 快速开始
+
+```bash
+git clone https://github.com/clawseed-labs/clawseed.git
+cd clawseed
+cargo build --release
+
+# 启动网关
+./target/release/clawseed gateway --host 0.0.0.0 --port 3000
+```
+
+网关读取 `~/.clawseed/config.toml`。最小配置：
+
+```toml
+[providers.models.default]
+provider = "anthropic"
+model = "claude-sonnet-4-20250514"
+api_key = "${ANTHROPIC_API_KEY}"
+
+[agent]
+workspace_dir = "/home/user/workspace"
+```
+
+## 扩展 ClawSeed
+
+### 添加工具
+
+在 `clawseed-tools` 中实现 `Tool` trait，注册到 `all_tools()`：
+
+```rust
+pub struct MyTool;
+
+impl Tool for MyTool {
+    fn name(&self) -> &str { "my_tool" }
+    fn description(&self) -> &str { "做些有用的事" }
+    fn parameters_schema(&self) -> Value { /* JSON Schema */ }
+    async fn execute(&self, args: Value, ctx: &dyn ToolContext) -> Result<ToolResult> {
+        if let Some(policy) = ctx.get::<SecurityPolicy>() {
+            policy.can_act()?;
+        }
+        // ...
+    }
+}
+```
+
+### 添加 Hook
+
+实现 `Hook` trait 拦截工具调用：
+
+```rust
+pub struct AuditHook;
+
+impl Hook for AuditHook {
+    fn before_tool_call(&self, call: &mut ToolCall) -> HookResult {
+        log::info!("工具 {} 被调用", call.name);
+        HookResult::Continue
+    }
+
+    fn after_tool_call(&self, result: &ToolExecutionResult) -> HookResult {
+        log::info!("工具 {} → {:?}", result.name, result.status);
+        HookResult::Continue
+    }
+}
+```
+
+`HookResult` 有三个变体：`Continue`（继续）、`Cancel(String)`（取消）、`Modify(ToolCall)`（修改）。
+
+### 添加提供商
+
+在 `clawseed-providers` 中实现 `Provider` trait，加入工厂函数。支持原生工具调用、流式输出、视觉理解和提示缓存。
+
+### 添加能力
+
+向 Agent 注入任何 `Send + Sync + 'static` 类型——工具在运行时发现它：
+
+```rust
+// 构建时（网关）
+agent_builder.capability(Arc::new(my_custom_service));
+
+// 执行时（工具）
+if let Some(svc) = ctx.get::<MyCustomService>() {
+    svc.do_thing();
+}
+```
+
+## 内置工具
+
+**文件操作** — 读取、写入、编辑、glob 搜索、内容搜索
+**网络** — HTTP 请求、网页抓取、网页搜索（DuckDuckGo）
+**记忆** — 存储、回忆、遗忘、清除、导出
+**自动化** — 定时任务增删查改执行
+**开发** — Shell、Git 操作、PDF 读取
+**工具** — 计算器、LLM 子任务、知识库、模型路由、备份
+
+Agent 不需要的工具通过配置中的 `allowed_tools` 排除——不会注册，不消耗 token。
+
+## 安全
+
+- **自主级别** — `ReadOnly` / `Supervised` / `Full`，按部署配置
+- **SecurityPolicy** — 以能力形式注入，工具通过 `ctx.get::<SecurityPolicy>()` 检查
+- **命令白名单** — SecurityPolicy 中的 `allowed_commands` 验证 Shell 命令
+- **路径守卫** — `forbidden_path_argument()` 阻止敏感路径（`/etc/passwd`、`/root/.ssh` 等）
+- **频率限制** — `max_actions_per_hour` 限制每会话总操作数
+- **Hook 管道** — `Hook::before_tool_call()` 可在执行前取消或修改任何工具调用
+
+## 设计原则
+
+1. **显式优于隐式** — `all_tools()` 列出每个工具，能力集一目了然
+2. **声明式优于命令式** — 配置驱动组合，而非代码修改
+3. **边界用 trait** — 核心依赖抽象，实现在外部
+4. **优雅降级** — 能力缺失 → 工具跳过该功能；内存失败 → NoneMemory 回退；提供商不稳 → ReliableProvider 重试
+
+## 致谢
+
+ClawSeed 的 trait 驱动架构和 Provider/Tool/Memory 抽象模式源自 [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw)。与 ZeroClaw 的主要区别：
+
+- 移除了渠道编排器、硬件外设、SOP 引擎、语音/画布子系统
+- 新增原生远程工具调用支持（移动客户端 → 网关桥接）
+- 新增统一的 `Hook` trait 用于工具调用拦截
+- 将构造函数注入替换为基于 `TypeId` 的能力查找（`ctx.get::<T>()`）
+- 从约 225K 行 / 18 个 crate 精简至约 55K 行 / 10 个 crate
+
+## 许可证
+
+双重许可：[MIT](LICENSE-MIT) 或 [Apache 2.0](LICENSE-APACHE)，可任选其一。

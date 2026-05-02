@@ -123,7 +123,7 @@ pub struct GatewayClientAuthConfig {
 }
 
 fn default_host() -> String { "127.0.0.1".into() }
-fn default_port() -> u16 { 3000 }
+fn default_port() -> u16 { 42617 }
 fn default_timeout_secs() -> u64 { 300 }
 fn default_session_ttl_hours() -> u32 { 24 }
 fn default_true() -> bool { true }

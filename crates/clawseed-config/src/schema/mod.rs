@@ -599,6 +599,49 @@ impl Config {
         Ok(Self::with_env_overrides(config))
     }
 
+    /// Return the default TOML config string written on first run.
+    pub fn default_toml() -> String {
+        r#"# ClawSeed default configuration
+# Auto-generated on first run. Edit as needed.
+
+[gateway]
+host = "127.0.0.1"
+port = 42617
+require_pairing = false
+session_persistence = true
+
+[providers]
+fallback = "custom:https://api.deepseek.com"
+
+[providers.models."custom:https://api.deepseek.com"]
+model = "deepseek-chat"
+base_url = "https://api.deepseek.com"
+
+[providers.models."custom:https://coding.dashscope.aliyuncs.com/apps/anthropic"]
+base_url = "https://coding.dashscope.aliyuncs.com/apps/anthropic"
+model = "glm-5"
+name = "claude-sonnet-4-5"
+
+[agent]
+max_tool_iterations = 10
+
+[autonomy]
+level = "supervised"
+auto_approve = ["file_read", "memory_recall", "web_search", "web_fetch", "calculator", "glob_search", "content_search"]
+
+[memory]
+backend = "sqlite"
+auto_save = true
+
+[reliability]
+max_retries = 2
+provider_backoff_ms = 500
+
+[secrets]
+encrypt = true
+"#.to_string()
+    }
+
     /// Validate the configuration (stub — always succeeds).
     pub fn validate(&self) -> Result<()> {
         Ok(())
@@ -717,6 +760,22 @@ mod tests {
         let config = Config::default().with_env_overrides();
         assert_eq!(config.agent.temperature, Some(0.5));
         unsafe { std::env::remove_var("CLAWSEED_TEMPERATURE") };
+    }
+
+    #[test]
+    fn default_toml_parses_successfully() {
+        let toml_str = Config::default_toml();
+        let config: Config = toml::from_str(&toml_str).expect("default_toml should parse");
+        assert_eq!(config.gateway.port, 42617);
+        assert_eq!(config.providers.fallback.as_deref(), Some("custom:https://api.deepseek.com"));
+        assert_eq!(config.agent.max_tool_iterations, 10);
+        assert!(config.memory.auto_save);
+        assert_eq!(config.memory.backend, "sqlite");
+    }
+
+    #[test]
+    fn default_port_is_42617() {
+        assert_eq!(GatewayConfig::default().port, 42617);
     }
 
     #[test]
@@ -1106,12 +1165,38 @@ pub struct ComputerUseConfig {
 }
 
 /// HTTP request configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct HttpRequestConfig {}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HttpRequestConfig {
+    /// Whether the HTTP request tool is enabled.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Allowed domains (empty = allow all when enabled).
+    #[serde(default)]
+    pub allowed_domains: Vec<String>,
+}
+
+impl Default for HttpRequestConfig {
+    fn default() -> Self {
+        Self { enabled: false, allowed_domains: Vec::new() }
+    }
+}
 
 /// Web fetch configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct WebFetchConfig {}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebFetchConfig {
+    /// Whether the web fetch tool is enabled.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Allowed domains (empty = allow all when enabled).
+    #[serde(default)]
+    pub allowed_domains: Vec<String>,
+}
+
+impl Default for WebFetchConfig {
+    fn default() -> Self {
+        Self { enabled: false, allowed_domains: Vec::new() }
+    }
+}
 
 /// Transcription configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -1121,10 +1206,19 @@ pub struct TranscriptionConfig {
 }
 
 /// Web search configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebSearchConfig {
+    /// Whether the web search tool is enabled.
+    #[serde(default)]
+    pub enabled: bool,
     #[serde(default)]
     pub brave_api_key: Option<String>,
+}
+
+impl Default for WebSearchConfig {
+    fn default() -> Self {
+        Self { enabled: false, brave_api_key: None }
+    }
 }
 
 /// Agent entry configuration (for named agents in the config).

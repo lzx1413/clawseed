@@ -31,7 +31,7 @@ pub async fn run(config: Config, event_tx: EventBroadcast) -> Result<()> {
         &config.workspace_dir,
     ));
 
-    crate::health::mark_component_ok(SCHEDULER_COMPONENT);
+    // health::mark_component_ok(SCHEDULER_COMPONENT);
 
     // ── Declarative job sync: reconcile config-defined jobs with the DB.
     let mut jobs_with_builtin = config.cron.jobs.clone();
@@ -87,12 +87,12 @@ pub async fn run(config: Config, event_tx: EventBroadcast) -> Result<()> {
     loop {
         interval.tick().await;
         // Keep scheduler liveness fresh even when there are no due jobs.
-        crate::health::mark_component_ok(SCHEDULER_COMPONENT);
+        // health::mark_component_ok(SCHEDULER_COMPONENT);
 
         let jobs = match due_jobs(&config, Utc::now()) {
             Ok(jobs) => jobs,
             Err(e) => {
-                crate::health::mark_component_error(SCHEDULER_COMPONENT, e.to_string());
+                // health::mark_component_error(SCHEDULER_COMPONENT, e.to_string());
                 tracing::warn!("Scheduler query failed: {e}");
                 continue;
             }
@@ -183,7 +183,7 @@ async fn process_due_jobs(
     event_tx: &EventBroadcast,
 ) {
     // Refresh scheduler health on every successful poll cycle, including idle cycles.
-    crate::health::mark_component_ok(component);
+    // health::mark_component_ok(component);
 
     let max_concurrent = config.scheduler.max_concurrent.max(1);
     let mut in_flight = stream::iter(jobs.into_iter().map(|job| {
@@ -223,9 +223,9 @@ async fn execute_and_persist_job(
     config: &Config,
     security: &SecurityPolicy,
     job: &CronJob,
-    component: &str,
+    _component: &str,
 ) -> (String, bool, String) {
-    crate::health::mark_component_ok(component);
+    // health::mark_component_ok(component);
     warn_if_high_frequency_agent_job(job);
 
     let started_at = Utc::now();
@@ -1045,11 +1045,11 @@ mod tests {
         ));
         let component = unique_component("scheduler-idle");
 
-        crate::health::mark_component_error(&component, "pre-existing error");
+        // health::mark_component_error(&component, "pre-existing error");
         process_due_jobs(&config, &security, Vec::new(), &component, &None).await;
 
         // No-op health module returns empty components — just verify no panic.
-        let _snapshot = crate::health::snapshot_json();
+        let _snapshot = serde_json::json!({});
     }
 
     #[tokio::test]
@@ -1069,7 +1069,7 @@ mod tests {
         process_due_jobs(&config, &security, vec![job], &component, &None).await;
 
         // No-op health module — just verify no panic.
-        let _snapshot = crate::health::snapshot_json();
+        let _snapshot = serde_json::json!({});
     }
 
     #[tokio::test]

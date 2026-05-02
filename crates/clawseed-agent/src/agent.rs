@@ -3,11 +3,13 @@
 //! The Agent accepts a message via `turn()`, sends it to the provider,
 //! parses tool calls, dispatches to registered tools, and loops until done.
 
+use crate::context::{AgentToolContext, ContextProvider};
 use crate::dispatcher::{
     ParsedToolCall, ToolDispatcher, ToolExecutionResult,
 };
 use crate::hooks::HookRunner;
 use crate::observer::{Observer, ObserverEvent};
+use crate::security::SecurityPolicy;
 use clawseed_config::schema::AutonomyLevel;
 use clawseed_api::provider::{
     ChatMessage, ChatRequest, ChatResponse, ConversationMessage, Provider,
@@ -37,6 +39,7 @@ pub struct Agent {
     memory: Arc<dyn Memory>,
     observer: Arc<dyn Observer>,
     tool_dispatcher: Box<dyn ToolDispatcher>,
+    capabilities: HashMap<std::any::TypeId, Arc<dyn std::any::Any + Send + Sync>>,
     config: clawseed_config::schema::AgentConfig,
     model_name: String,
     temperature: f64,
@@ -57,6 +60,7 @@ pub struct AgentBuilder {
     memory: Option<Arc<dyn Memory>>,
     observer: Option<Arc<dyn Observer>>,
     tool_dispatcher: Option<Box<dyn ToolDispatcher>>,
+    capabilities: HashMap<std::any::TypeId, Arc<dyn std::any::Any + Send + Sync>>,
     config: Option<clawseed_config::schema::AgentConfig>,
     model_name: Option<String>,
     temperature: Option<f64>,
@@ -84,6 +88,7 @@ impl AgentBuilder {
             memory: None,
             observer: None,
             tool_dispatcher: None,
+            capabilities: HashMap::new(),
             config: None,
             model_name: None,
             temperature: None,
@@ -120,6 +125,20 @@ impl AgentBuilder {
 
     pub fn tool_dispatcher(mut self, tool_dispatcher: Box<dyn ToolDispatcher>) -> Self {
         self.tool_dispatcher = Some(tool_dispatcher);
+        self
+    }
+
+    /// Register a context provider. Tools can query capabilities via `ctx.get::<T>()`.
+    pub fn context_provider(mut self, provider: Box<dyn ContextProvider>) -> Self {
+        let type_id = provider.provided_type_id();
+        let arc = provider.into_any_arc();
+        self.capabilities.insert(type_id, arc);
+        self
+    }
+
+    /// Convenience: register a typed capability directly.
+    pub fn capability<T: Send + Sync + 'static>(mut self, value: Arc<T>) -> Self {
+        self.capabilities.insert(std::any::TypeId::of::<T>(), value);
         self
     }
 
@@ -203,6 +222,7 @@ impl AgentBuilder {
             tool_dispatcher: self
                 .tool_dispatcher
                 .ok_or_else(|| anyhow::anyhow!("tool_dispatcher is required"))?,
+            capabilities: self.capabilities,
             config: self.config.unwrap_or_default(),
             model_name: self.model_name.unwrap_or_else(|| "<unconfigured>".into()),
             temperature: self.temperature.unwrap_or(0.7),
@@ -225,9 +245,69 @@ impl Agent {
         AgentBuilder::new()
     }
 
-    /// Build an agent from the full config (stub).
-    pub async fn from_config(_config: &clawseed_config::schema::Config) -> anyhow::Result<Self> {
-        anyhow::bail!("Agent::from_config stub: not available in minimal crate")
+    /// Build an agent from the full config.
+    pub async fn from_config(config: &clawseed_config::schema::Config) -> anyhow::Result<Self> {
+        let fallback = config.providers.fallback_provider();
+
+        // Provider
+        let provider = clawseed_providers::create_resilient_provider_with_options(
+            config.providers.fallback.as_deref().unwrap_or("openrouter"),
+            fallback.and_then(|e| e.api_key.as_deref()),
+            fallback.and_then(|e| e.base_url.as_deref()),
+            &config.reliability,
+            &clawseed_providers::provider_runtime_options_from_config(config),
+        )?;
+
+        // Memory
+        let mem = clawseed_memory::create_memory(
+            &config.memory,
+            &config.workspace_dir,
+            fallback.and_then(|e| e.api_key.as_deref()),
+        )?;
+
+        // Observer
+        let observer: Arc<dyn Observer> = Arc::new(crate::observer::NoopObserver);
+
+        // Tools
+        let tools = clawseed_tools::registry::all_tools(config.workspace_dir.clone(), config);
+
+        // Dispatcher: native if provider supports it, otherwise XML
+        let dispatcher: Box<dyn ToolDispatcher> = if provider.supports_native_tools() {
+            Box::new(crate::dispatcher::NativeToolDispatcher)
+        } else {
+            Box::new(crate::dispatcher::XmlToolDispatcher)
+        };
+
+        // Model and temperature from fallback provider config
+        let model_name = fallback
+            .and_then(|e| e.model.clone())
+            .unwrap_or_else(|| "anthropic/claude-sonnet-4".into());
+        let temperature = fallback.and_then(|e| e.temperature).unwrap_or(0.7);
+
+        // Security policy as capability
+        let security = Arc::new(SecurityPolicy::from_config(
+            &config.autonomy,
+            &config.workspace_dir,
+        ));
+
+        let mut builder = Agent::builder()
+            .provider(provider)
+            .tools(tools)
+            .memory(mem)
+            .observer(observer)
+            .tool_dispatcher(dispatcher)
+            .capability(security)
+            .model_name(model_name)
+            .temperature(temperature)
+            .workspace_dir(config.workspace_dir.clone())
+            .autonomy_level(config.autonomy.level)
+            .auto_save(config.memory.auto_save);
+
+        if let Some(ref session_id) = config.memory.namespace {
+            builder = builder.memory_session_id(Some(session_id.clone()));
+        }
+
+        builder.build()
     }
 
     pub fn history(&self) -> &[ConversationMessage] {
@@ -367,6 +447,15 @@ impl Agent {
         Ok(output)
     }
 
+/// Build the tool context for a single tool execution.
+    fn build_tool_context(&self) -> AgentToolContext {
+        let mut ctx = AgentToolContext::new(self.workspace_dir.clone());
+        for (type_id, arc) in &self.capabilities {
+            ctx.add_arc(*type_id, Arc::clone(arc));
+        }
+        ctx
+    }
+
     async fn execute_tool_call(&self, call: &ParsedToolCall) -> ToolExecutionResult {
         let start = Instant::now();
 
@@ -392,9 +481,10 @@ impl Agent {
         }
 
         // Execute the tool
+        let ctx = self.build_tool_context();
         let (result, success) =
             if let Some(tool) = self.tools.iter().find(|t| t.name() == tool_name) {
-                match tool.execute(tool_args.clone(), &NoopToolContext).await {
+                match tool.execute(tool_args.clone(), &ctx).await {
                     Ok(r) => {
                         self.observer.record_event(&ObserverEvent::ToolCall {
                             tool: tool_name.clone(),
@@ -764,19 +854,6 @@ impl Agent {
 
     pub async fn run_single(&mut self, message: &str) -> Result<String> {
         self.turn(message).await
-    }
-}
-
-/// No-op tool context for tool execution.
-struct NoopToolContext;
-
-impl clawseed_api::tool_context::ToolContext for NoopToolContext {
-    fn workspace_dir(&self) -> &std::path::Path {
-        std::path::Path::new(".")
-    }
-
-    fn get_any(&self, _type_id: std::any::TypeId) -> Option<&(dyn std::any::Any + Send + Sync)> {
-        None
     }
 }
 

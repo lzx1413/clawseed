@@ -22,7 +22,11 @@ class ClawseedClient private constructor(
     private val onConnected: (() -> Unit)?,
     private val onDisconnected: (() -> Unit)?,
     private val onChunk: ((String) -> Unit)?,
+    private val onThinking: ((String) -> Unit)?,
     private val onDone: ((String) -> Unit)?,
+    private val onToolCall: ((id: String, name: String, args: JSONObject) -> Unit)?,
+    private val onToolResult: ((id: String, name: String, output: String) -> Unit)?,
+    private val onAborted: (() -> Unit)?,
     private val onError: ((String) -> Unit)?,
 ) {
     private val httpClient = OkHttpClient.Builder()
@@ -80,9 +84,21 @@ class ClawseedClient private constructor(
 
         override fun onMessage(webSocket: WebSocket, text: String) {
             when (val msg = IncomingMessage.parse(text)) {
+                is IncomingMessage.SessionStart -> Unit
+                is IncomingMessage.Connected -> Unit
                 is IncomingMessage.Chunk -> onChunk?.invoke(msg.text)
-                is IncomingMessage.Done -> onDone?.invoke(msg.finalText)
+                is IncomingMessage.Thinking -> onThinking?.invoke(msg.text)
+                is IncomingMessage.Done -> {
+                    onChunk?.invoke("") // signal end of streaming
+                    onDone?.invoke(msg.finalText)
+                }
+                is IncomingMessage.ToolCallMsg -> onToolCall?.invoke(msg.id, msg.name, msg.args)
+                is IncomingMessage.ToolResultMsg -> onToolResult?.invoke(msg.id, msg.name, msg.output)
                 is IncomingMessage.ToolCallRequestMsg -> dispatchToolCall(msg.request)
+                is IncomingMessage.ToolsRegistered -> Unit
+                is IncomingMessage.ResultAcknowledged -> Unit
+                is IncomingMessage.ChunkReset -> Unit
+                is IncomingMessage.Aborted -> onAborted?.invoke()
                 is IncomingMessage.Error -> onError?.invoke(msg.message)
                 null -> Unit
             }
@@ -111,7 +127,11 @@ class ClawseedClient private constructor(
         private var onConnected: (() -> Unit)? = null
         private var onDisconnected: (() -> Unit)? = null
         private var onChunk: ((String) -> Unit)? = null
+        private var onThinking: ((String) -> Unit)? = null
         private var onDone: ((String) -> Unit)? = null
+        private var onToolCall: ((id: String, name: String, args: JSONObject) -> Unit)? = null
+        private var onToolResult: ((id: String, name: String, output: String) -> Unit)? = null
+        private var onAborted: (() -> Unit)? = null
         private var onError: ((String) -> Unit)? = null
 
         fun authToken(token: String) = apply { authToken = token }
@@ -120,7 +140,11 @@ class ClawseedClient private constructor(
         fun onConnected(callback: () -> Unit) = apply { onConnected = callback }
         fun onDisconnected(callback: () -> Unit) = apply { onDisconnected = callback }
         fun onChunk(callback: (String) -> Unit) = apply { onChunk = callback }
+        fun onThinking(callback: (String) -> Unit) = apply { onThinking = callback }
         fun onDone(callback: (String) -> Unit) = apply { onDone = callback }
+        fun onToolCall(callback: (id: String, name: String, args: JSONObject) -> Unit) = apply { onToolCall = callback }
+        fun onToolResult(callback: (id: String, name: String, output: String) -> Unit) = apply { onToolResult = callback }
+        fun onAborted(callback: () -> Unit) = apply { onAborted = callback }
         fun onError(callback: (String) -> Unit) = apply { onError = callback }
 
         fun build() = ClawseedClient(
@@ -131,7 +155,11 @@ class ClawseedClient private constructor(
             onConnected = onConnected,
             onDisconnected = onDisconnected,
             onChunk = onChunk,
+            onThinking = onThinking,
             onDone = onDone,
+            onToolCall = onToolCall,
+            onToolResult = onToolResult,
+            onAborted = onAborted,
             onError = onError,
         )
     }

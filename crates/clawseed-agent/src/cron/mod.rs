@@ -205,7 +205,116 @@ pub fn parse_delay(input: &str) -> Result<chrono::Duration> {
     Ok(duration)
 }
 
-#[cfg(test)] // Tests need root crate handle_command
+/// CLI command enum for the `cron` subcommand.
+#[derive(Debug)]
+pub enum CronCommands {
+    Add {
+        expression: String,
+        tz: Option<String>,
+        agent: bool,
+        allowed_tools: Vec<String>,
+        command: String,
+    },
+    Update {
+        id: String,
+        expression: Option<String>,
+        tz: Option<String>,
+        command: Option<String>,
+        name: Option<String>,
+        allowed_tools: Vec<String>,
+    },
+}
+
+/// Handle a CLI cron command.
+pub fn handle_command(cmd: CronCommands, config: &Config) -> Result<()> {
+    match cmd {
+        CronCommands::Add {
+            expression,
+            tz,
+            agent,
+            allowed_tools,
+            command,
+        } => {
+            let schedule = Schedule::Cron {
+                expr: expression,
+                tz,
+            };
+            if agent {
+                add_agent_job(
+                    config,
+                    None,
+                    schedule,
+                    &command,
+                    SessionTarget::Isolated,
+                    None,
+                    None,
+                    false,
+                    if allowed_tools.is_empty() {
+                        None
+                    } else {
+                        Some(allowed_tools)
+                    },
+                )?;
+            } else {
+                add_shell_job_with_approval(config, None, schedule, &command, None, false)?;
+            }
+            Ok(())
+        }
+        CronCommands::Update {
+            id,
+            expression,
+            tz,
+            command,
+            name,
+            allowed_tools,
+        } => {
+            // Need at least one field to update
+            if expression.is_none() && tz.is_none() && command.is_none() && name.is_none() && allowed_tools.is_empty() {
+                anyhow::bail!("At least one of expression, tz, command, name, or allowed_tools is required");
+            }
+
+            // Validate command if changed (unapproved — CLI path requires explicit approval for medium-risk)
+            if let Some(ref cmd) = command {
+                validate_shell_command(config, cmd, false)?;
+            }
+
+            // Build schedule patch: resolve existing job when tz-only or expression-only update
+            let schedule = match (expression, tz) {
+                (Some(expr), Some(tz_val)) => Some(Schedule::Cron { expr, tz: Some(tz_val) }),
+                (Some(expr), None) => {
+                    let existing = get_job(config, &id).ok();
+                    let existing_tz = existing.and_then(|j| match &j.schedule {
+                        Schedule::Cron { tz, .. } => tz.clone(),
+                        _ => None,
+                    });
+                    Some(Schedule::Cron { expr, tz: existing_tz })
+                }
+                (None, Some(tz_val)) => {
+                    let existing = get_job(config, &id)?;
+                    let existing_expr = match &existing.schedule {
+                        Schedule::Cron { expr, .. } => expr.clone(),
+                        _ => anyhow::bail!("Cannot set tz on non-cron schedule"),
+                    };
+                    Some(Schedule::Cron { expr: existing_expr, tz: Some(tz_val) })
+                }
+                _ => None,
+            };
+            let mut patch = CronJobPatch {
+                schedule,
+                command,
+                name,
+                ..CronJobPatch::default()
+            };
+            if !allowed_tools.is_empty() {
+                patch.allowed_tools = Some(allowed_tools);
+            }
+            update_job(config, &id, patch)?;
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
@@ -242,7 +351,7 @@ mod tests {
         name: Option<&str>,
     ) -> Result<()> {
         handle_command(
-            crate::CronCommands::Update {
+            crate::cron::CronCommands::Update {
                 id: id.into(),
                 expression: expression.map(Into::into),
                 tz: tz.map(Into::into),
@@ -609,7 +718,7 @@ mod tests {
         let config = test_config(&tmp);
 
         handle_command(
-            crate::CronCommands::Add {
+            crate::cron::CronCommands::Add {
                 expression: "*/15 * * * *".into(),
                 tz: None,
                 agent: true,
@@ -640,7 +749,7 @@ mod tests {
         // security policy. With --agent, it routes to agent job and skips
         // shell validation entirely.
         let result = handle_command(
-            crate::CronCommands::Add {
+            crate::cron::CronCommands::Add {
                 expression: "*/15 * * * *".into(),
                 tz: None,
                 agent: true,
@@ -662,7 +771,7 @@ mod tests {
         let config = test_config(&tmp);
 
         handle_command(
-            crate::CronCommands::Add {
+            crate::cron::CronCommands::Add {
                 expression: "*/15 * * * *".into(),
                 tz: None,
                 agent: true,
@@ -702,7 +811,7 @@ mod tests {
         .unwrap();
 
         handle_command(
-            crate::CronCommands::Update {
+            crate::cron::CronCommands::Update {
                 id: job.id.clone(),
                 expression: None,
                 tz: None,
@@ -724,7 +833,7 @@ mod tests {
         let config = test_config(&tmp);
 
         handle_command(
-            crate::CronCommands::Add {
+            crate::cron::CronCommands::Add {
                 expression: "*/5 * * * *".into(),
                 tz: None,
                 agent: false,

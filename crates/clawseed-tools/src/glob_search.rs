@@ -114,12 +114,52 @@ impl Tool for GlobSearchTool {
 
         let workspace_canon = match std::fs::canonicalize(workspace) {
             Ok(p) => p,
-            Err(e) => {
-                return Ok(ToolResult {
-                    success: false,
-                    output: String::new(),
-                    error: Some(format!("Cannot resolve workspace directory: {e}")),
-                });
+            Err(_) => {
+                // Workspace dir may not exist yet (e.g. fresh install on Android).
+                // Use the non-canonicalized path for comparison instead of failing.
+                let workspace_canon = workspace.to_path_buf();
+                let mut results = Vec::new();
+                let mut truncated = false;
+
+                for entry in entries {
+                    let path = match entry {
+                        Ok(p) => p,
+                        Err(_) => continue,
+                    };
+
+                    if !path.starts_with(&workspace_canon) {
+                        continue;
+                    }
+
+                    if path.is_dir() {
+                        continue;
+                    }
+
+                    if let Ok(rel) = path.strip_prefix(&workspace_canon) {
+                        results.push(rel.to_string_lossy().to_string());
+                    }
+
+                    if results.len() >= MAX_RESULTS {
+                        truncated = true;
+                        break;
+                    }
+                }
+
+                results.sort();
+
+                let output = if results.is_empty() {
+                    format!("No files matching pattern '{pattern}' found in workspace.")
+                } else {
+                    use std::fmt::Write;
+                    let mut buf = results.join("\n");
+                    if truncated {
+                        let _ = write!(buf, "\n\n[Results truncated: showing first {MAX_RESULTS} of more matches]");
+                    }
+                    let _ = write!(buf, "\n\nTotal: {} files", results.len());
+                    buf
+                };
+
+                return Ok(ToolResult { success: true, output, error: None });
             }
         };
 

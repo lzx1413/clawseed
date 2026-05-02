@@ -44,15 +44,19 @@ pub fn create_memory(
     }
 }
 
-/// Create a memory backend with storage and routes (stub).
+/// Create a memory backend with storage and routes.
+///
+/// Delegates to `create_memory()` for the actual backend. The additional
+/// parameters (embedding routes, storage config) are reserved for future
+/// vector-search and consolidated storage support.
 pub fn create_memory_with_storage_and_routes(
-    _config: &MemoryConfig,
+    config: &MemoryConfig,
     _embedding_routes: &clawseed_config::schema::ProvidersConfig,
     _storage_config: Option<&clawseed_config::schema::StorageConfig>,
-    _workspace_dir: &std::path::Path,
-    _api_key: Option<&str>,
+    workspace_dir: &std::path::Path,
+    api_key: Option<&str>,
 ) -> anyhow::Result<Arc<dyn Memory>> {
-    Ok(Arc::new(none::NoneMemory::new()))
+    create_memory(config, workspace_dir, api_key)
 }
 
 /// Check if content should be skipped for autosave (stub).

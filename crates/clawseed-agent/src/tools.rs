@@ -11,19 +11,19 @@ use std::sync::Arc;
 use clawseed_api::tool::{Tool, ToolSpec, ToolResult};
 use clawseed_api::tool_context::ToolContext;
 
-/// Placeholder for tool registration in the gateway.
+/// Wire built-in tools from clawseed_tools into the gateway.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn all_tools_with_runtime(
     _config: Arc<clawseed_config::schema::Config>,
     _security: &crate::security::SecurityPolicy,
-    _runtime: Box<dyn crate::platform::RuntimeAdapter>,
+    _runtime: Box<dyn std::any::Any>,
     _memory: Arc<dyn clawseed_api::memory_traits::Memory>,
     _composio_key: Option<&str>,
     _composio_entity_id: Option<&str>,
     _browser_config: &clawseed_config::schema::Config,
     _http_request_config: &clawseed_config::schema::Config,
     _web_fetch_config: &clawseed_config::schema::Config,
-    _workspace_dir: &std::path::Path,
+    workspace_dir: &std::path::Path,
     _agents: &clawseed_config::schema::Config,
     _api_key: Option<&str>,
     _cfg: &clawseed_config::schema::Config,
@@ -36,7 +36,8 @@ pub fn all_tools_with_runtime(
     Option<Arc<parking_lot::RwLock<Vec<Arc<dyn DynTool>>>>>,
     Option<Arc<parking_lot::RwLock<Vec<Arc<dyn DynTool>>>>>,
 ) {
-    (Vec::new(), None, None, None, None, None)
+    let tools = clawseed_tools::registry::all_tools(workspace_dir.to_path_buf(), &_config);
+    (tools, None, None, None, None, None)
 }
 
 /// Dynamic tool trait (object-safe version for Arc usage).
