@@ -273,30 +273,94 @@ hook_runner.register(Box::new(ApprovalHook::new()));
 let agent = Agent::builder()
     .provider(provider)
     .tools(tools)
-    .hook_runner(hook_runner)
+    .hook_runner(Some(Arc::new(hook_runner)))
     .build()?;
 ```
 
-**Registration order matters**: Hooks execute in registration order. Security-related hooks should be registered first.
+**Registration order matters**: Hooks execute in registration order. When building via `from_config()`, `SecurityPolicy` is always auto-registered as the first hook in the pipeline.
+
+## Declarative Hook Chain
+
+In addition to code registration, hooks can be created declaratively from config:
+
+```toml
+[hooks]
+enabled = true
+
+[[hooks.chain]]
+type = "security_policy"
+
+[[hooks.chain]]
+type = "audit_log"
+config = { level = "info" }
+```
+
+This relies on the `HookFactory` trait and `HookFactoryRegistry`:
+
+```rust
+pub trait HookFactory: Send + Sync {
+    fn hook_type(&self) -> &str;
+    fn create(&self, config: &serde_json::Value) -> Option<Box<dyn Hook>>;
+}
+
+pub struct HookFactoryRegistry {
+    factories: HashMap<String, Box<dyn HookFactory>>,
+}
+```
+
+`Agent::from_config()` iterates over `hooks.chain` during construction, using registered factories to create Hook instances and add them to the pipeline.
 
 ## Hooks vs. SecurityPolicy
 
-ClawSeed's built-in `SecurityPolicy` is implemented via capability injection, not hooks. The distinction:
+`SecurityPolicy` intercepts all tool calls by implementing the `Hook` trait directly, rather than being injected as a Capability:
 
-| Mechanism | Purpose | Implementation |
-|-----------|---------|----------------|
-| SecurityPolicy | Command allowlists, path guards, autonomy levels | Checked inside tools via `ctx.get::<SecurityPolicy>()` |
-| Hook | Intercept, cancel, modify tool calls globally | Intercepts before/after tool execution |
+| Check | Location |
+|-------|----------|
+| Autonomy level (ReadOnly blocks all writes) | `before_tool_call()` |
+| Rate limiting (`max_actions_per_hour`) | `before_tool_call()` |
+| Command allowlists (shell/exec tools) | `before_tool_call()` |
+| Path guards (`/etc/passwd`, etc.) | `before_tool_call()` |
+| Action counting | `after_tool_call()` |
+
+```rust
+impl Hook for SecurityPolicy {
+    fn before_tool_call(&self, call: &mut ToolCall) -> HookResult {
+        if !self.can_act() {
+            return HookResult::Cancel("Autonomy level is read-only".into());
+        }
+        if self.is_rate_limited() {
+            return HookResult::Cancel("Action rate limit exceeded".into());
+        }
+        if call.name == "shell" || call.name == "exec" {
+            if let Some(cmd) = call.arguments.get("command").and_then(|v| v.as_str()) {
+                if let Some(forbidden) = self.forbidden_path_argument(cmd) {
+                    return HookResult::Cancel(format!("Forbidden path: {forbidden}"));
+                }
+                if !self.is_command_allowed(cmd) {
+                    return HookResult::Cancel(format!("Command not allowed: {cmd}"));
+                }
+            }
+        }
+        HookResult::Continue
+    }
+
+    fn after_tool_call(&self, _result: &ToolExecutionResult) -> HookResult {
+        self.record_action();
+        HookResult::Continue
+    }
+}
+```
+
+In `from_config()`, SecurityPolicy is always auto-registered as the first hook in the pipeline, ensuring security checks run before any user hooks.
 
 **When to use Hooks**:
 - Global interception (e.g., auditing, rate limiting)
 - Need to modify tool call arguments
 - Cross-tool policies (e.g., approval workflows)
 
-**When to use SecurityPolicy**:
-- Permission checks inside tools
-- Command allowlist validation
-- Path security guards
+**When to use Capability injection**:
+- Tools need access to runtime services (e.g., Memory, Provider)
+- Tools need to perform their own fine-grained checks
 
 ## Best Practices
 

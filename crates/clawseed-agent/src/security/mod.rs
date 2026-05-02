@@ -1,12 +1,13 @@
 //! Minimal security policy for the clawseed-agent crate.
 //!
 //! Provides basic command allowlist and autonomy enforcement.
-//! The full SecurityPolicy with risk scoring, path restrictions, etc.
-//! is injected as a Hook at the binary level.
+//! SecurityPolicy also implements the Hook trait so it can intercept
+//! tool calls before execution without per-tool checks.
 
 pub mod pairing;
 pub mod secrets;
 
+use clawseed_api::hook::{Hook, HookResult, ToolCall, ToolExecutionResult};
 use clawseed_config::schema::AutonomyConfig;
 use std::path::Path;
 
@@ -133,4 +134,35 @@ fn regex_tilde_user_path(command: &str) -> Option<String> {
         }
     }
     None
+}
+
+impl Hook for SecurityPolicy {
+    fn before_tool_call(&self, call: &mut ToolCall) -> HookResult {
+        // 1. Check autonomy level
+        if !self.can_act() {
+            return HookResult::Cancel("Autonomy level is read-only".into());
+        }
+        if self.is_rate_limited() {
+            return HookResult::Cancel("Action rate limit exceeded".into());
+        }
+
+        // 2. For shell/exec tools: validate command
+        if call.name == "shell" || call.name == "exec" {
+            if let Some(cmd) = call.arguments.get("command").and_then(|v| v.as_str()) {
+                if let Some(forbidden) = self.forbidden_path_argument(cmd) {
+                    return HookResult::Cancel(format!("Forbidden path in command: {forbidden}"));
+                }
+                if !self.is_command_allowed(cmd) {
+                    return HookResult::Cancel(format!("Command not allowed by policy: {cmd}"));
+                }
+            }
+        }
+
+        HookResult::Continue
+    }
+
+    fn after_tool_call(&self, _result: &ToolExecutionResult) -> HookResult {
+        self.record_action();
+        HookResult::Continue
+    }
 }

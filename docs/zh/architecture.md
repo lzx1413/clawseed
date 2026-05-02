@@ -92,9 +92,10 @@ ClawSeed 的所有扩展点都是 trait：
 
 | Trait | 作用 | 扩展方式 |
 |-------|------|---------|
-| `Provider` | LLM 推理后端 | 在 `clawseed-providers` 中实现 |
+| `Provider` | LLM 推理后端 | 在 `clawseed-providers` 中实现，或通过 `ProviderFactory` 注册自定义工厂 |
 | `Tool` | Agent 可调用的能力 | 在 `clawseed-tools` 中实现，或通过 WebSocket 注册远程工具 |
-| `Hook` | 工具调用拦截器 | 实现 `before_tool_call` / `after_tool_call` |
+| `ToolRegistry` | 统一工具注册与查找 | 在 `clawseed-agent` 中提供 `DefaultToolRegistry`，支持 BuiltIn / MCP / Remote 三种来源 |
+| `Hook` | 工具调用拦截器 | 实现 `before_tool_call` / `after_tool_call`，或通过 `HookFactory` 从配置声明式创建 |
 | `Memory` | 对话记忆后端 | 在 `clawseed-memory` 中实现 |
 | `Observer` | 指标和追踪 | 实现 `on_event()` |
 | `ContextProvider` | 能力注入 | 将 `Send + Sync + 'static` 类型注入 Agent |
@@ -155,14 +156,60 @@ if let Some(svc) = ctx.get::<MyService>() {
 
 底层使用 `TypeId` → `Arc<dyn Any>` 映射，无需泛型参数，解耦工具 trait 和扩展类型。
 
+## 工具注册机制
+
+Agent 通过 `ToolRegistry` trait（定义在 `clawseed-api`）统一管理所有来源的工具：
+
+```rust
+// 三种工具来源
+pub enum ToolSource {
+    BuiltIn,                        // 内置工具
+    Mcp { server: String },         // MCP 服务器工具
+    Remote { session: String },     // 远程客户端工具（如 Android）
+}
+
+// 注册与查找
+registry.register(tool, ToolSource::BuiltIn);
+registry.register_or_replace(tool, ToolSource::Remote { session });
+let tool = registry.get_tool("shell");
+let specs = registry.tool_specs();  // 带缓存的 ToolSpec 列表
+```
+
+`DefaultToolRegistry`（在 `clawseed-agent` 中）使用 `DashMap` 实现无锁并发访问，支持 glob 模式的工具过滤（`allowed_tools` / `denied_tools`）和按 MCP 服务器过滤。
+
+## Provider 工厂机制
+
+Provider 通过 `ProviderFactory` trait + `ProviderFactoryRegistry` 注册：
+
+```rust
+// 自定义 Provider 工厂
+impl ProviderFactory for MyFactory {
+    fn name(&self) -> &str { "my-provider" }
+    fn aliases(&self) -> &[&str] { &["my-alias"] }
+    fn create(&self, name: &str, api_key: Option<&str>,
+              base_url: Option<&str>, options: &ProviderRuntimeOptions
+    ) -> Result<Box<dyn Provider>> { /* ... */ }
+}
+
+// 注册到 registry
+let mut reg = ProviderFactoryRegistry::new();
+reg.register(MyFactory);
+
+// 使用自定义 registry 创建 Agent
+Agent::from_config_with_registry(&config, Some(Arc::new(reg))).await?;
+```
+
+替代了原来 300+ 行的 match 链，Android/嵌入式场景可传入最小化的 provider 集合。
+
 ## 安全模型
 
 - **自主等级**：`ReadOnly`（只读）/ `Supervised`（需审批）/ `Full`（完全自主）
-- **SecurityPolicy**：作为能力注入，工具通过 `ctx.get::<SecurityPolicy>()` 检查权限
+- **SecurityPolicy**：作为 Hook 注入，实现 `Hook` trait 在工具执行前全局拦截（检查自主等级、速率限制、命令白名单、路径守卫），始终作为管线的第一个 Hook
 - **命令白名单**：`allowed_commands` 验证 shell 命令
 - **路径守卫**：阻止访问敏感路径（`/etc/passwd`、`/root/.ssh` 等）
 - **速率限制**：`max_actions_per_hour` 限制每会话操作数
-- **Hook 管线**：`Hook::before_tool_call()` 可取消或修改任何工具调用
+- **Hook 管线**：`Hook::before_tool_call()` 可取消或修改任何工具调用；SecurityPolicy 始终作为管线的第一个 Hook
+- **工具过滤**：`allowed_tools` / `denied_tools` glob 模式过滤，`mcp_tool_filters` 按 MCP 服务器过滤
 
 ## 设计原则
 

@@ -34,7 +34,7 @@ use clawseed_agent::tools;
 use clawseed_agent::tools::CanvasStore;
 use clawseed_api::memory_traits::{Memory, MemoryCategory};
 use clawseed_api::provider::Provider;
-use clawseed_api::tool::ToolSpec;
+
 use clawseed_config::schema::Config;
 use parking_lot::Mutex;
 use std::collections::HashMap;
@@ -196,7 +196,7 @@ pub struct GatewayRateLimiter {
 }
 
 impl GatewayRateLimiter {
-    fn new(pair_per_minute: u32, webhook_per_minute: u32, max_keys: usize) -> Self {
+    pub fn new(pair_per_minute: u32, webhook_per_minute: u32, max_keys: usize) -> Self {
         let window = Duration::from_secs(RATE_LIMIT_WINDOW_SECS);
         Self {
             pair: SlidingWindowRateLimiter::new(pair_per_minute, window, max_keys),
@@ -221,7 +221,7 @@ pub struct IdempotencyStore {
 }
 
 impl IdempotencyStore {
-    fn new(ttl: Duration, max_keys: usize) -> Self {
+    pub fn new(ttl: Duration, max_keys: usize) -> Self {
         Self {
             ttl,
             max_keys: max_keys.max(1),
@@ -332,8 +332,8 @@ pub struct AppState {
     pub idempotency_store: Arc<IdempotencyStore>,
     /// Observability backend for metrics scraping
     pub observer: Arc<dyn clawseed_agent::observability::Observer>,
-    /// Registered tool specs (for web dashboard tools page)
-    pub tools_registry: Arc<Vec<ToolSpec>>,
+    /// Registered tool registry (for web dashboard tools page and agent tool dispatch)
+    pub tool_registry: Arc<dyn clawseed_api::tool_registry::ToolRegistry>,
     /// Cost tracker (optional, for web dashboard cost page)
     pub cost_tracker: Option<Arc<CostTracker>>,
     /// SSE broadcast channel for real-time events
@@ -515,8 +515,12 @@ pub async fn run_gateway(
         }
     }
 
-    let tools_registry: Arc<Vec<ToolSpec>> =
-        Arc::new(tools_registry_raw.iter().map(|t| t.spec()).collect());
+    // Build the shared tool registry from all sources
+    let shared_tool_registry: Arc<dyn clawseed_api::tool_registry::ToolRegistry> = {
+        let reg = clawseed_agent::tool_registry::DefaultToolRegistry::new();
+        reg.register_all(tools_registry_raw, clawseed_api::tool_registry::ToolSource::BuiltIn);
+        Arc::new(reg)
+    };
 
     // Cost tracker — process-global singleton so channels share the same instance
     let cost_tracker = Some(CostTracker::get_or_init_global(
@@ -696,7 +700,7 @@ pub async fn run_gateway(
         auth_limiter: Arc::new(auth_rate_limit::AuthRateLimiter::new()),
         idempotency_store,
         observer: broadcast_observer,
-        tools_registry,
+        tool_registry: shared_tool_registry,
         cost_tracker,
         event_tx,
         event_buffer,
@@ -1474,7 +1478,7 @@ mod tests {
             auth_limiter: Arc::new(auth_rate_limit::AuthRateLimiter::new()),
             idempotency_store: Arc::new(IdempotencyStore::new(Duration::from_secs(300), 1000)),
             observer: Arc::new(clawseed_agent::observability::NoopObserver),
-            tools_registry: Arc::new(Vec::new()),
+            tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
             cost_tracker: None,
             event_tx: tokio::sync::broadcast::channel(16).0,
             event_buffer: Arc::new(EventBuffer::new(16)),
@@ -1529,7 +1533,7 @@ mod tests {
             auth_limiter: Arc::new(auth_rate_limit::AuthRateLimiter::new()),
             idempotency_store: Arc::new(IdempotencyStore::new(Duration::from_secs(300), 1000)),
             observer,
-            tools_registry: Arc::new(Vec::new()),
+            tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
             cost_tracker: None,
             event_tx,
             event_buffer: Arc::new(EventBuffer::new(16)),
@@ -1958,7 +1962,7 @@ mod tests {
             auth_limiter: Arc::new(auth_rate_limit::AuthRateLimiter::new()),
             idempotency_store: Arc::new(IdempotencyStore::new(Duration::from_secs(300), 1000)),
             observer: Arc::new(clawseed_agent::observability::NoopObserver),
-            tools_registry: Arc::new(Vec::new()),
+            tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
             cost_tracker: None,
             event_tx: tokio::sync::broadcast::channel(16).0,
             event_buffer: Arc::new(EventBuffer::new(16)),
@@ -2027,7 +2031,7 @@ mod tests {
             auth_limiter: Arc::new(auth_rate_limit::AuthRateLimiter::new()),
             idempotency_store: Arc::new(IdempotencyStore::new(Duration::from_secs(300), 1000)),
             observer: Arc::new(clawseed_agent::observability::NoopObserver),
-            tools_registry: Arc::new(Vec::new()),
+            tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
             cost_tracker: None,
             event_tx: tokio::sync::broadcast::channel(16).0,
             event_buffer: Arc::new(EventBuffer::new(16)),
@@ -2108,7 +2112,7 @@ mod tests {
             auth_limiter: Arc::new(auth_rate_limit::AuthRateLimiter::new()),
             idempotency_store: Arc::new(IdempotencyStore::new(Duration::from_secs(300), 1000)),
             observer: Arc::new(clawseed_agent::observability::NoopObserver),
-            tools_registry: Arc::new(Vec::new()),
+            tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
             cost_tracker: None,
             event_tx: tokio::sync::broadcast::channel(16).0,
             event_buffer: Arc::new(EventBuffer::new(16)),
@@ -2161,7 +2165,7 @@ mod tests {
             auth_limiter: Arc::new(auth_rate_limit::AuthRateLimiter::new()),
             idempotency_store: Arc::new(IdempotencyStore::new(Duration::from_secs(300), 1000)),
             observer: Arc::new(clawseed_agent::observability::NoopObserver),
-            tools_registry: Arc::new(Vec::new()),
+            tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
             cost_tracker: None,
             event_tx: tokio::sync::broadcast::channel(16).0,
             event_buffer: Arc::new(EventBuffer::new(16)),
@@ -2219,7 +2223,7 @@ mod tests {
             auth_limiter: Arc::new(auth_rate_limit::AuthRateLimiter::new()),
             idempotency_store: Arc::new(IdempotencyStore::new(Duration::from_secs(300), 1000)),
             observer: Arc::new(clawseed_agent::observability::NoopObserver),
-            tools_registry: Arc::new(Vec::new()),
+            tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
             cost_tracker: None,
             event_tx: tokio::sync::broadcast::channel(16).0,
             event_buffer: Arc::new(EventBuffer::new(16)),

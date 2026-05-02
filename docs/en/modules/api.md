@@ -94,6 +94,42 @@ pub trait ContextProvider: Send + Sync {
 
 Tools look up injected capabilities via `ctx.get::<T>()`.
 
+### ToolRegistry — Unified Tool Registration
+
+```rust
+pub trait ToolRegistry: Send + Sync {
+    fn register(&self, tool: Box<dyn Tool>, source: ToolSource) -> bool;
+    fn unregister(&self, name: &str) -> bool;
+    fn get_tool(&self, name: &str) -> Option<Arc<dyn Tool>>;
+    fn tool_specs(&self) -> Vec<ToolSpec>;
+    fn get_entry(&self, name: &str) -> Option<ToolEntry>;
+    fn tool_names(&self) -> Vec<String>;
+    fn register_or_replace(&self, tool: Box<dyn Tool>, source: ToolSource) -> Option<ToolEntry>;
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool;
+}
+```
+
+- `register()` — Register a tool; returns false if one with the same name already exists
+- `unregister()` — Remove a tool by name
+- `get_tool()` — Look up by name, returns `Arc<dyn Tool>` (safe to share across async contexts)
+- `tool_specs()` — Get all tool specs (cached) for LLM registration
+- `register_or_replace()` — Register or replace a tool with the same name (used for remote tool reconnection)
+
+```rust
+/// Provenance of a registered tool
+pub enum ToolSource {
+    BuiltIn,                        // Built-in tool
+    Mcp { server: String },         // Tool from an MCP server
+    Remote { session: String },     // Tool registered by a remote client
+}
+
+/// Tool entry metadata
+pub struct ToolEntry {
+    pub source: ToolSource,
+}
+```
+
 ## Shared Types
 
 ### Message Types

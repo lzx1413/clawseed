@@ -176,13 +176,6 @@ pub struct Config {
     #[serde(default)]
     pub cost: CostConfig,
 
-    /// Security configuration.
-    #[serde(default)]
-    pub security: SecurityConfig,
-
-    /// Observability configuration.
-    #[serde(default)]
-    pub observability: ObservabilityConfig,
 
     /// Channel configuration.
     #[serde(default)]
@@ -461,24 +454,6 @@ impl Default for DeliveryConfigDecl {
     }
 }
 
-/// Model pricing configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModelPricing {
-    #[serde(default)]
-    pub input: f64,
-    #[serde(default)]
-    pub output: f64,
-}
-
-impl Default for ModelPricing {
-    fn default() -> Self {
-        Self {
-            input: 0.0,
-            output: 0.0,
-        }
-    }
-}
-
 impl Default for SecretsConfig {
     fn default() -> Self {
         Self { encrypt: true }
@@ -616,8 +591,6 @@ impl Default for Config {
             tunnel: TunnelConfig::default(),
             nodes: NodesConfig::default(),
             cost: CostConfig::default(),
-            security: SecurityConfig::default(),
-            observability: ObservabilityConfig::default(),
             channels: ChannelsConfig::default(),
             browser: BrowserConfig::default(),
             http_request: HttpRequestConfig::default(),
@@ -903,6 +876,20 @@ pub struct McpConfig {
 pub struct HooksConfig {
     #[serde(default)]
     pub enabled: bool,
+    /// Ordered list of hook declarations. Hooks are run in declaration order.
+    #[serde(default)]
+    pub chain: Vec<HookDecl>,
+}
+
+/// A declarative hook entry in config.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HookDecl {
+    /// Hook type identifier. Built-in types: "security_policy", "audit_log".
+    #[serde(rename = "type")]
+    pub hook_type: String,
+    /// Hook-specific configuration.
+    #[serde(default)]
+    pub config: serde_json::Value,
 }
 
 /// Tunnel configuration.
@@ -952,33 +939,6 @@ fn default_max_nodes() -> usize {
 /// Cost tracking configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CostConfig {}
-
-/// Security configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct SecurityConfig {
-    #[serde(default)]
-    pub webauthn: WebAuthnSubConfig,
-}
-
-/// WebAuthn sub-configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct WebAuthnSubConfig {
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(default)]
-    pub rp_id: Option<String>,
-    #[serde(default)]
-    pub rp_origin: Option<String>,
-    #[serde(default)]
-    pub rp_name: Option<String>,
-}
-
-/// Observability configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ObservabilityConfig {
-    #[serde(default)]
-    pub backend: Option<String>,
-}
 
 /// Channels configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -1309,101 +1269,3 @@ pub struct AgentEntryConfig {
     pub api_key: Option<String>,
 }
 
-/// Peripherals configuration (stub).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct PeripheralsConfig {}
-
-/// Policy module stub (SecurityPolicy lives in clawseed-agent).
-pub mod policy {
-    pub use super::security::SecurityPolicy;
-}
-
-/// Security policy config stub.
-pub mod security {
-    /// Minimal security policy configuration.
-    #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-    pub struct SecurityPolicy {}
-}
-
-/// Migration stubs.
-pub mod migration {
-    use super::Config;
-
-    /// V1 compatibility wrapper (stub for TOML roundtrip).
-    #[derive(serde::Deserialize)]
-    pub struct V1Compat {
-        #[serde(flatten)]
-        config: Config,
-    }
-
-    impl V1Compat {
-        pub fn into_config(self) -> Config {
-            self.config
-        }
-    }
-}
-
-/// Scattered types (stubs for channel-specific configs).
-pub mod scattered_types {
-    use serde::{Deserialize, Serialize};
-
-    /// Email channel configuration.
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct EmailConfig {
-        #[serde(default)]
-        pub enabled: bool,
-        #[serde(default)]
-        pub imap_host: String,
-        #[serde(default = "default_imap_port")]
-        pub imap_port: u16,
-        #[serde(default = "default_imap_folder")]
-        pub imap_folder: String,
-        #[serde(default)]
-        pub smtp_host: String,
-        #[serde(default = "default_smtp_port")]
-        pub smtp_port: u16,
-        #[serde(default = "default_true")]
-        pub smtp_tls: bool,
-        #[serde(default)]
-        pub username: String,
-        #[serde(default)]
-        pub password: String,
-        #[serde(default)]
-        pub from_address: String,
-        #[serde(default = "default_idle_timeout")]
-        pub idle_timeout_secs: u64,
-        #[serde(default = "default_poll_interval")]
-        pub poll_interval_secs: u64,
-        #[serde(default)]
-        pub allowed_senders: Vec<String>,
-        #[serde(default = "default_email_subject")]
-        pub default_subject: String,
-        #[serde(default = "default_max_attachment_bytes")]
-        pub max_attachment_bytes: usize,
-    }
-
-    fn default_imap_port() -> u16 {
-        993
-    }
-    fn default_imap_folder() -> String {
-        "INBOX".into()
-    }
-    fn default_smtp_port() -> u16 {
-        465
-    }
-    fn default_idle_timeout() -> u64 {
-        1740
-    }
-    fn default_poll_interval() -> u64 {
-        60
-    }
-    fn default_email_subject() -> String {
-        "ClawSeed Message".into()
-    }
-    fn default_max_attachment_bytes() -> usize {
-        25 * 1024 * 1024
-    }
-    fn default_true() -> bool {
-        true
-    }
-}

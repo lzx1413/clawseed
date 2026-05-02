@@ -223,7 +223,8 @@ pub async fn handle_api_tools(
     }
 
     let tools: Vec<serde_json::Value> = state
-        .tools_registry
+        .tool_registry
+        .tool_specs()
         .iter()
         .map(|spec| {
             serde_json::json!({
@@ -608,7 +609,7 @@ pub async fn handle_api_doctor(
     }));
 
     // Tools health
-    let tool_count = state.tools_registry.len();
+    let tool_count = state.tool_registry.len();
     results.push(serde_json::json!({
         "check": "tools",
         "status": "ok",
@@ -1712,7 +1713,7 @@ mod tests {
             auth_limiter: Arc::new(crate::auth_rate_limit::AuthRateLimiter::new()),
             idempotency_store: Arc::new(IdempotencyStore::new(Duration::from_secs(300), 1000)),
             observer: Arc::new(clawseed_agent::observability::NoopObserver),
-            tools_registry: Arc::new(Vec::new()),
+            tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
             cost_tracker: None,
             event_tx: tokio::sync::broadcast::channel(16).0,
             event_buffer: Arc::new(crate::EventBuffer::new(16)),

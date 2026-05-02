@@ -30,9 +30,18 @@
 
 | Provider | File | Auth Style |
 |----------|------|------------|
-| GLM (Zhipu) | `compatible.rs` | Bearer Token |
-| MiniMax | `compatible.rs` | Bearer Token |
-| Moonshot | `compatible.rs` | Bearer Token |
+| GLM (Zhipu) | `factory.rs` | ZhipuJwt |
+| MiniMax | `factory.rs` | Bearer Token |
+| Moonshot (Kimi) | `factory.rs` | Bearer Token |
+| Qwen (Tongyi) | `factory.rs` | Bearer Token |
+| Bailian | `factory.rs` | Bearer Token |
+| Z.AI | `factory.rs` | ZhipuJwt |
+| Qianfan (Baidu) | `factory.rs` | Bearer Token |
+| Doubao (Volcengine) | `factory.rs` | Bearer Token |
+
+### Other OpenAI-Compatible Providers
+
+Venice, Together, Fireworks, Perplexity, Cohere, Novita, NVIDIA, GitHub Copilot, Vercel, Cloudflare, Azure OpenAI, and generic compatible endpoints like sglang/vllm.
 
 ## Core Modules
 
@@ -86,13 +95,52 @@ pub struct ReliableProvider {
 
 Look up provider implementations by name.
 
-### Factory — Creation Function
+### factory.rs — Provider Factory
+
+Replaces the previous 300+ line match chain with a `ProviderFactory` trait + `ProviderFactoryRegistry`:
 
 ```rust
-pub fn create_resilient_provider_with_options(config: &Config) -> Result<Box<dyn Provider>>
+/// Provider factory trait
+pub trait ProviderFactory: Send + Sync {
+    fn name(&self) -> &str;
+    fn aliases(&self) -> &[&str] { &[] }
+    fn create(&self, provider_name: &str, api_key: Option<&str>,
+              base_url: Option<&str>, options: &ProviderRuntimeOptions
+    ) -> Result<Box<dyn Provider>>;
+}
+
+/// Factory registry
+pub struct ProviderFactoryRegistry {
+    factories: HashMap<String, Arc<dyn ProviderFactory>>,
+}
 ```
 
-Creates a `ReliableProvider` based on configuration, automatically setting up primary/fallback providers.
+**Built-in factories**:
+- `AnthropicFactory` — Native Anthropic protocol
+- `GeminiFactory` — Native Gemini protocol
+- `BedrockFactory` — Native Bedrock protocol
+- `OpenAiCompatFactory` — Parameterized OpenAI-compatible factory; most providers only need name, default URL, and auth style
+- Individual China-region factories (GLM, MiniMax, Moonshot, Qwen, Bailian, Z.AI, Qianfan, Doubao)
+- `GenericCompatFactory` — Generic compatible endpoints (requires `base_url`)
+- `AzureOpenAiFactory` — Azure OpenAI (must provide `base_url`)
+
+**Creation functions**:
+```rust
+// Uses default registry (LazyLock singleton)
+pub fn create_resilient_provider_with_options(
+    provider_name: &str, api_key: Option<&str>,
+    base_url: Option<&str>, reliability: &ReliabilityConfig,
+    options: &ProviderRuntimeOptions,
+) -> Result<Box<dyn Provider>>
+
+// Uses a custom registry (Android/embedded scenarios can pass a minimal provider set)
+pub fn create_resilient_provider_with_registry(
+    registry: &ProviderFactoryRegistry,
+    provider_name: &str, api_key: Option<&str>,
+    base_url: Option<&str>, reliability: &ReliabilityConfig,
+    options: &ProviderRuntimeOptions,
+) -> Result<Box<dyn Provider>>
+```
 
 ### Other Modules
 

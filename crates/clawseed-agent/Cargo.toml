@@ -30,6 +30,8 @@ parking_lot = { workspace = true }
 futures-util = { workspace = true }
 rand = { version = "0.9", features = ["std"] }
 hex = "0.4"
+dashmap = "6.1.0"
+glob-match = "0.2.1"
 
 [features]
 default = ["cron-engine"]

@@ -122,7 +122,7 @@ fn build_agent_with_remote_tool(
         .workspace_dir(std::env::temp_dir())
         .build()
         .unwrap();
-    agent.add_remote_tools(Arc::new(registry).build_tools());
+    agent.add_remote_tools(Arc::new(registry).build_tools(), "test-session".to_string());
     agent
 }
 

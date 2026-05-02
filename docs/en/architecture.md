@@ -92,9 +92,10 @@ All extension points in ClawSeed are traits:
 
 | Trait | Purpose | How to extend |
 |-------|---------|---------------|
-| `Provider` | LLM inference backend | Implement in `clawseed-providers` |
+| `Provider` | LLM inference backend | Implement in `clawseed-providers`, or register a custom `ProviderFactory` |
 | `Tool` | Agent-callable capability | Implement in `clawseed-tools`, or register remote tools via WebSocket |
-| `Hook` | Tool call interceptor | Implement `before_tool_call` / `after_tool_call` |
+| `ToolRegistry` | Unified tool registration and lookup | `DefaultToolRegistry` in `clawseed-agent`; supports BuiltIn / MCP / Remote sources |
+| `Hook` | Tool call interceptor | Implement `before_tool_call` / `after_tool_call`, or create declaratively via `HookFactory` from config |
 | `Memory` | Conversation memory backend | Implement in `clawseed-memory` |
 | `Observer` | Metrics and tracing | Implement `on_event()` |
 | `ContextProvider` | Capability injection | Inject any `Send + Sync + 'static` type into the agent |
@@ -155,14 +156,60 @@ if let Some(svc) = ctx.get::<MyService>() {
 
 Under the hood, this uses a `TypeId` → `Arc<dyn Any>` map, requiring no generic parameters and decoupling tool traits from extension types.
 
+## Tool Registry
+
+The Agent manages all tool sources through the `ToolRegistry` trait (defined in `clawseed-api`):
+
+```rust
+// Three tool sources
+pub enum ToolSource {
+    BuiltIn,                        // Built-in tools
+    Mcp { server: String },         // MCP server tools
+    Remote { session: String },     // Remote client tools (e.g., Android)
+}
+
+// Registration and lookup
+registry.register(tool, ToolSource::BuiltIn);
+registry.register_or_replace(tool, ToolSource::Remote { session });
+let tool = registry.get_tool("shell");
+let specs = registry.tool_specs();  // Cached ToolSpec list
+```
+
+`DefaultToolRegistry` (in `clawseed-agent`) uses `DashMap` for lock-free concurrent access, with glob pattern-based tool filtering (`allowed_tools` / `denied_tools`) and per-MCP-server filtering.
+
+## Provider Factory
+
+Providers register through the `ProviderFactory` trait + `ProviderFactoryRegistry`:
+
+```rust
+// Custom provider factory
+impl ProviderFactory for MyFactory {
+    fn name(&self) -> &str { "my-provider" }
+    fn aliases(&self) -> &[&str] { &["my-alias"] }
+    fn create(&self, name: &str, api_key: Option<&str>,
+              base_url: Option<&str>, options: &ProviderRuntimeOptions
+    ) -> Result<Box<dyn Provider>> { /* ... */ }
+}
+
+// Register in the registry
+let mut reg = ProviderFactoryRegistry::new();
+reg.register(MyFactory);
+
+// Create Agent with a custom registry
+Agent::from_config_with_registry(&config, Some(Arc::new(reg))).await?;
+```
+
+Replaces the previous 300+ line match chain. Android/embedded scenarios can pass a minimal provider set.
+
 ## Security Model
 
 - **Autonomy levels**: `ReadOnly` / `Supervised` / `Full`
-- **SecurityPolicy**: Injected as a capability; tools check via `ctx.get::<SecurityPolicy>()`
+- **SecurityPolicy**: Injected as a Hook — implements the `Hook` trait to globally intercept tool calls before execution (checking autonomy level, rate limits, command allowlists, path guards); always the first hook in the pipeline
 - **Command allowlists**: `allowed_commands` validates shell commands
 - **Path guards**: Blocks access to sensitive paths (`/etc/passwd`, `/root/.ssh`, etc.)
 - **Rate limiting**: `max_actions_per_hour` limits actions per session
-- **Hook pipeline**: `Hook::before_tool_call()` can cancel or modify any tool call
+- **Hook pipeline**: `Hook::before_tool_call()` can cancel or modify any tool call; SecurityPolicy is always the first hook in the pipeline
+- **Tool filtering**: `allowed_tools` / `denied_tools` glob patterns, `mcp_tool_filters` per MCP server
 
 ## Design Principles
 

@@ -1,5 +1,7 @@
 //! Agent configuration.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 /// Agent configuration.
@@ -40,6 +42,22 @@ pub struct AgentConfig {
     /// Per-turn cost budget in USD (0 = unlimited).
     #[serde(default)]
     pub turn_budget_usd: Option<f64>,
+
+    /// Glob patterns for tool names that are allowed.
+    /// Supports wildcards like "file_*", "memory_*".
+    /// If empty, all tools are allowed.
+    #[serde(default)]
+    pub allowed_tools: Vec<String>,
+
+    /// Glob patterns for tool names that are denied (takes precedence over allowed).
+    #[serde(default)]
+    pub denied_tools: Vec<String>,
+
+    /// MCP server-level tool filtering.
+    /// Map from MCP server name to list of allowed tool name globs.
+    /// If a server is not in this map, all its tools are allowed.
+    #[serde(default)]
+    pub mcp_tool_filters: HashMap<String, Vec<String>>,
 }
 
 fn default_max_tool_iterations() -> usize {
@@ -58,6 +76,9 @@ impl Default for AgentConfig {
             memory_namespace: None,
             daily_budget_usd: None,
             turn_budget_usd: None,
+            allowed_tools: Vec::new(),
+            denied_tools: Vec::new(),
+            mcp_tool_filters: HashMap::new(),
         }
     }
 }

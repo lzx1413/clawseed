@@ -10,11 +10,10 @@
 
 ```rust
 pub struct Agent {
-    tools: Vec<Box<dyn Tool>>,
-    hooks: HookRunner,
     provider: Box<dyn Provider>,
+    tool_registry: Arc<dyn ToolRegistry>,
     memory: Arc<dyn Memory>,
-    observer: Box<dyn Observer>,
+    observer: Arc<dyn Observer>,
     tool_dispatcher: Box<dyn ToolDispatcher>,
     capabilities: HashMap<TypeId, Arc<dyn Any + Send + Sync>>,
     workspace_dir: PathBuf,
@@ -22,20 +21,29 @@ pub struct Agent {
 }
 ```
 
-Agent 是一个**注册中心**，持有所有工具、Hook、Provider 等的 `Vec<Box<dyn Trait>>`。核心代码永不修改，扩展只需向向量中添加条目。
+Agent 是一个**注册中心**，通过 `ToolRegistry` trait 统一管理所有来源的工具（内置、MCP、远程），通过 `HookRunner` 管理 Hook 管线。核心代码不感知具体工具实现，扩展只需向注册表中添加条目。
 
 ### AgentBuilder — 构建器
 
 ```rust
 let agent = Agent::builder()
     .provider(provider)
-    .tools(tools)
+    .tools(tools)                    // 方式一：传入工具列表，自动构建 DefaultToolRegistry
+    .tool_registry(registry)         // 方式二：传入预构建的 ToolRegistry（优先级更高）
     .memory(memory)
     .observer(observer)
     .tool_dispatcher(dispatcher)
     .workspace_dir(path)
     .capability(Arc::new(security_policy))
+    .allowed_tools(Some(vec!["file_*".into()]))   // glob 模式工具白名单
+    .denied_tools(Some(vec!["shell".into()]))      // glob 模式工具黑名单
+    .mcp_tool_filters(Some(filters))               // 按 MCP 服务器过滤
+    .hook_runner(Some(Arc::new(hook_runner)))       // Hook 管线
     .build()?;
+
+// 从配置文件构建（可选传入自定义 ProviderFactoryRegistry）
+let agent = Agent::from_config(&config).await?;
+let agent = Agent::from_config_with_registry(&config, Some(provider_factory_registry)).await?;
 ```
 
 ## 模块架构
@@ -64,13 +72,8 @@ let agent = Agent::builder()
 
 ### tool_execution.rs — 单次工具执行
 
-```rust
-pub fn find_tool(agent: &Agent, name: &str) -> Option<&Box<dyn Tool>>
-pub async fn execute_one_tool(agent: &Agent, name: &str, args: Value, ctx: &dyn ToolContext) -> Result<ToolResult>
-```
-
-- `find_tool()` — O(n) 名称查找（工具集小，可接受）
-- `execute_one_tool()` — 包装工具执行，附带 Observer 事件记录、耗时测量、错误处理、取消支持
+- 工具通过 `tool_registry.get_tool(name)` 查找（返回 `Arc<dyn Tool>`，O(1) 哈希查找）
+- 包装工具执行，附带 Observer 事件记录、耗时测量、错误处理、取消支持
 
 ### dispatcher.rs — 工具调度器
 
@@ -112,6 +115,24 @@ pub struct HookRunner {
    - `Modify` 修改后的调用传递给下一个 Hook
 2. `fire_after_tool_call()` — 通知所有 Hook，仅观察，不修改
 
+**声明式 Hook 链**：通过配置文件中的 `[hooks]` 段声明 Hook 链，`HookFactoryRegistry` 根据 `hook_type` 创建 Hook 实例。`from_config()` 中 `SecurityPolicy` 始终作为管线的第一个 Hook 自动注册。
+
+```rust
+pub trait HookFactory: Send + Sync {
+    fn hook_type(&self) -> &str;
+    fn create(&self, config: &serde_json::Value) -> Option<Box<dyn Hook>>;
+}
+```
+
+### tool_registry.rs — 工具注册表实现
+
+`DefaultToolRegistry` 是 `ToolRegistry` trait 的默认实现：
+
+- 使用 `DashMap` 实现无锁并发访问，在 async 上下文中安全使用
+- `ToolSpec` 缓存 + 写时失效，避免重复计算
+- 支持 glob 模式的三层过滤：denied 优先 → allowed 白名单 → MCP 服务器级过滤
+- `register_all()` 批量注册、`unregister_by_source()` 按来源批量移除
+
 ### security/ — 安全策略
 
 - `mod.rs` — `SecurityPolicy` 结构体
@@ -120,6 +141,7 @@ pub struct HookRunner {
   - 中等风险命令列表（touch, rm, cp, mv, mkdir, chmod, chown, kill）
   - 路径限制（`/etc/passwd`, `/etc/shadow`, `/etc/ssh`, `/root/.ssh`）
   - 操作速率限制（`max_actions_per_hour`）
+  - **实现 `Hook` trait**：`before_tool_call()` 检查自主等级、速率限制、命令白名单和路径守卫；`after_tool_call()` 记录操作计数。SecurityPolicy 始终作为 Hook 管线的第一个 Hook 注册，不再作为 Capability 注入
 - `pairing.rs` — `PairingGuard`，设备配对验证，使用常量时间比较
 - `secrets.rs` — `SecretStore` 凭证管理，`WebAuthnManager` 支持
 

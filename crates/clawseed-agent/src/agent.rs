@@ -8,13 +8,15 @@ use crate::dispatcher::{ParsedToolCall, ToolDispatcher, ToolExecutionResult};
 use crate::hooks::HookRunner;
 use crate::observer::{Observer, ObserverEvent};
 use crate::security::SecurityPolicy;
+use crate::tool_registry::DefaultToolRegistry;
 use anyhow::Result;
 use chrono::{Datelike, Timelike};
 use clawseed_api::memory_traits::{Memory, MemoryCategory};
 use clawseed_api::provider::{
     ChatMessage, ChatRequest, ChatResponse, ConversationMessage, Provider,
 };
-use clawseed_api::tool::{Tool, ToolResult, ToolSpec};
+use clawseed_api::tool::{Tool, ToolResult};
+use clawseed_api::tool_registry::{ToolRegistry, ToolSource};
 use clawseed_config::schema::AutonomyLevel;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -44,8 +46,7 @@ pub enum TurnEvent {
 /// The core Agent struct — a registry of tools, hooks, and context providers.
 pub struct Agent {
     provider: Box<dyn Provider>,
-    tools: Vec<Box<dyn Tool>>,
-    tool_specs: Vec<ToolSpec>,
+    tool_registry: Arc<dyn ToolRegistry>,
     memory: Arc<dyn Memory>,
     observer: Arc<dyn Observer>,
     tool_dispatcher: Box<dyn ToolDispatcher>,
@@ -67,6 +68,7 @@ pub struct Agent {
 pub struct AgentBuilder {
     provider: Option<Box<dyn Provider>>,
     tools: Option<Vec<Box<dyn Tool>>>,
+    tool_registry: Option<Arc<dyn ToolRegistry>>,
     memory: Option<Arc<dyn Memory>>,
     observer: Option<Arc<dyn Observer>>,
     tool_dispatcher: Option<Box<dyn ToolDispatcher>>,
@@ -81,6 +83,8 @@ pub struct AgentBuilder {
     available_hints: Option<Vec<String>>,
     route_model_by_hint: Option<HashMap<String, String>>,
     allowed_tools: Option<Vec<String>>,
+    denied_tools: Option<Vec<String>>,
+    mcp_tool_filters: Option<std::collections::HashMap<String, Vec<String>>>,
     hook_runner: Option<Arc<HookRunner>>,
 }
 
@@ -95,6 +99,7 @@ impl AgentBuilder {
         Self {
             provider: None,
             tools: None,
+            tool_registry: None,
             memory: None,
             observer: None,
             tool_dispatcher: None,
@@ -109,6 +114,8 @@ impl AgentBuilder {
             available_hints: None,
             route_model_by_hint: None,
             allowed_tools: None,
+            denied_tools: None,
+            mcp_tool_filters: None,
             hook_runner: None,
         }
     }
@@ -120,6 +127,12 @@ impl AgentBuilder {
 
     pub fn tools(mut self, tools: Vec<Box<dyn Tool>>) -> Self {
         self.tools = Some(tools);
+        self
+    }
+
+    /// Provide a pre-built ToolRegistry. If set, `tools()` is ignored.
+    pub fn tool_registry(mut self, registry: Arc<dyn ToolRegistry>) -> Self {
+        self.tool_registry = Some(registry);
         self
     }
 
@@ -202,27 +215,45 @@ impl AgentBuilder {
         self
     }
 
+    pub fn denied_tools(mut self, denied_tools: Option<Vec<String>>) -> Self {
+        self.denied_tools = denied_tools;
+        self
+    }
+
+    pub fn mcp_tool_filters(mut self, filters: Option<std::collections::HashMap<String, Vec<String>>>) -> Self {
+        self.mcp_tool_filters = filters;
+        self
+    }
+
     pub fn hook_runner(mut self, runner: Option<Arc<HookRunner>>) -> Self {
         self.hook_runner = runner;
         self
     }
 
     pub fn build(self) -> Result<Agent> {
-        let mut tools = self
-            .tools
-            .ok_or_else(|| anyhow::anyhow!("tools are required"))?;
-        let allowed = self.allowed_tools.clone();
-        if let Some(ref allow_list) = allowed {
-            tools.retain(|t| allow_list.iter().any(|name| name == t.name()));
-        }
-        let tool_specs = tools.iter().map(|tool| tool.spec()).collect();
+        // Build the tool registry: prefer pre-built registry, otherwise create from tools
+        let registry: Arc<dyn ToolRegistry> = if let Some(reg) = self.tool_registry {
+            reg
+        } else {
+            let tools = self
+                .tools
+                .ok_or_else(|| anyhow::anyhow!("tools are required"))?;
+
+            let allowed = self.allowed_tools.unwrap_or_default();
+            let denied = self.denied_tools.unwrap_or_default();
+            let mcp_filters = self.mcp_tool_filters.unwrap_or_default();
+            let reg = DefaultToolRegistry::with_filters(allowed, denied, mcp_filters);
+            for tool in tools {
+                reg.register(tool, ToolSource::BuiltIn);
+            }
+            Arc::new(reg)
+        };
 
         Ok(Agent {
             provider: self
                 .provider
                 .ok_or_else(|| anyhow::anyhow!("provider is required"))?,
-            tools,
-            tool_specs,
+            tool_registry: registry,
             memory: self
                 .memory
                 .ok_or_else(|| anyhow::anyhow!("memory is required"))?,
@@ -257,16 +288,39 @@ impl Agent {
 
     /// Build an agent from the full config.
     pub async fn from_config(config: &clawseed_config::schema::Config) -> anyhow::Result<Self> {
+        Self::from_config_with_registry(config, None).await
+    }
+
+    /// Build an agent from the full config with an optional provider factory registry.
+    ///
+    /// When a custom registry is provided, it is used instead of the default
+    /// built-in registry for provider construction. Useful for Android/embedded
+    /// use cases with minimal provider sets.
+    pub async fn from_config_with_registry(
+        config: &clawseed_config::schema::Config,
+        provider_factory_registry: Option<Arc<clawseed_providers::factory::ProviderFactoryRegistry>>,
+    ) -> anyhow::Result<Self> {
         let fallback = config.providers.fallback_provider();
 
-        // Provider
-        let provider = clawseed_providers::create_resilient_provider_with_options(
-            config.providers.fallback.as_deref().unwrap_or("openrouter"),
-            fallback.and_then(|e| e.api_key.as_deref()),
-            fallback.and_then(|e| e.base_url.as_deref()),
-            &config.reliability,
-            &clawseed_providers::provider_runtime_options_from_config(config),
-        )?;
+        // Provider — use custom registry if available
+        let provider = if let Some(ref registry) = provider_factory_registry {
+            clawseed_providers::create_resilient_provider_with_registry(
+                registry,
+                config.providers.fallback.as_deref().unwrap_or("openrouter"),
+                fallback.and_then(|e| e.api_key.as_deref()),
+                fallback.and_then(|e| e.base_url.as_deref()),
+                &config.reliability,
+                &clawseed_providers::provider_runtime_options_from_config(config),
+            )?
+        } else {
+            clawseed_providers::create_resilient_provider_with_options(
+                config.providers.fallback.as_deref().unwrap_or("openrouter"),
+                fallback.and_then(|e| e.api_key.as_deref()),
+                fallback.and_then(|e| e.base_url.as_deref()),
+                &config.reliability,
+                &clawseed_providers::provider_runtime_options_from_config(config),
+            )?
+        };
 
         // Memory
         let mem = clawseed_memory::create_memory(
@@ -294,11 +348,42 @@ impl Agent {
             .unwrap_or_else(|| "anthropic/claude-sonnet-4".into());
         let temperature = fallback.and_then(|e| e.temperature).unwrap_or(0.7);
 
-        // Security policy as capability
-        let security = Arc::new(SecurityPolicy::from_config(
+        // Hook runner: SecurityPolicy is always the first hook
+        let mut hook_runner = HookRunner::new();
+        hook_runner.register(Box::new(SecurityPolicy::from_config(
             &config.autonomy,
             &config.workspace_dir,
-        ));
+        )));
+
+        // Process declarative hook chain from config
+        if config.hooks.enabled || !config.hooks.chain.is_empty() {
+            let mut factory_reg = crate::hooks::HookFactoryRegistry::new();
+            factory_reg.register(Box::new(crate::hooks::SecurityPolicyHookFactory));
+            for decl in &config.hooks.chain {
+                if let Some(hook) = factory_reg.create_hook(&decl.hook_type, &decl.config) {
+                    hook_runner.register(hook);
+                } else {
+                    tracing::warn!(hook_type = %decl.hook_type, "Unknown hook type in config, skipping");
+                }
+            }
+        }
+
+        // Determine tool filtering from agent config
+        let allowed = if config.agent.allowed_tools.is_empty() {
+            None
+        } else {
+            Some(config.agent.allowed_tools.clone())
+        };
+        let denied = if config.agent.denied_tools.is_empty() {
+            None
+        } else {
+            Some(config.agent.denied_tools.clone())
+        };
+        let mcp_filters = if config.agent.mcp_tool_filters.is_empty() {
+            None
+        } else {
+            Some(config.agent.mcp_tool_filters.clone())
+        };
 
         let mut builder = Agent::builder()
             .provider(provider)
@@ -306,12 +391,15 @@ impl Agent {
             .memory(mem)
             .observer(observer)
             .tool_dispatcher(dispatcher)
-            .capability(security)
             .model_name(model_name)
             .temperature(temperature)
             .workspace_dir(config.workspace_dir.clone())
             .autonomy_level(config.autonomy.level)
-            .auto_save(config.memory.auto_save);
+            .auto_save(config.memory.auto_save)
+            .allowed_tools(allowed)
+            .denied_tools(denied)
+            .mcp_tool_filters(mcp_filters)
+            .hook_runner(Some(Arc::new(hook_runner)));
 
         if let Some(ref session_id) = config.memory.namespace {
             builder = builder.memory_session_id(Some(session_id.clone()));
@@ -333,16 +421,9 @@ impl Agent {
     }
 
     /// Add remote tools to the agent's tool registry.
-    pub fn add_remote_tools(&mut self, tools: Vec<Box<dyn Tool>>) {
+    pub fn add_remote_tools(&mut self, tools: Vec<Box<dyn Tool>>, session: String) {
         for tool in tools {
-            let name = tool.name().to_string();
-            if let Some(pos) = self.tools.iter().position(|t| t.name() == name) {
-                self.tools.remove(pos);
-                self.tool_specs.remove(pos);
-            }
-            let spec = tool.spec();
-            self.tools.push(tool);
-            self.tool_specs.push(spec);
+            self.tool_registry.register_or_replace(tool, ToolSource::Remote { session: session.clone() });
         }
     }
 
@@ -420,17 +501,16 @@ impl Agent {
 
         // Tools
         output.push_str("## Tools\n\n");
-        for tool in &self.tools {
+        let specs = self.tool_registry.tool_specs();
+        for spec in &specs {
             output.push_str(&format!(
                 "- **{}**: {}\n  Parameters: `{}`\n",
-                tool.name(),
-                tool.description(),
-                tool.parameters_schema()
+                spec.name, spec.description, spec.parameters
             ));
         }
 
         // Dispatcher instructions
-        let instructions = self.tool_dispatcher.prompt_instructions(&self.tools);
+        let instructions = self.tool_dispatcher.prompt_instructions(&specs);
         if !instructions.is_empty() {
             output.push_str(&instructions);
             output.push_str("\n\n");
@@ -496,7 +576,7 @@ impl Agent {
         // Execute the tool
         let ctx = self.build_tool_context();
         let (result, success) =
-            if let Some(tool) = self.tools.iter().find(|t| t.name() == tool_name) {
+            if let Some(tool) = self.tool_registry.get_tool(&tool_name) {
                 match tool.execute(tool_args.clone(), &ctx).await {
                     Ok(r) => {
                         self.observer.record_event(&ObserverEvent::ToolCall {
@@ -598,13 +678,14 @@ impl Agent {
         for _ in 0..self.config.max_tool_iterations {
             let messages = self.tool_dispatcher.to_provider_messages(&self.history);
 
+            let tool_specs = self.tool_registry.tool_specs();
             let response = match self
                 .provider
                 .chat(
                     ChatRequest {
                         messages: &messages,
                         tools: if self.tool_dispatcher.should_send_tool_specs() {
-                            Some(&self.tool_specs)
+                            Some(&tool_specs)
                         } else {
                             None
                         },
@@ -708,11 +789,12 @@ impl Agent {
 
             // Try streaming
             let stream_opts = clawseed_api::provider::StreamOptions::new(true);
+            let tool_specs = self.tool_registry.tool_specs();
             let mut stream = self.provider.stream_chat(
                 ChatRequest {
                     messages: &messages,
                     tools: if self.tool_dispatcher.should_send_tool_specs() {
-                        Some(&self.tool_specs)
+                        Some(&tool_specs)
                     } else {
                         None
                     },
@@ -799,11 +881,12 @@ impl Agent {
                 }
             } else {
                 // Fall back to non-streaming
+                let tool_specs = self.tool_registry.tool_specs();
                 let chat_result = self.provider.chat(
                     ChatRequest {
                         messages: &messages,
                         tools: if self.tool_dispatcher.should_send_tool_specs() {
-                            Some(&self.tool_specs)
+                            Some(&tool_specs)
                         } else {
                             None
                         },
@@ -1056,8 +1139,8 @@ mod tests {
             .build()
             .expect("agent builder should succeed");
 
-        assert_eq!(agent.tool_specs.len(), 1);
-        assert_eq!(agent.tool_specs[0].name, "echo");
+        assert_eq!(agent.tool_registry.tool_specs().len(), 1);
+        assert_eq!(agent.tool_registry.tool_specs()[0].name, "echo");
     }
 
     #[test]
@@ -1078,7 +1161,7 @@ mod tests {
             .build()
             .expect("agent builder should succeed");
 
-        assert!(agent.tool_specs.is_empty());
+        assert!(agent.tool_registry.tool_specs().is_empty());
     }
 
     #[test]
@@ -1130,9 +1213,9 @@ mod tests {
             })
         };
 
-        agent.add_remote_tools(vec![make_named("tool_a"), make_named("tool_b")]);
-        assert_eq!(agent.tools.len(), 2);
-        agent.add_remote_tools(vec![make_named("tool_a"), make_named("tool_b")]);
-        assert_eq!(agent.tools.len(), 2);
+        agent.add_remote_tools(vec![make_named("tool_a"), make_named("tool_b")], "s1".to_string());
+        assert_eq!(agent.tool_registry.len(), 2);
+        agent.add_remote_tools(vec![make_named("tool_a"), make_named("tool_b")], "s1".to_string());
+        assert_eq!(agent.tool_registry.len(), 2);
     }
 }

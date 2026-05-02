@@ -327,7 +327,7 @@ async fn handle_socket(
                         let handle = remote_registry_handle.read().await;
                         if !handle.is_empty() {
                             let remote_tools = std::sync::Arc::new(handle.clone()).build_tools();
-                            agent.add_remote_tools(remote_tools);
+                            agent.add_remote_tools(remote_tools, session_id.clone());
                         }
                     }
                     // Persist user message
@@ -507,7 +507,7 @@ async fn handle_socket(
                     let handle = remote_registry_handle.read().await;
                     if !handle.is_empty() {
                         let remote_tools = std::sync::Arc::new(handle.clone()).build_tools();
-                        agent.add_remote_tools(remote_tools);
+                        agent.add_remote_tools(remote_tools, session_id.clone());
                     }
                 }
 

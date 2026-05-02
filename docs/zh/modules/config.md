@@ -58,9 +58,18 @@ pub struct ModelConfig {
 
 ```rust
 pub struct AgentConfig {
+    pub max_tool_iterations: usize,           // 最大工具循环次数（默认 25）
+    pub temperature: Option<f64>,
     pub max_tokens: Option<u32>,
-    pub cost_limit: Option<f64>,
-    pub allowed_tools: Option<Vec<String>>,
+    pub web_search_enabled: bool,
+    pub web_search_provider: Option<String>,
+    pub system_prompt: Option<String>,
+    pub memory_namespace: Option<String>,
+    pub daily_budget_usd: Option<f64>,
+    pub turn_budget_usd: Option<f64>,
+    pub allowed_tools: Vec<String>,           // glob 模式工具白名单（空 = 允许全部）
+    pub denied_tools: Vec<String>,            // glob 模式工具黑名单（优先于白名单）
+    pub mcp_tool_filters: HashMap<String, Vec<String>>,  // MCP 服务器级工具过滤
 }
 ```
 
@@ -137,7 +146,12 @@ api_key = "${GROQ_API_KEY}"
 
 [agent]
 max_tokens = 4096
-allowed_tools = ["file_read", "file_write", "shell", "memory_store", "memory_recall"]
+max_tool_iterations = 25
+allowed_tools = ["file_*", "memory_*", "shell"]
+denied_tools = ["dangerous_tool"]
+
+[agent.mcp_tool_filters]
+my_mcp_server = ["search_*", "read_*"]
 
 [gateway]
 host = "0.0.0.0"
@@ -155,6 +169,16 @@ max_actions_per_hour = 100
 [reliability]
 max_retries = 3
 fallback_model = "fast"
+
+[hooks]
+enabled = true
+
+[[hooks.chain]]
+type = "security_policy"
+
+[[hooks.chain]]
+type = "audit_log"
+config = { level = "info" }
 ```
 
 ## 密钥管理

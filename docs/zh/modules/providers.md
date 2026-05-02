@@ -30,9 +30,18 @@
 
 | 提供商 | 文件 | 认证方式 |
 |--------|------|---------|
-| GLM (智谱) | `compatible.rs` | Bearer Token |
-| MiniMax | `compatible.rs` | Bearer Token |
-| Moonshot | `compatible.rs` | Bearer Token |
+| GLM (智谱) | `factory.rs` | ZhipuJwt |
+| MiniMax | `factory.rs` | Bearer Token |
+| Moonshot (Kimi) | `factory.rs` | Bearer Token |
+| Qwen (通义千问) | `factory.rs` | Bearer Token |
+| Bailian (百炼) | `factory.rs` | Bearer Token |
+| Z.AI | `factory.rs` | ZhipuJwt |
+| Qianfan (千帆) | `factory.rs` | Bearer Token |
+| Doubao (豆包) | `factory.rs` | Bearer Token |
+
+### 其他 OpenAI 兼容提供商
+
+Venice、Together、Fireworks、Perplexity、Cohere、Novita、NVIDIA、GitHub Copilot、Vercel、Cloudflare、Azure OpenAI，以及 sglang/vllm 等通用兼容端点。
 
 ## 核心模块
 
@@ -86,13 +95,52 @@ pub struct ReliableProvider {
 
 按名称查找提供者实现。
 
-### factory — 创建函数
+### factory.rs — 提供者工厂
+
+通过 `ProviderFactory` trait + `ProviderFactoryRegistry` 替代了原来 300+ 行的 match 链：
 
 ```rust
-pub fn create_resilient_provider_with_options(config: &Config) -> Result<Box<dyn Provider>>
+/// 提供者工厂 trait
+pub trait ProviderFactory: Send + Sync {
+    fn name(&self) -> &str;
+    fn aliases(&self) -> &[&str] { &[] }
+    fn create(&self, provider_name: &str, api_key: Option<&str>,
+              base_url: Option<&str>, options: &ProviderRuntimeOptions
+    ) -> Result<Box<dyn Provider>>;
+}
+
+/// 工厂注册表
+pub struct ProviderFactoryRegistry {
+    factories: HashMap<String, Arc<dyn ProviderFactory>>,
+}
 ```
 
-根据配置创建 `ReliableProvider`，自动设置主/备提供者。
+**内置工厂**：
+- `AnthropicFactory` — 原生 Anthropic 协议
+- `GeminiFactory` — 原生 Gemini 协议
+- `BedrockFactory` — 原生 Bedrock 协议
+- `OpenAiCompatFactory` — 参数化的 OpenAI 兼容工厂，大多数提供商仅需提供名称、默认 URL 和认证方式
+- 中国区各厂商独立工厂（GLM、MiniMax、Moonshot、Qwen、Bailian、Z.AI、Qianfan、Doubao）
+- `GenericCompatFactory` — 通用兼容端点（需要 `base_url`）
+- `AzureOpenAiFactory` — Azure OpenAI（必须提供 `base_url`）
+
+**创建函数**：
+```rust
+// 使用默认注册表（LazyLock 单例）
+pub fn create_resilient_provider_with_options(
+    provider_name: &str, api_key: Option<&str>,
+    base_url: Option<&str>, reliability: &ReliabilityConfig,
+    options: &ProviderRuntimeOptions,
+) -> Result<Box<dyn Provider>>
+
+// 使用自定义注册表（Android/嵌入式场景可传入最小化的 provider 集合）
+pub fn create_resilient_provider_with_registry(
+    registry: &ProviderFactoryRegistry,
+    provider_name: &str, api_key: Option<&str>,
+    base_url: Option<&str>, reliability: &ReliabilityConfig,
+    options: &ProviderRuntimeOptions,
+) -> Result<Box<dyn Provider>>
+```
 
 ### 其他模块
 

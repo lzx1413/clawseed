@@ -60,9 +60,11 @@
 ### api.rs — REST 端点
 
 - `GET /health` — 健康检查
+- `GET /api/tools` — 列出注册的工具（通过 `tool_registry.tool_specs()` 获取）
 - `POST /sessions` — 创建会话
 - `GET /sessions/{id}` — 获取会话
 - `POST /webhook` — Webhook 接收
+- `GET /api/doctor` — 系统诊断（工具数量通过 `tool_registry.len()` 获取）
 
 ### remote_tool.rs — 远程工具桥接
 

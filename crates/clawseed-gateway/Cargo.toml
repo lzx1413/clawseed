@@ -57,3 +57,5 @@ clawseed-agent = { workspace = true }
 clawseed-memory = { workspace = true }
 async-trait = { workspace = true }
 parking_lot = { workspace = true }
+tokio-tungstenite = "0.26"
+reqwest = { workspace = true }

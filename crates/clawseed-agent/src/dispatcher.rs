@@ -28,7 +28,7 @@ pub struct ToolExecutionResult {
 pub trait ToolDispatcher: Send + Sync {
     fn parse_response(&self, response: &ChatResponse) -> (String, Vec<ParsedToolCall>);
     fn format_results(&self, results: &[ToolExecutionResult]) -> ConversationMessage;
-    fn prompt_instructions(&self, tools: &[Box<dyn clawseed_api::tool::Tool>]) -> String;
+    fn prompt_instructions(&self, tools: &[ToolSpec]) -> String;
     fn to_provider_messages(&self, history: &[ConversationMessage]) -> Vec<ChatMessage>;
     fn should_send_tool_specs(&self) -> bool;
 }
@@ -137,7 +137,7 @@ impl ToolDispatcher for XmlToolDispatcher {
         ConversationMessage::Chat(ChatMessage::user(format!("[Tool results]\n{content}")))
     }
 
-    fn prompt_instructions(&self, _tools: &[Box<dyn clawseed_api::tool::Tool>]) -> String {
+    fn prompt_instructions(&self, _tools: &[ToolSpec]) -> String {
         let mut instructions = String::new();
         instructions.push_str("## Tool Use Protocol\n\n");
         instructions.push_str("To use a tool, wrap a JSON object in ◁▷ tags:\n\n");
@@ -214,7 +214,7 @@ impl ToolDispatcher for NativeToolDispatcher {
         ConversationMessage::ToolResults(messages)
     }
 
-    fn prompt_instructions(&self, _tools: &[Box<dyn clawseed_api::tool::Tool>]) -> String {
+    fn prompt_instructions(&self, _tools: &[ToolSpec]) -> String {
         String::new()
     }
 

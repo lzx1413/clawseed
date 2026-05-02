@@ -16,9 +16,10 @@ Remote Tool Call is one of ClawSeed's core features, allowing mobile clients to 
 │                  │   2. tools_registered    │  RemoteTool      │
 │                  │ ←──────────────────────  │  Registry        │
 │                  │                          │       ↓          │
-│                  │                          │  Agent.tools      │
-│                  │                          │  (Vec<Box<dyn    │
-│                  │                          │   Tool>>)        │
+│                  │                          │  Agent           │
+│                  │                          │  .tool_registry  │
+│                  │                          │  (Arc<dyn        │
+│                  │                          │   ToolRegistry>) │
 │                  │                          │                  │
 │  Tool Executor   │   3. tool_call_request   │  Agent Loop      │
 │  (ToolCall       │ ←──────────────────────  │  calls RemoteTool│
@@ -100,17 +101,14 @@ The WebSocket handler processes tool registration and request forwarding:
 ```rust
 async fn handle_ws(socket: WebSocket, agent: Agent) {
     let (registry_handle, request_rx) = RemoteToolRegistryHandle::new();
-    let mut client_tools: Vec<RemoteTool> = Vec::new();
+    let session_id = generate_session_id();
 
     while let Some(msg) = socket.next().await {
         match msg {
             // Tool registration
             Ok(Text(text)) if type == "register_tools" => {
-                for spec in tool_specs {
-                    let remote_tool = RemoteTool::new(spec, request_tx);
-                    client_tools.push(remote_tool);
-                    agent.add_tool(remote_tool);
-                }
+                let remote_tools = registry_handle.build_tools();
+                agent.add_remote_tools(remote_tools, session_id.clone());
                 socket.send(tools_registered(count)).await;
             }
 
@@ -128,10 +126,8 @@ async fn handle_ws(socket: WebSocket, agent: Agent) {
         }
     }
 
-    // Remove remote tools when WebSocket disconnects
-    for tool in client_tools {
-        agent.remove_tool(&tool.name);
-    }
+    // On WebSocket disconnect, bulk-remove via ToolSource::Remote { session }
+    // tool_registry.unregister_by_source() automatically cleans up all remote tools for this session
 }
 ```
 
@@ -252,7 +248,7 @@ private fun dispatchToolCall(request: ToolCallRequest) {
 
 | Feature | Local Tool | Remote Tool |
 |---------|-----------|-------------|
-| Registration | `all_tools()` function | WebSocket `register_tools` message |
+| Registration | `all_tools()` function, registered as `ToolSource::BuiltIn` | WebSocket `register_tools` message, registered as `ToolSource::Remote { session }` |
 | Execution location | Gateway server | Client device |
 | ToolContext | Full access (Memory, SecurityPolicy, etc.) | Not used |
 | Timeout | Unlimited | 30 seconds |
@@ -267,13 +263,13 @@ WebSocket connection established
     ↓
 Client sends register_tools
     ↓
-Gateway creates RemoteTool instances, adds to Agent.tools
+Gateway creates RemoteTool instances, adds to ToolRegistry via register_or_replace() (ToolSource::Remote { session })
     ↓
 Normal conversation and tool calls
     ↓
 WebSocket disconnects
     ↓
-Gateway removes all remote tools from Agent.tools
+Gateway bulk-removes all remote tools for this session via tool_registry.unregister_by_source()
     ↓
 Subsequent conversations no longer call the disconnected client's tools
 ```

@@ -1,9 +1,14 @@
 //! Hook system for tool-call interception.
 //!
-//! Hooks run before and after tool calls. In the minimal clawseed-agent
-//! crate, only a no-op runner is provided.
+//! Hooks run before and after tool calls. SecurityPolicy is always registered
+//! as a hook to enforce autonomy, rate limiting, and command allowlists.
+//!
+//! Hook factories allow declarative hook creation from config.
+
+use std::collections::HashMap;
 
 use clawseed_api::hook::{Hook, HookResult, ToolCall as HookToolCall, ToolExecutionResult};
+use clawseed_config::schema::AutonomyConfig;
 
 /// Result of the hook runner's before_tool_call pipeline.
 ///
@@ -72,7 +77,15 @@ impl HookRunner {
             success: result.success,
         };
         for hook in &self.hooks {
-            let _ = hook.after_tool_call(&exec_result);
+            match hook.after_tool_call(&exec_result) {
+                HookResult::Continue => {}
+                HookResult::Cancel(reason) => {
+                    tracing::debug!(hook_name = %name, %reason, "after_tool_call returned Cancel (ignored, tool already executed)");
+                }
+                HookResult::Modify(_) => {
+                    tracing::debug!(hook_name = %name, "after_tool_call returned Modify (ignored, tool already executed)");
+                }
+            }
         }
     }
 
@@ -85,5 +98,61 @@ impl HookRunner {
 impl Default for HookRunner {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Factory trait for creating hooks from config declarations.
+pub trait HookFactory: Send + Sync {
+    /// The hook type identifier this factory produces (e.g. "security_policy").
+    fn hook_type(&self) -> &str;
+
+    /// Create a hook from a config declaration.
+    fn create(&self, config: &serde_json::Value) -> Option<Box<dyn Hook>>;
+}
+
+/// Registry of hook factories, keyed by hook type.
+pub struct HookFactoryRegistry {
+    factories: HashMap<String, Box<dyn HookFactory>>,
+}
+
+impl HookFactoryRegistry {
+    pub fn new() -> Self {
+        Self {
+            factories: HashMap::new(),
+        }
+    }
+
+    pub fn register(&mut self, factory: Box<dyn HookFactory>) {
+        self.factories.insert(factory.hook_type().to_string(), factory);
+    }
+
+    /// Create a hook from a declaration. Returns None if the type is unknown.
+    pub fn create_hook(&self, hook_type: &str, config: &serde_json::Value) -> Option<Box<dyn Hook>> {
+        self.factories.get(hook_type).and_then(|f| f.create(config))
+    }
+}
+
+impl Default for HookFactoryRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Built-in factory that creates SecurityPolicy as a Hook.
+pub struct SecurityPolicyHookFactory;
+
+impl HookFactory for SecurityPolicyHookFactory {
+    fn hook_type(&self) -> &str {
+        "security_policy"
+    }
+
+    fn create(&self, config: &serde_json::Value) -> Option<Box<dyn Hook>> {
+        let autonomy: AutonomyConfig = if config.is_null() {
+            AutonomyConfig::default()
+        } else {
+            serde_json::from_value(config.clone()).ok()?
+        };
+        let policy = crate::security::SecurityPolicy::from_config(&autonomy, std::path::Path::new("."));
+        Some(Box::new(policy))
     }
 }

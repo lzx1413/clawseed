@@ -94,6 +94,42 @@ pub trait ContextProvider: Send + Sync {
 
 工具通过 `ctx.get::<T>()` 查找注入的能力。
 
+### ToolRegistry — 统一工具注册
+
+```rust
+pub trait ToolRegistry: Send + Sync {
+    fn register(&self, tool: Box<dyn Tool>, source: ToolSource) -> bool;
+    fn unregister(&self, name: &str) -> bool;
+    fn get_tool(&self, name: &str) -> Option<Arc<dyn Tool>>;
+    fn tool_specs(&self) -> Vec<ToolSpec>;
+    fn get_entry(&self, name: &str) -> Option<ToolEntry>;
+    fn tool_names(&self) -> Vec<String>;
+    fn register_or_replace(&self, tool: Box<dyn Tool>, source: ToolSource) -> Option<ToolEntry>;
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool;
+}
+```
+
+- `register()` — 注册工具，重名返回 false
+- `unregister()` — 按名称移除工具
+- `get_tool()` — 按名称查找，返回 `Arc<dyn Tool>`（在 async 上下文中安全共享）
+- `tool_specs()` — 获取所有工具规格（带缓存），供 LLM 注册使用
+- `register_or_replace()` — 注册或替换同名工具（远程工具重连时使用）
+
+```rust
+/// 工具来源标识
+pub enum ToolSource {
+    BuiltIn,                        // 内置工具
+    Mcp { server: String },         // MCP 服务器提供的工具
+    Remote { session: String },     // 远程客户端注册的工具
+}
+
+/// 工具条目元数据
+pub struct ToolEntry {
+    pub source: ToolSource,
+}
+```
+
 ## 共享类型
 
 ### 消息类型

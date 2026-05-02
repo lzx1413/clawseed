@@ -11,8 +11,8 @@
 //!
 //! ```ignore
 //! fn execute(&self, args: Value, ctx: &dyn ToolContext) -> Result<ToolResult> {
-//!     if let Some(policy) = ctx.get::<SecurityPolicy>() {
-//!         if !policy.is_command_allowed(&cmd) { return Err(...); }
+//!     if let Some(mem) = ctx.get::<Arc<dyn Memory>>() {
+//!         mem.store("key", "value").await?;
 //!     }
 //!     // execute...
 //! }

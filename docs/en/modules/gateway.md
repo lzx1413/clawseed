@@ -60,9 +60,11 @@ The primary communication channel, supporting the following message types:
 ### api.rs — REST Endpoints
 
 - `GET /health` — Health check
+- `GET /api/tools` — List registered tools (via `tool_registry.tool_specs()`)
 - `POST /sessions` — Create session
 - `GET /sessions/{id}` — Get session
 - `POST /webhook` — Webhook ingestion
+- `GET /api/doctor` — System diagnostics (tool count via `tool_registry.len()`)
 
 ### remote_tool.rs — Remote Tool Bridge
 

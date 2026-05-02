@@ -16,9 +16,10 @@
 │                  │   2. tools_registered    │  RemoteTool      │
 │                  │ ←──────────────────────  │  Registry        │
 │                  │                          │       ↓          │
-│                  │                          │  Agent.tools      │
-│                  │                          │  (Vec<Box<dyn    │
-│                  │                          │   Tool>>)        │
+│                  │                          │  Agent           │
+│                  │                          │  .tool_registry  │
+│                  │                          │  (Arc<dyn        │
+│                  │                          │   ToolRegistry>) │
 │                  │                          │                  │
 │  工具执行器      │   3. tool_call_request   │  Agent Loop      │
 │  (ToolCall       │ ←──────────────────────  │  调用 RemoteTool │
@@ -99,17 +100,14 @@ WebSocket handler 处理工具注册和请求转发：
 ```rust
 async fn handle_ws(socket: WebSocket, agent: Agent) {
     let (registry_handle, request_rx) = RemoteToolRegistryHandle::new();
-    let mut client_tools: Vec<RemoteTool> = Vec::new();
+    let session_id = generate_session_id();
 
     while let Some(msg) = socket.next().await {
         match msg {
             // 工具注册
             Ok(Text(text)) if type == "register_tools" => {
-                for spec in tool_specs {
-                    let remote_tool = RemoteTool::new(spec, request_tx);
-                    client_tools.push(remote_tool);
-                    agent.add_tool(remote_tool);
-                }
+                let remote_tools = registry_handle.build_tools();
+                agent.add_remote_tools(remote_tools, session_id.clone());
                 socket.send(tools_registered(count)).await;
             }
 
@@ -127,10 +125,8 @@ async fn handle_ws(socket: WebSocket, agent: Agent) {
         }
     }
 
-    // WebSocket 断开时移除远程工具
-    for tool in client_tools {
-        agent.remove_tool(&tool.name);
-    }
+    // WebSocket 断开时，通过 ToolSource::Remote { session } 批量移除
+    // tool_registry.unregister_by_source() 自动清理该会话的所有远程工具
 }
 ```
 
@@ -251,7 +247,7 @@ private fun dispatchToolCall(request: ToolCallRequest) {
 
 | 特性 | 本地工具 | 远程工具 |
 |------|---------|---------|
-| 注册方式 | `all_tools()` 函数 | WebSocket `register_tools` 消息 |
+| 注册方式 | `all_tools()` 函数，注册为 `ToolSource::BuiltIn` | WebSocket `register_tools` 消息，注册为 `ToolSource::Remote { session }` |
 | 执行位置 | Gateway 服务端 | 客户端设备 |
 | ToolContext | 完整访问（Memory、SecurityPolicy 等） | 不使用 |
 | 超时 | 无限制 | 30 秒 |
@@ -266,13 +262,13 @@ WebSocket 连接建立
     ↓
 客户端发送 register_tools
     ↓
-Gateway 创建 RemoteTool 实例，加入 Agent.tools
+Gateway 创建 RemoteTool 实例，通过 tool_registry.register_or_replace() 加入注册表（ToolSource::Remote { session }）
     ↓
 正常对话和工具调用
     ↓
 WebSocket 断开
     ↓
-Gateway 从 Agent.tools 移除所有远程工具
+Gateway 通过 tool_registry.unregister_by_source() 批量移除该会话的所有远程工具
     ↓
 后续对话不再调用已断开客户端的工具
 ```
