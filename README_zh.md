@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="assets/clawseed.png" alt="ClawSeed" width="120" />
+</p>
+
+<p align="center">
   <strong>ClawSeed</strong>
 </p>
 
@@ -9,6 +13,7 @@
 <p align="center">
   <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache%202.0-blue.svg" alt="License" /></a>
   <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-edition%202024-orange?logo=rust" alt="Rust Edition 2024" /></a>
+  <a href="https://github.com/lzx1413/clawseed/actions/workflows/ci.yml"><img src="https://github.com/lzx1413/clawseed/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="README.md">English</a> | <strong>中文</strong>
 </p>
 
