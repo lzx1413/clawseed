@@ -117,10 +117,22 @@ pub async fn handle_api_status(
         .map(String::from)
         .unwrap_or_else(|| "en".to_string());
 
+    let fallback_entry = config
+        .providers
+        .fallback
+        .as_ref()
+        .and_then(|key| config.providers.models.get(key));
+    let model = fallback_entry
+        .and_then(|e| e.model.clone())
+        .unwrap_or_else(|| state.model.clone());
+    let temperature = fallback_entry
+        .and_then(|e| e.temperature)
+        .unwrap_or(state.temperature);
+
     let body = serde_json::json!({
         "provider": config.providers.fallback,
-        "model": state.model,
-        "temperature": state.temperature,
+        "model": model,
+        "temperature": temperature,
         "uptime_seconds": health.get("uptime_seconds").and_then(|v| v.as_f64()).unwrap_or(0.0),
         "gateway_port": config.gateway.port,
         "locale": locale,

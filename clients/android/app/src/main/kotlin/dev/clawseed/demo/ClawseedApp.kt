@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.navigation.compose.rememberNavController
 import dev.clawseed.demo.data.LocalStore
@@ -19,8 +20,8 @@ fun ClawseedApp(localStore: LocalStore) {
     val drawerState = androidx.compose.material3.rememberDrawerState(androidx.compose.material3.DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val navController = rememberNavController()
-    var currentSessionId by remember { mutableStateOf<String?>(null) }
-    var sessionVersion by remember { mutableStateOf(0) }
+    var currentSessionId by rememberSaveable { mutableStateOf<String?>(null) }
+    var sessionVersion by rememberSaveable { mutableStateOf(0) }
     var refreshKey by remember { mutableStateOf(0) }
 
     // Back key: close drawer if open

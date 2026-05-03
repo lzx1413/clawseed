@@ -110,9 +110,20 @@ class SettingsViewModel : ViewModel() {
 
     fun selectProvider(index: Int) {
         val preset = PROVIDER_PRESETS[index]
+        val toml = _uiState.value.configToml
+        val saved = findSavedProviderSettings(toml, preset.baseUrl)
+        val rawApiKey = saved?.first ?: ""
+        val serverHasKey = rawApiKey.contains("***") || rawApiKey.isNotBlank()
+        val displayApiKey = when {
+            rawApiKey.contains("***") -> MASKED_KEY_PLACEHOLDER
+            else -> rawApiKey
+        }
         _uiState.value = _uiState.value.copy(
             selectedPresetIndex = index,
             baseUrl = preset.baseUrl,
+            apiKey = displayApiKey,
+            hasServerApiKey = serverHasKey,
+            selectedModel = saved?.second ?: "",
             availableModels = emptyList(),
             connectionOk = null,
             saveSuccess = false,
@@ -265,10 +276,20 @@ class SettingsViewModel : ViewModel() {
         }
 
         private fun extractProviderModel(toml: String, status: StatusInfo?): String {
-            if (status != null && status.model.isNotBlank()) return status.model
             val fallback = extractTomlValue(toml, "fallback") ?: return ""
             val section = findSection(toml, "[providers.models.\"$fallback\"]")
             return extractTomlValueInBlock(section, "model") ?: ""
+        }
+
+        private fun findSavedProviderSettings(toml: String, baseUrl: String): Pair<String, String>? {
+            if (baseUrl.isBlank()) return null
+            val trimmedUrl = baseUrl.trimEnd('/')
+            val sectionHeader = "[providers.models.\"custom:$trimmedUrl\"]"
+            val section = findSection(toml, sectionHeader)
+            if (section.isEmpty()) return null
+            val apiKey = extractTomlValueInBlock(section, "api_key") ?: ""
+            val model = extractTomlValueInBlock(section, "model") ?: ""
+            return Pair(apiKey, model)
         }
 
         private fun findSection(toml: String, header: String): String {
