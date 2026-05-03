@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use clawseed_api::provider::ChatMessage;
 use parking_lot::Mutex;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use super::session_backend::{SessionBackend, SessionMetadata, SessionState};
 
@@ -60,10 +60,7 @@ impl SqliteSessionBackend {
         Ok(())
     }
 
-    fn query_sessions_metadata(
-        conn: &Connection,
-        where_clause: &str,
-    ) -> Vec<SessionMetadata> {
+    fn query_sessions_metadata(conn: &Connection, where_clause: &str) -> Vec<SessionMetadata> {
         let sql = format!(
             "SELECT s.session_key, s.created_at, s.last_activity, s.name,
                     (SELECT COUNT(*) FROM messages m WHERE m.session_key = s.session_key) as msg_count
@@ -160,10 +157,11 @@ impl SessionBackend for SqliteSessionBackend {
 
     fn list_sessions(&self) -> Vec<String> {
         let conn = self.conn.lock();
-        let mut stmt = match conn.prepare("SELECT session_key FROM sessions ORDER BY last_activity DESC") {
-            Ok(s) => s,
-            Err(_) => return Vec::new(),
-        };
+        let mut stmt =
+            match conn.prepare("SELECT session_key FROM sessions ORDER BY last_activity DESC") {
+                Ok(s) => s,
+                Err(_) => return Vec::new(),
+            };
         let Ok(rows) = stmt.query_map([], |row| row.get(0)) else {
             return Vec::new();
         };

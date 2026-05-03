@@ -193,7 +193,10 @@ impl WebSearchTool {
 
     async fn search_bing(&self, query: &str) -> anyhow::Result<String> {
         let encoded_query = urlencoding::encode(query);
-        let search_url = format!("https://www.bing.com/search?q={}&count={}", encoded_query, self.max_results);
+        let search_url = format!(
+            "https://www.bing.com/search?q={}&count={}",
+            encoded_query, self.max_results
+        );
 
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(self.timeout_secs))
@@ -211,13 +214,14 @@ impl WebSearchTool {
     }
 
     fn parse_bing_results(&self, html: &str, query: &str) -> anyhow::Result<String> {
-        let result_regex = Regex::new(
-            r#"<li[^>]*class="b_algo"[^>]*>([\s\S]*?)</li>"#,
-        )?;
+        let result_regex = Regex::new(r#"<li[^>]*class="b_algo"[^>]*>([\s\S]*?)</li>"#)?;
         let link_regex = Regex::new(r#"<a[^>]*href="(https?://[^"]+)"[^>]*>([\s\S]*?)</a>"#)?;
         let snippet_regex = Regex::new(r#"<p[^>]*>([\s\S]*?)</p>"#)?;
 
-        let results: Vec<_> = result_regex.captures_iter(html).take(self.max_results).collect();
+        let results: Vec<_> = result_regex
+            .captures_iter(html)
+            .take(self.max_results)
+            .collect();
 
         if results.is_empty() {
             return Ok(format!("No results found for: {}", query));

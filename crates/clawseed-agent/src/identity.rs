@@ -378,7 +378,11 @@ fn normalize_motivations_section(section: Option<&Value>) -> Option<MotivationsS
         };
 
         let deduped = dedupe_non_empty(values);
-        if deduped.is_empty() { None } else { Some(deduped) }
+        if deduped.is_empty() {
+            None
+        } else {
+            Some(deduped)
+        }
     });
 
     if core_drive.is_none()
@@ -500,7 +504,11 @@ fn scalar_to_string(value: &Value) -> Option<String> {
     match value {
         Value::String(text) => {
             let trimmed = text.trim();
-            if trimmed.is_empty() { None } else { Some(trimmed.to_owned()) }
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_owned())
+            }
         }
         Value::Number(number) => Some(number.to_string()),
         Value::Bool(boolean) => Some(boolean.to_string()),
@@ -514,7 +522,11 @@ fn value_to_text(value: &Value) -> Option<String> {
         Value::String(_) | Value::Number(_) | Value::Bool(_) => scalar_to_string(value),
         Value::Array(_) => {
             let values = list_from_value(value);
-            if values.is_empty() { None } else { Some(values.join(", ")) }
+            if values.is_empty() {
+                None
+            } else {
+                Some(values.join(", "))
+            }
         }
         Value::Object(map) => summarize_object(map),
     }
@@ -523,7 +535,11 @@ fn value_to_text(value: &Value) -> Option<String> {
 fn summarize_object(map: &Map<String, Value>) -> Option<String> {
     let mut parts = Vec::new();
     summarize_object_into_parts("", map, &mut parts);
-    if parts.is_empty() { None } else { Some(parts.join("; ")) }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("; "))
+    }
 }
 
 fn summarize_object_into_parts(prefix: &str, map: &Map<String, Value>, parts: &mut Vec<String>) {
@@ -610,7 +626,11 @@ fn numeric_map_from_value(value: &Value) -> Option<HashMap<String, f64>> {
             numeric_values.insert(key.clone(), number);
         }
     }
-    if numeric_values.is_empty() { None } else { Some(numeric_values) }
+    if numeric_values.is_empty() {
+        None
+    } else {
+        Some(numeric_values)
+    }
 }
 
 fn numeric_from_value(value: &Value) -> Option<f64> {
@@ -632,12 +652,20 @@ fn favorites_map(value: &Value) -> Option<HashMap<String, String>> {
             favorites.insert(key.clone(), text);
         }
     }
-    if favorites.is_empty() { None } else { Some(favorites) }
+    if favorites.is_empty() {
+        None
+    } else {
+        Some(favorites)
+    }
 }
 
 fn non_empty_list_at(value: &Value, path: &[&str]) -> Option<Vec<String>> {
     let values = value_at_path(value, path).map(list_from_value)?;
-    if values.is_empty() { None } else { Some(values) }
+    if values.is_empty() {
+        None
+    } else {
+        Some(values)
+    }
 }
 
 // ── Rendering ──────────────────────────────────────────────────────

@@ -56,7 +56,10 @@ use crate::web_search_tool::WebSearchTool;
 /// Network tools (http_request, web_fetch, web_search) are included only
 /// when their `enabled` flag is set in the config. When `allowed_domains`
 /// is empty and the tool is enabled, all domains are permitted.
-pub fn all_tools(#[cfg_attr(feature = "android", allow(unused))] workspace_dir: PathBuf, config: &Config) -> Vec<Box<dyn Tool>> {
+pub fn all_tools(
+    #[cfg_attr(feature = "android", allow(unused))] workspace_dir: PathBuf,
+    config: &Config,
+) -> Vec<Box<dyn Tool>> {
     let none_memory = Arc::new(clawseed_memory::none::NoneMemory::new())
         as Arc<dyn clawseed_api::memory_traits::Memory>;
 
@@ -71,7 +74,11 @@ pub fn all_tools(#[cfg_attr(feature = "android", allow(unused))] workspace_dir: 
 
     #[cfg(not(feature = "android"))]
     {
-        tools.push(Box::new(BackupTool::new(workspace_dir.clone(), Vec::new(), 10)));
+        tools.push(Box::new(BackupTool::new(
+            workspace_dir.clone(),
+            Vec::new(),
+            10,
+        )));
         tools.push(Box::new(CronAddTool::new()));
         tools.push(Box::new(CronListTool::new()));
         tools.push(Box::new(CronRemoveTool::new()));

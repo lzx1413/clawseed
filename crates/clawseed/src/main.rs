@@ -91,7 +91,9 @@ async fn run_chat(
         let readline = rl.readline("You> ");
         let input = match readline {
             Ok(line) => line,
-            Err(rustyline::error::ReadlineError::Interrupted | rustyline::error::ReadlineError::Eof) => break,
+            Err(
+                rustyline::error::ReadlineError::Interrupted | rustyline::error::ReadlineError::Eof,
+            ) => break,
             Err(e) => return Err(e.into()),
         };
 

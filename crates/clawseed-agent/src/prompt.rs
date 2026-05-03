@@ -228,13 +228,11 @@ impl PromptSection for ToolHonestySection {
     }
 
     fn build(&self, _ctx: &PromptContext<'_>) -> Result<String> {
-        Ok(
-            "## CRITICAL: Tool Honesty\n\n\
+        Ok("## CRITICAL: Tool Honesty\n\n\
              - NEVER fabricate, invent, or guess tool results.\n\
              - If a tool call fails, report the error — never make up data.\n\
              - When unsure, ask the user rather than guessing."
-                .into(),
-        )
+            .into())
     }
 }
 
