@@ -60,7 +60,6 @@ pub fn all_tools(
     config: &Config,
     memory: Arc<dyn clawseed_api::memory_traits::Memory>,
 ) -> Vec<Box<dyn Tool>> {
-
     let mut tools: Vec<Box<dyn Tool>> = vec![
         Box::new(CalculatorTool::new()),
         Box::new(ContentSearchTool::new()),

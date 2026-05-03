@@ -66,12 +66,7 @@ pub fn create_resilient_provider_with_registry(
                 }
             }
         };
-        let mut p = OpenAiCompatibleProvider::new(
-            provider_name,
-            &url,
-            key_ref,
-            AuthStyle::Bearer,
-        );
+        let mut p = OpenAiCompatibleProvider::new(provider_name, &url, key_ref, AuthStyle::Bearer);
         if let Some(extra) = options.provider_extra.clone() {
             p = p.with_provider_extra(extra);
         }

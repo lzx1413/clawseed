@@ -274,7 +274,12 @@ pub async fn handle_api_provider_models(
     match req.send().await {
         Ok(resp) if resp.status().is_success() => {
             let body = resp.text().await.unwrap_or_default();
-            (StatusCode::OK, [(header::CONTENT_TYPE, "application/json")], body).into_response()
+            (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, "application/json")],
+                body,
+            )
+                .into_response()
         }
         Ok(resp) => {
             let status = resp.status();

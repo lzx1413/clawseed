@@ -671,8 +671,8 @@ encrypt = true
         if self.config_path.as_os_str().is_empty() {
             return Ok(());
         }
-        let toml_str = toml::to_string_pretty(self)
-            .context("Failed to serialize config to TOML")?;
+        let toml_str =
+            toml::to_string_pretty(self).context("Failed to serialize config to TOML")?;
         std::fs::write(&self.config_path, &toml_str)
             .with_context(|| format!("Failed to write config: {}", self.config_path.display()))?;
         Ok(())

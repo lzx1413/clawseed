@@ -119,8 +119,7 @@ async fn registry_network_tools_disabled_by_default() {
     let config = Config::default(); // network tools disabled by default
     let none_memory = std::sync::Arc::new(clawseed_memory::none::NoneMemory::new())
         as std::sync::Arc<dyn clawseed_api::memory_traits::Memory>;
-    let tools =
-        clawseed_tools::registry::all_tools(dir.path().to_path_buf(), &config, none_memory);
+    let tools = clawseed_tools::registry::all_tools(dir.path().to_path_buf(), &config, none_memory);
     let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
     assert!(
         !names.contains(&"http_request"),
@@ -1059,8 +1058,7 @@ enabled = true
     let dir = tempfile::TempDir::new().unwrap();
     let none_memory = std::sync::Arc::new(clawseed_memory::none::NoneMemory::new())
         as std::sync::Arc<dyn clawseed_api::memory_traits::Memory>;
-    let tools =
-        clawseed_tools::registry::all_tools(dir.path().to_path_buf(), &config, none_memory);
+    let tools = clawseed_tools::registry::all_tools(dir.path().to_path_buf(), &config, none_memory);
     let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
     assert!(
         names.contains(&"http_request"),
@@ -1107,8 +1105,7 @@ enabled = false
     let dir = tempfile::TempDir::new().unwrap();
     let none_memory = std::sync::Arc::new(clawseed_memory::none::NoneMemory::new())
         as std::sync::Arc<dyn clawseed_api::memory_traits::Memory>;
-    let tools =
-        clawseed_tools::registry::all_tools(dir.path().to_path_buf(), &config, none_memory);
+    let tools = clawseed_tools::registry::all_tools(dir.path().to_path_buf(), &config, none_memory);
     let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
     assert!(
         names.contains(&"http_request"),

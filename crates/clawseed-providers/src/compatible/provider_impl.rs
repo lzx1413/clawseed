@@ -43,7 +43,12 @@ impl OpenAiCompatibleProvider {
         let url = self.responses_url();
 
         let response = self
-            .apply_auth_header(self.http_client().post(&url).json(&self.merge_extra(&request)), credential)
+            .apply_auth_header(
+                self.http_client()
+                    .post(&url)
+                    .json(&self.merge_extra(&request)),
+                credential,
+            )
             .send()
             .await?;
 
@@ -416,7 +421,12 @@ impl Provider for OpenAiCompatibleProvider {
         let fallback_messages = Self::flatten_system_messages(&fallback_messages, merge);
 
         let response = match self
-            .apply_auth_header(self.http_client().post(&url).json(&self.merge_extra(&request)), credential)
+            .apply_auth_header(
+                self.http_client()
+                    .post(&url)
+                    .json(&self.merge_extra(&request)),
+                credential,
+            )
             .send()
             .await
         {
@@ -517,7 +527,12 @@ impl Provider for OpenAiCompatibleProvider {
 
         let url = self.chat_completions_url();
         let response = match self
-            .apply_auth_header(self.http_client().post(&url).json(&self.merge_extra(&request)), credential)
+            .apply_auth_header(
+                self.http_client()
+                    .post(&url)
+                    .json(&self.merge_extra(&request)),
+                credential,
+            )
             .send()
             .await
         {
@@ -625,7 +640,12 @@ impl Provider for OpenAiCompatibleProvider {
 
         let url = self.chat_completions_url();
         let response = match self
-            .apply_auth_header(self.http_client().post(&url).json(&self.merge_extra(&request)), credential)
+            .apply_auth_header(
+                self.http_client()
+                    .post(&url)
+                    .json(&self.merge_extra(&request)),
+                credential,
+            )
             .send()
             .await
         {
@@ -720,7 +740,9 @@ impl Provider for OpenAiCompatibleProvider {
         let url = self.chat_completions_url();
         let response = match self
             .apply_auth_header(
-                self.http_client().post(&url).json(&self.merge_extra(&native_request)),
+                self.http_client()
+                    .post(&url)
+                    .json(&self.merge_extra(&native_request)),
                 credential,
             )
             .send()
