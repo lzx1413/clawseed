@@ -1,12 +1,18 @@
 package dev.clawseed.demo.ui.chat
 
+import android.Manifest
 import android.app.Application
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.pm.PackageManager
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationManager
 import android.os.Build
 import android.os.IBinder
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.clawseed.client.ToolCallResult
@@ -14,6 +20,7 @@ import dev.clawseed.client.ToolSpec
 import dev.clawseed.demo.ChatLogEntry
 import dev.clawseed.demo.ClawseedService
 import dev.clawseed.demo.ConnState
+import dev.clawseed.demo.CoordinateConverter
 import dev.clawseed.demo.data.ChatEntry
 import dev.clawseed.demo.data.GatewayApi
 import dev.clawseed.demo.data.TurnState
@@ -22,6 +29,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.util.Locale
 
 data class ChatUiState(
     val messages: List<ChatEntry> = emptyList(),
@@ -190,13 +198,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     parameters = """{"type":"object","properties":{},"required":[]}""",
                 )
             )
-            svc.setToolCallHandler { _ ->
-                val info = JSONObject()
-                    .put("model", Build.MODEL)
-                    .put("manufacturer", Build.MANUFACTURER)
-                    .put("android_version", Build.VERSION.RELEASE)
-                    .put("sdk_int", Build.VERSION.SDK_INT)
-                ToolCallResult.Success(info.toString())
+            svc.registerTool(
+                ToolSpec(
+                    name = "get_location",
+                    description = "获取用户当前的地理位置信息，包括经纬度和城市名称。当用户询问天气、附近地点、本地服务等需要位置信息的问题时使用此工具。",
+                    parameters = """{"type":"object","properties":{},"required":[]}""",
+                )
+            )
+            svc.setToolCallHandler { request ->
+                when (request.name) {
+                    "device_info" -> {
+                        val info = JSONObject()
+                            .put("model", Build.MODEL)
+                            .put("manufacturer", Build.MANUFACTURER)
+                            .put("android_version", Build.VERSION.RELEASE)
+                            .put("sdk_int", Build.VERSION.SDK_INT)
+                        ToolCallResult.Success(info.toString())
+                    }
+                    "get_location" -> handleGetLocation()
+                    else -> ToolCallResult.Failure("Unknown tool: ${request.name}")
+                }
             }
             toolsRegistered = true
         }
@@ -259,6 +280,67 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         getApplication<Application>().unbindService(serviceConnection)
+    }
+
+    @Suppress("MissingPermission")
+    private fun handleGetLocation(): ToolCallResult {
+        val ctx = getApplication<Application>()
+
+        val hasPermission = ContextCompat.checkSelfPermission(
+            ctx, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(
+            ctx, Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!hasPermission) {
+            return ToolCallResult.Failure("位置权限未授予，请在系统设置中允许ClawSeed访问位置信息")
+        }
+
+        val locationManager = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+
+        val providers = listOf(
+            LocationManager.GPS_PROVIDER,
+            LocationManager.NETWORK_PROVIDER,
+            LocationManager.PASSIVE_PROVIDER,
+        )
+
+        var bestLocation: Location? = null
+        for (provider in providers) {
+            if (!locationManager.isProviderEnabled(provider)) continue
+            val loc = try { locationManager.getLastKnownLocation(provider) } catch (_: Exception) { null }
+            if (loc != null && (bestLocation == null || loc.time > bestLocation.time)) {
+                bestLocation = loc
+            }
+        }
+
+        if (bestLocation == null) {
+            return ToolCallResult.Failure("无法获取位置信息，请确保GPS或网络定位已开启")
+        }
+
+        val gcj02 = CoordinateConverter.wgs84ToGcj02(bestLocation.latitude, bestLocation.longitude)
+
+        val result = JSONObject()
+            .put("latitude", gcj02.latitude)
+            .put("longitude", gcj02.longitude)
+            .put("accuracy_meters", bestLocation.accuracy.toDouble())
+            .put("provider", bestLocation.provider)
+
+        try {
+            val geocoder = Geocoder(ctx, Locale.getDefault())
+            @Suppress("DEPRECATION")
+            val addresses = geocoder.getFromLocation(bestLocation.latitude, bestLocation.longitude, 1)
+            if (!addresses.isNullOrEmpty()) {
+                val addr = addresses[0]
+                addr.locality?.let { result.put("city", it) }
+                addr.adminArea?.let { result.put("province", it) }
+                addr.subLocality?.let { result.put("district", it) }
+                addr.getAddressLine(0)?.let { result.put("address", it) }
+            }
+        } catch (_: Exception) {
+            // Geocoder not available on this device, return coordinates only
+        }
+
+        return ToolCallResult.Success(result.toString())
     }
 
     companion object {

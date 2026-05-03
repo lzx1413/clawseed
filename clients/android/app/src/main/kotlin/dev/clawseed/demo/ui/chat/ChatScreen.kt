@@ -1,5 +1,8 @@
 package dev.clawseed.demo.ui.chat
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -51,6 +54,19 @@ fun ChatScreen(
     val uiState by viewModel.uiState.collectAsState()
     var input by remember { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { /* granted or denied — tool handler checks at call time */ }
+
+    LaunchedEffect(Unit) {
+        locationPermissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            )
+        )
+    }
 
     val listState = rememberLazyListState()
     val isStreaming = uiState.streamingContent.isNotEmpty() || uiState.thinkingContent.isNotEmpty()
