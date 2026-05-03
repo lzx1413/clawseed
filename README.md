@@ -19,7 +19,7 @@
 
 ---
 
-ClawSeed is an AI agent **runtime** written in Rust. It connects to LLM providers (Anthropic, Gemini, Bedrock, OpenAI-compatible, and more), acts through pluggable tools, and serves clients over HTTP/WebSocket.
+ClawSeed is an AI agent **runtime** written in Rust. It connects to LLM providers (Anthropic, Gemini, Bedrock, DeepSeek, OpenAI-compatible, and more), acts through pluggable tools, and serves clients over HTTP/WebSocket. It ships with an Android demo app that runs the full agent stack on-device.
 
 An agent runtime should do three things: receive messages, call an LLM, execute tools. Everything else — channels, dashboards, integrations — belongs to the application layer. ClawSeed provides crates with stable traits; applications compose them.
 
@@ -43,7 +43,7 @@ clawseed-tools = "0.7"
 
 The agent runs server-side, but mobile clients (Android, iOS) can register their own tools over WebSocket. When the agent calls one of these tools, the gateway forwards the request to the client for execution. This lets the agent access device capabilities — contacts, camera, sensors — without device-specific code on the server.
 
-ClawSeed borrows its trait-based architecture from [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw), with a smaller scope and a different positioning: ZeroClaw bundled channels, dashboards, hardware, and SOP into one binary (an application); ClawSeed provides crates for applications to assemble (a runtime).
+ClawSeed borrows its trait-based architecture from [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw), with a smaller scope and a different positioning: ZeroClaw bundled channels, dashboards, hardware, and SOP into one binary (an application); ClawSeed provides crates for applications to assemble (a runtime). ClawSeed also adds an Android demo app, extended thinking support, and a modular prompt builder that ZeroClaw does not have.
 
 ## Architecture
 
@@ -118,6 +118,20 @@ client.connect()
 
 The SDK also runs the gateway binary on-device as a foreground service — the entire agent stack runs on the Android device, with the LLM provider accessed over the network.
 
+### Android Demo App
+
+A full-featured Android chat client is included at [`clients/android/`](clients/android/). It runs the clawseed gateway natively (compiled as `.so`), providing:
+
+- Real-time streaming chat with Markdown rendering (headings, code blocks, tables, bold/italic)
+- Extended thinking display — collapsible cards showing the model's chain-of-thought
+- Session management (create, resume, rename, delete, auto-naming)
+- On-device tools: `device_info`, `get_location` (WGS84 to GCJ-02 with reverse geocoding)
+- LLM configuration UI with 11 provider presets (DeepSeek, Qwen, OpenAI, Anthropic, Ollama, etc.)
+- Thinking mode toggle for models that support extended thinking (e.g. DeepSeek V4)
+- Debug mode showing full LLM prompt and token estimates
+
+See [`clients/android/README.md`](clients/android/README.md) for architecture details.
+
 ## Crates
 
 | Crate | Role | Depends on api | Depends on agent |
@@ -144,6 +158,11 @@ cargo build --release
 # Or start a local interactive chat session (no server needed)
 ./target/release/clawseed chat
 ./target/release/clawseed chat --model gpt-4o --temperature 0.5
+
+# Build and install the Android demo app (requires NDK)
+./tools/build-clawseed-android.sh aarch64 build
+cd clients/android && ./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Both modes read `~/.clawseed/config.toml`. Minimal config:
@@ -254,10 +273,12 @@ ClawSeed's trait-based architecture and provider/tool/memory abstraction pattern
 The key difference is positioning: ZeroClaw is an application (channels, dashboards, hardware, and SOP bundled into one binary); ClawSeed is a runtime (crates that applications assemble). This means:
 
 - No bundled channels — applications integrate their own messaging SDKs
-- No bundled dashboard — applications build their own UI
+- No bundled dashboard — applications build their own UI (e.g. the Android demo app)
 - Added native remote tool calls for mobile clients
 - Added unified `Hook` trait and `TypeId`-based capability injection
-- ~55K lines / 8 crates vs. ZeroClaw's ~225K lines / 18 crates
+- Added `ProviderFactory` registry for platform-specific provider sets (Android/embedded)
+- Added extended thinking support with reasoning content round-trip for tool calls
+- Added Android demo app running the full agent stack on-device
 
 ## License
 

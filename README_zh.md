@@ -19,7 +19,7 @@
 
 ---
 
-ClawSeed 是一个 AI Agent **运行时**，用 Rust 编写。它连接 LLM 提供商（Anthropic、Gemini、Bedrock、OpenAI 兼容接口等），通过可插拔的工具执行操作，并通过 HTTP/WebSocket 服务客户端。
+ClawSeed 是一个 AI Agent **运行时**，用 Rust 编写。它连接 LLM 提供商（Anthropic、Gemini、Bedrock、DeepSeek、OpenAI 兼容接口等），通过可插拔的工具执行操作，并通过 HTTP/WebSocket 服务客户端。它附带一个 Android Demo 应用，可在设备上运行完整的 Agent 栈。
 
 一个 agent 运行时应该只做三件事：接收消息、调用 LLM、执行工具。其他一切——渠道、面板、集成——都属于应用层。ClawSeed 提供稳定的 trait crate，应用自己组装。
 
@@ -43,7 +43,7 @@ clawseed-tools = "0.7"
 
 Agent 运行在服务端，但移动客户端（Android、iOS）可以通过 WebSocket 注册自己的工具。当 Agent 调用这些工具时，网关将请求转发给客户端执行。这使得 Agent 可以访问设备能力——通讯录、摄像头、传感器——而无需在服务端编写设备特定代码。
 
-ClawSeed 的 trait 驱动架构借鉴自 [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw)，但定位不同：ZeroClaw 把渠道、面板、硬件、SOP 引擎都塞进一个二进制（做的是应用）；ClawSeed 提供 crate 让应用自己组装（做的是运行时）。
+ClawSeed 的 trait 驱动架构借鉴自 [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw)，但定位不同：ZeroClaw 把渠道、面板、硬件、SOP 引擎都塞进一个二进制（做的是应用）；ClawSeed 提供 crate 让应用自己组装（做的是运行时）。ClawSeed 还新增了 Android Demo 应用、扩展思维链支持和模块化 prompt 构建器，这些是 ZeroClaw 没有的。
 
 ## 架构
 
@@ -118,6 +118,20 @@ client.connect()
 
 SDK 还将网关二进制作为前台服务运行在设备上——整个 Agent 栈运行在 Android 设备上，通过网络访问 LLM 提供商。
 
+### Android Demo 应用
+
+[`clients/android/`](clients/android/) 目录包含一个完整功能的 Android 聊天客户端。它在设备本地运行 clawseed gateway（编译为 `.so`），提供：
+
+- 实时流式对话，支持 Markdown 渲染（标题、代码块、表格、加粗/斜体）
+- 扩展思维链展示——可折叠卡片显示模型的推理过程
+- 会话管理（创建、恢复、重命名、删除、自动命名）
+- 设备端工具：`device_info`、`get_location`（WGS84 转 GCJ-02 + 逆地理编码）
+- LLM 配置界面，内置 11 个提供商预设（DeepSeek、Qwen、OpenAI、Anthropic、Ollama 等）
+- Thinking Mode 开关，支持扩展思维链模型（如 DeepSeek V4）
+- Debug 模式查看完整 LLM prompt 和 token 估算
+
+详见 [`clients/android/README_zh.md`](clients/android/README_zh.md)。
+
 ## Crate 组成
 
 | Crate | 职责 | 依赖 api | 依赖 agent |
@@ -144,6 +158,11 @@ cargo build --release
 # 或启动本地交互式对话（无需启动服务器）
 ./target/release/clawseed chat
 ./target/release/clawseed chat --model gpt-4o --temperature 0.5
+
+# 构建并安装 Android Demo 应用（需要 NDK）
+./tools/build-clawseed-android.sh aarch64 build
+cd clients/android && ./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 两种模式都读取 `~/.clawseed/config.toml`。最小配置：
@@ -254,10 +273,12 @@ ClawSeed 的 trait 驱动架构和 Provider/Tool/Memory 抽象模式源自 [Zero
 根本区别在于定位：ZeroClaw 是一个应用（渠道、面板、硬件、SOP 塞进一个二进制）；ClawSeed 是一个运行时（提供 crate 让应用自己组装）。这意味着：
 
 - 不捆绑渠道——应用自己集成消息 SDK
-- 不捆绑面板——应用自己构建 UI
+- 不捆绑面板——应用自己构建 UI（如 Android Demo 应用）
 - 新增原生远程工具调用，支持移动客户端
 - 新增统一的 `Hook` trait 和基于 `TypeId` 的能力注入
-- 约 55K 行 / 8 个 crate，对比 ZeroClaw 的约 225K 行 / 18 个 crate
+- 新增 `ProviderFactory` 注册机制，支持按平台裁剪提供商（Android/嵌入式）
+- 新增扩展思维链支持，推理内容在工具调用中完整传递
+- 新增 Android Demo 应用，整个 Agent 栈运行在设备上
 
 ## 许可证
 

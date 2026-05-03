@@ -28,19 +28,28 @@ Run local interactive chat:
 ./target/release/clawseed chat --system-prompt "You are..."  # Override system prompt
 ```
 
+Android demo app:
+```bash
+./tools/build-clawseed-android.sh aarch64 build             # Cross-compile gateway binary
+cd clients/android && ./gradlew assembleDebug                # Build APK
+adb install -r app/build/outputs/apk/debug/app-debug.apk    # Install
+```
+
 ## Architecture
 
-ClawSeed is a Rust AI agent runtime with trait-based plugin architecture. 8 workspace crates with unidirectional dependency flow:
+ClawSeed is a Rust AI agent runtime with trait-based plugin architecture. 8 workspace crates + 1 Android client with unidirectional dependency flow:
 
 ```
 clawseed-api (traits only, no impls)
   ← clawseed-agent (orchestration: loop, hooks, dispatch, security, parser)
     ← clawseed-tools (25+ built-in tools)
-    ← clawseed-providers (LLM backends: Anthropic, Gemini, OpenAI, Bedrock, Ollama, etc.)
+    ← clawseed-providers (LLM backends: Anthropic, Gemini, OpenAI, Bedrock, DeepSeek, Ollama, etc.)
     ← clawseed-memory (SQLite + vector/keyword search)
       ← clawseed-gateway (Axum HTTP/WS server, remote tool bridge)
   ← clawseed-config (TOML config, loaded from ~/.clawseed/config.toml)
   ← clawseed (CLI binary)
+
+clients/android (Kotlin/Compose demo app, runs gateway on-device)
 ```
 
 ### Core Traits (clawseed-api)
@@ -86,6 +95,10 @@ Mobile clients connect via WebSocket, register tool specs, and execute tools loc
 ### Memory (clawseed-memory)
 
 SQLite backend with hybrid search (BM25 keyword + vector embeddings). Categories: Core, Daily, Conversation, Custom. NoneMemory stub when disabled.
+
+### Android Demo App (clients/android)
+
+Full-featured chat client (Kotlin + Jetpack Compose) that runs the gateway on-device as a foreground service. Architecture: `MainActivity` → `ClawseedService` (manages gateway process + WebSocket) → `ChatViewModel`/`SessionsViewModel`/`SettingsViewModel` → Compose UI. The `lib/` module provides a reusable `ClawseedClient` WebSocket library. Features: streaming chat, Markdown rendering (tables, code blocks, inline formatting), extended thinking display, session management, on-device tools (device_info, get_location), LLM configuration with 11 provider presets, thinking mode toggle, debug mode.
 
 ## Key Conventions
 
