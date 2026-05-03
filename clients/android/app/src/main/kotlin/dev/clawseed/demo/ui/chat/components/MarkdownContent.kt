@@ -1,13 +1,20 @@
 package dev.clawseed.demo.ui.chat.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -24,6 +31,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 
@@ -55,15 +63,25 @@ fun MarkdownContent(
                         2 -> MaterialTheme.typography.titleLarge
                         else -> MaterialTheme.typography.titleMedium
                     }
-                    Text(text = block.text, style = style)
+                    val styled = remember(block.text) { parseInlineMarkdown(block.text) }
+                    Text(text = styled, style = style)
                 }
                 is MdBlock.ListItem -> {
+                    val styled = remember(block.text) { parseInlineMarkdown(block.text) }
                     Text(
-                        text = "• ${block.text}",
+                        text = buildAnnotatedString {
+                            append("• ")
+                            append(styled)
+                        },
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
+                is MdBlock.Table -> TableBlock(
+                    headers = block.headers,
+                    rows = block.rows,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
             }
         }
     }
@@ -129,6 +147,7 @@ private sealed class MdBlock {
     data class Heading(val level: Int, val text: String) : MdBlock()
     data class CodeBlock(val code: String, val language: String?) : MdBlock()
     data class ListItem(val text: String) : MdBlock()
+    data class Table(val headers: List<String>, val rows: List<List<String>>) : MdBlock()
 }
 
 private fun parseBlocks(content: String): List<MdBlock> {
@@ -159,9 +178,28 @@ private fun parseBlocks(content: String): List<MdBlock> {
         }
         // List item
         if (line.trimStart().startsWith("- ") || line.trimStart().startsWith("* ") || Regex("^\\d+\\.\\s").containsMatchIn(line.trimStart())) {
-            blocks.add(MdBlock.ListItem(line.trimStart().removePrefix("- ").removePrefix("* ")))
+            val stripped = line.trimStart()
+                .removePrefix("- ").removePrefix("* ")
+                .let { Regex("^\\d+\\.\\s+").replace(it, "") }
+            blocks.add(MdBlock.ListItem(stripped))
             i++
             continue
+        }
+        // Table: header | sep | data rows
+        if (line.contains('|') && i + 1 < lines.size) {
+            val sepLine = lines[i + 1].trim()
+            if (sepLine.matches(Regex("^\\|?[\\s:]*-{2,}[\\s:]*\\|.*"))) {
+                val headers = parseTableRow(line)
+                i += 2 // skip header + separator
+                val rows = mutableListOf<List<String>>()
+                while (i < lines.size && lines[i].contains('|')) {
+                    val cells = parseTableRow(lines[i])
+                    if (cells.isNotEmpty()) rows.add(cells)
+                    i++
+                }
+                blocks.add(MdBlock.Table(headers, rows))
+                continue
+            }
         }
         // Paragraph
         if (line.isNotBlank()) {
@@ -178,7 +216,7 @@ private fun parseInlineMarkdown(text: String): AnnotatedString = buildAnnotatedS
     for (match in regex.findAll(text)) {
         append(text.substring(lastEnd, match.range.first))
         when {
-            match.groupValues[2].isNotEmpty() -> withStyle(SpanStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)) {
+            match.groupValues[2].isNotEmpty() -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
                 append(match.groupValues[2])
             }
             match.groupValues[4].isNotEmpty() -> withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) {
@@ -191,4 +229,98 @@ private fun parseInlineMarkdown(text: String): AnnotatedString = buildAnnotatedS
         lastEnd = match.range.last + 1
     }
     if (lastEnd < text.length) append(text.substring(lastEnd))
+}
+
+private fun parseTableRow(line: String): List<String> {
+    val trimmed = line.trim().removePrefix("|").removeSuffix("|")
+    return trimmed.split("|").map { it.trim() }
+}
+
+@Composable
+private fun TableBlock(
+    headers: List<String>,
+    rows: List<List<String>>,
+    modifier: Modifier = Modifier,
+) {
+    val colCount = headers.size
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+            .horizontalScroll(rememberScrollState()),
+    ) {
+        // Header row
+        Row(
+            modifier = Modifier
+                .height(IntrinsicSize.Min)
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)),
+        ) {
+            for ((ci, header) in headers.withIndex()) {
+                val styled = remember(header) { parseInlineMarkdown(header) }
+                TableCell(
+                    text = styled,
+                    bold = true,
+                    showDivider = ci < colCount - 1,
+                )
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        // Data rows
+        for ((ri, row) in rows.withIndex()) {
+            Row(
+                modifier = Modifier
+                    .height(IntrinsicSize.Min)
+                    .then(
+                        if (ri % 2 == 1) Modifier.background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+                        ) else Modifier
+                    ),
+            ) {
+                for (ci in 0 until colCount) {
+                    val cell = row.getOrElse(ci) { "" }
+                    val styled = remember(cell) { parseInlineMarkdown(cell) }
+                    TableCell(
+                        text = styled,
+                        bold = false,
+                        showDivider = ci < colCount - 1,
+                    )
+                }
+            }
+            if (ri < rows.lastIndex) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.TableCell(
+    text: AnnotatedString,
+    bold: Boolean,
+    showDivider: Boolean,
+) {
+    Box(
+        modifier = Modifier
+            .width(120.dp)
+            .fillMaxHeight()
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+            ),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+    if (showDivider) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        )
+    }
 }
