@@ -43,7 +43,7 @@ impl OpenAiCompatibleProvider {
         let url = self.responses_url();
 
         let response = self
-            .apply_auth_header(self.http_client().post(&url).json(&request), credential)
+            .apply_auth_header(self.http_client().post(&url).json(&self.merge_extra(&request)), credential)
             .send()
             .await?;
 
@@ -416,7 +416,7 @@ impl Provider for OpenAiCompatibleProvider {
         let fallback_messages = Self::flatten_system_messages(&fallback_messages, merge);
 
         let response = match self
-            .apply_auth_header(self.http_client().post(&url).json(&request), credential)
+            .apply_auth_header(self.http_client().post(&url).json(&self.merge_extra(&request)), credential)
             .send()
             .await
         {
@@ -517,7 +517,7 @@ impl Provider for OpenAiCompatibleProvider {
 
         let url = self.chat_completions_url();
         let response = match self
-            .apply_auth_header(self.http_client().post(&url).json(&request), credential)
+            .apply_auth_header(self.http_client().post(&url).json(&self.merge_extra(&request)), credential)
             .send()
             .await
         {
@@ -625,7 +625,7 @@ impl Provider for OpenAiCompatibleProvider {
 
         let url = self.chat_completions_url();
         let response = match self
-            .apply_auth_header(self.http_client().post(&url).json(&request), credential)
+            .apply_auth_header(self.http_client().post(&url).json(&self.merge_extra(&request)), credential)
             .send()
             .await
         {
@@ -720,7 +720,7 @@ impl Provider for OpenAiCompatibleProvider {
         let url = self.chat_completions_url();
         let response = match self
             .apply_auth_header(
-                self.http_client().post(&url).json(&native_request),
+                self.http_client().post(&url).json(&self.merge_extra(&native_request)),
                 credential,
             )
             .send()
@@ -883,12 +883,19 @@ impl Provider for OpenAiCompatibleProvider {
             })
         };
 
-        let payload = match payload {
+        let mut payload = match payload {
             Ok(payload) => payload,
             Err(error) => {
                 return stream::once(async move { Err(StreamError::Json(error)) }).boxed();
             }
         };
+        if let Some(ref extra) = self.provider_extra {
+            if let (Some(obj), Some(extra_obj)) = (payload.as_object_mut(), extra.as_object()) {
+                for (k, v) in extra_obj {
+                    obj.insert(k.clone(), v.clone());
+                }
+            }
+        }
 
         let url = self.chat_completions_url();
         let client = self.http_client();
@@ -972,7 +979,7 @@ impl Provider for OpenAiCompatibleProvider {
             });
         }
 
-        let request = ApiChatRequest {
+        let request = self.merge_extra(&ApiChatRequest {
             model: model.to_string(),
             messages,
             temperature,
@@ -982,7 +989,7 @@ impl Provider for OpenAiCompatibleProvider {
             tools: None,
             tool_choice: None,
             max_tokens: self.max_tokens,
-        };
+        });
 
         let url = self.chat_completions_url();
         let client = self.http_client();
@@ -1060,7 +1067,7 @@ impl Provider for OpenAiCompatibleProvider {
             })
             .collect();
 
-        let request = ApiChatRequest {
+        let request = self.merge_extra(&ApiChatRequest {
             model: model.to_string(),
             messages: api_messages,
             temperature,
@@ -1070,7 +1077,7 @@ impl Provider for OpenAiCompatibleProvider {
             tools: None,
             tool_choice: None,
             max_tokens: self.max_tokens,
-        };
+        });
 
         let url = self.chat_completions_url();
         let client = self.http_client();

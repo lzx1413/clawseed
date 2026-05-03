@@ -798,6 +798,7 @@ impl Agent {
             );
 
             let mut streamed_text = String::new();
+            let mut streamed_reasoning = String::new();
             let mut streamed_tool_calls: Vec<clawseed_api::provider::ToolCall> = Vec::new();
             let mut got_stream = false;
 
@@ -819,6 +820,7 @@ impl Agent {
                         clawseed_api::provider::StreamEvent::TextDelta(chunk) => {
                             if let Some(reasoning) = chunk.reasoning {
                                 if !reasoning.is_empty() {
+                                    streamed_reasoning.push_str(&reasoning);
                                     let _ = event_tx
                                         .send(TurnEvent::Thinking { delta: reasoning })
                                         .await;
@@ -870,7 +872,11 @@ impl Agent {
                     text: Some(streamed_text),
                     tool_calls: streamed_tool_calls,
                     usage: None,
-                    reasoning_content: None,
+                    reasoning_content: if streamed_reasoning.is_empty() {
+                        None
+                    } else {
+                        Some(streamed_reasoning)
+                    },
                 }
             } else {
                 // Fall back to non-streaming

@@ -125,16 +125,40 @@ class GatewayApi(
             val resp = longClient.newCall(reqBuilder.build()).execute()
             val body = resp.body?.string() ?: ""
             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}: ${body.take(200)}")
-            val json = JSONObject(body)
-            val data = json.optJSONArray("data") ?: throw Exception("响应格式错误: 缺少 data 字段")
-            val models = mutableListOf<String>()
-            for (i in 0 until data.length()) {
-                val obj = data.getJSONObject(i)
-                val id = obj.optString("id", "")
-                if (id.isNotBlank()) models.add(id)
-            }
-            models.sorted()
+            parseModelsResponse(body)
         }
+    }
+
+    suspend fun fetchModelsViaGateway(): Result<List<String>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val req = Request.Builder()
+                .url("$baseUrl/api/provider/models")
+                .addAuth()
+                .build()
+            val longClient = client.newBuilder()
+                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            val resp = longClient.newCall(req).execute()
+            val body = resp.body?.string() ?: ""
+            if (!resp.isSuccessful) {
+                val error = try { JSONObject(body).optString("error", body.take(200)) } catch (_: Exception) { body.take(200) }
+                throw Exception(error)
+            }
+            parseModelsResponse(body)
+        }
+    }
+
+    private fun parseModelsResponse(body: String): List<String> {
+        val json = JSONObject(body)
+        val data = json.optJSONArray("data") ?: throw Exception("响应格式错误: 缺少 data 字段")
+        val models = mutableListOf<String>()
+        for (i in 0 until data.length()) {
+            val obj = data.getJSONObject(i)
+            val id = obj.optString("id", "")
+            if (id.isNotBlank()) models.add(id)
+        }
+        return models.sorted()
     }
 }
 

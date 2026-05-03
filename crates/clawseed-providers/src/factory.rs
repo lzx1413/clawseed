@@ -234,6 +234,9 @@ impl ProviderFactory for OpenAiCompatFactory {
         if self.merge_system_into_user {
             provider = provider.with_merge_system_into_user();
         }
+        if let Some(extra) = _options.provider_extra.clone() {
+            provider = provider.with_provider_extra(extra);
+        }
 
         Ok(Box::new(provider))
     }
@@ -272,12 +275,16 @@ impl ProviderFactory for GenericCompatFactory {
             );
             provider_name
         });
-        Ok(Box::new(crate::compatible::OpenAiCompatibleProvider::new(
+        let mut provider = crate::compatible::OpenAiCompatibleProvider::new(
             provider_name,
             url,
             api_key,
             AuthStyle::Bearer,
-        )))
+        );
+        if let Some(extra) = _options.provider_extra.clone() {
+            provider = provider.with_provider_extra(extra);
+        }
+        Ok(Box::new(provider))
     }
 }
 

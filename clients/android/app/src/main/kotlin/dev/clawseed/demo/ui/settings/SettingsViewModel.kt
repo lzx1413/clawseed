@@ -43,6 +43,7 @@ data class SettingsUiState(
     val availableModels: List<String> = emptyList(),
     val isFetchingModels: Boolean = false,
     val connectionOk: Boolean? = null,
+    val thinkingEnabled: Boolean = false,
 )
 
 enum class EditMode { FORM, TOML }
@@ -80,6 +81,7 @@ class SettingsViewModel : ViewModel() {
             }
             preservedApiKey = null
             val currentModel = extractProviderModel(toml, status)
+            val thinking = extractProviderThinking(toml)
 
             val presetIdx = PROVIDER_PRESETS.indexOfFirst { it.baseUrl.isNotBlank() && currentBaseUrl.contains(it.baseUrl.removeSuffix("/v1").removeSuffix("/")) }
                 .let { if (it == -1) PROVIDER_PRESETS.size - 1 else it }
@@ -96,6 +98,7 @@ class SettingsViewModel : ViewModel() {
                 apiKey = currentApiKey,
                 hasServerApiKey = serverHasKey,
                 selectedModel = currentModel,
+                thinkingEnabled = thinking,
             )
         }
     }
@@ -112,7 +115,7 @@ class SettingsViewModel : ViewModel() {
         val preset = PROVIDER_PRESETS[index]
         val toml = _uiState.value.configToml
         val saved = findSavedProviderSettings(toml, preset.baseUrl)
-        val rawApiKey = saved?.first ?: ""
+        val rawApiKey = saved?.apiKey ?: ""
         val serverHasKey = rawApiKey.contains("***") || rawApiKey.isNotBlank()
         val displayApiKey = when {
             rawApiKey.contains("***") -> MASKED_KEY_PLACEHOLDER
@@ -123,7 +126,8 @@ class SettingsViewModel : ViewModel() {
             baseUrl = preset.baseUrl,
             apiKey = displayApiKey,
             hasServerApiKey = serverHasKey,
-            selectedModel = saved?.second ?: "",
+            selectedModel = saved?.model ?: "",
+            thinkingEnabled = saved?.thinking ?: false,
             availableModels = emptyList(),
             connectionOk = null,
             saveSuccess = false,
@@ -147,13 +151,23 @@ class SettingsViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(selectedModel = model, saveSuccess = false)
     }
 
+    fun toggleThinking(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(thinkingEnabled = enabled, saveSuccess = false)
+    }
+
     fun fetchModels() {
         val state = _uiState.value
         if (state.baseUrl.isBlank()) return
 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isFetchingModels = true, connectionOk = null, error = null)
-            api.fetchModels(state.baseUrl, state.apiKey)
+            val useProxy = state.apiKey == MASKED_KEY_PLACEHOLDER || state.apiKey.contains("***")
+            val result = if (useProxy) {
+                api.fetchModelsViaGateway()
+            } else {
+                api.fetchModels(state.baseUrl, state.apiKey)
+            }
+            result
                 .onSuccess { models ->
                     _uiState.value = _uiState.value.copy(
                         isFetchingModels = false,
@@ -219,6 +233,7 @@ class SettingsViewModel : ViewModel() {
             if (isRealKey) {
                 toml = replaceInSection(toml, sectionHeader, "api_key", state.apiKey)
             }
+            toml = setProviderExtraInSection(toml, sectionHeader, state.thinkingEnabled)
         } else {
             val section = buildString {
                 appendLine()
@@ -230,6 +245,11 @@ class SettingsViewModel : ViewModel() {
                         && !state.apiKey.contains("***")
                 if (isRealKey) {
                     appendLine("api_key = \"${state.apiKey}\"")
+                }
+                if (state.thinkingEnabled) {
+                    appendLine(THINKING_ENABLED_LINE)
+                } else {
+                    appendLine(THINKING_DISABLED_LINE)
                 }
             }
             val agentIdx = toml.indexOf("\n[agent]")
@@ -281,15 +301,96 @@ class SettingsViewModel : ViewModel() {
             return extractTomlValueInBlock(section, "model") ?: ""
         }
 
-        private fun findSavedProviderSettings(toml: String, baseUrl: String): Pair<String, String>? {
+        private fun extractProviderThinking(toml: String): Boolean {
+            val fallback = extractTomlValue(toml, "fallback") ?: return false
+            val section = findSection(toml, "[providers.models.\"$fallback\"]")
+            if (sectionHasThinkingEnabled(section)) return true
+            // Also check sub-table format produced by toml::to_string_pretty
+            // e.g. [providers.models."custom:...".provider_extra.thinking]
+            //      type = "enabled"
+            val subTableHeader = "[providers.models.\"$fallback\".provider_extra.thinking]"
+            val subSection = findSection(toml, subTableHeader)
+            if (subSection.isNotEmpty()) {
+                val typeVal = extractTomlValueInBlock(subSection, "type")
+                return typeVal == "enabled"
+            }
+            return false
+        }
+
+        private data class SavedProviderSettings(
+            val apiKey: String,
+            val model: String,
+            val thinking: Boolean,
+        )
+
+        private fun findSavedProviderSettings(toml: String, baseUrl: String): SavedProviderSettings? {
             if (baseUrl.isBlank()) return null
             val trimmedUrl = baseUrl.trimEnd('/')
-            val sectionHeader = "[providers.models.\"custom:$trimmedUrl\"]"
+            val providerKey = "custom:$trimmedUrl"
+            val sectionHeader = "[providers.models.\"$providerKey\"]"
             val section = findSection(toml, sectionHeader)
             if (section.isEmpty()) return null
             val apiKey = extractTomlValueInBlock(section, "api_key") ?: ""
             val model = extractTomlValueInBlock(section, "model") ?: ""
-            return Pair(apiKey, model)
+            var thinking = sectionHasThinkingEnabled(section)
+            if (!thinking) {
+                val subSection = findSection(toml, "[providers.models.\"$providerKey\".provider_extra.thinking]")
+                if (subSection.isNotEmpty()) {
+                    thinking = extractTomlValueInBlock(subSection, "type") == "enabled"
+                }
+            }
+            return SavedProviderSettings(apiKey, model, thinking)
+        }
+
+        private fun sectionHasThinkingEnabled(section: String): Boolean {
+            for (line in section.lines()) {
+                val trimmed = line.trim()
+                if (trimmed.startsWith("provider_extra")) {
+                    return trimmed.contains("enabled")
+                }
+            }
+            return false
+        }
+
+        private fun setProviderExtraInSection(toml: String, sectionHeader: String, thinkingEnabled: Boolean): String {
+            // First remove any provider_extra sub-table sections created by
+            // toml::to_string_pretty (e.g. [providers.models."...".provider_extra.thinking])
+            val subTablePrefix = sectionHeader.removeSuffix("]") + ".provider_extra"
+            var result = removeSubTableSections(toml, subTablePrefix)
+
+            val idx = result.indexOf(sectionHeader)
+            if (idx == -1) return result
+            val afterHeader = idx + sectionHeader.length
+            val nextSection = result.indexOf("\n[", afterHeader).let { if (it == -1) result.length else it }
+            val before = result.substring(0, afterHeader)
+            val section = result.substring(afterHeader, nextSection)
+            val after = result.substring(nextSection)
+
+            val lines = section.lines().toMutableList()
+            val existingIdx = lines.indexOfFirst { it.trim().startsWith("provider_extra") }
+            val targetLine = if (thinkingEnabled) THINKING_ENABLED_LINE else THINKING_DISABLED_LINE
+            if (existingIdx >= 0) {
+                lines[existingIdx] = targetLine
+            } else {
+                lines.add(targetLine)
+            }
+            return before + lines.joinToString("\n") + after
+        }
+
+        private fun removeSubTableSections(toml: String, prefix: String): String {
+            val lines = toml.lines().toMutableList()
+            var inSubTable = false
+            val result = mutableListOf<String>()
+            for (line in lines) {
+                val trimmed = line.trim()
+                if (trimmed.startsWith("[") && !trimmed.startsWith("[[")) {
+                    inSubTable = trimmed.startsWith(prefix)
+                }
+                if (!inSubTable) {
+                    result.add(line)
+                }
+            }
+            return result.joinToString("\n")
         }
 
         private fun findSection(toml: String, header: String): String {
@@ -374,5 +475,7 @@ class SettingsViewModel : ViewModel() {
         }
 
         const val MASKED_KEY_PLACEHOLDER = "••••••••"
+        private const val THINKING_ENABLED_LINE = "provider_extra = { thinking = { type = \"enabled\" } }"
+        private const val THINKING_DISABLED_LINE = "provider_extra = { thinking = { type = \"disabled\" } }"
     }
 }

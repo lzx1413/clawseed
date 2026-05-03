@@ -40,6 +40,8 @@ pub struct OpenAiCompatibleProvider {
     api_path: Option<String>,
     /// Maximum output tokens to include in API requests.
     max_tokens: Option<u32>,
+    /// Extra JSON parameters merged into API request bodies at the top level.
+    provider_extra: Option<serde_json::Value>,
 }
 
 pub mod auth;
@@ -174,6 +176,7 @@ impl OpenAiCompatibleProvider {
             reasoning_effort: None,
             api_path: None,
             max_tokens: None,
+            provider_extra: None,
         }
     }
 
@@ -221,6 +224,12 @@ impl OpenAiCompatibleProvider {
     /// Set the maximum output tokens for API requests.
     pub fn with_max_tokens(mut self, max_tokens: Option<u32>) -> Self {
         self.max_tokens = max_tokens;
+        self
+    }
+
+    /// Set extra JSON parameters to merge into API request bodies.
+    pub fn with_provider_extra(mut self, extra: serde_json::Value) -> Self {
+        self.provider_extra = Some(extra);
         self
     }
 
@@ -439,6 +448,19 @@ impl OpenAiCompatibleProvider {
         supports_reasoning_effort
             .then(|| self.reasoning_effort.clone())
             .flatten()
+    }
+
+    /// Serialize a request and merge `provider_extra` fields into the top-level JSON object.
+    fn merge_extra<T: serde::Serialize>(&self, request: &T) -> serde_json::Value {
+        let mut value = serde_json::to_value(request).unwrap_or_default();
+        if let Some(ref extra) = self.provider_extra {
+            if let (Some(obj), Some(extra_obj)) = (value.as_object_mut(), extra.as_object()) {
+                for (k, v) in extra_obj {
+                    obj.insert(k.clone(), v.clone());
+                }
+            }
+        }
+        value
     }
 }
 

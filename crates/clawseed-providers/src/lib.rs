@@ -66,12 +66,16 @@ pub fn create_resilient_provider_with_registry(
                 }
             }
         };
-        Box::new(OpenAiCompatibleProvider::new(
+        let mut p = OpenAiCompatibleProvider::new(
             provider_name,
             &url,
             key_ref,
             AuthStyle::Bearer,
-        ))
+        );
+        if let Some(extra) = options.provider_extra.clone() {
+            p = p.with_provider_extra(extra);
+        }
+        Box::new(p)
     };
 
     // Wrap in ReliableProvider with retry/backoff and extra API keys.

@@ -143,6 +143,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                             onApiKeyChange = viewModel::updateApiKey,
                             onFetchModels = viewModel::fetchModels,
                             onSelectModel = viewModel::selectModel,
+                            onToggleThinking = viewModel::toggleThinking,
                         )
                         EditMode.TOML -> TomlEditor(
                             toml = uiState.configToml,
@@ -295,6 +296,7 @@ private fun ProviderFormEditor(
     onApiKeyChange: (String) -> Unit,
     onFetchModels: () -> Unit,
     onSelectModel: (String) -> Unit,
+    onToggleThinking: (Boolean) -> Unit,
 ) {
     var providerExpanded by remember { mutableStateOf(false) }
     var modelExpanded by remember { mutableStateOf(false) }
@@ -463,6 +465,27 @@ private fun ProviderFormEditor(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     placeholder = { Text("点击上方按钮获取可用模型") },
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Thinking Mode", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "启用后模型会先推理思考再回答，适用于复杂任务",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    )
+                }
+                Switch(
+                    checked = state.thinkingEnabled,
+                    onCheckedChange = onToggleThinking,
                 )
             }
         }
