@@ -148,7 +148,7 @@ See [`clients/android/README.md`](clients/android/README.md) for architecture de
 ## Quick start
 
 ```bash
-git clone https://github.com/clawseed-labs/clawseed.git
+git clone https://github.com/lzx1413/clawseed.git
 cd clawseed
 cargo build --release
 

@@ -148,7 +148,7 @@ SDK 还将网关二进制作为前台服务运行在设备上——整个 Agent 
 ## 快速开始
 
 ```bash
-git clone https://github.com/clawseed-labs/clawseed.git
+git clone https://github.com/lzx1413/clawseed.git
 cd clawseed
 cargo build --release
 
