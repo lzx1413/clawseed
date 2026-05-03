@@ -453,11 +453,11 @@ impl OpenAiCompatibleProvider {
     /// Serialize a request and merge `provider_extra` fields into the top-level JSON object.
     fn merge_extra<T: serde::Serialize>(&self, request: &T) -> serde_json::Value {
         let mut value = serde_json::to_value(request).unwrap_or_default();
-        if let Some(ref extra) = self.provider_extra {
-            if let (Some(obj), Some(extra_obj)) = (value.as_object_mut(), extra.as_object()) {
-                for (k, v) in extra_obj {
-                    obj.insert(k.clone(), v.clone());
-                }
+        if let Some(ref extra) = self.provider_extra
+            && let (Some(obj), Some(extra_obj)) = (value.as_object_mut(), extra.as_object())
+        {
+            for (k, v) in extra_obj {
+                obj.insert(k.clone(), v.clone());
             }
         }
         value

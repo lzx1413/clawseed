@@ -138,16 +138,15 @@ impl PromptSection for IdentitySection {
         let mut prompt = String::from("## Project Context\n\n");
         let mut has_aieos = false;
 
-        if crate::identity::is_aieos_configured(ctx.identity_config) {
-            if let Ok(Some(aieos)) =
+        if crate::identity::is_aieos_configured(ctx.identity_config)
+            && let Ok(Some(aieos)) =
                 crate::identity::load_aieos_identity(ctx.identity_config, ctx.workspace_dir)
-            {
-                let rendered = crate::identity::aieos_to_system_prompt(&aieos);
-                if !rendered.is_empty() {
-                    prompt.push_str(&rendered);
-                    prompt.push_str("\n\n");
-                    has_aieos = true;
-                }
+        {
+            let rendered = crate::identity::aieos_to_system_prompt(&aieos);
+            if !rendered.is_empty() {
+                prompt.push_str(&rendered);
+                prompt.push_str("\n\n");
+                has_aieos = true;
             }
         }
 

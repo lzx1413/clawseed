@@ -911,11 +911,11 @@ impl Provider for OpenAiCompatibleProvider {
                 return stream::once(async move { Err(StreamError::Json(error)) }).boxed();
             }
         };
-        if let Some(ref extra) = self.provider_extra {
-            if let (Some(obj), Some(extra_obj)) = (payload.as_object_mut(), extra.as_object()) {
-                for (k, v) in extra_obj {
-                    obj.insert(k.clone(), v.clone());
-                }
+        if let Some(ref extra) = self.provider_extra
+            && let (Some(obj), Some(extra_obj)) = (payload.as_object_mut(), extra.as_object())
+        {
+            for (k, v) in extra_obj {
+                obj.insert(k.clone(), v.clone());
             }
         }
 

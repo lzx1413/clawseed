@@ -60,12 +60,11 @@ async fn run_chat(
 
     let mut config = clawseed_config::load_config()?;
 
-    if let Some(ref m) = model {
-        if let Some(fallback) = config.providers.fallback.as_ref() {
-            if let Some(entry) = config.providers.models.get_mut(fallback) {
-                entry.model = Some(m.clone());
-            }
-        }
+    if let Some(ref m) = model
+        && let Some(fallback) = config.providers.fallback.as_ref()
+        && let Some(entry) = config.providers.models.get_mut(fallback)
+    {
+        entry.model = Some(m.clone());
     }
     if let Some(t) = temperature {
         config.agent.temperature = Some(t);

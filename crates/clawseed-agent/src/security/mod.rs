@@ -147,14 +147,14 @@ impl Hook for SecurityPolicy {
         }
 
         // 2. For shell/exec tools: validate command
-        if call.name == "shell" || call.name == "exec" {
-            if let Some(cmd) = call.arguments.get("command").and_then(|v| v.as_str()) {
-                if let Some(forbidden) = self.forbidden_path_argument(cmd) {
-                    return HookResult::Cancel(format!("Forbidden path in command: {forbidden}"));
-                }
-                if !self.is_command_allowed(cmd) {
-                    return HookResult::Cancel(format!("Command not allowed by policy: {cmd}"));
-                }
+        if (call.name == "shell" || call.name == "exec")
+            && let Some(cmd) = call.arguments.get("command").and_then(|v| v.as_str())
+        {
+            if let Some(forbidden) = self.forbidden_path_argument(cmd) {
+                return HookResult::Cancel(format!("Forbidden path in command: {forbidden}"));
+            }
+            if !self.is_command_allowed(cmd) {
+                return HookResult::Cancel(format!("Command not allowed by policy: {cmd}"));
             }
         }
 

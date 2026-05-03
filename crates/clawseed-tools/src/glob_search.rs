@@ -30,11 +30,11 @@ fn resolve_glob_pattern(pattern: &str, workspace: &Path) -> anyhow::Result<PathB
         anyhow::bail!("Path traversal ('..') is not allowed in glob patterns.");
     }
     // Handle tilde expansion
-    if pattern.starts_with('~') {
-        if let Some(home) = std::env::var("HOME").ok().map(PathBuf::from) {
-            let expanded = pattern.replacen('~', &home.to_string_lossy(), 1);
-            return Ok(PathBuf::from(expanded));
-        }
+    if pattern.starts_with('~')
+        && let Some(home) = std::env::var("HOME").ok().map(PathBuf::from)
+    {
+        let expanded = pattern.replacen('~', &home.to_string_lossy(), 1);
+        return Ok(PathBuf::from(expanded));
     }
     Ok(workspace.join(pattern))
 }

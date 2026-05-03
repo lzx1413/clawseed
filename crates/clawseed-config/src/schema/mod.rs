@@ -692,18 +692,18 @@ encrypt = true
         if let Ok(v) = std::env::var("CLAWSEED_PROVIDER_URL") {
             self.providers.default_base_url = Some(v);
         }
-        if let Ok(v) = std::env::var("CLAWSEED_PROVIDER_TIMEOUT_SECS") {
-            if let Ok(secs) = v.parse::<u64>() {
-                self.providers.default_timeout_secs = Some(secs);
-            }
+        if let Ok(v) = std::env::var("CLAWSEED_PROVIDER_TIMEOUT_SECS")
+            && let Ok(secs) = v.parse::<u64>()
+        {
+            self.providers.default_timeout_secs = Some(secs);
         }
         if let Ok(v) = std::env::var("CLAWSEED_GATEWAY_HOST") {
             self.gateway.host = v;
         }
-        if let Ok(v) = std::env::var("CLAWSEED_GATEWAY_PORT") {
-            if let Ok(port) = v.parse::<u16>() {
-                self.gateway.port = port;
-            }
+        if let Ok(v) = std::env::var("CLAWSEED_GATEWAY_PORT")
+            && let Ok(port) = v.parse::<u16>()
+        {
+            self.gateway.port = port;
         }
         if let Ok(v) = std::env::var("CLAWSEED_WORKSPACE") {
             self.workspace_dir = PathBuf::from(v);
@@ -711,10 +711,10 @@ encrypt = true
         if let Ok(v) = std::env::var("CLAWSEED_EXTRA_HEADERS") {
             self.providers.extra_headers = parse_extra_headers(&v);
         }
-        if let Ok(v) = std::env::var("CLAWSEED_TEMPERATURE") {
-            if let Ok(t) = v.parse::<f64>() {
-                self.agent.temperature = Some(t);
-            }
+        if let Ok(v) = std::env::var("CLAWSEED_TEMPERATURE")
+            && let Ok(t) = v.parse::<f64>()
+        {
+            self.agent.temperature = Some(t);
         }
         if let Ok(v) = std::env::var("CLAWSEED_STORAGE_DB_URL") {
             self.storage.db_url = Some(v);

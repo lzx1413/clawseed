@@ -455,11 +455,11 @@ impl Agent {
 
     /// Hydrate the agent with prior chat messages.
     pub fn seed_history(&mut self, messages: &[ChatMessage]) {
-        if self.history.is_empty() {
-            if let Ok(sys) = self.build_system_prompt() {
-                self.history
-                    .push(ConversationMessage::Chat(ChatMessage::system(sys)));
-            }
+        if self.history.is_empty()
+            && let Ok(sys) = self.build_system_prompt()
+        {
+            self.history
+                .push(ConversationMessage::Chat(ChatMessage::system(sys)));
         }
         for msg in messages {
             if msg.role != "system" {
@@ -818,13 +818,13 @@ impl Agent {
                 match item {
                     Ok(event) => match event {
                         clawseed_api::provider::StreamEvent::TextDelta(chunk) => {
-                            if let Some(reasoning) = chunk.reasoning {
-                                if !reasoning.is_empty() {
-                                    streamed_reasoning.push_str(&reasoning);
-                                    let _ = event_tx
-                                        .send(TurnEvent::Thinking { delta: reasoning })
-                                        .await;
-                                }
+                            if let Some(reasoning) = chunk.reasoning
+                                && !reasoning.is_empty()
+                            {
+                                streamed_reasoning.push_str(&reasoning);
+                                let _ = event_tx
+                                    .send(TurnEvent::Thinking { delta: reasoning })
+                                    .await;
                             }
                             if !chunk.delta.is_empty() {
                                 got_stream = true;

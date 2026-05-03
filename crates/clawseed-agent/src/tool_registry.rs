@@ -60,10 +60,10 @@ impl DefaultToolRegistry {
         }
         // If allowed_patterns is empty, allow all (except MCP filters)
         if self.allowed_patterns.is_empty() {
-            if let ToolSource::Mcp { server } = source {
-                if let Some(filters) = self.mcp_tool_filters.get(server) {
-                    return filters.iter().any(|p| glob_match(name, p));
-                }
+            if let ToolSource::Mcp { server } = source
+                && let Some(filters) = self.mcp_tool_filters.get(server)
+            {
+                return filters.iter().any(|p| glob_match(name, p));
             }
             return true;
         }

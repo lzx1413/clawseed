@@ -61,13 +61,13 @@ impl PairingGuard {
     /// Try to pair with a code. Returns the new bearer token on success.
     pub async fn try_pair(&self, code: &str, _client_key: &str) -> Result<Option<String>, u64> {
         let mut inner = self.inner.lock();
-        if let Some(ref expected) = inner.pairing_code {
-            if constant_time_eq(expected, code) {
-                let token = generate_bearer_token();
-                inner.paired_tokens.push(token.clone());
-                inner.pairing_code = None;
-                return Ok(Some(token));
-            }
+        if let Some(ref expected) = inner.pairing_code
+            && constant_time_eq(expected, code)
+        {
+            let token = generate_bearer_token();
+            inner.paired_tokens.push(token.clone());
+            inner.pairing_code = None;
+            return Ok(Some(token));
         }
         Err(0)
     }
