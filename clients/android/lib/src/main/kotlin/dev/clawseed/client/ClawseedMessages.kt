@@ -79,6 +79,7 @@ sealed class IncomingMessage {
     data object ChunkReset : IncomingMessage()
     data object Aborted : IncomingMessage()
     data class Error(val message: String) : IncomingMessage()
+    data class DebugPrompt(val messages: String, val estimatedTokens: Int) : IncomingMessage()
 
     companion object {
         fun parse(text: String): IncomingMessage? {
@@ -113,6 +114,10 @@ sealed class IncomingMessage {
                 "result_acknowledged" -> ResultAcknowledged(obj.optString("id"))
                 "chunk_reset" -> ChunkReset
                 "aborted" -> Aborted
+                "debug_prompt" -> DebugPrompt(
+                    messages = obj.optString("messages"),
+                    estimatedTokens = obj.optInt("estimated_tokens"),
+                )
                 "error" -> Error(obj.optString("message"))
                 else -> null
             }

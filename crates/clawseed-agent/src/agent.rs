@@ -42,6 +42,10 @@ pub enum TurnEvent {
         name: String,
         output: String,
     },
+    DebugPrompt {
+        messages_json: String,
+        estimated_tokens: usize,
+    },
 }
 
 /// The core Agent struct — a registry of tools, hooks, and context providers.
@@ -722,6 +726,7 @@ impl Agent {
         user_message: &str,
         event_tx: tokio::sync::mpsc::Sender<TurnEvent>,
         cancel_token: Option<tokio_util::sync::CancellationToken>,
+        debug: bool,
     ) -> Result<String> {
         if self.history.is_empty() {
             let system_prompt = self.build_system_prompt()?;
@@ -754,7 +759,7 @@ impl Agent {
         // Try streaming first, fall back to non-streaming
         use futures_util::StreamExt;
 
-        for _ in 0..self.config.max_tool_iterations {
+        for iteration in 0..self.config.max_tool_iterations {
             if cancel_token
                 .as_ref()
                 .is_some_and(tokio_util::sync::CancellationToken::is_cancelled)
@@ -763,6 +768,17 @@ impl Agent {
             }
 
             let messages = self.tool_dispatcher.to_provider_messages(&self.history);
+
+            if debug && iteration == 0 {
+                let messages_json = serde_json::to_string(&messages).unwrap_or_default();
+                let estimated_tokens = crate::history::estimate_history_tokens(&messages);
+                let _ = event_tx
+                    .send(TurnEvent::DebugPrompt {
+                        messages_json,
+                        estimated_tokens,
+                    })
+                    .await;
+            }
 
             // Try streaming
             let stream_opts = clawseed_api::provider::StreamOptions::new(true);

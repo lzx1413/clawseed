@@ -238,7 +238,7 @@ async fn remote_tool_turn_events_include_tool_call_and_result() {
     // Drive the agent turn and the simulated client concurrently.
     let turn_task = tokio::spawn(async move {
         agent
-            .turn_streamed("帮我查一下张三的电话", event_tx, None)
+            .turn_streamed("帮我查一下张三的电话", event_tx, None, false)
             .await
     });
 

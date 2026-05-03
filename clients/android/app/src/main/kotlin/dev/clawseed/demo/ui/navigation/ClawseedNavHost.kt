@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.demo.ui.chat.ChatScreen
 import dev.clawseed.demo.ui.settings.SettingsScreen
 
@@ -21,6 +22,7 @@ fun ClawseedNavHost(
     onSessionIdChanged: (String?) -> Unit = {},
     onSessionEstablished: () -> Unit = {},
     sessionVersion: Int = 0,
+    localStore: LocalStore? = null,
 ) {
     NavHost(
         navController = navController,
@@ -37,7 +39,7 @@ fun ClawseedNavHost(
             )
         }
         composable(Routes.SETTINGS) {
-            SettingsScreen(onBack = { navController.popBackStack() })
+            SettingsScreen(onBack = { navController.popBackStack() }, localStore = localStore)
         }
     }
 }

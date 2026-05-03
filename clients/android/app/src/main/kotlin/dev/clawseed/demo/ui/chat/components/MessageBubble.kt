@@ -38,6 +38,7 @@ fun MessageBubble(
         is ChatEntry.ToolCall -> ToolCallCard(entry, modifier)
         is ChatEntry.ToolResult -> ToolResultCard(entry, modifier)
         is ChatEntry.Thinking -> ThinkingCard(entry.content, modifier)
+        is ChatEntry.DebugInfo -> DebugInfoCard(entry, modifier)
     }
 }
 
@@ -215,6 +216,46 @@ private fun ThinkingCard(content: String, modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                 modifier = Modifier.padding(top = 8.dp),
             )
+        }
+    }
+}
+
+@Composable
+private fun DebugInfoCard(entry: ChatEntry.DebugInfo, modifier: Modifier = Modifier) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.secondaryContainer)
+            .clickable { expanded = !expanded }
+            .padding(12.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = if (expanded) "▼" else "▶",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Text(
+                text = "Debug: ~${entry.estimatedTokens} tokens",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        }
+        AnimatedVisibility(visible = expanded) {
+            SelectionContainer {
+                Text(
+                    text = formatJson(entry.messagesJson),
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
         }
     }
 }

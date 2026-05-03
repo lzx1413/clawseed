@@ -322,6 +322,7 @@ async fn handle_socket(
             if msg_type == "message" {
                 let content = parsed["content"].as_str().unwrap_or("").to_string();
                 if !content.is_empty() {
+                    let debug = parsed["debug"].as_bool().unwrap_or(false);
                     // Inject remote tools into agent before processing
                     {
                         let handle = remote_registry_handle.read().await;
@@ -344,6 +345,7 @@ async fn handle_socket(
                         pending_remote_calls.clone(),
                         &content,
                         &session_key,
+                        debug,
                     )
                     .await;
                 }
@@ -492,6 +494,7 @@ async fn handle_socket(
                 }
 
                 let content = parsed["content"].as_str().unwrap_or("").to_string();
+                let debug = parsed["debug"].as_bool().unwrap_or(false);
                 if content.is_empty() {
                     let err = serde_json::json!({
                         "type": "error",
@@ -540,6 +543,7 @@ async fn handle_socket(
                     pending_remote_calls.clone(),
                     &content,
                     &session_key,
+                    debug,
                 )
                 .await;
             }
@@ -664,6 +668,7 @@ async fn process_chat_message(
     pending_remote_calls: std::sync::Arc<tokio::sync::RwLock<PendingRemoteCalls>>,
     content: &str,
     session_key: &str,
+    debug: bool,
 ) {
     use clawseed_agent::agent::TurnEvent;
 
@@ -712,7 +717,7 @@ async fn process_chat_message(
     let content_owned = content.to_string();
     let turn_fut = async {
         agent
-            .turn_streamed(&content_owned, event_tx, Some(cancel_token.clone()))
+            .turn_streamed(&content_owned, event_tx, Some(cancel_token.clone()), debug)
             .await
     };
 
@@ -767,6 +772,9 @@ async fn process_chat_message(
                         }
                         TurnEvent::ToolResult { id, name, output } => {
                             serde_json::json!({ "type": "tool_result", "id": id, "name": name, "output": output })
+                        }
+                        TurnEvent::DebugPrompt { messages_json, estimated_tokens } => {
+                            serde_json::json!({ "type": "debug_prompt", "messages": messages_json, "estimated_tokens": estimated_tokens })
                         }
                     };
                     let _ = sender.send(Message::Text(ws_msg.to_string().into())).await;

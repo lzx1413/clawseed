@@ -43,6 +43,7 @@ sealed class ChatLogEntry {
     data class Assistant(val text: String) : ChatLogEntry()
     data class ToolCall(val id: String, val name: String, val args: String) : ChatLogEntry()
     data class ToolResult(val id: String, val name: String, val output: String) : ChatLogEntry()
+    data class DebugPrompt(val messages: String, val estimatedTokens: Int) : ChatLogEntry()
 }
 
 class ClawseedService : Service() {
@@ -145,6 +146,9 @@ class ClawseedService : Service() {
                 appendMessage(ChatLogEntry.System("[ERROR] $err"))
                 _streamingContent.value = ""
             }
+            .onDebugPrompt { messages, tokens ->
+                appendMessage(ChatLogEntry.DebugPrompt(messages, tokens))
+            }
             .build()
 
         c.connect()
@@ -173,10 +177,10 @@ class ClawseedService : Service() {
         hasAutoNamed = false
     }
 
-    fun sendMessage(content: String) {
+    fun sendMessage(content: String, debug: Boolean = false) {
         if (content.isNotBlank()) {
             appendMessage(ChatLogEntry.User(content))
-            client?.sendMessage(content)
+            client?.sendMessage(content, debug)
             // Auto-name: rename session from first user message
             autoNameSessionIfNeeded()
         }

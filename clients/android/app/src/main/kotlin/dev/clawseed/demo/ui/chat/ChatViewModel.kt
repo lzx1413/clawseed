@@ -23,6 +23,7 @@ import dev.clawseed.demo.ConnState
 import dev.clawseed.demo.CoordinateConverter
 import dev.clawseed.demo.data.ChatEntry
 import dev.clawseed.demo.data.GatewayApi
+import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.demo.data.TurnState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -50,6 +51,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var service: ClawseedService? = null
     private val messages = mutableListOf<ChatEntry>()
     private val api = GatewayApi()
+    private val localStore = LocalStore(application)
+    private var debugEnabled = false
     private var historyLoaded = false
     private var pendingSessionId: String? = UNSET
     private var toolsRegistered = false
@@ -73,6 +76,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     init {
         val intent = Intent(application, ClawseedService::class.java)
         application.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        viewModelScope.launch {
+            localStore.showDebugInfo.collect { debugEnabled = it }
+        }
     }
 
     private fun setupServiceObservers() {
@@ -155,6 +161,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         latestError = entry.text.removePrefix("[ERROR] ")
                     }
                 }
+                is ChatLogEntry.DebugPrompt -> newMessages.add(
+                    ChatEntry.DebugInfo(
+                        id = "svc-${newMessages.size}",
+                        timestamp = System.currentTimeMillis(),
+                        messagesJson = entry.messages,
+                        estimatedTokens = entry.estimatedTokens,
+                    )
+                )
             }
         }
         messages.clear()
@@ -262,7 +276,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendMessage(content: String) {
         if (content.isNotBlank()) {
-            service?.sendMessage(content)
+            service?.sendMessage(content, debugEnabled)
         }
     }
 

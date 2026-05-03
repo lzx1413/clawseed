@@ -41,6 +41,13 @@ sealed class ChatEntry {
         override val timestamp: Long,
         val content: String,
     ) : ChatEntry()
+
+    data class DebugInfo(
+        override val id: String,
+        override val timestamp: Long,
+        val messagesJson: String,
+        val estimatedTokens: Int,
+    ) : ChatEntry()
 }
 
 data class ChatSession(

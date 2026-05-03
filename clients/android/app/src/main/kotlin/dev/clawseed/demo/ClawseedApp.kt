@@ -71,6 +71,7 @@ fun ClawseedApp(localStore: LocalStore) {
                 refreshKey++
             },
             sessionVersion = sessionVersion,
+            localStore = localStore,
         )
     }
 }

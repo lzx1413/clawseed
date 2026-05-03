@@ -36,6 +36,7 @@ class ClawseedClient private constructor(
     private val onToolResult: ((id: String, name: String, output: String) -> Unit)?,
     private val onAborted: (() -> Unit)?,
     private val onError: ((String) -> Unit)?,
+    private val onDebugPrompt: ((messages: String, estimatedTokens: Int) -> Unit)?,
 ) {
     private val httpClient = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -66,8 +67,9 @@ class ClawseedClient private constructor(
         httpClient.connectionPool.evictAll()
     }
 
-    fun sendMessage(content: String) {
+    fun sendMessage(content: String, debug: Boolean = false) {
         val json = JSONObject().put("type", "message").put("content", content)
+        if (debug) json.put("debug", true)
         webSocket?.send(json.toString())
     }
 
@@ -123,6 +125,7 @@ class ClawseedClient private constructor(
                 is IncomingMessage.ChunkReset -> postOnMain { onChunkReset?.invoke() }
                 is IncomingMessage.Aborted -> postOnMain { onAborted?.invoke() }
                 is IncomingMessage.Error -> postOnMain { onError?.invoke(msg.message) }
+                is IncomingMessage.DebugPrompt -> postOnMain { onDebugPrompt?.invoke(msg.messages, msg.estimatedTokens) }
                 null -> Unit
             }
         }
@@ -162,6 +165,7 @@ class ClawseedClient private constructor(
         private var onToolResult: ((id: String, name: String, output: String) -> Unit)? = null
         private var onAborted: (() -> Unit)? = null
         private var onError: ((String) -> Unit)? = null
+        private var onDebugPrompt: ((messages: String, estimatedTokens: Int) -> Unit)? = null
 
         fun authToken(token: String) = apply { authToken = token }
         fun registerTool(tool: ToolSpec) = apply { tools.add(tool) }
@@ -177,6 +181,7 @@ class ClawseedClient private constructor(
         fun onToolResult(callback: (id: String, name: String, output: String) -> Unit) = apply { onToolResult = callback }
         fun onAborted(callback: () -> Unit) = apply { onAborted = callback }
         fun onError(callback: (String) -> Unit) = apply { onError = callback }
+        fun onDebugPrompt(callback: (messages: String, estimatedTokens: Int) -> Unit) = apply { onDebugPrompt = callback }
 
         fun build() = ClawseedClient(
             url = url,
@@ -194,6 +199,7 @@ class ClawseedClient private constructor(
             onToolResult = onToolResult,
             onAborted = onAborted,
             onError = onError,
+            onDebugPrompt = onDebugPrompt,
         )
     }
 

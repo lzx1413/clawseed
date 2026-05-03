@@ -3,6 +3,7 @@ package dev.clawseed.demo.data
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -48,5 +49,14 @@ class LocalStore(private val context: Context) {
         store.edit { prefs ->
             if (token != null) prefs[KEY_BEARER_TOKEN] = token else prefs.remove(KEY_BEARER_TOKEN)
         }
+    }
+
+    // --- Debug mode ---
+    private val KEY_SHOW_DEBUG = booleanPreferencesKey("show_debug_info")
+
+    val showDebugInfo: Flow<Boolean> = store.data.map { it[KEY_SHOW_DEBUG] ?: false }
+
+    suspend fun setShowDebugInfo(enabled: Boolean) {
+        store.edit { prefs -> prefs[KEY_SHOW_DEBUG] = enabled }
     }
 }

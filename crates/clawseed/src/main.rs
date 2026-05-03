@@ -145,6 +145,7 @@ async fn run_chat(
                         };
                         println!("\x1b[32m[result: {name}]\x1b[0m {preview}");
                     }
+                    TurnEvent::DebugPrompt { .. } => {}
                 }
             }
             if in_thinking {
@@ -152,7 +153,7 @@ async fn run_chat(
             }
         });
 
-        match agent.turn_streamed(trimmed, tx, None).await {
+        match agent.turn_streamed(trimmed, tx, None, false).await {
             Ok(_) => {}
             Err(e) => {
                 eprintln!("\n\x1b[31mError: {e}\x1b[0m");
