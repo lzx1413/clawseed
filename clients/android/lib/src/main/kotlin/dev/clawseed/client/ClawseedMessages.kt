@@ -51,9 +51,10 @@ sealed class IncomingMessage {
         val name: String?,
         val resumed: Boolean,
         val messageCount: Int,
+        val version: Int?,
     ) : IncomingMessage()
 
-    data class Connected(val message: String) : IncomingMessage()
+    data class Connected(val message: String, val version: Int?) : IncomingMessage()
 
     data class Chunk(val text: String) : IncomingMessage()
     data class Thinking(val text: String) : IncomingMessage()
@@ -90,8 +91,12 @@ sealed class IncomingMessage {
                     name = obj.optString("name").takeIf { it.isNotEmpty() },
                     resumed = obj.optBoolean("resumed"),
                     messageCount = obj.optInt("message_count"),
+                    version = obj.optInt("v").takeIf { obj.has("v") },
                 )
-                "connected" -> Connected(obj.optString("message"))
+                "connected" -> Connected(
+                    message = obj.optString("message"),
+                    version = obj.optInt("v").takeIf { obj.has("v") },
+                )
                 "chunk" -> Chunk(obj.optString("content"))
                 "thinking" -> Thinking(obj.optString("content"))
                 "done" -> Done(obj.optString("full_response"))

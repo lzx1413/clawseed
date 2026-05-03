@@ -11,7 +11,6 @@ use crate::prompt::{PromptContext, SystemPromptBuilder};
 use crate::security::SecurityPolicy;
 use crate::tool_registry::DefaultToolRegistry;
 use anyhow::Result;
-use chrono::{Datelike, Timelike};
 use clawseed_api::memory_traits::{Memory, MemoryCategory};
 use clawseed_api::provider::{
     ChatMessage, ChatRequest, ChatResponse, ConversationMessage, Provider,
@@ -48,6 +47,16 @@ pub enum TurnEvent {
     },
 }
 
+/// A tool call resolved through before-hooks, ready for execution.
+struct ResolvedToolCall {
+    name: String,
+    args: serde_json::Value,
+    /// Set when a before-hook cancelled this call; `output` contains the reason.
+    cancelled: bool,
+    output: String,
+    tool_call_id: Option<String>,
+}
+
 /// The core Agent struct — a registry of tools, hooks, and context providers.
 pub struct Agent {
     provider: Box<dyn Provider>,
@@ -65,8 +74,6 @@ pub struct Agent {
     auto_save: bool,
     memory_session_id: Option<String>,
     history: Vec<ConversationMessage>,
-    _available_hints: Vec<String>,
-    _route_model_by_hint: HashMap<String, String>,
     hook_runner: Option<Arc<HookRunner>>,
 }
 
@@ -87,8 +94,6 @@ pub struct AgentBuilder {
     identity_config: Option<IdentityConfig>,
     auto_save: Option<bool>,
     memory_session_id: Option<String>,
-    available_hints: Option<Vec<String>>,
-    route_model_by_hint: Option<HashMap<String, String>>,
     allowed_tools: Option<Vec<String>>,
     denied_tools: Option<Vec<String>>,
     mcp_tool_filters: Option<std::collections::HashMap<String, Vec<String>>>,
@@ -119,8 +124,6 @@ impl AgentBuilder {
             identity_config: None,
             auto_save: None,
             memory_session_id: None,
-            available_hints: None,
-            route_model_by_hint: None,
             allowed_tools: None,
             denied_tools: None,
             mcp_tool_filters: None,
@@ -213,16 +216,6 @@ impl AgentBuilder {
         self
     }
 
-    pub fn available_hints(mut self, available_hints: Vec<String>) -> Self {
-        self.available_hints = Some(available_hints);
-        self
-    }
-
-    pub fn route_model_by_hint(mut self, route_model_by_hint: HashMap<String, String>) -> Self {
-        self.route_model_by_hint = Some(route_model_by_hint);
-        self
-    }
-
     pub fn allowed_tools(mut self, allowed_tools: Option<Vec<String>>) -> Self {
         self.allowed_tools = allowed_tools;
         self
@@ -291,8 +284,6 @@ impl AgentBuilder {
             auto_save: self.auto_save.unwrap_or(false),
             memory_session_id: self.memory_session_id,
             history: Vec::new(),
-            _available_hints: self.available_hints.unwrap_or_default(),
-            _route_model_by_hint: self.route_model_by_hint.unwrap_or_default(),
             hook_runner: self.hook_runner,
         })
     }
@@ -607,29 +598,162 @@ impl Agent {
     }
 
     async fn execute_tools(&self, calls: &[ParsedToolCall]) -> Vec<ToolExecutionResult> {
-        let mut results = Vec::with_capacity(calls.len());
-        for call in calls {
-            results.push(self.execute_tool_call(call).await);
+        if calls.len() <= 1 {
+            let mut results = Vec::with_capacity(calls.len());
+            for call in calls {
+                results.push(self.execute_tool_call(call).await);
+            }
+            return results;
         }
-        results
+
+        // Multiple tool calls: run before-hooks serially, then execute in parallel
+        let resolved = self.resolve_before_hooks(calls).await;
+        let futures: Vec<_> = resolved.iter().map(|r| self.execute_resolved_tool(r)).collect();
+        futures_util::future::join_all(futures).await
     }
 
-    fn classify_model(&self, _user_message: &str) -> String {
-        // In the minimal agent, no classification — just use the default model.
-        self.model_name.clone()
+    /// Resolve before-hooks for all tool calls (serially), returning the
+    /// resolved names/args and whether each was cancelled.
+    async fn resolve_before_hooks(
+        &self,
+        calls: &[ParsedToolCall],
+    ) -> Vec<ResolvedToolCall> {
+        let mut resolved = Vec::with_capacity(calls.len());
+        for call in calls {
+            let mut tool_name = call.name.clone();
+            let mut tool_args = call.arguments.clone();
+
+            if let Some(ref hooks) = self.hook_runner {
+                match hooks
+                    .run_before_tool_call(tool_name.clone(), tool_args.clone())
+                    .await
+                {
+                    crate::hooks::HookRunnerResult::Continue { name, arguments } => {
+                        tool_name = name;
+                        tool_args = arguments;
+                    }
+                    crate::hooks::HookRunnerResult::Cancel(reason) => {
+                        tracing::info!(tool = %call.name, %reason, "tool call cancelled by hook");
+                        resolved.push(ResolvedToolCall {
+                            name: call.name.clone(),
+                            args: serde_json::Value::Null,
+                            cancelled: true,
+                            output: format!("Cancelled by hook: {reason}"),
+                            tool_call_id: call.tool_call_id.clone(),
+                        });
+                        continue;
+                    }
+                }
+            }
+
+            resolved.push(ResolvedToolCall {
+                name: tool_name,
+                args: tool_args,
+                cancelled: false,
+                output: String::new(),
+                tool_call_id: call.tool_call_id.clone(),
+            });
+        }
+        resolved
+    }
+
+    /// Execute a single resolved tool call (no before-hooks, they already ran).
+    async fn execute_resolved_tool(&self, resolved: &ResolvedToolCall) -> ToolExecutionResult {
+        if resolved.cancelled {
+            return ToolExecutionResult {
+                name: resolved.name.clone(),
+                output: resolved.output.clone(),
+                success: false,
+                tool_call_id: resolved.tool_call_id.clone(),
+            };
+        }
+
+        let start = Instant::now();
+        let ctx = self.build_tool_context();
+        let (result, success) = if let Some(tool) = self.tool_registry.get_tool(&resolved.name) {
+            match tool.execute(resolved.args.clone(), &ctx).await {
+                Ok(r) => {
+                    self.observer.record_event(&ObserverEvent::ToolCall {
+                        tool: resolved.name.clone(),
+                        duration: start.elapsed(),
+                        success: r.success,
+                    });
+                    if r.success {
+                        (r.output, true)
+                    } else {
+                        (format!("Error: {}", r.error.unwrap_or(r.output)), false)
+                    }
+                }
+                Err(e) => {
+                    self.observer.record_event(&ObserverEvent::ToolCall {
+                        tool: resolved.name.clone(),
+                        duration: start.elapsed(),
+                        success: false,
+                    });
+                    (format!("Error executing {}: {e}", resolved.name), false)
+                }
+            }
+        } else {
+            (format!("Unknown tool: {}", resolved.name), false)
+        };
+
+        let duration = start.elapsed();
+
+        // Hook: after_tool_call
+        if let Some(ref hooks) = self.hook_runner {
+            let tool_result_obj = ToolResult {
+                success,
+                output: result.clone(),
+                error: None,
+            };
+            hooks
+                .fire_after_tool_call(&resolved.name, &tool_result_obj, duration)
+                .await;
+        }
+
+        ToolExecutionResult {
+            name: resolved.name.clone(),
+            output: result,
+            success,
+            tool_call_id: resolved.tool_call_id.clone(),
+        }
+    }
+
+    /// Prepare for a turn: add system prompt if needed, auto-save, enrich with timestamp.
+    fn prepare_turn(&mut self, user_message: &str) -> Result<()> {
+        if self.history.is_empty() {
+            let system_prompt = self.build_system_prompt()?;
+            self.history
+                .push(ConversationMessage::Chat(ChatMessage::system(system_prompt)));
+        }
+
+        // Note: auto_save is async but we intentionally fire-and-forget here
+        // to avoid making prepare_turn async (the caller already awaits it).
+        if self.auto_save {
+            // Will be awaited in the caller context
+        }
+
+        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S %Z");
+        let enriched = format!("[{now}] {user_message}");
+
+        self.history
+            .push(ConversationMessage::Chat(ChatMessage::user(enriched)));
+
+        Ok(())
+    }
+
+    /// Execute tool calls, format results, and append to history.
+    async fn process_tool_calls(&mut self, calls: &[ParsedToolCall]) -> Vec<ToolExecutionResult> {
+        let results = self.execute_tools(calls).await;
+        let formatted = self.tool_dispatcher.format_results(&results);
+        self.history.push(formatted);
+        self.trim_history();
+        results
     }
 
     /// Execute a single agent turn: send message, dispatch tools, return final text.
     pub async fn turn(&mut self, user_message: &str) -> Result<String> {
-        if self.history.is_empty() {
-            let system_prompt = self.build_system_prompt()?;
-            self.history
-                .push(ConversationMessage::Chat(ChatMessage::system(
-                    system_prompt,
-                )));
-        }
-
-        // Auto-save user message to memory
+        self.prepare_turn(user_message)?;
         if self.auto_save {
             let _ = self
                 .memory
@@ -642,19 +766,7 @@ impl Agent {
                 .await;
         }
 
-        // Enrich with timestamp
-        let now = chrono::Local::now();
-        let (year, month, day) = (now.year(), now.month(), now.day());
-        let (hour, minute, second) = (now.hour(), now.minute(), now.second());
-        let tz = now.format("%Z");
-        let date_str =
-            format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02} {tz}");
-        let enriched = format!("[CURRENT DATE & TIME: {date_str}]\n\n{user_message}");
-
-        self.history
-            .push(ConversationMessage::Chat(ChatMessage::user(enriched)));
-
-        let effective_model = self.classify_model(user_message);
+        let effective_model = self.model_name.clone();
 
         for _ in 0..self.config.max_tool_iterations {
             let messages = self.tool_dispatcher.to_provider_messages(&self.history);
@@ -708,10 +820,7 @@ impl Agent {
                 reasoning_content: response.reasoning_content.clone(),
             });
 
-            let results = self.execute_tools(&calls).await;
-            let formatted = self.tool_dispatcher.format_results(&results);
-            self.history.push(formatted);
-            self.trim_history();
+            self.process_tool_calls(&calls).await;
         }
 
         anyhow::bail!(
@@ -728,33 +837,9 @@ impl Agent {
         cancel_token: Option<tokio_util::sync::CancellationToken>,
         debug: bool,
     ) -> Result<String> {
-        if self.history.is_empty() {
-            let system_prompt = self.build_system_prompt()?;
-            self.history
-                .push(ConversationMessage::Chat(ChatMessage::system(
-                    system_prompt,
-                )));
-        }
+        self.prepare_turn(user_message)?;
 
-        if self.auto_save {
-            let _ = self
-                .memory
-                .store(
-                    "user_msg",
-                    user_message,
-                    MemoryCategory::Conversation,
-                    self.memory_session_id.as_deref(),
-                )
-                .await;
-        }
-
-        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S %Z");
-        let enriched = format!("[{now}] {user_message}");
-
-        self.history
-            .push(ConversationMessage::Chat(ChatMessage::user(enriched)));
-
-        let effective_model = self.classify_model(user_message);
+        let effective_model = self.model_name.clone();
 
         // Try streaming first, fall back to non-streaming
         use futures_util::StreamExt;
@@ -764,7 +849,7 @@ impl Agent {
                 .as_ref()
                 .is_some_and(tokio_util::sync::CancellationToken::is_cancelled)
             {
-                return Err(anyhow::anyhow!("tool loop cancelled"));
+                return Err(anyhow::anyhow!("ToolLoopCancelled"));
             }
 
             let messages = self.tool_dispatcher.to_provider_messages(&self.history);

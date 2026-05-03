@@ -103,6 +103,11 @@ class ClawseedClient private constructor(
 
     private inner class WsListener : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
+            // Send connect message with protocol version
+            val connectMsg = JSONObject()
+                .put("type", "connect")
+                .put("v", MSG_PROTOCOL_VERSION)
+            webSocket.send(connectMsg.toString())
             if (tools.isNotEmpty()) registerTools()
             postOnMain { onConnected?.invoke() }
         }
@@ -204,6 +209,9 @@ class ClawseedClient private constructor(
     }
 
     companion object {
+        /** Protocol version — must match the gateway's MSG_PROTOCOL_VERSION. */
+        const val MSG_PROTOCOL_VERSION: Int = 1
+
         fun builder(url: String) = Builder(url)
     }
 }

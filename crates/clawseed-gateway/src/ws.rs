@@ -57,6 +57,9 @@ use tracing::debug;
 struct ConnectParams {
     #[serde(rename = "type")]
     msg_type: String,
+    /// Protocol version the client supports
+    #[serde(default)]
+    v: Option<u32>,
     /// Client-chosen session ID for memory persistence
     #[serde(default)]
     session_id: Option<String>,
@@ -87,6 +90,11 @@ type PendingRemoteCalls =
 
 /// The sub-protocol we support for the chat WebSocket.
 const WS_PROTOCOL: &str = "clawseed.v1";
+
+/// Message protocol version for compatibility detection.
+/// Clients should include `"v": MSG_PROTOCOL_VERSION` in their connect message.
+/// Server includes it in session_start and connected responses.
+pub const MSG_PROTOCOL_VERSION: u32 = 1;
 
 /// Prefix used in `Sec-WebSocket-Protocol` to carry a bearer token.
 const BEARER_SUBPROTO_PREFIX: &str = "bearer.";
@@ -262,6 +270,7 @@ async fn handle_socket(
     // Send session_start message to client
     let mut session_start = serde_json::json!({
         "type": "session_start",
+        "v": MSG_PROTOCOL_VERSION,
         "session_id": session_id,
         "resumed": resumed,
         "message_count": message_count,
@@ -286,6 +295,17 @@ async fn handle_socket(
             Ok(Message::Text(text)) => {
                 if let Ok(cp) = serde_json::from_str::<ConnectParams>(&text) {
                     if cp.msg_type == "connect" {
+                        if let Some(client_v) = cp.v {
+                            if client_v != MSG_PROTOCOL_VERSION {
+                                tracing::warn!(
+                                    client_version = client_v,
+                                    server_version = MSG_PROTOCOL_VERSION,
+                                    "Client protocol version mismatch"
+                                );
+                            }
+                        } else {
+                            tracing::debug!("Client did not send protocol version in connect message");
+                        }
                         debug!(
                             session_id = ?cp.session_id,
                             device_name = ?cp.device_name,
@@ -298,6 +318,7 @@ async fn handle_socket(
                         }
                         let ack = serde_json::json!({
                             "type": "connected",
+                            "v": MSG_PROTOCOL_VERSION,
                             "message": "Connection established"
                         });
                         let _ = sender.send(Message::Text(ack.to_string().into())).await;
