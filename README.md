@@ -1,9 +1,5 @@
 <p align="center">
-  <img src="assets/clawseed.png" alt="ClawSeed" width="120" />
-</p>
-
-<p align="center">
-  <strong>ClawSeed</strong>
+  <img src="assets/clawseed.png" alt="ClawSeed" width="240=0" />
 </p>
 
 <p align="center">

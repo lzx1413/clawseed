@@ -1,10 +1,7 @@
 <p align="center">
-  <img src="assets/clawseed.png" alt="ClawSeed" width="120" />
+  <img src="assets/clawseed.png" alt="ClawSeed" width="240" />
 </p>
 
-<p align="center">
-  <strong>ClawSeed</strong>
-</p>
 
 <p align="center">
   <strong>支持远程工具调用的 Rust AI Agent 运行时。</strong>
