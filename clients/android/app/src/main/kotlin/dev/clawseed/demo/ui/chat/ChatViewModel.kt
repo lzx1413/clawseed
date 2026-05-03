@@ -169,6 +169,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         estimatedTokens = entry.estimatedTokens,
                     )
                 )
+                is ChatLogEntry.Thinking -> newMessages.add(
+                    ChatEntry.Thinking(
+                        id = "svc-${newMessages.size}",
+                        timestamp = System.currentTimeMillis(),
+                        content = entry.text,
+                    )
+                )
             }
         }
         messages.clear()

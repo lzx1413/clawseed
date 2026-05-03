@@ -96,9 +96,11 @@ fun ChatScreen(
     }
 
     // Auto-scroll to bottom on new messages (only when user is near bottom)
-    LaunchedEffect(uiState.messages.size, uiState.streamingContent) {
-        if (isNearBottom && (uiState.messages.isNotEmpty() || uiState.streamingContent.isNotEmpty())) {
-            val totalItems = uiState.messages.size + if (uiState.streamingContent.isNotEmpty()) 1 else 0
+    LaunchedEffect(uiState.messages.size, uiState.streamingContent, uiState.thinkingContent) {
+        if (isNearBottom && (uiState.messages.isNotEmpty() || uiState.streamingContent.isNotEmpty() || uiState.thinkingContent.isNotEmpty())) {
+            val totalItems = uiState.messages.size +
+                (if (uiState.thinkingContent.isNotEmpty()) 1 else 0) +
+                (if (uiState.streamingContent.isNotEmpty()) 1 else 0)
             if (totalItems > 0) {
                 listState.animateScrollToItem(totalItems - 1)
             }
@@ -141,6 +143,17 @@ fun ChatScreen(
                     key = { it.id },
                 ) { entry ->
                     MessageBubble(entry = entry)
+                }
+                if (uiState.thinkingContent.isNotEmpty()) {
+                    item(key = "__thinking__") {
+                        MessageBubble(
+                            entry = ChatEntry.Thinking(
+                                id = "__thinking__",
+                                timestamp = System.currentTimeMillis(),
+                                content = uiState.thinkingContent,
+                            )
+                        )
+                    }
                 }
                 if (uiState.streamingContent.isNotEmpty()) {
                     item(key = "__streaming__") {

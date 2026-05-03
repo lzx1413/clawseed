@@ -43,6 +43,7 @@ sealed class ChatLogEntry {
     data class Assistant(val text: String) : ChatLogEntry()
     data class ToolCall(val id: String, val name: String, val args: String) : ChatLogEntry()
     data class ToolResult(val id: String, val name: String, val output: String) : ChatLogEntry()
+    data class Thinking(val text: String) : ChatLogEntry()
     data class DebugPrompt(val messages: String, val estimatedTokens: Int) : ChatLogEntry()
 }
 
@@ -117,6 +118,7 @@ class ClawseedService : Service() {
             }
             .onChunk { chunk -> _streamingContent.value += chunk }
             .onChunkReset {
+                flushThinking()
                 if (_streamingContent.value.isNotEmpty()) {
                     appendMessage(ChatLogEntry.Assistant(_streamingContent.value))
                     _streamingContent.value = ""
@@ -124,11 +126,11 @@ class ClawseedService : Service() {
             }
             .onThinking { text -> _thinkingContent.value += text }
             .onDone { _ ->
+                flushThinking()
                 if (_streamingContent.value.isNotEmpty()) {
                     appendMessage(ChatLogEntry.Assistant(_streamingContent.value))
                     _streamingContent.value = ""
                 }
-                _thinkingContent.value = ""
                 // Auto-rename session using first user message
                 autoNameSessionIfNeeded()
             }
@@ -183,6 +185,14 @@ class ClawseedService : Service() {
             client?.sendMessage(content, debug)
             // Auto-name: rename session from first user message
             autoNameSessionIfNeeded()
+        }
+    }
+
+    private fun flushThinking() {
+        val text = _thinkingContent.value
+        if (text.isNotEmpty()) {
+            appendMessage(ChatLogEntry.Thinking(text))
+            _thinkingContent.value = ""
         }
     }
 
