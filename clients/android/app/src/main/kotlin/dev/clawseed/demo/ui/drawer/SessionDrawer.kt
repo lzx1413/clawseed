@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
@@ -40,7 +39,6 @@ import dev.clawseed.demo.data.ChatSession
 @Composable
 fun SessionDrawer(
     currentSessionId: String?,
-    onNewSession: () -> Unit,
     onSelectSession: (String) -> Unit,
     onSettings: () -> Unit,
     isDrawerOpen: Boolean = false,
@@ -65,13 +63,6 @@ fun SessionDrawer(
                 text = "对话历史",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 8.dp),
-            )
-
-            NavigationDrawerItem(
-                label = { Text("新建对话") },
-                selected = false,
-                onClick = onNewSession,
-                icon = { Icon(Icons.Default.Add, contentDescription = null) },
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))

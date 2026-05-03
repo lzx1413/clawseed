@@ -16,6 +16,7 @@ object Routes {
 fun ClawseedNavHost(
     navController: NavHostController,
     onToggleDrawer: () -> Unit,
+    onNewSession: () -> Unit = {},
     currentSessionId: String? = null,
     onSessionIdChanged: (String?) -> Unit = {},
     onSessionEstablished: () -> Unit = {},
@@ -28,6 +29,7 @@ fun ClawseedNavHost(
         composable(Routes.CHAT) {
             ChatScreen(
                 onToggleDrawer = onToggleDrawer,
+                onNewSession = onNewSession,
                 sessionId = currentSessionId,
                 onSessionIdChanged = onSessionIdChanged,
                 onSessionEstablished = onSessionEstablished,

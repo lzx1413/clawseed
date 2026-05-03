@@ -47,7 +47,6 @@ fun ClawseedApp(localStore: LocalStore) {
         drawerContent = {
             SessionDrawer(
                 currentSessionId = currentSessionId,
-                onNewSession = { switchSession(null) },
                 onSelectSession = { sessionId -> switchSession(sessionId) },
                 onSettings = {
                     scope.launch { drawerState.close() }
@@ -61,6 +60,7 @@ fun ClawseedApp(localStore: LocalStore) {
         ClawseedNavHost(
             navController = navController,
             onToggleDrawer = { scope.launch { drawerState.open() } },
+            onNewSession = { switchSession(null) },
             currentSessionId = currentSessionId,
             onSessionIdChanged = { id ->
                 currentSessionId = id
