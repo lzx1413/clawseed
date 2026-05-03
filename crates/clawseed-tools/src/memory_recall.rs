@@ -119,11 +119,42 @@ impl Tool for MemoryRecallTool {
             .map_or(5, |v| v as usize);
 
         match self.memory.recall(query, limit, None, since, until).await {
-            Ok(entries) if entries.is_empty() => Ok(ToolResult {
-                success: true,
-                output: "No memories found.".into(),
-                error: None,
-            }),
+            Ok(entries) if entries.is_empty() => {
+                // Keyword search found nothing — fall back to listing all memories
+                // so the LLM can pick relevant ones from the full set.
+                match self.memory.list(None, None).await {
+                    Ok(all) if all.is_empty() => Ok(ToolResult {
+                        success: true,
+                        output: "No memories found.".into(),
+                        error: None,
+                    }),
+                    Ok(all) => {
+                        let shown: Vec<_> = all.iter().take(limit * 2).collect();
+                        let mut output = format!(
+                            "No keyword matches for '{query}'. Listing all {} memories (showing {}):\n",
+                            all.len(),
+                            shown.len(),
+                        );
+                        for entry in &shown {
+                            let _ = writeln!(
+                                output,
+                                "- [{}] {}: {}",
+                                entry.category, entry.key, entry.content
+                            );
+                        }
+                        Ok(ToolResult {
+                            success: true,
+                            output,
+                            error: None,
+                        })
+                    }
+                    Err(_) => Ok(ToolResult {
+                        success: true,
+                        output: "No memories found.".into(),
+                        error: None,
+                    }),
+                }
+            }
             Ok(entries) => {
                 let mut output = format!("Found {} memories:\n", entries.len());
                 for entry in &entries {

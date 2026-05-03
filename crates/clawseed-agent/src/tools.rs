@@ -36,7 +36,8 @@ pub fn all_tools_with_runtime(
     Option<Arc<parking_lot::RwLock<Vec<Arc<dyn DynTool>>>>>,
     Option<Arc<parking_lot::RwLock<Vec<Arc<dyn DynTool>>>>>,
 ) {
-    let tools = clawseed_tools::registry::all_tools(workspace_dir.to_path_buf(), &_config);
+    let tools =
+        clawseed_tools::registry::all_tools(workspace_dir.to_path_buf(), &_config, _memory);
     (tools, None, None, None, None, None)
 }
 

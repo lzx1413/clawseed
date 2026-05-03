@@ -348,7 +348,8 @@ impl Agent {
         let observer: Arc<dyn Observer> = Arc::new(crate::observer::NoopObserver);
 
         // Tools
-        let tools = clawseed_tools::registry::all_tools(config.workspace_dir.clone(), config);
+        let tools =
+            clawseed_tools::registry::all_tools(config.workspace_dir.clone(), config, mem.clone());
 
         // Dispatcher: native if provider supports it, otherwise XML
         let dispatcher: Box<dyn ToolDispatcher> = if provider.supports_native_tools() {

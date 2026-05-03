@@ -49,9 +49,8 @@ use crate::web_search_tool::WebSearchTool;
 /// `workspace_dir` is passed to tools that need it at construction time.
 /// Other tools get workspace info from `ctx.workspace_dir()` at execution time.
 ///
-/// Memory-dependent tools receive a `NoneMemory` default so they can be
-/// constructed without a live memory backend. At runtime they should obtain
-/// the real memory instance via `ctx.get::<Arc<dyn Memory>>()`.
+/// Memory-dependent tools use the provided `memory` backend. Pass
+/// `NoneMemory` in tests or when persistence is not needed.
 ///
 /// Network tools (http_request, web_fetch, web_search) are included only
 /// when their `enabled` flag is set in the config. When `allowed_domains`
@@ -59,9 +58,8 @@ use crate::web_search_tool::WebSearchTool;
 pub fn all_tools(
     #[cfg_attr(feature = "android", allow(unused))] workspace_dir: PathBuf,
     config: &Config,
+    memory: Arc<dyn clawseed_api::memory_traits::Memory>,
 ) -> Vec<Box<dyn Tool>> {
-    let none_memory = Arc::new(clawseed_memory::none::NoneMemory::new())
-        as Arc<dyn clawseed_api::memory_traits::Memory>;
 
     let mut tools: Vec<Box<dyn Tool>> = vec![
         Box::new(CalculatorTool::new()),
@@ -104,11 +102,11 @@ pub fn all_tools(
 
     tools.push(Box::new(KnowledgeTool::new()));
     tools.push(Box::new(LlmTaskTool::new()));
-    tools.push(Box::new(MemoryExportTool::new(none_memory.clone())));
-    tools.push(Box::new(MemoryForgetTool::new(none_memory.clone())));
-    tools.push(Box::new(MemoryPurgeTool::new(none_memory.clone())));
-    tools.push(Box::new(MemoryRecallTool::new(none_memory.clone())));
-    tools.push(Box::new(MemoryStoreTool::new(none_memory)));
+    tools.push(Box::new(MemoryExportTool::new(memory.clone())));
+    tools.push(Box::new(MemoryForgetTool::new(memory.clone())));
+    tools.push(Box::new(MemoryPurgeTool::new(memory.clone())));
+    tools.push(Box::new(MemoryRecallTool::new(memory.clone())));
+    tools.push(Box::new(MemoryStoreTool::new(memory)));
     tools.push(Box::new(ModelRoutingConfigTool::new()));
     tools.push(Box::new(PdfReadTool::new()));
     tools.push(Box::new(ShellTool::new()));

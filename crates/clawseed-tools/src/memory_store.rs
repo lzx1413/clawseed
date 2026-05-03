@@ -23,7 +23,7 @@ impl Tool for MemoryStoreTool {
     }
 
     fn description(&self) -> &str {
-        "Store a fact, preference, or note in long-term memory. Use category 'core' for permanent facts, 'daily' for session notes, 'conversation' for chat context, or a custom category name."
+        "Store a fact, preference, or note in long-term memory. Use category 'core' for permanent facts, 'daily' for session notes, 'conversation' for chat context, or a custom category name. IMPORTANT: the 'content' field must be a complete, self-contained sentence that includes context — e.g. 'The user's name is Alice' instead of just 'Alice'. This ensures the memory can be found by keyword search later."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -36,7 +36,7 @@ impl Tool for MemoryStoreTool {
                 },
                 "content": {
                     "type": "string",
-                    "description": "The information to remember"
+                    "description": "A complete, self-contained sentence describing the information to remember. Include relevant context so it can be found by keyword search later. Example: 'The user prefers Rust over Python' instead of just 'Rust'."
                 },
                 "category": {
                     "type": "string",

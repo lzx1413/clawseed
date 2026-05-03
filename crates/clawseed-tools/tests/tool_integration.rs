@@ -60,7 +60,9 @@ fn test_config() -> Config {
 /// Build the full tool list from registry (same as production).
 fn all_tools(workspace: PathBuf) -> Vec<Box<dyn Tool>> {
     let config = test_config();
-    clawseed_tools::registry::all_tools(workspace, &config)
+    let none_memory = std::sync::Arc::new(clawseed_memory::none::NoneMemory::new())
+        as std::sync::Arc<dyn clawseed_api::memory_traits::Memory>;
+    clawseed_tools::registry::all_tools(workspace, &config, none_memory)
 }
 
 // ── 1. Registry: all tools instantiated ───────────────────────────────────────
@@ -115,7 +117,10 @@ async fn registry_all_tools_instantiated() {
 async fn registry_network_tools_disabled_by_default() {
     let dir = tempfile::TempDir::new().unwrap();
     let config = Config::default(); // network tools disabled by default
-    let tools = clawseed_tools::registry::all_tools(dir.path().to_path_buf(), &config);
+    let none_memory = std::sync::Arc::new(clawseed_memory::none::NoneMemory::new())
+        as std::sync::Arc<dyn clawseed_api::memory_traits::Memory>;
+    let tools =
+        clawseed_tools::registry::all_tools(dir.path().to_path_buf(), &config, none_memory);
     let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
     assert!(
         !names.contains(&"http_request"),
@@ -1052,7 +1057,10 @@ enabled = true
 "#;
     let config: Config = toml::from_str(toml_str).expect("config should parse");
     let dir = tempfile::TempDir::new().unwrap();
-    let tools = clawseed_tools::registry::all_tools(dir.path().to_path_buf(), &config);
+    let none_memory = std::sync::Arc::new(clawseed_memory::none::NoneMemory::new())
+        as std::sync::Arc<dyn clawseed_api::memory_traits::Memory>;
+    let tools =
+        clawseed_tools::registry::all_tools(dir.path().to_path_buf(), &config, none_memory);
     let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
     assert!(
         names.contains(&"http_request"),
@@ -1097,7 +1105,10 @@ enabled = false
     config.web_search.enabled = true;
 
     let dir = tempfile::TempDir::new().unwrap();
-    let tools = clawseed_tools::registry::all_tools(dir.path().to_path_buf(), &config);
+    let none_memory = std::sync::Arc::new(clawseed_memory::none::NoneMemory::new())
+        as std::sync::Arc<dyn clawseed_api::memory_traits::Memory>;
+    let tools =
+        clawseed_tools::registry::all_tools(dir.path().to_path_buf(), &config, none_memory);
     let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
     assert!(
         names.contains(&"http_request"),
