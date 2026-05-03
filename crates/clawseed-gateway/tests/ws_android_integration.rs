@@ -125,17 +125,17 @@ async fn mock_chat_completions(
         }).to_string());
 
         // Content chunk
-        if let Some(ref text) = content {
-            if !text.is_empty() {
-                chunks.push(
-                    serde_json::json!({
-                        "id": chat_id,
-                        "object": "chat.completion.chunk",
-                        "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": null}]
-                    })
-                    .to_string(),
-                );
-            }
+        if let Some(ref text) = content
+            && !text.is_empty()
+        {
+            chunks.push(
+                serde_json::json!({
+                    "id": chat_id,
+                    "object": "chat.completion.chunk",
+                    "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": null}]
+                })
+                .to_string(),
+            );
         }
 
         // Tool calls chunks
