@@ -378,7 +378,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "clawseed"
-version = "0.7.3"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -394,7 +394,7 @@ dependencies = [
 
 [[package]]
 name = "clawseed-agent"
-version = "0.7.3"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -427,7 +427,7 @@ dependencies = [
 
 [[package]]
 name = "clawseed-api"
-version = "0.7.3"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -442,7 +442,7 @@ dependencies = [
 
 [[package]]
 name = "clawseed-config"
-version = "0.7.3"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "chacha20poly1305",
@@ -461,7 +461,7 @@ dependencies = [
 
 [[package]]
 name = "clawseed-gateway"
-version = "0.7.3"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -505,7 +505,7 @@ dependencies = [
 
 [[package]]
 name = "clawseed-memory"
-version = "0.7.3"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -527,7 +527,7 @@ dependencies = [
 
 [[package]]
 name = "clawseed-providers"
-version = "0.7.3"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -560,7 +560,7 @@ dependencies = [
 
 [[package]]
 name = "clawseed-tools"
-version = "0.7.3"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",

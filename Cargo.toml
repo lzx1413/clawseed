@@ -12,11 +12,11 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.7.3"
+version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/clawseed-labs/clawseed"
-rust-version = "1.87"
+repository = "https://github.com/lzx1413/clawseed"
+rust-version = "1.95"
 
 [workspace.dependencies]
 clawseed-api = { path = "crates/clawseed-api" }
