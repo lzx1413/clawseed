@@ -1,7 +1,7 @@
 //! Axum handler functions for the gateway: health, metrics, pairing, webhook, admin.
 
-use crate::ratelimit::{RATE_LIMIT_WINDOW_SECS, client_key_from_request};
 use crate::AppState;
+use crate::ratelimit::{RATE_LIMIT_WINDOW_SECS, client_key_from_request};
 use anyhow::{Context, Result};
 use axum::{
     extract::{ConnectInfo, State},
@@ -573,13 +573,16 @@ mod tests {
     use clawseed_api::provider::Provider;
     use http_body_util::BodyExt;
     use parking_lot::Mutex;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
     use crate::auth_rate_limit;
     use crate::session_queue;
-    use crate::{EventBuffer, NodeRegistry, MAX_BODY_SIZE, REQUEST_TIMEOUT_SECS, gateway_request_timeout_secs};
+    use crate::{
+        EventBuffer, MAX_BODY_SIZE, NodeRegistry, REQUEST_TIMEOUT_SECS,
+        gateway_request_timeout_secs,
+    };
     use clawseed_agent::security::pairing::PairingGuard;
     use clawseed_agent::tools::CanvasStore;
     use clawseed_config::schema::Config;
@@ -651,9 +654,7 @@ mod tests {
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
-            session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(
-                8, 30, 600,
-            )),
+            session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         };
@@ -706,9 +707,7 @@ mod tests {
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
-            session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(
-                8, 30, 600,
-            )),
+            session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         };
@@ -956,9 +955,7 @@ mod tests {
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
-            session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(
-                8, 30, 600,
-            )),
+            session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         };
@@ -1025,9 +1022,7 @@ mod tests {
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
-            session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(
-                8, 30, 600,
-            )),
+            session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         };
@@ -1106,9 +1101,7 @@ mod tests {
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
-            session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(
-                8, 30, 600,
-            )),
+            session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         };
@@ -1159,9 +1152,7 @@ mod tests {
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
-            session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(
-                8, 30, 600,
-            )),
+            session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         };
@@ -1217,9 +1208,7 @@ mod tests {
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
-            session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(
-                8, 30, 600,
-            )),
+            session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         };

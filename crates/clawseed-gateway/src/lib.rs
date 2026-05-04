@@ -23,8 +23,8 @@ use crate::handlers::{
     handle_admin_paircode, handle_admin_paircode_new, handle_admin_shutdown, handle_health,
     handle_metrics, handle_pair, handle_pair_code, handle_webhook, hash_webhook_secret,
 };
-use crate::ratelimit::RATE_LIMIT_MAX_KEYS_DEFAULT;
 use crate::ratelimit::IDEMPOTENCY_MAX_KEYS_DEFAULT;
+use crate::ratelimit::RATE_LIMIT_MAX_KEYS_DEFAULT;
 use crate::ratelimit::dirs_data_local;
 use crate::ratelimit::normalize_max_keys;
 use crate::session_backend::SessionBackend;

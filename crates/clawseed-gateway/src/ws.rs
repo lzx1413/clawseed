@@ -34,8 +34,6 @@
 //! - `name` — optional human-readable label for the session
 //! - `token` — bearer auth token (alternative to Authorization header)
 
-use clawseed_api::tool_registry::ToolSource;
-use std::sync::Arc;
 use super::AppState;
 use axum::{
     extract::{
@@ -45,8 +43,10 @@ use axum::{
     http::{HeaderMap, header},
     response::IntoResponse,
 };
+use clawseed_api::tool_registry::ToolSource;
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
+use std::sync::Arc;
 use tracing::debug;
 
 /// Optional connection parameters sent as the first WebSocket message.
@@ -306,7 +306,9 @@ async fn handle_socket(
                                 );
                             }
                         } else {
-                            tracing::debug!("Client did not send protocol version in connect message");
+                            tracing::debug!(
+                                "Client did not send protocol version in connect message"
+                            );
                         }
                         debug!(
                             session_id = ?cp.session_id,
@@ -394,7 +396,9 @@ async fn handle_socket(
                             );
                             state.tool_registry.register_or_replace(
                                 Box::new(remote_tool),
-                                ToolSource::Remote { session: session_id.clone() },
+                                ToolSource::Remote {
+                                    session: session_id.clone(),
+                                },
                             );
                             handle.register(spec);
                         }
@@ -603,7 +607,11 @@ async fn handle_socket(
     }
 
     // ── Cleanup: unregister remote tools from shared registry on disconnect ──
-    state.tool_registry.unregister_by_source(&ToolSource::Remote { session: session_id.clone() });
+    state
+        .tool_registry
+        .unregister_by_source(&ToolSource::Remote {
+            session: session_id.clone(),
+        });
 }
 
 // ── Remote tool message helpers ───────────────────────────────────────────────

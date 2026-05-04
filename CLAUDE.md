@@ -102,6 +102,7 @@ Full-featured chat client (Kotlin + Jetpack Compose) that runs the gateway on-de
 
 ## Key Conventions
 
+- **Before every commit, run `./tools/ci-local.sh` to verify fmt/clippy/test pass.** This mirrors the CI pipeline. Fix all failures before committing.
 - Rust edition 2024, minimum version 1.87
 - Config loaded from `~/.clawseed/config.toml` with env var expansion
 - Release profile uses fat LTO + codegen-units=1 + panic=abort

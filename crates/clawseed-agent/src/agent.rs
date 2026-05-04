@@ -608,16 +608,16 @@ impl Agent {
 
         // Multiple tool calls: run before-hooks serially, then execute in parallel
         let resolved = self.resolve_before_hooks(calls).await;
-        let futures: Vec<_> = resolved.iter().map(|r| self.execute_resolved_tool(r)).collect();
+        let futures: Vec<_> = resolved
+            .iter()
+            .map(|r| self.execute_resolved_tool(r))
+            .collect();
         futures_util::future::join_all(futures).await
     }
 
     /// Resolve before-hooks for all tool calls (serially), returning the
     /// resolved names/args and whether each was cancelled.
-    async fn resolve_before_hooks(
-        &self,
-        calls: &[ParsedToolCall],
-    ) -> Vec<ResolvedToolCall> {
+    async fn resolve_before_hooks(&self, calls: &[ParsedToolCall]) -> Vec<ResolvedToolCall> {
         let mut resolved = Vec::with_capacity(calls.len());
         for call in calls {
             let mut tool_name = call.name.clone();
@@ -724,7 +724,9 @@ impl Agent {
         if self.history.is_empty() {
             let system_prompt = self.build_system_prompt()?;
             self.history
-                .push(ConversationMessage::Chat(ChatMessage::system(system_prompt)));
+                .push(ConversationMessage::Chat(ChatMessage::system(
+                    system_prompt,
+                )));
         }
 
         // Note: auto_save is async but we intentionally fire-and-forget here
