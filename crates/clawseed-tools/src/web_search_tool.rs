@@ -16,6 +16,8 @@ pub struct WebSearchTool {
     brave_api_key: Option<String>,
     /// SearXNG instance base URL.
     searxng_instance_url: Option<String>,
+    /// Tavily API key.
+    tavily_api_key: Option<String>,
     max_results: usize,
     timeout_secs: u64,
 }
@@ -31,6 +33,7 @@ impl WebSearchTool {
             provider: provider.trim().to_lowercase(),
             brave_api_key,
             searxng_instance_url: None,
+            tavily_api_key: None,
             max_results: max_results.clamp(1, 10),
             timeout_secs: timeout_secs.max(1),
         }
@@ -41,6 +44,7 @@ impl WebSearchTool {
         provider: String,
         brave_api_key: Option<String>,
         searxng_instance_url: Option<String>,
+        tavily_api_key: Option<String>,
         max_results: usize,
         timeout_secs: u64,
     ) -> Self {
@@ -48,6 +52,7 @@ impl WebSearchTool {
             provider: provider.trim().to_lowercase(),
             brave_api_key,
             searxng_instance_url,
+            tavily_api_key,
             max_results: max_results.clamp(1, 10),
             timeout_secs: timeout_secs.max(1),
         }
@@ -60,6 +65,18 @@ impl WebSearchTool {
             .filter(|k| !k.is_empty())
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("Brave API key not configured"))
+    }
+
+    fn resolve_tavily_api_key(&self) -> anyhow::Result<String> {
+        self.tavily_api_key
+            .as_ref()
+            .filter(|k| !k.is_empty())
+            .cloned()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Tavily API key not configured. Get a free key at https://tavily.com"
+                )
+            })
     }
 
     async fn search_duckduckgo(&self, query: &str) -> anyhow::Result<String> {
@@ -254,6 +271,72 @@ impl WebSearchTool {
         Ok(lines.join("\n"))
     }
 
+    async fn search_tavily(&self, query: &str) -> anyhow::Result<String> {
+        let api_key = self.resolve_tavily_api_key()?;
+
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(self.timeout_secs))
+            .build()?;
+
+        let body = json!({
+            "api_key": api_key,
+            "query": query,
+            "max_results": self.max_results,
+            "search_depth": "basic",
+            "include_answer": false
+        });
+
+        let response = client
+            .post("https://api.tavily.com/search")
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            anyhow::bail!("Tavily search failed with status {}: {}", status, text);
+        }
+
+        let json: serde_json::Value = response.json().await?;
+        self.parse_tavily_results(&json, query)
+    }
+
+    fn parse_tavily_results(
+        &self,
+        json: &serde_json::Value,
+        query: &str,
+    ) -> anyhow::Result<String> {
+        let results = json
+            .get("results")
+            .and_then(|r| r.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid Tavily API response"))?;
+
+        if results.is_empty() {
+            return Ok(format!("No results found for: {}", query));
+        }
+
+        let mut lines = vec![format!("Search results for: {} (via Tavily)", query)];
+
+        for (i, result) in results.iter().take(self.max_results).enumerate() {
+            let title = result
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("No title");
+            let url = result.get("url").and_then(|u| u.as_str()).unwrap_or("");
+            let content = result.get("content").and_then(|c| c.as_str()).unwrap_or("");
+
+            lines.push(format!("{}. {}", i + 1, title));
+            lines.push(format!("   {}", url));
+            if !content.is_empty() {
+                lines.push(format!("   {}", content));
+            }
+        }
+
+        Ok(lines.join("\n"))
+    }
+
     /// Resolve the SearXNG instance URL from configuration.
     fn resolve_searxng_instance_url(&self) -> anyhow::Result<String> {
         self.searxng_instance_url
@@ -398,9 +481,8 @@ impl Tool for WebSearchTool {
         }
 
         let result = match resolution.route {
-            WebSearchProviderRoute::DuckDuckGo | WebSearchProviderRoute::Tavily => {
-                self.search_duckduckgo(query).await?
-            }
+            WebSearchProviderRoute::DuckDuckGo => self.search_duckduckgo(query).await?,
+            WebSearchProviderRoute::Tavily => self.search_tavily(query).await?,
             WebSearchProviderRoute::Brave => self.search_brave(query).await?,
             WebSearchProviderRoute::SearXNG => self.search_searxng(query).await?,
             WebSearchProviderRoute::Bing => self.search_bing(query).await?,

@@ -725,6 +725,9 @@ encrypt = true
         if let Ok(v) = std::env::var("CLAWSEED_WEB_SEARCH_PROVIDER") {
             self.agent.web_search_provider = Some(v);
         }
+        if let Ok(v) = std::env::var("CLAWSEED_WEB_SEARCH_TAVILY_API_KEY") {
+            self.web_search.tavily_api_key = Some(v);
+        }
         self
     }
 
@@ -1275,6 +1278,8 @@ pub struct WebSearchConfig {
     pub brave_api_key: Option<String>,
     #[serde(default)]
     pub searxng_instance_url: Option<String>,
+    #[serde(default)]
+    pub tavily_api_key: Option<String>,
 }
 
 /// Agent entry configuration (for named agents in the config).

@@ -9,6 +9,7 @@
 use clawseed_api::tool::Tool;
 use clawseed_api::tool_context::ToolContext;
 use clawseed_config::schema::Config;
+use clawseed_tools::web_search_tool::WebSearchTool;
 use std::path::{Path, PathBuf};
 
 // ── Test context ──────────────────────────────────────────────────────────────
@@ -1119,4 +1120,41 @@ enabled = false
         names.contains(&"web_search_tool"),
         "patched: web_search_tool should be available"
     );
+}
+
+#[tokio::test]
+async fn test_tavily_search_live() {
+    let api_key = std::env::var("TAVILY_API_KEY").unwrap_or_default();
+    if api_key.is_empty() {
+        eprintln!("Skipping live Tavily test: TAVILY_API_KEY not set");
+        return;
+    }
+
+    let tool =
+        WebSearchTool::new_with_config("tavily".to_string(), None, None, Some(api_key), 3, 15);
+
+    let ctx = TestContext::new(std::path::PathBuf::from("/tmp"));
+    let result = tool
+        .execute(
+            serde_json::json!({"query": "Rust programming language"}),
+            &ctx,
+        )
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "Tavily search should succeed: {:?}",
+        result.err()
+    );
+    let tool_result = result.unwrap();
+    assert!(tool_result.success, "Search should be successful");
+    assert!(
+        tool_result.output.contains("via Tavily"),
+        "Output should indicate Tavily source"
+    );
+    assert!(
+        tool_result.output.contains("Rust"),
+        "Output should contain search term"
+    );
+    println!("Tavily search output:\n{}", tool_result.output);
 }

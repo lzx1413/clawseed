@@ -133,6 +133,7 @@ pub fn all_tools(
             provider,
             config.web_search.brave_api_key.clone(),
             config.web_search.searxng_instance_url.clone(),
+            config.web_search.tavily_api_key.clone(),
             5,  // max_results
             15, // timeout_secs
         )));

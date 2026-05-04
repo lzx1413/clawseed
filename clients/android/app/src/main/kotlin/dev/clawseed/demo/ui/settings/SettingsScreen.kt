@@ -54,6 +54,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.foundation.text.ClickableText
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -148,6 +154,19 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                         EditMode.TOML -> TomlEditor(
                             toml = uiState.configToml,
                             onTomlChange = { viewModel.updateConfigToml(it) },
+                        )
+                    }
+                }
+
+                if (uiState.editMode == EditMode.FORM) {
+                    item {
+                        SearchEngineCard(
+                            searchEngine = uiState.searchEngine,
+                            tavilyApiKey = uiState.tavilyApiKey,
+                            tavilyApiKeyVisible = uiState.tavilyApiKeyVisible,
+                            onSearchEngineChange = viewModel::updateSearchEngine,
+                            onTavilyApiKeyChange = viewModel::updateTavilyApiKey,
+                            onToggleTavilyApiKeyVisibility = viewModel::toggleTavilyApiKeyVisibility,
                         )
                     }
                 }
@@ -552,6 +571,107 @@ private fun ToolCard(tool: dev.clawseed.sdk.core.model.ToolInfo) {
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SearchEngineCard(
+    searchEngine: String,
+    tavilyApiKey: String,
+    tavilyApiKeyVisible: Boolean,
+    onSearchEngineChange: (String) -> Unit,
+    onTavilyApiKeyChange: (String) -> Unit,
+    onToggleTavilyApiKeyVisibility: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val uriHandler = LocalUriHandler.current
+
+    val searchEngines = listOf("bing" to "Bing", "tavily" to "Tavily")
+    val selectedDisplayName = searchEngines.find { it.first == searchEngine }?.second ?: "Bing"
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("搜索引擎", style = MaterialTheme.typography.titleSmall)
+
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = it },
+            ) {
+                OutlinedTextField(
+                    value = selectedDisplayName,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Provider") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                )
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                ) {
+                    searchEngines.forEach { (id, name) ->
+                        DropdownMenuItem(
+                            text = { Text(name) },
+                            onClick = {
+                                onSearchEngineChange(id)
+                                expanded = false
+                            },
+                        )
+                    }
+                }
+            }
+
+            if (searchEngine == "tavily") {
+                OutlinedTextField(
+                    value = tavilyApiKey,
+                    onValueChange = onTavilyApiKeyChange,
+                    label = { Text("Tavily API Key") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = if (tavilyApiKey.isNotEmpty() && !tavilyApiKeyVisible)
+                        PasswordVisualTransformation() else VisualTransformation.None,
+                    trailingIcon = if (tavilyApiKey.isNotEmpty()) {
+                        {
+                            IconButton(onClick = onToggleTavilyApiKeyVisibility) {
+                                Text(
+                                    if (tavilyApiKeyVisible) "隐藏" else "显示",
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            }
+                        }
+                    } else null,
+                )
+
+                ClickableText(
+                    text = buildAnnotatedString {
+                        append("免费获取 API Key: ")
+                        withStyle(SpanStyle(
+                            color = MaterialTheme.colorScheme.primary,
+                            textDecoration = TextDecoration.Underline,
+                        )) {
+                            append("tavily.com")
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    ),
+                ) { offset ->
+                    val urlStart = "免费获取 API Key: ".length
+                    if (offset >= urlStart) {
+                        uriHandler.openUri("https://tavily.com")
+                    }
+                }
+            }
         }
     }
 }

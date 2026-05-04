@@ -45,6 +45,9 @@ data class SettingsUiState(
     val isFetchingModels: Boolean = false,
     val connectionOk: Boolean? = null,
     val thinkingEnabled: Boolean = false,
+    val searchEngine: String = "",
+    val tavilyApiKey: String = "",
+    val tavilyApiKeyVisible: Boolean = false,
 )
 
 enum class EditMode { FORM, TOML }
@@ -86,6 +89,8 @@ class SettingsViewModel : ViewModel() {
             preservedApiKey = null
             val currentModel = extractProviderModel(toml, status)
             val thinking = extractProviderThinking(toml)
+            val searchEngine = extractSearchEngine(toml)
+            val tavilyKey = extractTavilyApiKey(toml)
 
             val presetIdx = PROVIDER_PRESETS.indexOfFirst { it.baseUrl.isNotBlank() && currentBaseUrl.contains(it.baseUrl.removeSuffix("/v1").removeSuffix("/")) }
                 .let { if (it == -1) PROVIDER_PRESETS.size - 1 else it }
@@ -103,6 +108,8 @@ class SettingsViewModel : ViewModel() {
                 hasServerApiKey = serverHasKey,
                 selectedModel = currentModel,
                 thinkingEnabled = thinking,
+                searchEngine = searchEngine,
+                tavilyApiKey = tavilyKey,
             )
         }
     }
@@ -157,6 +164,18 @@ class SettingsViewModel : ViewModel() {
 
     fun toggleThinking(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(thinkingEnabled = enabled, saveSuccess = false)
+    }
+
+    fun updateSearchEngine(engine: String) {
+        _uiState.value = _uiState.value.copy(searchEngine = engine, saveSuccess = false)
+    }
+
+    fun updateTavilyApiKey(key: String) {
+        _uiState.value = _uiState.value.copy(tavilyApiKey = key, saveSuccess = false)
+    }
+
+    fun toggleTavilyApiKeyVisibility() {
+        _uiState.value = _uiState.value.copy(tavilyApiKeyVisible = !_uiState.value.tavilyApiKeyVisible)
     }
 
     fun fetchModels() {
@@ -259,6 +278,15 @@ class SettingsViewModel : ViewModel() {
                 toml.substring(0, agentIdx) + section + toml.substring(agentIdx)
             } else {
                 toml + section
+            }
+        }
+
+        // Update [web_search] section
+        val webSearchHeader = "[web_search]"
+        if (toml.contains(webSearchHeader)) {
+            toml = replaceInSection(toml, webSearchHeader, "provider", state.searchEngine)
+            if (state.searchEngine == "tavily" && state.tavilyApiKey.isNotBlank()) {
+                toml = replaceInSection(toml, webSearchHeader, "tavily_api_key", state.tavilyApiKey)
             }
         }
 
@@ -471,6 +499,16 @@ class SettingsViewModel : ViewModel() {
         }
 
         const val MASKED_KEY_PLACEHOLDER = "••••••••"
+
+        private fun extractSearchEngine(toml: String): String {
+            val section = findSection(toml, "[web_search]")
+            return extractTomlValueInBlock(section, "provider") ?: ""
+        }
+
+        private fun extractTavilyApiKey(toml: String): String {
+            val section = findSection(toml, "[web_search]")
+            return extractTomlValueInBlock(section, "tavily_api_key") ?: ""
+        }
         private const val THINKING_ENABLED_LINE = "provider_extra = { thinking = { type = \"enabled\" } }"
         private const val THINKING_DISABLED_LINE = "provider_extra = { thinking = { type = \"disabled\" } }"
     }
