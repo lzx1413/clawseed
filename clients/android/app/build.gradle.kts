@@ -3,6 +3,7 @@ import java.time.LocalDate
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 val buildDate: String = LocalDate.now().toString()
@@ -47,7 +48,7 @@ android {
 }
 
 dependencies {
-    implementation(project(":lib"))
+    implementation(project(":sdk:embedded"))
 
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.activity:activity-compose:1.10.1")
@@ -81,6 +82,7 @@ dependencies {
     // DataStore (本地持久化)
     implementation("androidx.datastore:datastore-preferences:1.1.4")
 
-    // Gson for JSON parsing
-    implementation("com.google.code.gson:gson:2.11.0")
+    // kotlinx-serialization (for tool JSON building)
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+
 }

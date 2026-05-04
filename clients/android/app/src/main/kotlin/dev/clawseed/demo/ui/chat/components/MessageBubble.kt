@@ -38,6 +38,7 @@ fun MessageBubble(
         is ChatEntry.ToolCall -> ToolCallCard(entry, modifier)
         is ChatEntry.ToolResult -> ToolResultCard(entry, modifier)
         is ChatEntry.Thinking -> ThinkingCard(entry.content, modifier)
+        is ChatEntry.SystemMessage -> SystemBubble(entry.content, modifier)
         is ChatEntry.DebugInfo -> DebugInfoCard(entry, modifier)
     }
 }
@@ -69,22 +70,20 @@ private fun AssistantBubble(content: String, isStreaming: Boolean, modifier: Mod
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start,
     ) {
-        SelectionContainer {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-            ) {
-                Column {
-                    MarkdownContent(content = content)
-                    if (isStreaming) {
-                        Text(
-                            text = "█",
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    }
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+        ) {
+            Column {
+                MarkdownContent(content = content)
+                if (isStreaming) {
+                    Text(
+                        text = "█",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
                 }
             }
         }
@@ -215,6 +214,27 @@ private fun ThinkingCard(content: String, modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                 modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SystemBubble(content: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        ) {
+            Text(
+                text = content,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

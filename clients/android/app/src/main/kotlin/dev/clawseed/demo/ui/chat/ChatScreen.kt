@@ -6,10 +6,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -34,10 +36,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import dev.clawseed.demo.ConnState
+import dev.clawseed.sdk.core.model.ConnectionState
 import dev.clawseed.demo.data.ChatEntry
 import dev.clawseed.demo.ui.chat.components.ChatBottomBar
 import dev.clawseed.demo.ui.chat.components.MessageBubble
@@ -55,7 +60,15 @@ fun ChatScreen(
     val viewModel: ChatViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsState()
     var input by remember { mutableStateOf("") }
+    val density = LocalDensity.current
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var bottomBarHeightPx by remember { mutableStateOf(0) }
+
+    fun dismissInput() {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+    }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -72,6 +85,8 @@ fun ChatScreen(
 
     val listState = rememberLazyListState()
     val isStreaming = uiState.streamingContent.isNotEmpty() || uiState.thinkingContent.isNotEmpty()
+    val imeBottom = WindowInsets.ime.getBottom(density)
+    val bottomContentPadding = with(density) { bottomBarHeightPx.toDp() + 8.dp }
 
     // Only auto-scroll if user is near the bottom
     val isNearBottom by remember {
@@ -107,17 +122,36 @@ fun ChatScreen(
         }
     }
 
+    LaunchedEffect(imeBottom) {
+        if (!isNearBottom || imeBottom <= 0) {
+            return@LaunchedEffect
+        }
+
+        val totalItems = uiState.messages.size +
+            (if (uiState.thinkingContent.isNotEmpty()) 1 else 0) +
+            (if (uiState.streamingContent.isNotEmpty()) 1 else 0)
+        if (totalItems > 0) {
+            listState.animateScrollToItem(totalItems - 1)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(uiState.sessionName ?: "新对话") },
                 navigationIcon = {
-                    IconButton(onClick = onToggleDrawer) {
+                    IconButton(onClick = {
+                        dismissInput()
+                        onToggleDrawer()
+                    }) {
                         Icon(Icons.Default.Menu, contentDescription = "菜单")
                     }
                 },
                 actions = {
-                    IconButton(onClick = onNewSession) {
+                    IconButton(onClick = {
+                        dismissInput()
+                        onNewSession()
+                    }) {
                         Icon(Icons.Default.Add, contentDescription = "新建对话")
                     }
                 },
@@ -135,7 +169,12 @@ fun ChatScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(
+                    start = 12.dp,
+                    top = 8.dp,
+                    end = 12.dp,
+                    bottom = bottomContentPadding,
+                ),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(
@@ -194,10 +233,11 @@ fun ChatScreen(
                 onSend = {
                     viewModel.sendMessage(input)
                     input = ""
-                    focusManager.clearFocus()
+                    dismissInput()
                 },
                 onStop = if (isStreaming) ({ viewModel.abortGeneration() }) else null,
-                enabled = uiState.connState == ConnState.CONNECTED,
+                canSend = uiState.connState == ConnectionState.CONNECTED,
+                modifier = Modifier.onSizeChanged { bottomBarHeightPx = it.height },
             )
         }
     }

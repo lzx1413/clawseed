@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -68,14 +69,23 @@ fun MarkdownContent(
                 }
                 is MdBlock.ListItem -> {
                     val styled = remember(block.text) { parseInlineMarkdown(block.text) }
-                    Text(
-                        text = buildAnnotatedString {
-                            append("• ")
-                            append(styled)
-                        },
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Text(
+                            text = "•",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = styled,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
                 is MdBlock.Table -> TableBlock(
                     headers = block.headers,
@@ -140,8 +150,6 @@ fun CodeBlock(
     }
 }
 
-// --- Simple markdown parser ---
-
 private sealed class MdBlock {
     data class Paragraph(val text: String) : MdBlock()
     data class Heading(val level: Int, val text: String) : MdBlock()
@@ -156,7 +164,6 @@ private fun parseBlocks(content: String): List<MdBlock> {
     var i = 0
     while (i < lines.size) {
         val line = lines[i]
-        // Code block
         if (line.trimStart().startsWith("```")) {
             val lang = line.trimStart().removePrefix("```").trim().takeIf { it.isNotEmpty() }
             val codeLines = mutableListOf<String>()
@@ -166,17 +173,15 @@ private fun parseBlocks(content: String): List<MdBlock> {
                 i++
             }
             blocks.add(MdBlock.CodeBlock(codeLines.joinToString("\n"), lang))
-            i++ // skip closing ```
+            i++
             continue
         }
-        // Heading
         val headingMatch = Regex("^(#{1,6})\\s+(.+)").find(line)
         if (headingMatch != null) {
             blocks.add(MdBlock.Heading(headingMatch.groupValues[1].length, headingMatch.groupValues[2]))
             i++
             continue
         }
-        // List item
         if (line.trimStart().startsWith("- ") || line.trimStart().startsWith("* ") || Regex("^\\d+\\.\\s").containsMatchIn(line.trimStart())) {
             val stripped = line.trimStart()
                 .removePrefix("- ").removePrefix("* ")
@@ -185,12 +190,11 @@ private fun parseBlocks(content: String): List<MdBlock> {
             i++
             continue
         }
-        // Table: header | sep | data rows
         if (line.contains('|') && i + 1 < lines.size) {
             val sepLine = lines[i + 1].trim()
             if (sepLine.matches(Regex("^\\|?[\\s:]*-{2,}[\\s:]*\\|.*"))) {
                 val headers = parseTableRow(line)
-                i += 2 // skip header + separator
+                i += 2
                 val rows = mutableListOf<List<String>>()
                 while (i < lines.size && lines[i].contains('|')) {
                     val cells = parseTableRow(lines[i])
@@ -201,7 +205,6 @@ private fun parseBlocks(content: String): List<MdBlock> {
                 continue
             }
         }
-        // Paragraph
         if (line.isNotBlank()) {
             blocks.add(MdBlock.Paragraph(line))
         }
@@ -250,7 +253,6 @@ private fun TableBlock(
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
             .horizontalScroll(rememberScrollState()),
     ) {
-        // Header row
         Row(
             modifier = Modifier
                 .height(IntrinsicSize.Min)
@@ -266,7 +268,6 @@ private fun TableBlock(
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        // Data rows
         for ((ri, row) in rows.withIndex()) {
             Row(
                 modifier = Modifier

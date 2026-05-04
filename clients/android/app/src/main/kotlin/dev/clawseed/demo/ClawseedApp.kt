@@ -49,6 +49,7 @@ fun ClawseedApp(localStore: LocalStore) {
             SessionDrawer(
                 currentSessionId = currentSessionId,
                 onSelectSession = { sessionId -> switchSession(sessionId) },
+                onDeleteCurrentSession = { switchSession(null) },
                 onSettings = {
                     scope.launch { drawerState.close() }
                     navController.navigate(Routes.SETTINGS)

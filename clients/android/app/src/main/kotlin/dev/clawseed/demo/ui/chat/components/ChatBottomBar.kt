@@ -23,7 +23,7 @@ fun ChatBottomBar(
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
     onStop: (() -> Unit)? = null,
-    enabled: Boolean,
+    canSend: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -41,7 +41,6 @@ fun ChatBottomBar(
                 .padding(end = 8.dp),
             shape = RoundedCornerShape(24.dp),
             maxLines = 4,
-            enabled = enabled,
         )
         if (onStop != null) {
             IconButton(
@@ -53,7 +52,7 @@ fun ChatBottomBar(
         } else {
             IconButton(
                 onClick = onSend,
-                enabled = enabled && input.isNotBlank(),
+                enabled = canSend && input.isNotBlank(),
             ) {
                 Icon(Icons.Default.Send, contentDescription = "发送")
             }

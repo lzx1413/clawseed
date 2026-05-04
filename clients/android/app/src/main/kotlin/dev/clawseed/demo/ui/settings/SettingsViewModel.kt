@@ -2,9 +2,10 @@ package dev.clawseed.demo.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dev.clawseed.demo.data.GatewayApi
-import dev.clawseed.demo.data.StatusInfo
-import dev.clawseed.demo.data.ToolInfo
+import dev.clawseed.sdk.android.ClawSeedAndroid
+import dev.clawseed.sdk.core.client.GatewayClient
+import dev.clawseed.sdk.core.model.GatewayStatus
+import dev.clawseed.sdk.core.model.ToolInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,7 +28,7 @@ val PROVIDER_PRESETS = listOf(
 )
 
 data class SettingsUiState(
-    val status: StatusInfo? = null,
+    val status: GatewayStatus? = null,
     val tools: List<ToolInfo> = emptyList(),
     val configToml: String = "",
     val isLoading: Boolean = true,
@@ -50,7 +51,10 @@ enum class EditMode { FORM, TOML }
 
 class SettingsViewModel : ViewModel() {
 
-    private val api = GatewayApi()
+    private fun client(): dev.clawseed.sdk.core.client.GatewayClient {
+        return ClawSeedAndroid.gatewayClient()
+    }
+
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
     private var preservedApiKey: String? = null
@@ -61,16 +65,16 @@ class SettingsViewModel : ViewModel() {
 
     fun loadAll() {
         viewModelScope.launch {
+            if (!ClawSeedAndroid.isInitialized) return@launch
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
-            val statusResult = api.getStatus()
-            val toolsResult = api.getTools()
-            val configResult = api.getConfig()
+            val statusResult = client().status()
+            val toolsResult = client().tools()
+            val configResult = client().config()
 
             val toml = configResult.getOrElse { "" }
             val status = statusResult.getOrNull()
 
-            // Extract current provider settings from TOML
             val currentBaseUrl = extractProviderBaseUrl(toml)
             val rawApiKey = extractProviderApiKey(toml)
             val serverHasKey = rawApiKey.contains("***") || rawApiKey.isNotBlank()
@@ -163,9 +167,9 @@ class SettingsViewModel : ViewModel() {
             _uiState.value = _uiState.value.copy(isFetchingModels = true, connectionOk = null, error = null)
             val useProxy = state.apiKey == MASKED_KEY_PLACEHOLDER || state.apiKey.contains("***")
             val result = if (useProxy) {
-                api.fetchModelsViaGateway()
+                client().models()
             } else {
-                api.fetchModels(state.baseUrl, state.apiKey)
+                client().fetchProviderModels(state.baseUrl, state.apiKey)
             }
             result
                 .onSuccess { models ->
@@ -191,7 +195,7 @@ class SettingsViewModel : ViewModel() {
             _uiState.value = state.copy(isSaving = true, error = null, saveSuccess = false)
 
             val toml = buildConfigToml(state)
-            api.putConfig(toml)
+            client().updateConfig(toml)
                 .onSuccess {
                     _uiState.value = _uiState.value.copy(isSaving = false, saveSuccess = true)
                     preservedApiKey = state.apiKey.ifBlank { null }
@@ -215,14 +219,12 @@ class SettingsViewModel : ViewModel() {
         var toml = state.configToml
         val oldFallback = extractTomlValue(toml, "fallback") ?: ""
 
-        // Rename provider ID everywhere (section headers, fallback, sub-tables)
         if (oldFallback.isNotBlank() && oldFallback != newProviderId) {
             toml = toml.replace("\"$oldFallback\"", "\"$newProviderId\"")
         } else if (oldFallback.isBlank()) {
             toml = replaceOrAppendTomlValue(toml, "fallback", newProviderId)
         }
 
-        // Update values in the provider section
         val sectionHeader = "[providers.models.\"$newProviderId\"]"
         if (toml.contains(sectionHeader)) {
             toml = replaceInSection(toml, sectionHeader, "base_url", baseUrl)
@@ -279,7 +281,6 @@ class SettingsViewModel : ViewModel() {
                 val url = extractTomlValueInBlock(section, "base_url")
                 if (url != null) return url
             }
-            // Extract from custom:url format
             if (fallback.startsWith("custom:")) {
                 return fallback.removePrefix("custom:")
             }
@@ -295,7 +296,7 @@ class SettingsViewModel : ViewModel() {
             return extractTomlValue(toml, "default_api_key") ?: ""
         }
 
-        private fun extractProviderModel(toml: String, status: StatusInfo?): String {
+        private fun extractProviderModel(toml: String, status: GatewayStatus?): String {
             val fallback = extractTomlValue(toml, "fallback") ?: return ""
             val section = findSection(toml, "[providers.models.\"$fallback\"]")
             return extractTomlValueInBlock(section, "model") ?: ""
@@ -305,9 +306,6 @@ class SettingsViewModel : ViewModel() {
             val fallback = extractTomlValue(toml, "fallback") ?: return false
             val section = findSection(toml, "[providers.models.\"$fallback\"]")
             if (sectionHasThinkingEnabled(section)) return true
-            // Also check sub-table format produced by toml::to_string_pretty
-            // e.g. [providers.models."custom:...".provider_extra.thinking]
-            //      type = "enabled"
             val subTableHeader = "[providers.models.\"$fallback\".provider_extra.thinking]"
             val subSection = findSection(toml, subTableHeader)
             if (subSection.isNotEmpty()) {
@@ -353,8 +351,6 @@ class SettingsViewModel : ViewModel() {
         }
 
         private fun setProviderExtraInSection(toml: String, sectionHeader: String, thinkingEnabled: Boolean): String {
-            // First remove any provider_extra sub-table sections created by
-            // toml::to_string_pretty (e.g. [providers.models."...".provider_extra.thinking])
             val subTablePrefix = sectionHeader.removeSuffix("]") + ".provider_extra"
             var result = removeSubTableSections(toml, subTablePrefix)
 

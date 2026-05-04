@@ -20,4 +20,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "ClawseedAndroid"
-include(":lib", ":app")
+include(":sdk:core", ":sdk:android", ":sdk:embedded", ":app")

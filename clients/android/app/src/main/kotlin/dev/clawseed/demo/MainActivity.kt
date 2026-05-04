@@ -4,11 +4,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import android.os.Bundle
 import android.os.IBinder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -31,7 +29,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         localStore = LocalStore(this)
 
@@ -39,7 +37,6 @@ class MainActivity : ComponentActivity() {
         ContextCompat.startForegroundService(this, serviceIntent)
         bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
 
-        enableEdgeToEdge()
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {

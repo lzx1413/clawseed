@@ -34,12 +34,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.clawseed.demo.BuildConfig
-import dev.clawseed.demo.data.ChatSession
+import dev.clawseed.sdk.core.model.SessionSummary
 
 @Composable
 fun SessionDrawer(
     currentSessionId: String?,
     onSelectSession: (String) -> Unit,
+    onDeleteCurrentSession: () -> Unit = {},
     onSettings: () -> Unit,
     isDrawerOpen: Boolean = false,
     refreshKey: Int = 0,
@@ -89,7 +90,13 @@ fun SessionDrawer(
                             session = session,
                             isSelected = session.id == currentSessionId,
                             onSelect = { onSelectSession(session.id) },
-                            onDelete = { viewModel.deleteSession(session.id) },
+                            onDelete = {
+                                viewModel.deleteSession(session.id) {
+                                    if (session.id == currentSessionId) {
+                                        onDeleteCurrentSession()
+                                    }
+                                }
+                            },
                             onRename = { name -> viewModel.renameSession(session.id, name) },
                         )
                     }
@@ -117,7 +124,7 @@ fun SessionDrawer(
 
 @Composable
 private fun SessionItem(
-    session: ChatSession,
+    session: SessionSummary,
     isSelected: Boolean,
     onSelect: () -> Unit,
     onDelete: () -> Unit,

@@ -42,6 +42,12 @@ sealed class ChatEntry {
         val content: String,
     ) : ChatEntry()
 
+    data class SystemMessage(
+        override val id: String,
+        override val timestamp: Long,
+        val content: String,
+    ) : ChatEntry()
+
     data class DebugInfo(
         override val id: String,
         override val timestamp: Long,

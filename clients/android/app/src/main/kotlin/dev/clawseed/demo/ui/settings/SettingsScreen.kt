@@ -244,7 +244,7 @@ private fun DeveloperOptionsCard(localStore: LocalStore) {
 }
 
 @Composable
-private fun StatusCard(status: dev.clawseed.demo.data.StatusInfo?) {
+private fun StatusCard(status: dev.clawseed.sdk.core.model.GatewayStatus?) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -257,7 +257,7 @@ private fun StatusCard(status: dev.clawseed.demo.data.StatusInfo?) {
             if (status != null) {
                 StatusRow("Provider", status.provider ?: "未知")
                 StatusRow("Model", status.model)
-                StatusRow("Memory", status.memory_backend ?: "none")
+                StatusRow("Memory", status.memoryBackend ?: "none")
             } else {
                 Text("无法获取状态", color = MaterialTheme.colorScheme.error)
             }
@@ -506,11 +506,11 @@ private fun TomlEditor(toml: String, onTomlChange: (String) -> Unit) {
 }
 
 @Composable
-private fun ToolCard(tool: dev.clawseed.demo.data.ToolInfo) {
+private fun ToolCard(tool: dev.clawseed.sdk.core.model.ToolInfo) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = when (tool.source_type) {
+            containerColor = when (tool.sourceType) {
                 "remote" -> MaterialTheme.colorScheme.tertiaryContainer
                 "mcp" -> MaterialTheme.colorScheme.secondaryContainer
                 else -> MaterialTheme.colorScheme.surfaceVariant
@@ -534,7 +534,7 @@ private fun ToolCard(tool: dev.clawseed.demo.data.ToolInfo) {
                     onClick = {},
                     label = {
                         Text(
-                            text = when (tool.source_type) {
+                            text = when (tool.sourceType) {
                                 "remote" -> "Remote"
                                 "mcp" -> "MCP"
                                 else -> "Built-in"
