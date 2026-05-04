@@ -7,34 +7,38 @@ An Android client for ClawSeed that runs the clawseed gateway natively on-device
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  UI Layer (Jetpack Compose + Material 3)            │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
-│  │ChatScreen│  │ Drawer   │  │SettingsScreen    │  │
-│  │  + Bubble│  │(Sessions)│  │(Form / TOML edit)│  │
-│  └────┬─────┘  └────┬─────┘  └────────┬─────────┘  │
-│       │              │                 │             │
-│  ┌────┴─────┐  ┌─────┴────────┐  ┌────┴──────────┐ │
-│  │ChatVM    │  │SessionsVM    │  │SettingsVM     │ │
-│  └────┬─────┘  └─────┬────────┘  └────┬──────────┘ │
-├───────┼──────────────┼─────────────────┼────────────┤
-│  Data Layer           │                             │
-│  ┌────┴───────────────┴────────────────┴──────────┐ │
-│  │           ClawseedService (Foreground)         │ │
-│  │  - Launches & manages gateway process          │ │
-│  │  - WebSocket connection & messaging            │ │
-│  │  - Tool registration & dispatch                │ │
-│  └────────────────────┬───────────────────────────┘ │
-│  ┌────────────────────┤                             │
-│  │GatewayApi (REST)   │  LocalStore (DataStore)     │
-│  └────────────────────┘                             │
-└───────────────────────┼─────────────────────────────┘
-                        │ localhost:42617
-                ┌───────┴───────┐
-                │ clawseed      │
-                │ gateway       │
-                │ (native .so)  │
-                └───────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  UI Layer (Jetpack Compose + Material 3)                 │
+│  ┌──────────┐  ┌──────────┐  ┌───────────────────────┐  │
+│  │ChatScreen│  │ Drawer   │  │SettingsScreen         │  │
+│  │  + Bubble│  │(Sessions)│  │(Form / TOML edit)     │  │
+│  └────┬─────┘  └────┬─────┘  └──────────┬────────────┘  │
+│       │              │                    │               │
+│  ┌────┴─────┐  ┌─────┴────────┐  ┌──────┴────────────┐  │
+│  │ChatVM    │  │SessionsVM    │  │SettingsVM         │  │
+│  └────┬─────┘  └─────┬────────┘  └──────┬────────────┘  │
+├───────┼──────────────┼──────────────────┼────────────────┤
+│  SDK Layer                                                  │
+│  ┌────┴────────────────┴─────────────────┴──────────────┐ │
+│  │  sdk:android (ClawSeedAndroid, SessionManager,       │ │
+│  │              ChatAccumulator, ClawSeedViewModel)      │ │
+│  ├───────────────────────────────────────────────────────┤ │
+│  │  sdk:embedded (EmbeddedGateway, GatewayService,      │ │
+│  │                 GatewayConfigManager)                 │ │
+│  ├───────────────────────────────────────────────────────┤ │
+│  │  sdk:core (ClawSeedSession, ChatClient, GatewayClient│ │
+│  │            ToolRegistry, models)                      │ │
+│  └───────────────────────────┬───────────────────────────┘ │
+│  ┌────────────────────┐  ┌──┴──────────────────┐          │
+│  │LocalStore (DataStore)│  │GatewayApi (REST)   │          │
+│  └────────────────────┘  └─────────────────────┘          │
+└───────────────────────────┼───────────────────────────────┘
+                            │ localhost:42617
+                    ┌───────┴───────┐
+                    │ clawseed      │
+                    │ gateway       │
+                    │ (native .so)  │
+                    └───────────────┘
 ```
 
 ### Modules
@@ -42,7 +46,9 @@ An Android client for ClawSeed that runs the clawseed gateway natively on-device
 | Module | Package | Description |
 |--------|---------|-------------|
 | `app` | `dev.clawseed.demo` | Main application: UI, Service, ViewModels, data layer |
-| `lib` | `dev.clawseed.client` | Reusable WebSocket client library |
+| `sdk:core` | `dev.clawseed.sdk.core` | Core abstractions: session, chat/WebSocket client, tool registry, models |
+| `sdk:android` | `dev.clawseed.sdk.android` | Android-specific: ClawSeedAndroid singleton, SessionManager, ChatAccumulator |
+| `sdk:embedded` | `dev.clawseed.sdk.embedded` | Embedded gateway: process management, config, foreground service |
 
 ### Directory Structure
 
@@ -50,11 +56,9 @@ An Android client for ClawSeed that runs the clawseed gateway natively on-device
 app/src/main/kotlin/dev/clawseed/demo/
 ├── MainActivity.kt              # Entry Activity, binds to Service
 ├── ClawseedApp.kt               # Root Composable, navigation + drawer
-├── ClawseedService.kt           # Foreground service, gateway process & WebSocket
 ├── CoordinateConverter.kt       # WGS84 → GCJ-02 coordinate conversion
 ├── data/
 │   ├── ChatModels.kt            # Data models (ChatEntry, ChatSession, ToolInfo, etc.)
-│   ├── GatewayApi.kt            # REST API client (OkHttp)
 │   └── LocalStore.kt            # DataStore local persistence
 └── ui/
     ├── navigation/
@@ -71,11 +75,41 @@ app/src/main/kotlin/dev/clawseed/demo/
     │   └── SessionsViewModel.kt # Session CRUD operations
     └── settings/
         ├── SettingsScreen.kt    # Configuration UI (form + TOML modes)
-        └── SettingsViewModel.kt # LLM provider config, model fetching
+        └── SettingsViewModel.kt # LLM provider config, search engine, model fetching
 
-lib/src/main/kotlin/dev/clawseed/client/
-├── ClawseedClient.kt            # WebSocket client (Builder pattern)
-└── ClawseedMessages.kt          # Message type definitions & JSON serialization
+sdk/core/src/main/kotlin/dev/clawseed/sdk/core/
+├── ClawSeed.kt                  # Session factory interface
+├── ClawSeedConfig.kt            # SDK configuration
+├── ClawSeedSession.kt           # Session interface
+├── DefaultClawSeedSession.kt    # Default session implementation
+├── client/
+│   ├── ChatClient.kt            # WebSocket chat client (connect, send, tool dispatch)
+│   ├── GatewayClient.kt         # REST API client (sessions, config, tools, status)
+│   └── ReconnectPolicy.kt       # Auto-reconnect policy
+├── model/
+│   ├── ChatEvent.kt             # Chat event types (chunk, thinking, tool_call, etc.)
+│   ├── ConnectionState.kt       # WebSocket connection states
+│   ├── Gateway.kt               # Gateway status model
+│   └── Session.kt               # Session model
+└── tool/
+    ├── ClawSeedTool.kt          # Tool interface
+    ├── ToolRegistry.kt          # Client-side tool registry
+    ├── ToolResult.kt            # Tool execution result
+    └── ToolSpec.kt              # Tool specification
+
+sdk/android/src/main/kotlin/dev/clawseed/sdk/android/
+├── ClawSeedAndroid.kt           # Singleton: SDK initialization + gateway client access
+├── SessionManager.kt            # Session lifecycle management
+├── ChatAccumulator.kt           # Accumulates streaming chunks into messages
+├── AccumulatedMessage.kt        # Accumulated message model
+└── ClawSeedViewModel.kt         # ViewModel base for chat
+
+sdk/embedded/src/main/kotlin/dev/clawseed/sdk/embedded/
+├── EmbeddedGateway.kt           # Gateway process lifecycle management
+├── EmbeddedGatewayConfig.kt     # Gateway startup config (port, binary name, timeouts)
+├── GatewayConfigManager.kt      # TOML config creation, patching, web_search defaults
+├── GatewayService.kt            # Android foreground service for gateway process
+└── GatewayState.kt              # Gateway state model
 ```
 
 ## Features
@@ -103,9 +137,54 @@ lib/src/main/kotlin/dev/clawseed/client/
 - Thinking Mode toggle
 - Form editing or raw TOML editing
 
+### Search Engine Configuration
+- Search engine selector (Bing / Tavily)
+- Tavily API Key input with password visibility toggle
+- Link to get free Tavily API key (1,000 calls/month)
+- Provider and key written to `[web_search]` TOML section
+
+### Gateway Status & Tools
+- Status card showing current Provider, Model, Memory backend
+- Expandable registered tools list with source type (Built-in / Remote / MCP)
+
 ### Markdown Rendering
 - Headings (h1-h6), code blocks (with language label + copy button), lists, tables
 - Inline formatting: **bold**, *italic*, `monospace`
+
+### Developer Options
+- Debug Query Message toggle — shows full LLM prompt and token estimate per message
+
+## Default Gateway Configuration
+
+The app auto-generates a TOML config on first launch with web features enabled:
+
+```toml
+workspace_dir = "{WORKSPACE_DIR}"
+
+[gateway]
+session_persistence = true
+
+[web_fetch]
+enabled = true
+allowed_domains = ["*"]
+
+[http_request]
+enabled = true
+allowed_domains = ["*"]
+
+[web_search]
+enabled = true
+provider = "bing"
+```
+
+To use Tavily instead of Bing, change the `[web_search]` section via Settings UI or TOML:
+
+```toml
+[web_search]
+enabled = true
+provider = "tavily"
+tavily_api_key = "tvly-..."
+```
 
 ## Communication Protocol
 
@@ -161,6 +240,6 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - Android SDK 36, minSdk 26
 - Kotlin + Jetpack Compose (Material 3)
 - OkHttp 4.12 (HTTP + WebSocket)
-- Gson (JSON)
+- kotlinx-serialization-json (JSON)
 - AndroidX DataStore (local persistence)
 - `libclawseed.so` (clawseed gateway native binary, JNI legacy packaging)

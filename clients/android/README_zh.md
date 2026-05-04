@@ -5,34 +5,38 @@ ClawSeed 的 Android 客户端，在设备本地运行 clawseed gateway（编译
 ## 架构
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  UI Layer (Jetpack Compose + Material 3)            │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
-│  │ChatScreen│  │ Drawer   │  │SettingsScreen    │  │
-│  │  + Bubble│  │(Sessions)│  │(Form / TOML编辑) │  │
-│  └────┬─────┘  └────┬─────┘  └────────┬─────────┘  │
-│       │              │                 │             │
-│  ┌────┴─────┐  ┌─────┴────────┐  ┌────┴──────────┐ │
-│  │ChatVM    │  │SessionsVM    │  │SettingsVM     │ │
-│  └────┬─────┘  └─────┬────────┘  └────┬──────────┘ │
-├───────┼──────────────┼─────────────────┼────────────┤
-│  Data Layer           │                             │
-│  ┌────┴───────────────┴────────────────┴──────────┐ │
-│  │           ClawseedService (Foreground)         │ │
-│  │  - 启动/管理 gateway 进程                       │ │
-│  │  - WebSocket 连接 & 消息收发                    │ │
-│  │  - 工具注册 & 调用分发                          │ │
-│  └────────────────────┬───────────────────────────┘ │
-│  ┌────────────────────┤                             │
-│  │GatewayApi (REST)   │  LocalStore (DataStore)     │
-│  └────────────────────┘                             │
-└───────────────────────┼─────────────────────────────┘
-                        │ localhost:42617
-                ┌───────┴───────┐
-                │ clawseed      │
-                │ gateway       │
-                │ (native .so)  │
-                └───────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  UI Layer (Jetpack Compose + Material 3)                 │
+│  ┌──────────┐  ┌──────────┐  ┌───────────────────────┐  │
+│  │ChatScreen│  │ Drawer   │  │SettingsScreen         │  │
+│  │  + Bubble│  │(Sessions)│  │(Form / TOML编辑)      │  │
+│  └────┬─────┘  └────┬─────┘  └──────────┬────────────┘  │
+│       │              │                    │               │
+│  ┌────┴─────┐  ┌─────┴────────┐  ┌──────┴────────────┐  │
+│  │ChatVM    │  │SessionsVM    │  │SettingsVM         │  │
+│  └────┬─────┘  └─────┬────────┘  └──────┬────────────┘  │
+├───────┼──────────────┼──────────────────┼────────────────┤
+│  SDK 层                                                   │
+│  ┌────┴────────────────┴─────────────────┴──────────────┐ │
+│  │  sdk:android (ClawSeedAndroid, SessionManager,       │ │
+│  │              ChatAccumulator, ClawSeedViewModel)      │ │
+│  ├───────────────────────────────────────────────────────┤ │
+│  │  sdk:embedded (EmbeddedGateway, GatewayService,      │ │
+│  │                 GatewayConfigManager)                 │ │
+│  ├───────────────────────────────────────────────────────┤ │
+│  │  sdk:core (ClawSeedSession, ChatClient, GatewayClient│ │
+│  │            ToolRegistry, models)                      │ │
+│  └───────────────────────────┬───────────────────────────┘ │
+│  ┌────────────────────┐  ┌──┴──────────────────┐          │
+│  │LocalStore (DataStore)│  │GatewayApi (REST)   │          │
+│  └────────────────────┘  └─────────────────────┘          │
+└───────────────────────────┼───────────────────────────────┘
+                            │ localhost:42617
+                    ┌───────┴───────┐
+                    │ clawseed      │
+                    │ gateway       │
+                    │ (native .so)  │
+                    └───────────────┘
 ```
 
 ### 模块
@@ -40,7 +44,9 @@ ClawSeed 的 Android 客户端，在设备本地运行 clawseed gateway（编译
 | 模块 | 包名 | 说明 |
 |------|------|------|
 | `app` | `dev.clawseed.demo` | 主应用：UI、Service、ViewModel、数据层 |
-| `lib` | `dev.clawseed.client` | 可复用的 WebSocket 客户端库 |
+| `sdk:core` | `dev.clawseed.sdk.core` | 核心抽象：会话、聊天/WebSocket 客户端、工具注册、模型定义 |
+| `sdk:android` | `dev.clawseed.sdk.android` | Android 特有：ClawSeedAndroid 单例、SessionManager、ChatAccumulator |
+| `sdk:embedded` | `dev.clawseed.sdk.embedded` | 嵌入式 Gateway：进程管理、配置、前台服务 |
 
 ### 目录结构
 
@@ -48,11 +54,9 @@ ClawSeed 的 Android 客户端，在设备本地运行 clawseed gateway（编译
 app/src/main/kotlin/dev/clawseed/demo/
 ├── MainActivity.kt              # 入口 Activity，绑定 Service
 ├── ClawseedApp.kt               # 根 Composable，导航 + 侧边栏
-├── ClawseedService.kt           # 前台服务，管理 gateway 进程和 WebSocket
 ├── CoordinateConverter.kt       # WGS84 → GCJ-02 坐标转换
 ├── data/
 │   ├── ChatModels.kt            # 数据模型 (ChatEntry, ChatSession, ToolInfo 等)
-│   ├── GatewayApi.kt            # REST API 客户端 (OkHttp)
 │   └── LocalStore.kt            # DataStore 本地持久化
 └── ui/
     ├── navigation/
@@ -69,11 +73,41 @@ app/src/main/kotlin/dev/clawseed/demo/
     │   └── SessionsViewModel.kt # 会话 CRUD
     └── settings/
         ├── SettingsScreen.kt    # 配置界面（表单 + TOML 两种模式）
-        └── SettingsViewModel.kt # LLM 提供商配置、模型获取
+        └── SettingsViewModel.kt # LLM 提供商配置、搜索引擎、模型获取
 
-lib/src/main/kotlin/dev/clawseed/client/
-├── ClawseedClient.kt            # WebSocket 客户端（Builder 模式）
-└── ClawseedMessages.kt          # 消息类型定义 & JSON 序列化
+sdk/core/src/main/kotlin/dev/clawseed/sdk/core/
+├── ClawSeed.kt                  # 会话工厂接口
+├── ClawSeedConfig.kt            # SDK 配置
+├── ClawSeedSession.kt           # 会话接口
+├── DefaultClawSeedSession.kt    # 默认会话实现
+├── client/
+│   ├── ChatClient.kt            # WebSocket 聊天客户端（连接、发送、工具分发）
+│   ├── GatewayClient.kt         # REST API 客户端（会话、配置、工具、状态）
+│   └── ReconnectPolicy.kt       # 自动重连策略
+├── model/
+│   ├── ChatEvent.kt             # 聊天事件类型（chunk, thinking, tool_call 等）
+│   ├── ConnectionState.kt       # WebSocket 连接状态
+│   ├── Gateway.kt               # Gateway 状态模型
+│   └── Session.kt               # 会话模型
+└── tool/
+    ├── ClawSeedTool.kt          # 工具接口
+    ├── ToolRegistry.kt          # 客户端工具注册表
+    ├── ToolResult.kt            # 工具执行结果
+    └── ToolSpec.kt              # 工具规格定义
+
+sdk/android/src/main/kotlin/dev/clawseed/sdk/android/
+├── ClawSeedAndroid.kt           # 单例：SDK 初始化 + gateway 客户端访问
+├── SessionManager.kt            # 会话生命周期管理
+├── ChatAccumulator.kt           # 流式片段累积为消息
+├── AccumulatedMessage.kt        # 累积消息模型
+└── ClawSeedViewModel.kt         # 聊天 ViewModel 基类
+
+sdk/embedded/src/main/kotlin/dev/clawseed/sdk/embedded/
+├── EmbeddedGateway.kt           # Gateway 进程生命周期管理
+├── EmbeddedGatewayConfig.kt     # Gateway 启动配置（端口、二进制名、超时）
+├── GatewayConfigManager.kt      # TOML 配置创建、修补、web_search 默认值
+├── GatewayService.kt            # Android 前台服务，管理 gateway 进程
+└── GatewayState.kt              # Gateway 状态模型
 ```
 
 ## 功能
@@ -101,9 +135,54 @@ lib/src/main/kotlin/dev/clawseed/client/
 - Thinking Mode 开关
 - 表单编辑 或 TOML 直接编辑
 
+### 搜索引擎配置
+- 搜索引擎选择器（Bing / Tavily）
+- Tavily API Key 输入框，带密码显示/隐藏切换
+- 免费获取 Tavily API Key 链接（每月 1,000 次调用）
+- 配置写入 `[web_search]` TOML 段
+
+### Gateway 状态与工具
+- 状态卡片显示当前 Provider、Model、Memory 后端
+- 可展开的已注册工具列表，显示来源类型（Built-in / Remote / MCP）
+
 ### Markdown 渲染
 - 标题（h1-h6）、代码块（带语言标签+复制按钮）、列表、表格
 - 内联格式：**加粗**、*斜体*、`等宽`
+
+### 开发者选项
+- Debug Query Message 开关 — 每条消息显示完整 LLM prompt 和 token 估算
+
+## 默认 Gateway 配置
+
+首次启动时，App 自动生成 TOML 配置，默认启用网络功能：
+
+```toml
+workspace_dir = "{WORKSPACE_DIR}"
+
+[gateway]
+session_persistence = true
+
+[web_fetch]
+enabled = true
+allowed_domains = ["*"]
+
+[http_request]
+enabled = true
+allowed_domains = ["*"]
+
+[web_search]
+enabled = true
+provider = "bing"
+```
+
+如需使用 Tavily 替代 Bing，通过设置页面或直接编辑 TOML：
+
+```toml
+[web_search]
+enabled = true
+provider = "tavily"
+tavily_api_key = "tvly-..."
+```
 
 ## 通信协议
 
@@ -159,6 +238,6 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - Android SDK 36, minSdk 26
 - Kotlin + Jetpack Compose (Material 3)
 - OkHttp 4.12 (HTTP + WebSocket)
-- Gson (JSON)
+- kotlinx-serialization-json (JSON)
 - AndroidX DataStore (本地持久化)
 - `libclawseed.so` (clawseed gateway 原生二进制，JNI legacy packaging)
