@@ -79,6 +79,7 @@ sealed class IncomingMessage {
 
     data object ChunkReset : IncomingMessage()
     data object Aborted : IncomingMessage()
+    data class TitleUpdated(val title: String) : IncomingMessage()
     data class Error(val message: String) : IncomingMessage()
     data class DebugPrompt(val messages: String, val estimatedTokens: Int) : IncomingMessage()
 
@@ -119,6 +120,7 @@ sealed class IncomingMessage {
                 "result_acknowledged" -> ResultAcknowledged(obj.optString("id"))
                 "chunk_reset" -> ChunkReset
                 "aborted" -> Aborted
+                "title_updated" -> TitleUpdated(obj.optString("title"))
                 "debug_prompt" -> DebugPrompt(
                     messages = obj.optString("messages"),
                     estimatedTokens = obj.optInt("estimated_tokens"),

@@ -92,7 +92,6 @@ class ClawseedService : Service() {
         _thinkingContent.value = ""
         _connectionState.value = ConnState.CONNECTING
         _sessionInfo.value = null
-        hasAutoNamed = false
 
         val baseUrl = "ws://127.0.0.1:42617/ws/chat"
         val url = if (sessionId != null) "$baseUrl?session_id=$sessionId" else baseUrl
@@ -131,8 +130,6 @@ class ClawseedService : Service() {
                     appendMessage(ChatLogEntry.Assistant(_streamingContent.value))
                     _streamingContent.value = ""
                 }
-                // Auto-rename session using first user message
-                autoNameSessionIfNeeded()
             }
             .onToolCall { id, name, args ->
                 appendMessage(ChatLogEntry.ToolCall(id, name, args.toString()))
@@ -143,6 +140,12 @@ class ClawseedService : Service() {
             .onAborted {
                 appendMessage(ChatLogEntry.System("[已中止]"))
                 _streamingContent.value = ""
+            }
+            .onTitleUpdated { title ->
+                val info = _sessionInfo.value
+                if (info != null) {
+                    _sessionInfo.value = info.copy(name = title)
+                }
             }
             .onError { err ->
                 appendMessage(ChatLogEntry.System("[ERROR] $err"))
@@ -165,7 +168,6 @@ class ClawseedService : Service() {
         _messages.value = emptyList()
         _streamingContent.value = ""
         _thinkingContent.value = ""
-        hasAutoNamed = false
     }
 
     fun clearSession() {
@@ -176,15 +178,12 @@ class ClawseedService : Service() {
         _messages.value = emptyList()
         _streamingContent.value = ""
         _thinkingContent.value = ""
-        hasAutoNamed = false
     }
 
     fun sendMessage(content: String, debug: Boolean = false) {
         if (content.isNotBlank()) {
             appendMessage(ChatLogEntry.User(content))
             client?.sendMessage(content, debug)
-            // Auto-name: rename session from first user message
-            autoNameSessionIfNeeded()
         }
     }
 
@@ -195,32 +194,6 @@ class ClawseedService : Service() {
             _thinkingContent.value = ""
         }
     }
-
-    private var hasAutoNamed = false
-    private fun autoNameSessionIfNeeded() {
-        if (hasAutoNamed) return
-        val info = _sessionInfo.value ?: return
-        if (info.name != null) { hasAutoNamed = true; return }
-        val firstUserMsg = _messages.value.firstOrNull { it is ChatLogEntry.User } as? ChatLogEntry.User ?: return
-        val name = firstUserMsg.text.take(20)
-        hasAutoNamed = true
-        scope.launch {
-            try {
-                val url = URL("http://127.0.0.1:42617/api/sessions/${info.sessionId}")
-                val json = """{"name":"${name.replace("\"", "\\\"")}"}"""
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "PUT"
-                conn.doOutput = true
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.outputStream.write(json.toByteArray())
-                conn.responseCode
-                conn.disconnect()
-                _sessionInfo.value = info.copy(name = name)
-            } catch (_: Exception) { }
-        }
-    }
-
-    fun isConnected(): Boolean = _connectionState.value == ConnState.CONNECTED
 
     fun registerTool(spec: ToolSpec) {
         clientTools.add(spec)

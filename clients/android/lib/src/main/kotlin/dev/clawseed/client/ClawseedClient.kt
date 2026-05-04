@@ -35,6 +35,7 @@ class ClawseedClient private constructor(
     private val onToolCall: ((id: String, name: String, args: JSONObject) -> Unit)?,
     private val onToolResult: ((id: String, name: String, output: String) -> Unit)?,
     private val onAborted: (() -> Unit)?,
+    private val onTitleUpdated: ((title: String) -> Unit)?,
     private val onError: ((String) -> Unit)?,
     private val onDebugPrompt: ((messages: String, estimatedTokens: Int) -> Unit)?,
 ) {
@@ -129,6 +130,7 @@ class ClawseedClient private constructor(
                 is IncomingMessage.ResultAcknowledged -> Unit
                 is IncomingMessage.ChunkReset -> postOnMain { onChunkReset?.invoke() }
                 is IncomingMessage.Aborted -> postOnMain { onAborted?.invoke() }
+                is IncomingMessage.TitleUpdated -> postOnMain { onTitleUpdated?.invoke(msg.title) }
                 is IncomingMessage.Error -> postOnMain { onError?.invoke(msg.message) }
                 is IncomingMessage.DebugPrompt -> postOnMain { onDebugPrompt?.invoke(msg.messages, msg.estimatedTokens) }
                 null -> Unit
@@ -169,6 +171,7 @@ class ClawseedClient private constructor(
         private var onToolCall: ((id: String, name: String, args: JSONObject) -> Unit)? = null
         private var onToolResult: ((id: String, name: String, output: String) -> Unit)? = null
         private var onAborted: (() -> Unit)? = null
+        private var onTitleUpdated: ((title: String) -> Unit)? = null
         private var onError: ((String) -> Unit)? = null
         private var onDebugPrompt: ((messages: String, estimatedTokens: Int) -> Unit)? = null
 
@@ -185,6 +188,7 @@ class ClawseedClient private constructor(
         fun onToolCall(callback: (id: String, name: String, args: JSONObject) -> Unit) = apply { onToolCall = callback }
         fun onToolResult(callback: (id: String, name: String, output: String) -> Unit) = apply { onToolResult = callback }
         fun onAborted(callback: () -> Unit) = apply { onAborted = callback }
+        fun onTitleUpdated(callback: (title: String) -> Unit) = apply { onTitleUpdated = callback }
         fun onError(callback: (String) -> Unit) = apply { onError = callback }
         fun onDebugPrompt(callback: (messages: String, estimatedTokens: Int) -> Unit) = apply { onDebugPrompt = callback }
 
@@ -203,6 +207,7 @@ class ClawseedClient private constructor(
             onToolCall = onToolCall,
             onToolResult = onToolResult,
             onAborted = onAborted,
+            onTitleUpdated = onTitleUpdated,
             onError = onError,
             onDebugPrompt = onDebugPrompt,
         )

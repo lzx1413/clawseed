@@ -14,6 +14,7 @@
 //! {"type":"tools_registered","count":N,"registered":N}                          ← Android bridge
 //! {"type":"registered_tools","tools":[...]}                                     ← Android bridge
 //! {"type":"done","full_response":"..."}
+//! {"type":"title_updated","title":"..."}
 //! {"type":"aborted"}
 //! {"type":"error","message":"...","code":"..."}
 //! ```
@@ -35,6 +36,7 @@
 //! - `token` — bearer auth token (alternative to Authorization header)
 
 use super::AppState;
+use super::session_backend::SessionBackend;
 use axum::{
     extract::{
         Query, State, WebSocketUpgrade,
@@ -971,6 +973,68 @@ async fn process_chat_message(
                 });
             }
 
+            // ── Auto title generation (first turn only) ────────────
+            // When the session still has the default title "新会话", use the
+            // provider to generate a proper title from the first Q&A pair.
+            // On failure, fall back to the first 15 characters of user message.
+            let title_rx = if let Some(ref backend) = state.session_backend {
+                let current_name = backend.get_session_name(session_key).ok().flatten();
+                let needs_title = current_name.as_deref() == Some("新会话");
+                if needs_title {
+                    let provider = state.provider.clone();
+                    let model = state.model.clone();
+                    let user_msg = content.to_string();
+                    let assistant_resp = response.clone();
+                    let backend_clone: Arc<dyn SessionBackend> = Arc::clone(backend);
+                    let session_key_owned = session_key.to_string();
+                    let (tx, rx) = tokio::sync::oneshot::channel::<String>();
+                    tokio::spawn(async move {
+                        let prompt = format!(
+                            "用户：{}\n助手：{}\n\n根据以上对话内容，生成一个简短的会话标题（20字以内）。\
+                             只回复标题本身，不要加引号或其他内容。",
+                            user_msg, assistant_resp,
+                        );
+                        let title = match provider
+                            .chat_with_system(
+                                Some("你是一个会话标题生成器。"),
+                                &prompt,
+                                &model,
+                                Some(0.3),
+                            )
+                            .await
+                        {
+                            Ok(t) if !t.trim().is_empty() => {
+                                tracing::info!(title = %t.trim(), "Auto-generated session title");
+                                t.trim().to_string()
+                            }
+                            Ok(t) => {
+                                tracing::warn!(raw = %t, "LLM returned empty title, using fallback");
+                                let end = user_msg
+                                    .char_indices()
+                                    .nth(15)
+                                    .map_or(user_msg.len(), |(i, _)| i);
+                                user_msg[..end].to_string()
+                            }
+                            Err(e) => {
+                                tracing::warn!(error = %e, "LLM title generation failed, using fallback");
+                                let end = user_msg
+                                    .char_indices()
+                                    .nth(15)
+                                    .map_or(user_msg.len(), |(i, _)| i);
+                                user_msg[..end].to_string()
+                            }
+                        };
+                        let _ = backend_clone.set_session_name(&session_key_owned, &title);
+                        let _ = tx.send(title);
+                    });
+                    Some(rx)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
             // Send chunk_reset so the client clears any accumulated draft
             // before the authoritative done message.
             let reset = serde_json::json!({ "type": "chunk_reset" });
@@ -993,6 +1057,17 @@ async fn process_chat_message(
                 "provider": provider_label,
                 "model": state.model,
             }));
+
+            // Send title_updated event after everything else is complete.
+            if let Some(rx) = title_rx
+                && let Ok(title) = rx.await
+            {
+                let msg = serde_json::json!({
+                    "type": "title_updated",
+                    "title": title,
+                });
+                let _ = sender.send(Message::Text(msg.to_string().into())).await;
+            }
         }
         Err(e) => {
             // Set session state to error

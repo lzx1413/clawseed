@@ -54,8 +54,8 @@ impl SqliteSessionBackend {
     fn ensure_session(&self, conn: &Connection, session_key: &str) -> anyhow::Result<()> {
         let now = Utc::now().to_rfc3339();
         conn.execute(
-            "INSERT OR IGNORE INTO sessions (session_key, created_at, last_activity) VALUES (?1, ?2, ?3)",
-            params![session_key, now, now],
+            "INSERT OR IGNORE INTO sessions (session_key, name, created_at, last_activity) VALUES (?1, ?2, ?3, ?4)",
+            params![session_key, "新会话", now, now],
         )?;
         Ok(())
     }
