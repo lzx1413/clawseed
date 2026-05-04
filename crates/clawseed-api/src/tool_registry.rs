@@ -52,6 +52,9 @@ pub trait ToolRegistry: Send + Sync {
     /// Returns the previous entry if one was replaced.
     fn register_or_replace(&self, tool: Box<dyn Tool>, source: ToolSource) -> Option<ToolEntry>;
 
+    /// Remove all tools matching a given source. Returns the number of tools removed.
+    fn unregister_by_source(&self, source: &ToolSource) -> usize;
+
     /// Number of registered tools.
     fn len(&self) -> usize;
 

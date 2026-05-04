@@ -34,6 +34,8 @@
 //! - `name` — optional human-readable label for the session
 //! - `token` — bearer auth token (alternative to Authorization header)
 
+use clawseed_api::tool_registry::ToolSource;
+use std::sync::Arc;
 use super::AppState;
 use axum::{
     extract::{
@@ -80,7 +82,7 @@ struct ConnectParams {
 // and oneshot channels for waiting for responses.
 
 use crate::remote_tool::{
-    RemoteToolRegistryHandle, RemoteToolRequest, RemoteToolResult, RemoteToolSpec,
+    RemoteTool, RemoteToolRegistryHandle, RemoteToolRequest, RemoteToolResult, RemoteToolSpec,
 };
 
 /// Pending remote tool calls awaiting response from WebSocket client.
@@ -383,6 +385,17 @@ async fn handle_socket(
                                 description = %spec.description,
                                 "Remote tool registered (first message)"
                             );
+                            // Register in shared tool_registry so /api/tools includes it
+                            let remote_tool = RemoteTool::new(
+                                spec.name.clone(),
+                                spec.description.clone(),
+                                spec.parameters.clone(),
+                                Arc::new(handle.clone()),
+                            );
+                            state.tool_registry.register_or_replace(
+                                Box::new(remote_tool),
+                                ToolSource::Remote { session: session_id.clone() },
+                            );
                             handle.register(spec);
                         }
                     }
@@ -456,6 +469,17 @@ async fn handle_socket(
                                     tool_name = %spec.name,
                                     description = %spec.description,
                                     "Remote tool registered"
+                                );
+                                // Register in shared tool_registry so /api/tools includes it
+                                let remote_tool = RemoteTool::new(
+                                    spec.name.clone(),
+                                    spec.description.clone(),
+                                    spec.parameters.clone(),
+                                    Arc::new(handle.clone()),
+                                );
+                                state.tool_registry.register_or_replace(
+                                    Box::new(remote_tool),
+                                    ToolSource::Remote { session: session_id.clone() },
                                 );
                                 handle.register(spec);
                             } else {
@@ -577,6 +601,9 @@ async fn handle_socket(
             }
         }
     }
+
+    // ── Cleanup: unregister remote tools from shared registry on disconnect ──
+    state.tool_registry.unregister_by_source(&ToolSource::Remote { session: session_id.clone() });
 }
 
 // ── Remote tool message helpers ───────────────────────────────────────────────

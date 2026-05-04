@@ -312,10 +312,23 @@ pub async fn handle_api_tools(
         .tool_specs()
         .iter()
         .map(|spec| {
+            let entry = state.tool_registry.get_entry(&spec.name);
+            let source_type = entry.as_ref().map(|e| match &e.source {
+                clawseed_api::tool_registry::ToolSource::BuiltIn => "builtin",
+                clawseed_api::tool_registry::ToolSource::Mcp { .. } => "mcp",
+                clawseed_api::tool_registry::ToolSource::Remote { .. } => "remote",
+            });
+            let source = entry.as_ref().map(|e| match &e.source {
+                clawseed_api::tool_registry::ToolSource::BuiltIn => "builtin".to_string(),
+                clawseed_api::tool_registry::ToolSource::Mcp { server } => server.clone(),
+                clawseed_api::tool_registry::ToolSource::Remote { session } => session.clone(),
+            });
             serde_json::json!({
                 "name": spec.name,
                 "description": spec.description,
                 "parameters": spec.parameters,
+                "source_type": source_type,
+                "source": source,
             })
         })
         .collect();

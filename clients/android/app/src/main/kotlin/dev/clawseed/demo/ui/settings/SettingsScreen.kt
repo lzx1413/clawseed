@@ -510,15 +510,41 @@ private fun ToolCard(tool: dev.clawseed.demo.data.ToolInfo) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            containerColor = when (tool.source_type) {
+                "remote" -> MaterialTheme.colorScheme.tertiaryContainer
+                "mcp" -> MaterialTheme.colorScheme.secondaryContainer
+                else -> MaterialTheme.colorScheme.surfaceVariant
+            },
         ),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Text(
-                text = tool.name,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = tool.name,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                FilterChip(
+                    selected = false,
+                    onClick = {},
+                    label = {
+                        Text(
+                            text = when (tool.source_type) {
+                                "remote" -> "Remote"
+                                "mcp" -> "MCP"
+                                else -> "Built-in"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    },
+                    modifier = Modifier.height(24.dp),
+                )
+            }
             Text(
                 text = tool.description,
                 style = MaterialTheme.typography.bodySmall,

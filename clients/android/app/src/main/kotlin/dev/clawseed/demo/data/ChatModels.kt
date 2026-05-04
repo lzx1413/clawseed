@@ -61,6 +61,8 @@ data class ChatSession(
 data class ToolInfo(
     val name: String = "",
     val description: String = "",
+    val source_type: String = "builtin",
+    val source: String? = null,
 )
 
 data class StatusInfo(

@@ -170,6 +170,10 @@ impl ToolRegistry for DefaultToolRegistry {
         self.register_or_replace(tool, source)
     }
 
+    fn unregister_by_source(&self, source: &ToolSource) -> usize {
+        self.unregister_by_source(source)
+    }
+
     fn unregister(&self, name: &str) -> bool {
         if self.tools.remove(name).is_some() {
             *self.cached_specs.write() = None;
