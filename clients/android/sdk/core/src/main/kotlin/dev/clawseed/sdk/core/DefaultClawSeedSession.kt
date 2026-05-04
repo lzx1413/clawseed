@@ -70,8 +70,11 @@ internal class DefaultClawSeedSession(
     }
 
     override suspend fun abort() {
+        // Try WebSocket abort first (lower latency)
+        chatClient.sendAbort()
+        // Also call REST abort as fallback for reliability
         val sid = _sessionInfo.value?.sessionId ?: return
-        chatClient.sendAbort(sid)
+        runCatching { gateway.abortSession(sid) }
     }
 
     override fun close() {

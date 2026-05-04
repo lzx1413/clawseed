@@ -66,6 +66,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun switchToSession(sessionId: String?) {
+        // If already connected to the same session (e.g. after config change), skip reconnection
+        val currentSid = currentSession?.sessionInfo?.value?.sessionId
+        if (currentSid != null && currentSid == sessionId
+            && currentSession?.connectionState?.value == ConnectionState.CONNECTED
+        ) {
+            return
+        }
         connectJob?.cancel()
         accumulatorObservationJob?.cancel()
         sessionObservationJob?.cancel()

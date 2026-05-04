@@ -122,7 +122,7 @@ internal class ChatClient(
         }
     }
 
-    fun sendAbort(sessionId: String) {
+    fun sendAbort() {
         val msg = buildJsonObject {
             put("type", "abort")
         }.toString()

@@ -118,6 +118,7 @@ sealed class ChatEvent {
                 )
                 "chunk_reset" -> ChunkReset
                 "aborted" -> Aborted
+                "abort_ack" -> Aborted
                 "title_updated" -> TitleUpdated(obj["title"]?.jsonPrimitive?.content ?: "")
                 "error" -> Error(
                     message = obj["message"]?.jsonPrimitive?.content ?: "Unknown error",

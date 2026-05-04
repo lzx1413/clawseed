@@ -532,6 +532,25 @@ async fn handle_socket(
                     continue;
                 }
 
+                if msg_type == "abort" {
+                    let token = state
+                        .cancel_tokens
+                        .lock()
+                        .expect("cancel_tokens lock poisoned")
+                        .get(&session_key)
+                        .cloned();
+                    if let Some(token) = token {
+                        token.cancel();
+                        tracing::info!(session_key, "session abort via WebSocket");
+                        let ack = serde_json::json!({ "type": "abort_ack", "status": "aborted" });
+                        let _ = sender.send(Message::Text(ack.to_string().into())).await;
+                    } else {
+                        let ack = serde_json::json!({ "type": "abort_ack", "status": "no_active_response" });
+                        let _ = sender.send(Message::Text(ack.to_string().into())).await;
+                    }
+                    continue;
+                }
+
                 if msg_type != "message" {
                     let err = serde_json::json!({
                         "type": "error",
