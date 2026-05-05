@@ -1,8 +1,10 @@
 package dev.clawseed.demo.ui.chat.components
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,9 +14,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,10 +26,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.clawseed.demo.data.ChatEntry
+import kotlinx.coroutines.delay
 
 @Composable
 fun MessageBubble(
@@ -45,6 +57,9 @@ fun MessageBubble(
 
 @Composable
 private fun UserBubble(content: String, modifier: Modifier = Modifier) {
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End,
@@ -53,6 +68,13 @@ private fun UserBubble(content: String, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp))
                 .background(MaterialTheme.colorScheme.primary)
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = {
+                        clipboardManager.setText(AnnotatedString(content))
+                        Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+                    },
+                )
                 .padding(horizontal = 16.dp, vertical = 10.dp),
         ) {
             Text(
@@ -66,28 +88,127 @@ private fun UserBubble(content: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun AssistantBubble(content: String, isStreaming: Boolean, modifier: Modifier = Modifier) {
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start,
     ) {
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-        ) {
-            Column {
-                MarkdownContent(content = content)
-                if (isStreaming) {
-                    Text(
-                        text = "█",
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.bodyLarge,
+        Column {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .combinedClickable(
+                        onClick = {},
+                        onLongClick = {
+                            clipboardManager.setText(AnnotatedString(content))
+                            Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+                        },
                     )
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            ) {
+                Column {
+                    MarkdownContent(content = content)
+                    if (isStreaming) {
+                        Text(
+                            text = "█",
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
                 }
+            }
+            if (!isStreaming && content.isNotBlank()) {
+                CopyButton(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(content))
+                        Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                )
             }
         }
     }
+}
+
+@Composable
+private fun CopyButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    var copied by remember { mutableStateOf(false) }
+
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(2000)
+            copied = false
+        }
+    }
+
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(4.dp))
+            .clickable {
+                if (!copied) {
+                    copied = true
+                    onClick()
+                }
+            }
+            .padding(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Icon(
+            imageVector = CopyIcon,
+            contentDescription = "复制",
+            modifier = Modifier.size(14.dp),
+            tint = if (copied) MaterialTheme.colorScheme.primary
+                   else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+        )
+        if (copied) {
+            Text(
+                text = "已复制",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+private val CopyIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "ContentCopy",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(16f, 1f)
+            horizontalLineTo(4f)
+            curveTo(2.9f, 1f, 2f, 1.9f, 2f, 3f)
+            verticalLineTo(17f)
+            horizontalLineTo(4f)
+            verticalLineTo(3f)
+            horizontalLineTo(16f)
+            close()
+            moveTo(19f, 5f)
+            horizontalLineTo(8f)
+            curveTo(6.9f, 5f, 6f, 5.9f, 6f, 7f)
+            verticalLineTo(21f)
+            curveTo(6f, 22.1f, 6.9f, 23f, 8f, 23f)
+            horizontalLineTo(19f)
+            curveTo(20.1f, 23f, 21f, 22.1f, 21f, 21f)
+            verticalLineTo(7f)
+            curveTo(21f, 5.9f, 20.1f, 5f, 19f, 5f)
+            close()
+            moveTo(19f, 21f)
+            horizontalLineTo(8f)
+            verticalLineTo(7f)
+            horizontalLineTo(19f)
+            verticalLineTo(21f)
+            close()
+        }
+    }.build()
 }
 
 @Composable
