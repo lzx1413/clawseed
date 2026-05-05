@@ -52,6 +52,46 @@ class ChatAccumulatorTest {
     }
 
     @Test
+    fun chunkResetDiscardsDraftAndDoneUsesAuthoritativeFullResponse() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+
+        accumulator.addUserMessage("weather")
+        session.emit(ChatEvent.TextChunk("让我先获取你的位置信息。"))
+        session.emit(ChatEvent.ChunkReset)
+        session.emit(ChatEvent.Done("上海今日天气晴，20~27°C。"))
+        runCurrent()
+
+        val assistantMessages = accumulator.messages.value.filterIsInstance<AccumulatedMessage.Assistant>()
+        assertEquals(1, assistantMessages.size)
+        assertEquals("上海今日天气晴，20~27°C。", assistantMessages.single().content)
+        assertEquals("", accumulator.streamingContent.value)
+    }
+
+    @Test
+    fun chunkResetKeepsThinkingUntilDoneFlushesIt() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+
+        session.emit(ChatEvent.ThinkingChunk("analysis"))
+        session.emit(ChatEvent.TextChunk("draft"))
+        session.emit(ChatEvent.ChunkReset)
+        session.emit(ChatEvent.Done("final"))
+        runCurrent()
+
+        val thinkingMessages = accumulator.messages.value.filterIsInstance<AccumulatedMessage.Thinking>()
+        val assistantMessages = accumulator.messages.value.filterIsInstance<AccumulatedMessage.Assistant>()
+        assertEquals(1, thinkingMessages.size)
+        assertEquals("analysis", thinkingMessages.single().content)
+        assertEquals(1, assistantMessages.size)
+        assertEquals("final", assistantMessages.single().content)
+    }
+
+    @Test
     fun doneExtendsFlushedAssistantMessageWhenFullResponseHasMissingSuffix() = runTest {
         val session = FakeSession()
         val accumulator = ChatAccumulator(session)

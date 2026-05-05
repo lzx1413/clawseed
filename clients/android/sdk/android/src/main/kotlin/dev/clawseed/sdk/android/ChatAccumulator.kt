@@ -73,8 +73,11 @@ class ChatAccumulator(private val session: ClawSeedSession) {
                 _thinkingContent.value += event.content
             }
             is ChatEvent.ChunkReset -> {
-                flushBuffers()
-                currentTurnFlushed = true
+                // The gateway sends chunk_reset immediately before the
+                // authoritative done event so clients can discard any
+                // provisional draft text collected during tool use.
+                _streamingContent.value = ""
+                currentTurnFlushed = false
             }
             is ChatEvent.Done -> {
                 val hasPendingBuffers = _streamingContent.value.isNotEmpty() || _thinkingContent.value.isNotEmpty()

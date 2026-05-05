@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
@@ -33,6 +34,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 
@@ -54,7 +56,7 @@ fun MarkdownContent(
                     val styled = remember(block.text) { parseInlineMarkdown(block.text) }
                     Text(
                         text = styled,
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Ltr),
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
@@ -65,7 +67,7 @@ fun MarkdownContent(
                         else -> MaterialTheme.typography.titleMedium
                     }
                     val styled = remember(block.text) { parseInlineMarkdown(block.text) }
-                    Text(text = styled, style = style)
+                    Text(text = styled, style = style.copy(textDirection = TextDirection.Ltr))
                 }
                 is MdBlock.ListItem -> {
                     val styled = remember(block.text) { parseInlineMarkdown(block.text) }
@@ -81,7 +83,7 @@ fun MarkdownContent(
                         )
                         Text(
                             text = styled,
-                            style = MaterialTheme.typography.bodyLarge,
+                            style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Ltr),
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.weight(1f),
                         )
@@ -250,8 +252,7 @@ private fun TableBlock(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-            .horizontalScroll(rememberScrollState()),
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
     ) {
         Row(
             modifier = Modifier
@@ -303,7 +304,7 @@ private fun RowScope.TableCell(
 ) {
     Box(
         modifier = Modifier
-            .width(120.dp)
+            .weight(1f)
             .fillMaxHeight()
             .padding(horizontal = 8.dp, vertical = 6.dp),
         contentAlignment = Alignment.CenterStart,
@@ -312,6 +313,7 @@ private fun RowScope.TableCell(
             text = text,
             style = MaterialTheme.typography.bodyMedium.copy(
                 fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+                textDirection = TextDirection.Ltr,
             ),
             color = MaterialTheme.colorScheme.onSurface,
         )
