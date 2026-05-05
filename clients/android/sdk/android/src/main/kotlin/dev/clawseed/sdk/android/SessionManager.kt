@@ -63,12 +63,15 @@ class SessionManager internal constructor(
         }
         val session = sessionFactory(config)
         session.connect(sessionId)
+        // Bridge CETP external tools into this session's registry
+        runCatching { ClawSeedAndroid.externalToolBridge().attachToRegistry(session.tools) }
         _activeSession.value = session
         return session
     }
 
     /** Disconnects and clears the active session, if present. */
     suspend fun disconnect() {
+        runCatching { ClawSeedAndroid.externalToolBridge().detachFromRegistry() }
         _activeSession.value?.disconnect()
         _activeSession.value = null
     }

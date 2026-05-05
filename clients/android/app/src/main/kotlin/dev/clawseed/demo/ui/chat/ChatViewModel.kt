@@ -16,6 +16,7 @@ import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.demo.data.TurnState
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.android.ChatAccumulator
+import dev.clawseed.sdk.android.cetp.AuthRequiredEvent
 import dev.clawseed.sdk.core.ClawSeedSession
 import dev.clawseed.sdk.core.model.ConnectionState
 import dev.clawseed.sdk.core.model.SessionInfo
@@ -29,6 +30,11 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.util.Locale
 
+data class AuthPrompt(
+    val hint: String,
+    val authorizeIntent: String?,
+)
+
 data class ChatUiState(
     val messages: List<ChatEntry> = emptyList(),
     val streamingContent: String = "",
@@ -38,6 +44,7 @@ data class ChatUiState(
     val sessionName: String? = null,
     val currentSessionId: String? = null,
     val error: String? = null,
+    val authPrompt: AuthPrompt? = null,
 )
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -54,6 +61,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var connectJob: Job? = null
     private var accumulatorObservationJob: Job? = null
     private var sessionObservationJob: Job? = null
+    private var authEventJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -122,6 +130,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 // Observe accumulator state
                 observeAccumulator(acc)
                 observeConnectionState(session)
+                observeAuthEvents()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = e.message)
             }
@@ -292,6 +301,36 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    fun dismissAuthPrompt() {
+        _uiState.value = _uiState.value.copy(authPrompt = null)
+    }
+
+    fun handleAuthAction() {
+        val prompt = _uiState.value.authPrompt ?: return
+        val intentStr = prompt.authorizeIntent
+        if (intentStr != null) {
+            val intent = android.content.Intent(intentStr).apply {
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            getApplication<Application>().startActivity(intent)
+        }
+        _uiState.value = _uiState.value.copy(authPrompt = null)
+    }
+
+    private fun observeAuthEvents() {
+        authEventJob?.cancel()
+        authEventJob = viewModelScope.launch {
+            ClawSeedAndroid.externalToolBridge().authEvents.collect { event ->
+                _uiState.value = _uiState.value.copy(
+                    authPrompt = AuthPrompt(
+                        hint = event.resolutionHint ?: "请在 ${event.providerLabel} App 中完成授权",
+                        authorizeIntent = event.authorizeIntent,
+                    ),
+                )
+            }
+        }
     }
 
     @Suppress("MissingPermission")

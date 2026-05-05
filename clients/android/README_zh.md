@@ -45,7 +45,7 @@ ClawSeed 的 Android 客户端，在设备本地运行 clawseed gateway（编译
 |------|------|------|
 | `app` | `dev.clawseed.demo` | 主应用：UI、Service、ViewModel、数据层 |
 | `sdk:core` | `dev.clawseed.sdk.core` | 核心抽象：会话、聊天/WebSocket 客户端、工具注册、模型定义 |
-| `sdk:android` | `dev.clawseed.sdk.android` | Android 特有：ClawSeedAndroid 单例、SessionManager、ChatAccumulator |
+| `sdk:android` | `dev.clawseed.sdk.android` | Android 特有：ClawSeedAndroid 单例、SessionManager、ChatAccumulator、CETP 外部工具桥接 |
 | `sdk:embedded` | `dev.clawseed.sdk.embedded` | 嵌入式 Gateway：进程管理、配置、前台服务 |
 
 ### 目录结构
@@ -100,7 +100,13 @@ sdk/android/src/main/kotlin/dev/clawseed/sdk/android/
 ├── SessionManager.kt            # 会话生命周期管理
 ├── ChatAccumulator.kt           # 流式片段累积为消息
 ├── AccumulatedMessage.kt        # 累积消息模型
-└── ClawSeedViewModel.kt         # 聊天 ViewModel 基类
+├── ClawSeedViewModel.kt         # 聊天 ViewModel 基类
+└── cetp/
+    ├── CetpConstants.kt         # CETP v1 协议常量
+    ├── CetpModels.kt            # 数据类（DiscoveredProvider, AuthRequiredEvent 等）
+    ├── CetpClient.kt            # ContentResolver.call() 封装
+    ├── ExternalToolBridge.kt    # 发现 Provider，桥接工具到 ToolRegistry
+    └── PackageChangeReceiver.kt # 监听应用安装/更新/卸载的广播接收器
 
 sdk/embedded/src/main/kotlin/dev/clawseed/sdk/embedded/
 ├── EmbeddedGateway.kt           # Gateway 进程生命周期管理
@@ -127,6 +133,11 @@ sdk/embedded/src/main/kotlin/dev/clawseed/sdk/embedded/
 - **设备端工具**（通过 WebSocket 注册）：
   - `device_info` — 设备型号、厂商、Android 版本
   - `get_location` — GPS 定位（WGS84→GCJ-02）+ 逆地理编码
+- **CETP 外部工具**（自动发现第三方 App）：
+  - 自动发现实现了 [CETP v1 协议](../../docs/zh/external-tool-protocol.md) 的第三方应用
+  - Provider 工具自动添加命名空间前缀（如 `finance__get_portfolio_holdings`），注册为 RemoteTool
+  - 支持 `AUTH_REQUIRED` 授权流程，提供提示和授权引导
+  - 监听应用安装/更新/卸载广播动态刷新
 - **Gateway 内置工具**：web_fetch、http_request、web_search 等
 
 ### LLM 配置

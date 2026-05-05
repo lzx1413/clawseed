@@ -4,6 +4,8 @@ import android.content.Context
 import dev.clawseed.sdk.core.ClawSeedConfig
 import dev.clawseed.sdk.core.client.GatewayClient
 
+import dev.clawseed.sdk.android.cetp.ExternalToolBridge
+
 /**
  * Android-specific SDK entry point that stores application-scoped configuration
  * and exposes singleton helpers.
@@ -13,6 +15,7 @@ object ClawSeedAndroid {
     private var _config: ClawSeedConfig? = null
     private var _sessionManager: SessionManager? = null
     private var _gatewayClient: GatewayClient? = null
+    private var _externalToolBridge: ExternalToolBridge? = null
     @Volatile
     private var _initialized = false
     private val initLock = Object()
@@ -29,6 +32,9 @@ object ClawSeedAndroid {
                 baseUrl = config.gatewayUrl,
                 authTokenProvider = config.authTokenProvider,
             )
+            _externalToolBridge = ExternalToolBridge(context.applicationContext).also {
+                it.startWatching()
+            }
             _initialized = true
             initLock.notifyAll()
         }
@@ -46,6 +52,11 @@ object ClawSeedAndroid {
     /** Returns a [GatewayClient] configured from the latest [init] call. */
     fun gatewayClient(): GatewayClient {
         return _gatewayClient ?: error("ClawSeedAndroid not initialized. Call init() first.")
+    }
+
+    /** Returns the singleton [ExternalToolBridge] for discovering and bridging CETP tools. */
+    fun externalToolBridge(): ExternalToolBridge {
+        return _externalToolBridge ?: error("ClawSeedAndroid not initialized. Call init() first.")
     }
 
     internal val context: Context get() = _context ?: error("ClawSeedAndroid not initialized.")

@@ -47,7 +47,7 @@ An Android client for ClawSeed that runs the clawseed gateway natively on-device
 |--------|---------|-------------|
 | `app` | `dev.clawseed.demo` | Main application: UI, Service, ViewModels, data layer |
 | `sdk:core` | `dev.clawseed.sdk.core` | Core abstractions: session, chat/WebSocket client, tool registry, models |
-| `sdk:android` | `dev.clawseed.sdk.android` | Android-specific: ClawSeedAndroid singleton, SessionManager, ChatAccumulator |
+| `sdk:android` | `dev.clawseed.sdk.android` | Android-specific: ClawSeedAndroid singleton, SessionManager, ChatAccumulator, CETP external tool bridge |
 | `sdk:embedded` | `dev.clawseed.sdk.embedded` | Embedded gateway: process management, config, foreground service |
 
 ### Directory Structure
@@ -102,7 +102,13 @@ sdk/android/src/main/kotlin/dev/clawseed/sdk/android/
 ├── SessionManager.kt            # Session lifecycle management
 ├── ChatAccumulator.kt           # Accumulates streaming chunks into messages
 ├── AccumulatedMessage.kt        # Accumulated message model
-└── ClawSeedViewModel.kt         # ViewModel base for chat
+├── ClawSeedViewModel.kt         # ViewModel base for chat
+└── cetp/
+    ├── CetpConstants.kt         # CETP v1 protocol constants
+    ├── CetpModels.kt            # Data classes (DiscoveredProvider, AuthRequiredEvent, etc.)
+    ├── CetpClient.kt            # ContentResolver.call() wrapper
+    ├── ExternalToolBridge.kt    # Discovers providers, bridges tools into ToolRegistry
+    └── PackageChangeReceiver.kt # BroadcastReceiver for package install/update/uninstall
 
 sdk/embedded/src/main/kotlin/dev/clawseed/sdk/embedded/
 ├── EmbeddedGateway.kt           # Gateway process lifecycle management
@@ -129,6 +135,11 @@ sdk/embedded/src/main/kotlin/dev/clawseed/sdk/embedded/
 - **On-device tools** (registered via WebSocket):
   - `device_info` — device model, manufacturer, Android version
   - `get_location` — GPS location (WGS84→GCJ-02) + reverse geocoding
+- **CETP external tools** (discovered from third-party apps):
+  - Automatically discovers apps implementing the [CETP v1 protocol](../../docs/en/external-tool-protocol.md)
+  - Provider tools are namespaced (e.g., `finance__get_portfolio_holdings`) and registered as RemoteTools
+  - Supports `AUTH_REQUIRED` flow with resolution hints and authorize intents
+  - Dynamic refresh on package install/update/uninstall
 - **Gateway built-in tools**: web_fetch, http_request, web_search, etc.
 
 ### LLM Configuration

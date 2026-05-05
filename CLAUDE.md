@@ -96,9 +96,13 @@ Mobile clients connect via WebSocket, register tool specs, and execute tools loc
 
 SQLite backend with hybrid search (BM25 keyword + vector embeddings). Categories: Core, Daily, Conversation, Custom. NoneMemory stub when disabled.
 
+### CETP (ClawSeed External Tool Protocol)
+
+Protocol for third-party Android apps to expose read-only data tools to ClawSeed via ContentProvider. The Android client's `ExternalToolBridge` discovers Provider apps via PackageManager, calls `list_tools`/`execute_tool` via `ContentResolver.call()`, wraps them as `CetpProxyTool` (implementing `ClawSeedTool`), and registers them through the existing RemoteTool path — the gateway and agent see no difference. Providers self-manage authorization via `Binder.getCallingUid()` + `AUTH_REQUIRED` error codes. Dynamic refresh via `PACKAGE_ADDED`/`PACKAGE_REPLACED`/`PACKAGE_REMOVED` broadcasts. Protocol docs: `docs/zh/external-tool-protocol.md`, `docs/en/external-tool-protocol.md`. Provider tutorial: `docs/zh/cetp-provider-tutorial.md`, `docs/en/cetp-provider-tutorial.md`.
+
 ### Android Demo App (clients/android)
 
-Full-featured chat client (Kotlin + Jetpack Compose) that runs the gateway on-device as a foreground service. Architecture: `MainActivity` → `ClawseedService` (manages gateway process + WebSocket) → `ChatViewModel`/`SessionsViewModel`/`SettingsViewModel` → Compose UI. The `lib/` module provides a reusable `ClawseedClient` WebSocket library. Features: streaming chat, Markdown rendering (tables, code blocks, inline formatting), extended thinking display, session management, on-device tools (device_info, get_location), LLM configuration with 11 provider presets, thinking mode toggle, debug mode.
+Full-featured chat client (Kotlin + Jetpack Compose) that runs the gateway on-device as a foreground service. Architecture: `MainActivity` → `ClawseedService` (manages gateway process + WebSocket) → `ChatViewModel`/`SessionsViewModel`/`SettingsViewModel` → Compose UI. The `lib/` module provides a reusable `ClawseedClient` WebSocket library. Features: streaming chat, Markdown rendering (tables, code blocks, inline formatting), extended thinking display, session management, on-device tools (device_info, get_location), CETP external tool bridge, LLM configuration with 11 provider presets, thinking mode toggle, debug mode.
 
 ## Key Conventions
 
