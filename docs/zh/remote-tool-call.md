@@ -249,7 +249,7 @@ private fun dispatchToolCall(request: ToolCallRequest) {
 
 | 特性 | 本地工具 | 远程工具 |
 |------|---------|---------|
-| 注册方式 | `all_tools()` 函数，注册为 `ToolSource::BuiltIn` | WebSocket `register_tools` 消息，注册为 `ToolSource::Remote { session }` |
+| 注册方式 | `all_tools()`（CLI）或 `shared_builtin_tools`（网关），注册为 `ToolSource::BuiltIn` | WebSocket `register_tools` 消息，注册为 `ToolSource::Remote { session }` |
 | 执行位置 | Gateway 服务端 | 客户端设备 |
 | ToolContext | 完整访问（Memory、SecurityPolicy 等） | 不使用 |
 | 超时 | 无限制 | 30 秒 |

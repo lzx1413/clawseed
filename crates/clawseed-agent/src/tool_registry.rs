@@ -115,6 +115,45 @@ impl DefaultToolRegistry {
         count
     }
 
+    /// Register a pre-Arced tool. Returns false if a tool with the same name already exists.
+    pub fn register_arc(&self, tool: Arc<dyn Tool>, source: ToolSource) -> bool {
+        let name = tool.name().to_string();
+        use dashmap::mapref::entry::Entry;
+        match self.tools.entry(name) {
+            Entry::Occupied(_) => false,
+            Entry::Vacant(entry) => {
+                let entry_meta = ToolEntry { source };
+                entry.insert((tool, entry_meta));
+                *self.cached_specs.write() = None;
+                true
+            }
+        }
+    }
+
+    /// Bulk-register pre-Arced tools, all with the same source.
+    /// Returns the number of tools successfully registered.
+    pub fn register_all_arc(&self, tools: Vec<Arc<dyn Tool>>, source: ToolSource) -> usize {
+        let mut count = 0;
+        for tool in tools {
+            let name = tool.name().to_string();
+            use dashmap::mapref::entry::Entry;
+            match self.tools.entry(name) {
+                Entry::Occupied(_) => continue,
+                Entry::Vacant(entry) => {
+                    let entry_meta = ToolEntry {
+                        source: source.clone(),
+                    };
+                    entry.insert((tool, entry_meta));
+                    count += 1;
+                }
+            }
+        }
+        if count > 0 {
+            *self.cached_specs.write() = None;
+        }
+        count
+    }
+
     /// Remove all tools matching a given source.
     /// Returns the number of tools removed.
     pub fn unregister_by_source(&self, source: &ToolSource) -> usize {

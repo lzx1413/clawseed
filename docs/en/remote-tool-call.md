@@ -250,7 +250,7 @@ private fun dispatchToolCall(request: ToolCallRequest) {
 
 | Feature | Local Tool | Remote Tool |
 |---------|-----------|-------------|
-| Registration | `all_tools()` function, registered as `ToolSource::BuiltIn` | WebSocket `register_tools` message, registered as `ToolSource::Remote { session }` |
+| Registration | `all_tools()` (CLI) or `shared_builtin_tools` (gateway), registered as `ToolSource::BuiltIn` | WebSocket `register_tools` message, registered as `ToolSource::Remote { session }` |
 | Execution location | Gateway server | Client device |
 | ToolContext | Full access (Memory, SecurityPolicy, etc.) | Not used |
 | Timeout | Unlimited | 30 seconds |

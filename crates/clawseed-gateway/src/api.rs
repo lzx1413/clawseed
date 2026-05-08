@@ -1815,6 +1815,7 @@ mod tests {
             idempotency_store: Arc::new(IdempotencyStore::new(Duration::from_secs(300), 1000)),
             observer: Arc::new(clawseed_agent::observability::NoopObserver),
             tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
+            shared_builtin_tools: Arc::new([]),
             cost_tracker: None,
             event_tx: tokio::sync::broadcast::channel(16).0,
             event_buffer: Arc::new(crate::EventBuffer::new(16)),

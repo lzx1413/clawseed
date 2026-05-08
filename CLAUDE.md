@@ -69,7 +69,7 @@ All extensibility flows through these traits — new capabilities register imple
 
 `Agent::from_config_with_registry()` is the primary constructor for CLI/embedded use. It does runtime assembly — directly instantiates provider (via `ProviderFactoryRegistry`), memory (via `clawseed_memory::create_memory()`), and tools (via `clawseed_tools::registry::all_tools()`), then selects a dispatcher based on `provider.supports_native_tools()`. Tools depend on memory being constructed first; dispatcher depends on provider capabilities. All components are passed to `Agent::builder()` for final construction.
 
-`Agent::from_config_with_shared_components()` is the constructor for gateway use. It accepts pre-built `Arc<dyn Provider>`, `Arc<dyn Memory>`, `Arc<dyn Observer>`, model name, and temperature from `AppState` — these shared components are reused across all WebSocket/webhook connections. All other assembly logic (tools, hooks, filters, skills, identity, etc.) is shared via the private `build_from_config()` helper to avoid duplication. The provider field is `Arc<dyn Provider>` (not `Box`); `AgentBuilder.provider()` wraps `Box→Arc`, and `shared_provider()` accepts `Arc` directly.
+`Agent::from_config_with_shared_components()` is the constructor for gateway use. It accepts pre-built `Arc<dyn Provider>`, `Arc<dyn Memory>`, `Arc<dyn Observer>`, model name, temperature, and `shared_builtin_tools: Arc<[Arc<dyn Tool>]>` from `AppState` — these shared components are reused across all WebSocket/webhook connections. BuiltIn tools are no longer re-created per connection; the shared `Arc<dyn Tool>` instances are registered into each agent's per-connection `DefaultToolRegistry` via `register_all_arc()`. HookRunner remains per-connection (SecurityPolicy rate limits and remote tools must be isolated). The provider field is `Arc<dyn Provider>` (not `Box`); `AgentBuilder.provider()` wraps `Box→Arc`, and `shared_provider()` accepts `Arc` directly.
 
 The agent loop then:
 1. Accept message → add to history
@@ -99,7 +99,7 @@ This means the shared registry (`AppState.tool_registry`) and each agent's priva
 
 ### Tool Registration (clawseed-agent/src/tool_registry.rs)
 
-`DefaultToolRegistry` implements the `ToolRegistry` trait using `DashMap` for lock-free concurrent access. Supports three tool sources (BuiltIn/MCP/Remote), glob-based filtering (`allowed_tools`/`denied_tools`), and per-MCP-server filtering. `all_tools()` in clawseed-tools creates enabled tools based on config.
+`DefaultToolRegistry` implements the `ToolRegistry` trait using `DashMap` for lock-free concurrent access. Supports three tool sources (BuiltIn/MCP/Remote), glob-based filtering (`allowed_tools`/`denied_tools`), and per-MCP-server filtering. `all_tools()` in clawseed-tools creates enabled tools based on config. In addition to `register()`/`register_all()` (which take `Box<dyn Tool>`), it provides `register_arc()`/`register_all_arc()` (which take `Arc<dyn Tool>`) for reusing shared tool instances without re-construction.
 
 ### Dual Tool Registry & Shared Components
 
@@ -115,7 +115,7 @@ Implications:
 - Remote tools must be registered in **both** registries to be both visible and executable (see "Remote Tools" above)
 - In single-connection scenarios (current Android demo), the two registries are effectively in sync
 
-**Shared components**: `AppState` holds `Arc<dyn Provider>`, `Arc<dyn Memory>`, `Arc<dyn Observer>`, `model: String`, and `temperature: f64`. Gateway connections use `from_config_with_shared_components()` to reuse these, avoiding per-connection provider (HTTP connection pools) and memory (SQLite connections) duplication. HookRunner and ToolRegistry remain per-connection (SecurityPolicy rate limits and remote tools must be isolated). Config updates via `/api/config` do **not** rebuild shared components — restart the gateway for provider/model/temperature/memory changes to take effect.
+**Shared components**: `AppState` holds `Arc<dyn Provider>`, `Arc<dyn Memory>`, `Arc<dyn Observer>`, `model: String`, `temperature: f64`, and `shared_builtin_tools: Arc<[Arc<dyn Tool>]>`. Gateway connections use `from_config_with_shared_components()` to reuse these, avoiding per-connection provider (HTTP connection pools), memory (SQLite connections), and BuiltIn tool duplication. The shared `Arc<dyn Tool>` instances are registered into each agent's per-connection `DefaultToolRegistry` (with connection-specific filters) via `register_all_arc()`, so each agent still has its own registry with independent filtering while sharing the underlying tool objects. HookRunner remains per-connection (SecurityPolicy rate limits and remote tools must be isolated). Config updates via `/api/config` do **not** rebuild shared components — restart the gateway for provider/model/temperature/memory/BuiltIn-tool changes to take effect.
 
 ### Provider Factory (clawseed-providers/src/factory.rs)
 
@@ -136,12 +136,12 @@ The initialization flow from entry point to running agent:
 ```
 CLI (clawseed/src/main.rs)
   └→ Gateway: run_gateway() (clawseed-gateway/src/lib.rs)
-       ├─ Creates AppState with shared provider, memory, observer, model, temperature, tool_registry
+       ├─ Creates AppState with shared provider, memory, observer, model, temperature, shared_builtin_tools, tool_registry
        └─ Each WebSocket connection (clawseed-gateway/src/ws.rs):
             ├─ Agent::from_config_with_shared_components() — reuses shared components
-            │    ├─ Reuses state.provider, state.mem, state.observer, state.model, state.temperature
-            │    ├─ Creates per-connection tools, hooks, dispatcher, skill index
-            │    └─ Agent::builder().build() — creates agent-local tool_registry
+            │    ├─ Reuses state.provider, state.mem, state.observer, state.model, state.temperature, state.shared_builtin_tools
+            │    ├─ Creates per-connection hooks, dispatcher, skill index; BuiltIn tools use shared Arc instances
+            │    └─ Agent::builder().build() — creates agent-local tool_registry (shared tool objects, per-connection filters)
             ├─ Remote tools: register to shared registry + inject into agent
             └─ Message loop: agent.chat() / agent.run()
 

@@ -184,7 +184,7 @@ let tool = registry.get_tool("shell");
 let specs = registry.tool_specs();  // 带缓存的 ToolSpec 列表
 ```
 
-`DefaultToolRegistry`（在 `clawseed-agent` 中）使用 `DashMap` 实现无锁并发访问，支持 glob 模式的工具过滤（`allowed_tools` / `denied_tools`）和按 MCP 服务器过滤。
+`DefaultToolRegistry`（在 `clawseed-agent` 中）使用 `DashMap` 实现无锁并发访问，支持 glob 模式的工具过滤（`allowed_tools` / `denied_tools`）和按 MCP 服务器过滤。除了 `register()`/`register_all()`（接受 `Box<dyn Tool>`），还提供 `register_arc()`/`register_all_arc()`（接受 `Arc<dyn Tool>`），用于复用共享工具实例而无需重新构造。
 
 ## 双重工具注册表
 
@@ -200,6 +200,8 @@ let specs = registry.tool_specs();  // 带缓存的 ToolSpec 列表
 - 远程工具必须在**两个**注册表中都注册，才能既可见又可执行
 - 在单连接场景下（当前 Android Demo），两个注册表实际上保持同步
 
+**共享组件**：`AppState` 持有 `Arc<dyn Provider>`、`Arc<dyn Memory>`、`Arc<dyn Observer>`、`model: String`、`temperature: f64` 和 `shared_builtin_tools: Arc<[Arc<dyn Tool>]>`。网关连接通过 `from_config_with_shared_components()` 复用这些组件，避免每连接重复创建 provider（HTTP 连接池）、memory（SQLite 连接）和 BuiltIn 工具。共享的 `Arc<dyn Tool>` 实例通过 `register_all_arc()` 注册到每个 Agent 的连接级 `DefaultToolRegistry`（带连接专属过滤器），因此每个 Agent 仍拥有自己的注册表和独立过滤，同时共享底层工具对象。HookRunner 保持每连接独立（SecurityPolicy 速率限制和远程工具需要隔离）。通过 `/api/config` 的配置更新**不会**重建共享组件——需重启网关才能使 provider/model/temperature/memory/BuiltIn 工具变更生效。
+
 ## MCP 状态（已规划，尚未实现）
 
 `ToolSource::Mcp` 枚举变体和 `McpConfig` schema 已存在，`DefaultToolRegistry` 也支持按服务器过滤。然而，`crates/clawseed-agent/src/tools.rs` 中的所有 MCP 类型（`McpRegistry`、`DeferredMcpToolSet`、`McpToolWrapper`、`ToolSearchTool`）都是 **stub**——返回空集合或错误。没有 MCP 协议客户端库。Gateway 中的代码会调用 `McpRegistry::connect_all()`，但它立即返回而不建立连接。请勿将 MCP 视为可用能力。
@@ -211,16 +213,17 @@ let specs = registry.tool_specs();  // 带缓存的 ToolSpec 列表
 ```
 CLI (clawseed/src/main.rs)
   └→ Gateway: run_gateway() (clawseed-gateway/src/lib.rs)
-       ├─ 创建 AppState，包含共享 tool_registry
+       ├─ 创建 AppState，包含共享 provider、memory、observer、model、temperature、shared_builtin_tools、tool_registry
        └─ 每个 WebSocket 连接 (clawseed-gateway/src/ws.rs):
-            ├─ Agent::from_config() — 创建连接级 Agent
-            │    ├─ 实例化 provider、memory、tools
-            │    └─ Agent::builder().build() — 创建 Agent 本地 tool_registry
+            ├─ Agent::from_config_with_shared_components() — 复用共享组件
+            │    ├─ 复用 state.provider、state.mem、state.observer、state.model、state.temperature、state.shared_builtin_tools
+            │    ├─ 创建连接级 hooks、dispatcher、skill index；BuiltIn 工具使用共享 Arc 实例
+            │    └─ Agent::builder().build() — 创建 Agent 本地 tool_registry（共享工具对象、连接级过滤）
             ├─ 远程工具：注册到共享注册表 + 注入 Agent
             └─ 消息循环：agent.chat() / agent.run()
 
 Chat 模式 (clawseed/src/main.rs)
-  └→ 直接 Agent::from_config() — 相同的装配路径，无网关层
+  └→ 直接 Agent::from_config() — 创建自己的 provider/memory，无网关层
 ```
 
 ## Provider 工厂机制

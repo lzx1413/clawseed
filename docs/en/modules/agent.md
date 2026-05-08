@@ -52,9 +52,10 @@ let agent = Agent::builder()
 let agent = Agent::from_config(&config).await?;
 let agent = Agent::from_config_with_registry(&config, Some(provider_factory_registry)).await?;
 
-// Build with shared components — gateway use (reuses AppState provider/memory/observer)
+// Build with shared components — gateway use (reuses AppState provider/memory/observer/builtin-tools)
 let agent = Agent::from_config_with_shared_components(
-    &config, state.provider, state.mem, state.observer, state.model, state.temperature
+    &config, state.provider, state.mem, state.observer, state.model, state.temperature,
+    Some(state.shared_builtin_tools)
 ).await?;
 ```
 
@@ -160,7 +161,7 @@ pub trait HookFactory: Send + Sync {
 - Uses `DashMap` for lock-free concurrent access, safe in async contexts
 - `ToolSpec` caching with write-time invalidation to avoid recomputation
 - Three-layer glob pattern filtering: denied takes precedence → allowed allowlist → per-MCP-server filtering
-- `register_all()` for bulk registration, `unregister_by_source()` for bulk removal by source
+- `register_all()` for bulk registration, `register_all_arc()` for bulk registration with shared `Arc<dyn Tool>` instances (avoids re-construction in gateway), `unregister_by_source()` for bulk removal by source
 
 > **Dual Registry Note:** At runtime there are two independent `ToolRegistry` instances. The gateway-level `AppState.tool_registry` serves `/api/tools` endpoint visibility; each Agent's `tool_registry` serves actual tool dispatch. Remote tools must be registered in both. See the "Dual Tool Registry" section in [Architecture Overview](../architecture.md) for details.
 

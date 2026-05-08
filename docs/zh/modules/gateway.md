@@ -40,7 +40,7 @@
 
 主要通信通道，支持以下消息类型：
 
-每个 WebSocket 连接通过 `Agent::from_config()` 创建独立的 Agent 实例，与网关共享状态无关。运行时初始化链路详见[架构概览](../architecture.md)。
+每个 WebSocket 连接通过 `Agent::from_config_with_shared_components()` 创建独立的 Agent 实例，复用 `AppState` 中的共享 provider、memory、observer、model、temperature 和 BuiltIn 工具实例。每连接组件（hooks、dispatcher、skill index）仍独立创建；BuiltIn 工具通过 `register_all_arc()` 注册共享的 `Arc<dyn Tool>` 实例。运行时初始化链路详见[架构概览](../architecture.md)。
 
 **客户端 → 服务器**：
 - `{"type": "message", "content": "..."}` — 发送聊天消息

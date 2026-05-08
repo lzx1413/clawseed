@@ -152,7 +152,7 @@ pub trait HookFactory: Send + Sync {
 - 使用 `DashMap` 实现无锁并发访问，在 async 上下文中安全使用
 - `ToolSpec` 缓存 + 写时失效，避免重复计算
 - 支持 glob 模式的三层过滤：denied 优先 → allowed 白名单 → MCP 服务器级过滤
-- `register_all()` 批量注册、`unregister_by_source()` 按来源批量移除
+- `register_all()` 批量注册、`register_all_arc()` 使用共享 `Arc<dyn Tool>` 实例批量注册（避免网关场景下重复构造）、`unregister_by_source()` 按来源批量移除
 
 > **双重注册表注意：** 运行时存在两个独立的 `ToolRegistry` 实例。网关级 `AppState.tool_registry` 用于 `/api/tools` 端点可见性；每个 Agent 的 `tool_registry` 用于实际工具调度。远程工具必须在两者中都注册。详见[架构概览](../architecture.md)中的"双重工具注册表"一节。
 

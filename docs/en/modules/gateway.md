@@ -40,7 +40,7 @@
 
 The primary communication channel, supporting the following message types:
 
-Each WebSocket connection creates its own Agent via `Agent::from_config_with_shared_components()`, reusing the shared provider, memory, observer, model, and temperature from `AppState`. Per-connection components (tools, hooks, dispatcher, skill index) are still created fresh. See [Architecture Overview](../architecture.md) for the runtime init chain.
+Each WebSocket connection creates its own Agent via `Agent::from_config_with_shared_components()`, reusing the shared provider, memory, observer, model, temperature, and BuiltIn tool instances from `AppState`. Per-connection components (hooks, dispatcher, skill index) are still created fresh; BuiltIn tools reuse shared `Arc<dyn Tool>` instances registered via `register_all_arc()`. See [Architecture Overview](../architecture.md) for the runtime init chain.
 
 **Client → Server**:
 - `{"type": "message", "content": "..."}` — Send a chat message

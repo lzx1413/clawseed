@@ -111,8 +111,10 @@ pub struct AppState {
     pub idempotency_store: Arc<IdempotencyStore>,
     /// Observability backend for metrics scraping
     pub observer: Arc<dyn clawseed_agent::observability::Observer>,
-    /// Registered tool registry (for web dashboard tools page and agent tool dispatch)
+    /// Registered tool registry (for web dashboard tools page)
     pub tool_registry: Arc<dyn clawseed_api::tool_registry::ToolRegistry>,
+    /// Shared BuiltIn tool instances — reused across connections to avoid per-connection construction
+    pub shared_builtin_tools: Arc<[Arc<dyn clawseed_api::tool::Tool>]>,
     /// Cost tracker (optional, for web dashboard cost page)
     pub cost_tracker: Option<Arc<CostTracker>>,
     /// SSE broadcast channel for real-time events
@@ -295,10 +297,14 @@ pub async fn run_gateway(
     }
 
     // Build the shared tool registry from all sources
+    let shared_builtin_tools: Arc<[Arc<dyn clawseed_api::tool::Tool>]> = tools_registry_raw
+        .into_iter()
+        .map(|t| Arc::from(t) as Arc<dyn clawseed_api::tool::Tool>)
+        .collect();
     let shared_tool_registry: Arc<dyn clawseed_api::tool_registry::ToolRegistry> = {
         let reg = clawseed_agent::tool_registry::DefaultToolRegistry::new();
-        reg.register_all(
-            tools_registry_raw,
+        reg.register_all_arc(
+            shared_builtin_tools.to_vec(),
             clawseed_api::tool_registry::ToolSource::BuiltIn,
         );
         Arc::new(reg)
@@ -483,6 +489,7 @@ pub async fn run_gateway(
         idempotency_store,
         observer: broadcast_observer,
         tool_registry: shared_tool_registry,
+        shared_builtin_tools,
         cost_tracker,
         event_tx,
         event_buffer,

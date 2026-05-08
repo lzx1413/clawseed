@@ -216,6 +216,7 @@ async fn handle_socket(
         state.observer.clone(),
         state.model.clone(),
         state.temperature,
+        Some(state.shared_builtin_tools.clone()),
     )
     .await
     {

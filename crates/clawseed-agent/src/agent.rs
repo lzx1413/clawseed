@@ -384,7 +384,15 @@ impl Agent {
             .unwrap_or_else(|| "anthropic/claude-sonnet-4".into());
         let temperature = fallback.and_then(|e| e.temperature).unwrap_or(0.7);
 
-        Self::build_from_config(config, provider, mem, observer, model_name, temperature)
+        Self::build_from_config(
+            config,
+            provider,
+            mem,
+            observer,
+            model_name,
+            temperature,
+            None,
+        )
     }
 
     /// Build an agent from config, reusing externally-provided shared components.
@@ -403,8 +411,17 @@ impl Agent {
         observer: Arc<dyn Observer>,
         model_name: String,
         temperature: f64,
+        shared_builtin_tools: Option<Arc<[Arc<dyn clawseed_api::tool::Tool>]>>,
     ) -> anyhow::Result<Self> {
-        Self::build_from_config(config, provider, memory, observer, model_name, temperature)
+        Self::build_from_config(
+            config,
+            provider,
+            memory,
+            observer,
+            model_name,
+            temperature,
+            shared_builtin_tools,
+        )
     }
 
     /// Private: shared assembly logic for both public constructors.
@@ -415,11 +432,8 @@ impl Agent {
         observer: Arc<dyn Observer>,
         model_name: String,
         temperature: f64,
+        shared_builtin_tools: Option<Arc<[Arc<dyn clawseed_api::tool::Tool>]>>,
     ) -> anyhow::Result<Self> {
-        // Tools
-        let tools =
-            clawseed_tools::registry::all_tools(config.workspace_dir.clone(), config, memory.clone());
-
         // Dispatcher: native if provider supports it, otherwise XML
         let dispatcher: Box<dyn ToolDispatcher> = if provider.supports_native_tools() {
             Box::new(crate::dispatcher::NativeToolDispatcher)
@@ -464,6 +478,32 @@ impl Agent {
             Some(config.agent.mcp_tool_filters.clone())
         };
 
+        // Build the tool registry — reuse shared Arc instances when available
+        let registry: Arc<dyn ToolRegistry> = if let Some(ref shared) = shared_builtin_tools {
+            let reg = DefaultToolRegistry::with_filters(
+                allowed.unwrap_or_default(),
+                denied.unwrap_or_default(),
+                mcp_filters.unwrap_or_default(),
+            );
+            reg.register_all_arc(shared.to_vec(), ToolSource::BuiltIn);
+            Arc::new(reg)
+        } else {
+            let tools = clawseed_tools::registry::all_tools(
+                config.workspace_dir.clone(),
+                config,
+                memory.clone(),
+            );
+            let reg = DefaultToolRegistry::with_filters(
+                allowed.unwrap_or_default(),
+                denied.unwrap_or_default(),
+                mcp_filters.unwrap_or_default(),
+            );
+            for tool in tools {
+                reg.register(tool, ToolSource::BuiltIn);
+            }
+            Arc::new(reg)
+        };
+
         // Load skill index
         let extra_roots: Vec<String> = config.skills.extra_roots.clone();
         let skill_index = if config.skills.enabled {
@@ -477,7 +517,7 @@ impl Agent {
 
         let mut builder = Agent::builder()
             .shared_provider(provider)
-            .tools(tools)
+            .tool_registry(registry)
             .memory(memory)
             .observer(observer)
             .tool_dispatcher(dispatcher)
@@ -487,9 +527,6 @@ impl Agent {
             .autonomy_level(config.autonomy.level)
             .identity_config(config.identity.clone())
             .auto_save(config.memory.auto_save)
-            .allowed_tools(allowed)
-            .denied_tools(denied)
-            .mcp_tool_filters(mcp_filters)
             .hook_runner(Some(Arc::new(hook_runner)))
             .skill_index(skill_index)
             .max_active_skills(config.skills.max_active)
