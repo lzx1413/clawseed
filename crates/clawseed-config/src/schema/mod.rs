@@ -211,6 +211,10 @@ pub struct Config {
     /// Identity / persona configuration.
     #[serde(default)]
     pub identity: IdentityConfig,
+
+    /// Skill system configuration.
+    #[serde(default)]
+    pub skills: SkillsConfig,
 }
 
 /// Secrets / encryption configuration.
@@ -603,6 +607,7 @@ impl Default for Config {
             agents: std::collections::HashMap::new(),
             locale: None,
             identity: IdentityConfig::default(),
+            skills: SkillsConfig::default(),
         }
     }
 }
@@ -1287,6 +1292,41 @@ pub struct WebSearchConfig {
 pub struct AgentEntryConfig {
     #[serde(default)]
     pub api_key: Option<String>,
+}
+
+/// Skill system configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillsConfig {
+    /// Enable the skill system.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Additional skill root directories (appended after defaults).
+    #[serde(default)]
+    pub extra_roots: Vec<String>,
+
+    /// Maximum number of active skills simultaneously.
+    #[serde(default = "default_max_active_skills")]
+    pub max_active: usize,
+
+    /// Skill names to exclude from the index.
+    #[serde(default)]
+    pub excluded: Vec<String>,
+}
+
+fn default_max_active_skills() -> usize {
+    5
+}
+
+impl Default for SkillsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            extra_roots: Vec::new(),
+            max_active: default_max_active_skills(),
+            excluded: Vec::new(),
+        }
+    }
 }
 
 /// Identity / persona configuration.

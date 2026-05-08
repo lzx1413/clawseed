@@ -39,6 +39,7 @@ pub mod model_routing_config;
 pub mod pdf_read;
 pub mod registry;
 pub mod shell;
+pub mod skill_tool;
 pub mod util_helpers;
 pub mod web_fetch;
 pub mod web_search_provider_routing;

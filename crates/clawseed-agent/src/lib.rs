@@ -21,5 +21,6 @@ pub mod parser;
 pub mod personality;
 pub mod prompt;
 pub mod security;
+pub mod skills;
 pub mod tool_registry;
 pub mod tools;

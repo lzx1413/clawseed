@@ -20,6 +20,8 @@ pub struct PromptContext<'a> {
     pub dispatcher_instructions: &'a str,
     pub identity_config: &'a IdentityConfig,
     pub autonomy_level: AutonomyLevel,
+    pub skill_index: &'a [crate::skills::SkillIndexEntry],
+    pub active_skills: &'a [crate::skills::ActiveSkill],
 }
 
 /// Trait for a prompt section.
@@ -45,6 +47,8 @@ impl SystemPromptBuilder {
                 Box::new(ToolsSection),
                 Box::new(SafetySection),
                 Box::new(ToolHonestySection),
+                Box::new(SkillsIndexSection),
+                Box::new(ActiveSkillsSection),
             ],
         }
     }
@@ -77,6 +81,8 @@ pub struct WorkspaceSection;
 pub struct ToolsSection;
 pub struct SafetySection;
 pub struct ToolHonestySection;
+pub struct SkillsIndexSection;
+pub struct ActiveSkillsSection;
 
 impl PromptSection for DateTimeSection {
     fn name(&self) -> &str {
@@ -235,6 +241,26 @@ impl PromptSection for ToolHonestySection {
     }
 }
 
+impl PromptSection for SkillsIndexSection {
+    fn name(&self) -> &str {
+        "skills_index"
+    }
+
+    fn build(&self, ctx: &PromptContext<'_>) -> Result<String> {
+        Ok(crate::skills::render_skill_index(ctx.skill_index))
+    }
+}
+
+impl PromptSection for ActiveSkillsSection {
+    fn name(&self) -> &str {
+        "active_skills"
+    }
+
+    fn build(&self, ctx: &PromptContext<'_>) -> Result<String> {
+        Ok(crate::skills::render_active_skills(ctx.active_skills))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,6 +276,8 @@ mod tests {
             dispatcher_instructions: "",
             identity_config: &identity_config,
             autonomy_level: AutonomyLevel::Full,
+            skill_index: &[],
+            active_skills: &[],
         };
 
         let prompt = builder.build(&ctx).unwrap();
@@ -272,6 +300,8 @@ mod tests {
             dispatcher_instructions: "",
             identity_config: &identity_config,
             autonomy_level: AutonomyLevel::Supervised,
+            skill_index: &[],
+            active_skills: &[],
         };
 
         let text = section.build(&ctx).unwrap();
@@ -289,6 +319,8 @@ mod tests {
             dispatcher_instructions: "",
             identity_config: &identity_config,
             autonomy_level: AutonomyLevel::Full,
+            skill_index: &[],
+            active_skills: &[],
         };
 
         let text = section.build(&ctx).unwrap();

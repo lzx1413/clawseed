@@ -32,6 +32,7 @@ regex = { workspace = true }
 hex = "0.4"
 dashmap = "6.1.0"
 glob-match = "0.2.1"
+toml = { workspace = true }
 
 [features]
 default = ["cron-engine"]

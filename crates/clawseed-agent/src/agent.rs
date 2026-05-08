@@ -75,6 +75,10 @@ pub struct Agent {
     memory_session_id: Option<String>,
     history: Vec<ConversationMessage>,
     hook_runner: Option<Arc<HookRunner>>,
+    skill_index: Vec<crate::skills::SkillIndexEntry>,
+    active_skills: Vec<crate::skills::ActiveSkill>,
+    max_active_skills: usize,
+    skills_extra_roots: Vec<String>,
 }
 
 /// Builder for constructing an Agent.
@@ -98,6 +102,9 @@ pub struct AgentBuilder {
     denied_tools: Option<Vec<String>>,
     mcp_tool_filters: Option<std::collections::HashMap<String, Vec<String>>>,
     hook_runner: Option<Arc<HookRunner>>,
+    skill_index: Option<Vec<crate::skills::SkillIndexEntry>>,
+    max_active_skills: Option<usize>,
+    skills_extra_roots: Option<Vec<String>>,
 }
 
 impl Default for AgentBuilder {
@@ -128,6 +135,9 @@ impl AgentBuilder {
             denied_tools: None,
             mcp_tool_filters: None,
             hook_runner: None,
+            skill_index: None,
+            max_active_skills: None,
+            skills_extra_roots: None,
         }
     }
 
@@ -239,6 +249,21 @@ impl AgentBuilder {
         self
     }
 
+    pub fn skill_index(mut self, index: Vec<crate::skills::SkillIndexEntry>) -> Self {
+        self.skill_index = Some(index);
+        self
+    }
+
+    pub fn max_active_skills(mut self, max: usize) -> Self {
+        self.max_active_skills = Some(max);
+        self
+    }
+
+    pub fn skills_extra_roots(mut self, roots: Vec<String>) -> Self {
+        self.skills_extra_roots = Some(roots);
+        self
+    }
+
     pub fn build(self) -> Result<Agent> {
         // Build the tool registry: prefer pre-built registry, otherwise create from tools
         let registry: Arc<dyn ToolRegistry> = if let Some(reg) = self.tool_registry {
@@ -285,6 +310,10 @@ impl AgentBuilder {
             memory_session_id: self.memory_session_id,
             history: Vec::new(),
             hook_runner: self.hook_runner,
+            skill_index: self.skill_index.unwrap_or_default(),
+            active_skills: Vec::new(),
+            max_active_skills: self.max_active_skills.unwrap_or(5),
+            skills_extra_roots: self.skills_extra_roots.unwrap_or_default(),
         })
     }
 }
@@ -396,6 +425,17 @@ impl Agent {
             Some(config.agent.mcp_tool_filters.clone())
         };
 
+        // Load skill index
+        let extra_roots: Vec<String> = config.skills.extra_roots.clone();
+        let skill_index = if config.skills.enabled {
+            crate::skills::load_skill_index_with_roots(&config.workspace_dir, &extra_roots)
+                .into_iter()
+                .filter(|e| !config.skills.excluded.contains(&e.name))
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         let mut builder = Agent::builder()
             .provider(provider)
             .tools(tools)
@@ -411,7 +451,10 @@ impl Agent {
             .allowed_tools(allowed)
             .denied_tools(denied)
             .mcp_tool_filters(mcp_filters)
-            .hook_runner(Some(Arc::new(hook_runner)));
+            .hook_runner(Some(Arc::new(hook_runner)))
+            .skill_index(skill_index)
+            .max_active_skills(config.skills.max_active)
+            .skills_extra_roots(extra_roots);
 
         if let Some(ref session_id) = config.memory.namespace {
             builder = builder.memory_session_id(Some(session_id.clone()));
@@ -430,6 +473,148 @@ impl Agent {
 
     pub fn set_memory_session_id(&mut self, session_id: Option<String>) {
         self.memory_session_id = session_id;
+    }
+
+    /// Activate a skill by name.
+    pub fn activate_skill(&mut self, name: &str) -> Result<String> {
+        // Check if already active
+        if self.active_skills.iter().any(|s| s.skill.name == name) {
+            return Ok(format!(
+                "Skill '{}' is already active. Its instructions are in your system prompt.",
+                name
+            ));
+        }
+
+        // Load the full skill
+        let skill = crate::skills::load_skill_by_name_with_roots(
+            name,
+            &self.workspace_dir,
+            &self.skills_extra_roots,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to load skill '{}': {}", name, e))?;
+
+        // Permission check
+        let tool_names = self.tool_registry.tool_names();
+        crate::skills::check_permissions(&skill, &tool_names)
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+        // Check max active
+        if self.active_skills.len() >= self.max_active_skills {
+            return Err(anyhow::anyhow!(
+                "Maximum number of active skills ({}) reached. Deactivate a skill first.",
+                self.max_active_skills
+            ));
+        }
+
+        // Push to active_skills
+        self.active_skills
+            .push(crate::skills::ActiveSkill { skill });
+
+        // Rebuild system prompt
+        self.rebuild_system_prompt()?;
+
+        Ok(format!(
+            "Skill '{}' activated. Full instructions have been added to your system prompt.",
+            name
+        ))
+    }
+
+    /// Deactivate a skill by name.
+    pub fn deactivate_skill(&mut self, name: &str) -> Result<String> {
+        let idx = self
+            .active_skills
+            .iter()
+            .position(|s| s.skill.name == name)
+            .ok_or_else(|| anyhow::anyhow!("Skill '{}' is not active.", name))?;
+
+        self.active_skills.remove(idx);
+        self.rebuild_system_prompt()?;
+
+        Ok(format!(
+            "Skill '{}' deactivated. Its instructions have been removed from your system prompt.",
+            name
+        ))
+    }
+
+    /// Rebuild the system prompt and replace the system message in history.
+    fn rebuild_system_prompt(&mut self) -> Result<()> {
+        let new_prompt = self.build_system_prompt()?;
+
+        for msg in &mut self.history {
+            if let ConversationMessage::Chat(chat) = msg
+                && chat.role == "system"
+            {
+                chat.content = new_prompt;
+                return Ok(());
+            }
+        }
+
+        // No system message found — prepend one
+        self.history.insert(
+            0,
+            ConversationMessage::Chat(ChatMessage::system(new_prompt)),
+        );
+        Ok(())
+    }
+
+    /// Handle Skill tool calls: activate or deactivate skills.
+    ///
+    /// Reads action/skill_name from the original tool call arguments (not from
+    /// the tool output), performs activation/deactivation, and updates the
+    /// result output with the final semantic message. This way no sentinel
+    /// JSON ever appears in observer events, hooks, or history.
+    fn handle_skill_tool_results(
+        &mut self,
+        calls: &[ParsedToolCall],
+        results: &mut [crate::dispatcher::ToolExecutionResult],
+    ) {
+        for (i, call) in calls.iter().enumerate() {
+            if call.name != "Skill" || i >= results.len() {
+                continue;
+            }
+
+            let result = &mut results[i];
+            if !result.success {
+                continue;
+            }
+
+            let skill_name = match call.arguments.get("skill").and_then(|v| v.as_str()) {
+                Some(name) if !name.is_empty() => name,
+                _ => continue,
+            };
+
+            let action = call
+                .arguments
+                .get("action")
+                .and_then(|v| v.as_str())
+                .unwrap_or("activate");
+
+            let new_output = match action {
+                "activate" => match self.activate_skill(skill_name) {
+                    Ok(msg) => msg,
+                    Err(e) => {
+                        result.success = false;
+                        format!("Failed to activate skill '{}': {}", skill_name, e)
+                    }
+                },
+                "deactivate" => match self.deactivate_skill(skill_name) {
+                    Ok(msg) => msg,
+                    Err(e) => {
+                        result.success = false;
+                        format!("Failed to deactivate skill '{}': {}", skill_name, e)
+                    }
+                },
+                _ => {
+                    result.success = false;
+                    format!(
+                        "Unknown skill action '{}'. Use 'activate' or 'deactivate'.",
+                        action
+                    )
+                }
+            };
+
+            result.output = new_output;
+        }
     }
 
     /// Add remote tools to the agent's tool registry.
@@ -505,6 +690,8 @@ impl Agent {
             dispatcher_instructions: &instructions,
             identity_config: &self.identity_config,
             autonomy_level: self.autonomy_level,
+            skill_index: &self.skill_index,
+            active_skills: &self.active_skills,
         };
 
         SystemPromptBuilder::with_defaults().build(&ctx)
@@ -744,9 +931,10 @@ impl Agent {
         Ok(())
     }
 
-    /// Execute tool calls, format results, and append to history.
+    /// Execute tool calls, handle skill activations, format results, and append to history.
     async fn process_tool_calls(&mut self, calls: &[ParsedToolCall]) -> Vec<ToolExecutionResult> {
-        let results = self.execute_tools(calls).await;
+        let mut results = self.execute_tools(calls).await;
+        self.handle_skill_tool_results(calls, &mut results);
         let formatted = self.tool_dispatcher.format_results(&results);
         self.history.push(formatted);
         self.trim_history();
@@ -822,7 +1010,7 @@ impl Agent {
                 reasoning_content: response.reasoning_content.clone(),
             });
 
-            self.process_tool_calls(&calls).await;
+            let _results = self.process_tool_calls(&calls).await;
         }
 
         anyhow::bail!(
@@ -1034,7 +1222,10 @@ impl Agent {
                     .await;
             }
 
-            let results = self.execute_tools(&calls).await;
+            let mut results = self.execute_tools(&calls).await;
+
+            // Handle skill activations BEFORE emitting events or formatting to history.
+            self.handle_skill_tool_results(&calls, &mut results);
 
             for result in &results {
                 let result_id = result.tool_call_id.as_ref().unwrap().clone();
@@ -1309,5 +1500,105 @@ mod tests {
             "s1".to_string(),
         );
         assert_eq!(agent.tool_registry.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn skill_activation_updates_history_not_sentinel() {
+        // Create a skill directory with manifest.toml + SKILL.md
+        let dir = tempfile::tempdir().unwrap();
+        let skill_dir = dir
+            .path()
+            .join(".clawseed")
+            .join("skills")
+            .join("test-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("manifest.toml"),
+            r#"[skill]
+name = "test-skill"
+description = "A test skill"
+"#,
+        )
+        .unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# Test Skill\nDo the thing.\n").unwrap();
+
+        // Load the skill index
+        let skill_index = crate::skills::load_skill_index(dir.path());
+
+        // Provider returns a tool call for Skill, then a final response
+        let provider = Box::new(MockProvider {
+            responses: Mutex::new(vec![
+                ChatResponse {
+                    text: Some(String::new()),
+                    tool_calls: vec![clawseed_api::provider::ToolCall {
+                        id: "tc-skill-1".into(),
+                        name: "Skill".into(),
+                        arguments: r#"{"skill": "test-skill"}"#.into(),
+                    }],
+                    usage: None,
+                    reasoning_content: None,
+                },
+                ChatResponse {
+                    text: Some("done".into()),
+                    tool_calls: vec![],
+                    usage: None,
+                    reasoning_content: None,
+                },
+            ]),
+        });
+
+        let observer: Arc<dyn Observer> = Arc::new(crate::observer::NoopObserver);
+        let mut agent = Agent::builder()
+            .provider(provider)
+            .tools(vec![Box::new(clawseed_tools::skill_tool::SkillTool::new())])
+            .memory(make_memory())
+            .observer(observer)
+            .tool_dispatcher(Box::new(NativeToolDispatcher))
+            .workspace_dir(dir.path().to_path_buf())
+            .skill_index(skill_index)
+            .build()
+            .expect("agent builder should succeed");
+
+        let _response = agent.turn("use test-skill").await.unwrap();
+
+        // Verify no sentinel JSON in history
+        for msg in agent.history() {
+            if let ConversationMessage::ToolResults(results) = msg {
+                for result in results {
+                    assert!(
+                        !result.content.contains("__skill_action"),
+                        "Sentinel JSON leaked into history: {}",
+                        result.content
+                    );
+                    assert!(
+                        !result.content.contains("__skill_name"),
+                        "Sentinel JSON leaked into history: {}",
+                        result.content
+                    );
+                }
+            }
+            if let ConversationMessage::Chat(chat) = msg {
+                assert!(
+                    !chat.content.contains("__skill_action"),
+                    "Sentinel JSON leaked into history chat: {}",
+                    chat.content
+                );
+            }
+        }
+
+        // Verify the skill was activated and history contains the activation message
+        assert_eq!(agent.active_skills.len(), 1);
+        assert_eq!(agent.active_skills[0].skill.name, "test-skill");
+        let has_activation_msg = agent.history().iter().any(|msg| {
+            if let ConversationMessage::ToolResults(results) = msg {
+                results.iter().any(|r| r.content.contains("activated"))
+            } else {
+                false
+            }
+        });
+        assert!(
+            has_activation_msg,
+            "History should contain skill activation message"
+        );
     }
 }

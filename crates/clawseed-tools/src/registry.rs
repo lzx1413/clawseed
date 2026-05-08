@@ -38,6 +38,7 @@ use crate::memory_store::MemoryStoreTool;
 use crate::model_routing_config::ModelRoutingConfigTool;
 use crate::pdf_read::PdfReadTool;
 use crate::shell::ShellTool;
+use crate::skill_tool::SkillTool;
 use crate::web_fetch::WebFetchTool;
 use crate::web_search_tool::WebSearchTool;
 
@@ -109,6 +110,7 @@ pub fn all_tools(
     tools.push(Box::new(ModelRoutingConfigTool::new()));
     tools.push(Box::new(PdfReadTool::new()));
     tools.push(Box::new(ShellTool::new()));
+    tools.push(Box::new(SkillTool::new()));
 
     // web_fetch: only include when enabled
     if config.web_fetch.enabled {
