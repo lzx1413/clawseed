@@ -217,7 +217,15 @@ pub(crate) async fn run_gateway_chat_with_tools(
     #[cfg(not(test))]
     {
         let config = _state.config.lock().clone();
-        let mut agent = clawseed_agent::agent::Agent::from_config(&config).await?;
+        let mut agent = clawseed_agent::agent::Agent::from_config_with_shared_components(
+            &config,
+            _state.provider.clone(),
+            _state.mem.clone(),
+            _state.observer.clone(),
+            _state.model.clone(),
+            _state.temperature,
+        )
+        .await?;
         if let Some(sid) = session_id {
             agent.set_memory_session_id(Some(sid.to_string()));
         }

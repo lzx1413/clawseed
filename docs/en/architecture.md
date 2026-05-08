@@ -85,7 +85,7 @@ clawseed-api (zero deps, trait definitions only)
 
 **Key rule**: `clawseed-api` is the only crate with broad dependencies, and it depends on no other crate. Core never imports extensions.
 
-> **Note:** The arrows above show crate-level import direction. At runtime, `Agent::from_config_with_registry()` directly instantiates provider, memory, and tools from their respective crates — the agent crate is not a pure orchestration layer, it also owns runtime assembly.
+> **Note:** The arrows above show crate-level import direction. At runtime, `Agent::from_config_with_registry()` directly instantiates provider, memory, and tools from their respective crates — the agent crate is not a pure orchestration layer, it also owns runtime assembly. The gateway uses `Agent::from_config_with_shared_components()` to reuse shared `AppState` components (provider, memory, observer) across connections instead of creating new ones per connection.
 
 ## Core Abstractions
 
@@ -101,7 +101,9 @@ All extension points in ClawSeed are traits:
 
 ## Agent Assembly & Loop
 
-`Agent::from_config_with_registry()` is the primary constructor. It does runtime assembly — directly instantiates provider (via `ProviderFactoryRegistry`), memory (via `clawseed_memory::create_memory()`), and tools (via `clawseed_tools::registry::all_tools()`), then selects a dispatcher based on `provider.supports_native_tools()`. Tools depend on memory being constructed first; dispatcher depends on provider capabilities. All components are passed to `Agent::builder()` for final construction.
+`Agent::from_config_with_registry()` is the primary constructor for CLI/embedded use. It does runtime assembly — directly instantiates provider (via `ProviderFactoryRegistry`), memory (via `clawseed_memory::create_memory()`), and tools (via `clawseed_tools::registry::all_tools()`), then selects a dispatcher based on `provider.supports_native_tools()`. Tools depend on memory being constructed first; dispatcher depends on provider capabilities. All components are passed to `Agent::builder()` for final construction.
+
+`Agent::from_config_with_shared_components()` is the constructor for gateway use. It accepts pre-built `Arc<dyn Provider>`, `Arc<dyn Memory>`, `Arc<dyn Observer>`, model name, and temperature from `AppState` — these shared components are reused across all WebSocket/webhook connections. All other assembly logic (tools, hooks, filters, skills, identity, etc.) is shared via the private `build_from_config()` helper to avoid duplication. The provider field is `Arc<dyn Provider>` (not `Box`); `AgentBuilder.provider()` wraps `Box→Arc`, and `shared_provider()` accepts `Arc` directly.
 
 The agent's core is a turn loop, triggered by each user message:
 
@@ -186,7 +188,7 @@ let specs = registry.tool_specs();  // Cached ToolSpec list
 
 `DefaultToolRegistry` (in `clawseed-agent`) uses `DashMap` for lock-free concurrent access, with glob pattern-based tool filtering (`allowed_tools` / `denied_tools`) and per-MCP-server filtering.
 
-## Dual Tool Registry
+## Dual Tool Registry & Shared Components
 
 At runtime there are **two independent `ToolRegistry` instances** with different scopes:
 
@@ -200,6 +202,8 @@ Implications:
 - Remote tools must be registered in **both** registries to be both visible and executable
 - In single-connection scenarios (current Android demo), the two registries are effectively in sync
 
+**Shared components**: `AppState` holds `Arc<dyn Provider>`, `Arc<dyn Memory>`, `Arc<dyn Observer>`, `model: String`, and `temperature: f64`. Gateway connections use `from_config_with_shared_components()` to reuse these, avoiding per-connection provider (HTTP connection pools) and memory (SQLite connections) duplication. HookRunner and ToolRegistry remain per-connection (SecurityPolicy rate limits and remote tools must be isolated). Config updates via `/api/config` do **not** rebuild shared components — restart the gateway for provider/model/temperature/memory changes to take effect.
+
 ## MCP Status (planned, not yet implemented)
 
 The `ToolSource::Mcp` enum variant and `McpConfig` schema exist, and `DefaultToolRegistry` supports per-server tool filtering. However, all MCP types in `crates/clawseed-agent/src/tools.rs` (`McpRegistry`, `DeferredMcpToolSet`, `McpToolWrapper`, `ToolSearchTool`) are **stubs** — they return empty collections or errors. There is no MCP protocol client library. The gateway has wiring that calls `McpRegistry::connect_all()`, but it returns immediately without connecting. Do not treat MCP as a usable capability.
@@ -211,16 +215,20 @@ The initialization flow from entry point to running agent:
 ```
 CLI (clawseed/src/main.rs)
   └→ Gateway: run_gateway() (clawseed-gateway/src/lib.rs)
-       ├─ Creates AppState with shared tool_registry
+       ├─ Creates AppState with shared provider, memory, observer, model, temperature, tool_registry
        └─ Each WebSocket connection (clawseed-gateway/src/ws.rs):
-            ├─ Agent::from_config() — creates per-connection Agent
-            │    ├─ Instantiates provider, memory, tools
+            ├─ Agent::from_config_with_shared_components() — reuses shared components
+            │    ├─ Reuses state.provider, state.mem, state.observer, state.model, state.temperature
+            │    ├─ Creates per-connection tools, hooks, dispatcher, skill index
             │    └─ Agent::builder().build() — creates agent-local tool_registry
             ├─ Remote tools: register to shared registry + inject into agent
             └─ Message loop: agent.chat() / agent.run()
 
+Webhook (clawseed-gateway/src/handlers.rs)
+  └→ Agent::from_config_with_shared_components() — same shared components, per-request Agent
+
 Chat mode (clawseed/src/main.rs)
-  └→ Agent::from_config() directly — same assembly path, no gateway layer
+  └→ Agent::from_config() directly — creates own provider/memory, no gateway layer
 ```
 
 ## Provider Factory

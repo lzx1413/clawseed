@@ -59,7 +59,7 @@ struct ResolvedToolCall {
 
 /// The core Agent struct — a registry of tools, hooks, and context providers.
 pub struct Agent {
-    provider: Box<dyn Provider>,
+    provider: Arc<dyn Provider>,
     tool_registry: Arc<dyn ToolRegistry>,
     memory: Arc<dyn Memory>,
     observer: Arc<dyn Observer>,
@@ -83,7 +83,7 @@ pub struct Agent {
 
 /// Builder for constructing an Agent.
 pub struct AgentBuilder {
-    provider: Option<Box<dyn Provider>>,
+    provider: Option<Arc<dyn Provider>>,
     tools: Option<Vec<Box<dyn Tool>>>,
     tool_registry: Option<Arc<dyn ToolRegistry>>,
     memory: Option<Arc<dyn Memory>>,
@@ -142,6 +142,11 @@ impl AgentBuilder {
     }
 
     pub fn provider(mut self, provider: Box<dyn Provider>) -> Self {
+        self.provider = Some(Arc::from(provider));
+        self
+    }
+
+    pub fn shared_provider(mut self, provider: Arc<dyn Provider>) -> Self {
         self.provider = Some(provider);
         self
     }
@@ -342,7 +347,7 @@ impl Agent {
         let fallback = config.providers.fallback_provider();
 
         // Provider — use custom registry if available
-        let provider = if let Some(ref registry) = provider_factory_registry {
+        let provider: Arc<dyn Provider> = if let Some(ref registry) = provider_factory_registry {
             clawseed_providers::create_resilient_provider_with_registry(
                 registry,
                 config.providers.fallback.as_deref().unwrap_or("openrouter"),
@@ -351,6 +356,7 @@ impl Agent {
                 &config.reliability,
                 &clawseed_providers::provider_runtime_options_from_config(config),
             )?
+            .into()
         } else {
             clawseed_providers::create_resilient_provider_with_options(
                 config.providers.fallback.as_deref().unwrap_or("openrouter"),
@@ -359,6 +365,7 @@ impl Agent {
                 &config.reliability,
                 &clawseed_providers::provider_runtime_options_from_config(config),
             )?
+            .into()
         };
 
         // Memory
@@ -371,9 +378,47 @@ impl Agent {
         // Observer
         let observer: Arc<dyn Observer> = Arc::new(crate::observer::NoopObserver);
 
+        // Model and temperature from fallback provider config
+        let model_name = fallback
+            .and_then(|e| e.model.clone())
+            .unwrap_or_else(|| "anthropic/claude-sonnet-4".into());
+        let temperature = fallback.and_then(|e| e.temperature).unwrap_or(0.7);
+
+        Self::build_from_config(config, provider, mem, observer, model_name, temperature)
+    }
+
+    /// Build an agent from config, reusing externally-provided shared components.
+    ///
+    /// Unlike `from_config()` which creates its own provider/memory/observer,
+    /// this method accepts pre-built instances — typically shared across
+    /// gateway WebSocket connections.
+    ///
+    /// model_name and temperature are also taken from the shared bundle
+    /// (state.model / state.temperature), not re-read from config, to avoid
+    /// provider-config skew (e.g., old provider + new model after a config update).
+    pub async fn from_config_with_shared_components(
+        config: &clawseed_config::schema::Config,
+        provider: Arc<dyn Provider>,
+        memory: Arc<dyn Memory>,
+        observer: Arc<dyn Observer>,
+        model_name: String,
+        temperature: f64,
+    ) -> anyhow::Result<Self> {
+        Self::build_from_config(config, provider, memory, observer, model_name, temperature)
+    }
+
+    /// Private: shared assembly logic for both public constructors.
+    fn build_from_config(
+        config: &clawseed_config::schema::Config,
+        provider: Arc<dyn Provider>,
+        memory: Arc<dyn Memory>,
+        observer: Arc<dyn Observer>,
+        model_name: String,
+        temperature: f64,
+    ) -> anyhow::Result<Self> {
         // Tools
         let tools =
-            clawseed_tools::registry::all_tools(config.workspace_dir.clone(), config, mem.clone());
+            clawseed_tools::registry::all_tools(config.workspace_dir.clone(), config, memory.clone());
 
         // Dispatcher: native if provider supports it, otherwise XML
         let dispatcher: Box<dyn ToolDispatcher> = if provider.supports_native_tools() {
@@ -381,12 +426,6 @@ impl Agent {
         } else {
             Box::new(crate::dispatcher::XmlToolDispatcher)
         };
-
-        // Model and temperature from fallback provider config
-        let model_name = fallback
-            .and_then(|e| e.model.clone())
-            .unwrap_or_else(|| "anthropic/claude-sonnet-4".into());
-        let temperature = fallback.and_then(|e| e.temperature).unwrap_or(0.7);
 
         // Hook runner: SecurityPolicy is always the first hook
         let mut hook_runner = HookRunner::new();
@@ -437,9 +476,9 @@ impl Agent {
         };
 
         let mut builder = Agent::builder()
-            .provider(provider)
+            .shared_provider(provider)
             .tools(tools)
-            .memory(mem)
+            .memory(memory)
             .observer(observer)
             .tool_dispatcher(dispatcher)
             .model_name(model_name)

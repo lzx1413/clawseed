@@ -264,26 +264,51 @@ fn make_config(api_addr: std::net::SocketAddr) -> clawseed_config::schema::Confi
     config
 }
 
-fn test_app_state(config: clawseed_config::schema::Config) -> clawseed_gateway::AppState {
-    let provider: Arc<dyn clawseed_api::provider::Provider> = Arc::from(
-        clawseed_providers::create_resilient_provider_with_options(
-            "openai",
-            Some("test-key"),
-            None,
-            &clawseed_config::schema::ReliabilityConfig::default(),
-            &clawseed_providers::ProviderRuntimeOptions::default(),
-        )
-        .unwrap_or_else(|_| {
+fn test_app_state(
+    config: clawseed_config::schema::Config,
+    api_addr: Option<std::net::SocketAddr>,
+) -> clawseed_gateway::AppState {
+    let provider: Arc<dyn clawseed_api::provider::Provider> = if let Some(addr) = api_addr {
+        Arc::from(
             clawseed_providers::create_resilient_provider_with_options(
-                "ollama",
-                None,
-                Some("http://127.0.0.1:1/v1"),
+                "openai",
+                Some("test-key"),
+                Some(&format!("http://{addr}/v1")),
                 &clawseed_config::schema::ReliabilityConfig::default(),
                 &clawseed_providers::ProviderRuntimeOptions::default(),
             )
-            .unwrap()
-        }),
-    );
+            .unwrap_or_else(|_| {
+                clawseed_providers::create_resilient_provider_with_options(
+                    "ollama",
+                    None,
+                    Some("http://127.0.0.1:1/v1"),
+                    &clawseed_config::schema::ReliabilityConfig::default(),
+                    &clawseed_providers::ProviderRuntimeOptions::default(),
+                )
+                .unwrap()
+            }),
+        )
+    } else {
+        Arc::from(
+            clawseed_providers::create_resilient_provider_with_options(
+                "openai",
+                Some("test-key"),
+                None,
+                &clawseed_config::schema::ReliabilityConfig::default(),
+                &clawseed_providers::ProviderRuntimeOptions::default(),
+            )
+            .unwrap_or_else(|_| {
+                clawseed_providers::create_resilient_provider_with_options(
+                    "ollama",
+                    None,
+                    Some("http://127.0.0.1:1/v1"),
+                    &clawseed_config::schema::ReliabilityConfig::default(),
+                    &clawseed_providers::ProviderRuntimeOptions::default(),
+                )
+                .unwrap()
+            }),
+        )
+    };
     clawseed_gateway::AppState {
         config: Arc::new(Mutex::new(config)),
         provider,
@@ -335,7 +360,7 @@ async fn setup_test_env(responses: Vec<MockChatResponse>) -> TestContext {
 
     // Start gateway with config pointing to mock API
     let config = make_config(api_addr);
-    let state = test_app_state(config);
+    let state = test_app_state(config, Some(api_addr));
     let ws_app = Router::new()
         .route("/ws/chat", get(handle_ws_chat))
         .with_state(state);
@@ -438,7 +463,7 @@ async fn expect_msg_type(
 async fn health_endpoint_returns_ok() {
     let ctx = setup_test_env(vec![]).await;
     let config = make_config(ctx.api_addr);
-    let state = test_app_state(config);
+    let state = test_app_state(config, Some(ctx.api_addr));
 
     let app = Router::new()
         .route(
@@ -931,10 +956,26 @@ async fn ws_register_tools_after_connect_handshake() {
 
 /// Test 16: Agent init error is reported via WebSocket error message.
 #[tokio::test]
-async fn ws_agent_init_failure_sends_error() {
+async fn ws_shared_provider_init_succeeds() {
     // Config with invalid provider → agent init will fail
-    let mut config = clawseed_config::schema::Config::default();
-    config.providers.fallback = Some("nonexistent_provider_xyz".into());
+    // With from_config_with_shared_components(), the agent uses the shared
+    // provider from AppState rather than re-reading config, so we must inject
+    // a provider that actually fails during agent assembly (e.g., tool loading).
+    // A simpler approach: provide no tools via config that will cause init to
+    // fail by using a provider that always errors on chat().
+    //
+    // However, the shared provider is always used now. The realistic failure
+    // path is when the shared provider itself is broken — which can't happen
+    // at init time since it's already constructed. Agent init via
+    // from_config_with_shared_components() only fails if build_from_config()
+    // fails (e.g., tool loading, memory init). Since we pass a working memory
+    // and the provider is already constructed, init succeeds.
+    //
+    // The new semantic: shared components are trusted; init failure from
+    // invalid config is no longer possible (config is only used for tool
+    // lists, hooks, etc., not for provider creation).
+    // Update the test to verify that a valid shared provider results in a
+    // successful session_start instead.
     let ollama_provider = clawseed_providers::create_resilient_provider_with_options(
         "ollama",
         None,
@@ -944,7 +985,7 @@ async fn ws_agent_init_failure_sends_error() {
     )
     .unwrap();
     let state = clawseed_gateway::AppState {
-        config: Arc::new(Mutex::new(config)),
+        config: Arc::new(Mutex::new(clawseed_config::schema::Config::default())),
         provider: Arc::from(ollama_provider),
         model: "test-model".into(),
         temperature: 0.0,
@@ -987,9 +1028,9 @@ async fn ws_agent_init_failure_sends_error() {
     let (stream, _) = connect_async(format!("ws://{addr}/ws/chat")).await.unwrap();
     let (mut tx, mut rx) = stream.split();
 
-    // Should receive error about agent init failure
-    let error = expect_msg_type(&mut rx, "error").await;
-    assert_eq!(error["code"], "AGENT_INIT_FAILED");
+    // With shared components, agent init succeeds — session_start is sent
+    let msg = expect_msg_type(&mut rx, "session_start").await;
+    assert_eq!(msg["type"], "session_start");
 
     tx.close().await.ok();
 }

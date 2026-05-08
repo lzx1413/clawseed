@@ -12,7 +12,7 @@
 
 ```rust
 pub struct Agent {
-    provider: Box<dyn Provider>,
+    provider: Arc<dyn Provider>,
     tool_registry: Arc<dyn ToolRegistry>,
     memory: Arc<dyn Memory>,
     observer: Arc<dyn Observer>,
@@ -27,11 +27,14 @@ Agent is a **registry** that manages all tool sources (built-in, MCP, remote) th
 
 > **Note on MCP:** All MCP types (`McpRegistry`, `DeferredMcpToolSet`, `McpToolWrapper`, `ToolSearchTool`) in `crates/clawseed-agent/src/tools.rs` are **stubs** — they return empty collections or errors. The `ToolSource::Mcp` enum variant and `McpConfig` schema exist, but there is no actual MCP protocol client. Do not treat MCP as a usable capability.
 
+> **Note on provider field:** The `provider` field is `Arc<dyn Provider>`, not `Box`. This enables gateway connections to share a single provider instance (with its HTTP connection pools) across all WebSocket/webhook sessions. `AgentBuilder.provider()` accepts `Box<dyn Provider>` and wraps it as `Arc`; `shared_provider()` accepts `Arc<dyn Provider>` directly for gateway use.
+
 ### AgentBuilder — Builder Pattern
 
 ```rust
 let agent = Agent::builder()
-    .provider(provider)
+    .provider(provider)                          // Box<dyn Provider> → wrapped as Arc
+    .shared_provider(arc_provider)               // Arc<dyn Provider> directly (gateway use)
     .tools(tools)                    // Option 1: pass tool list, auto-builds DefaultToolRegistry
     .tool_registry(registry)         // Option 2: pass pre-built ToolRegistry (takes priority)
     .memory(memory)
@@ -45,9 +48,14 @@ let agent = Agent::builder()
     .hook_runner(Some(Arc::new(hook_runner)))       // Hook pipeline
     .build()?;
 
-// Build from config (optionally with a custom ProviderFactoryRegistry)
+// Build from config (optionally with a custom ProviderFactoryRegistry) — CLI/embedded use
 let agent = Agent::from_config(&config).await?;
 let agent = Agent::from_config_with_registry(&config, Some(provider_factory_registry)).await?;
+
+// Build with shared components — gateway use (reuses AppState provider/memory/observer)
+let agent = Agent::from_config_with_shared_components(
+    &config, state.provider, state.mem, state.observer, state.model, state.temperature
+).await?;
 ```
 
 ## Module Architecture

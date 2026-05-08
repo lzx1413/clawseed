@@ -222,7 +222,10 @@ pub async fn handle_api_config_put(
     // Update in-memory config
     *state.config.lock() = new_config;
 
-    Json(serde_json::json!({"status": "ok"})).into_response()
+    Json(serde_json::json!({
+        "status": "ok",
+        "warning": "Provider, model, temperature, and memory are shared across connections and not rebuilt on config update. Restart the gateway for these changes to take effect."
+    })).into_response()
 }
 
 /// GET /api/provider/models — proxy model list fetch using configured API key

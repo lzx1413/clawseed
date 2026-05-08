@@ -67,7 +67,7 @@ ClawSeed 的 trait 驱动架构借鉴自 [ZeroClaw](https://github.com/zeroclaw-
    * 及任何 OpenAI 兼容接口
 ```
 
-依赖流是单向的：**api ← agent ← tools / providers / memory ← gateway**。没有反向依赖。注意：运行时 `Agent::from_config_with_registry()` 直接实例化 provider、memory 和 tools——agent crate 不只是纯编排层，还承担运行时装配职责。
+依赖流是单向的：**api ← agent ← tools / providers / memory ← gateway**。没有反向依赖。注意：运行时 `Agent::from_config_with_registry()` 直接实例化 provider、memory 和 tools——agent crate 不只是纯编排层，还承担运行时装配职责。在网关中，`Agent::from_config_with_shared_components()` 复用 `AppState` 的共享组件（provider、memory、observer），避免每个连接重复创建。
 
 ## 远程工具调用
 

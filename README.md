@@ -66,7 +66,7 @@ ClawSeed borrows its trait-based architecture from [ZeroClaw](https://github.com
    * and any OpenAI-compatible endpoint
 ```
 
-Dependency flow is one-way: **api ← agent ← tools / providers / memory ← gateway**. Nothing points back up. Note that at runtime, `Agent::from_config_with_registry()` directly instantiates provider, memory, and tools — the agent crate is not a pure orchestration layer, it also owns runtime assembly.
+Dependency flow is one-way: **api ← agent ← tools / providers / memory ← gateway**. Nothing points back up. Note that at runtime, `Agent::from_config_with_registry()` directly instantiates provider, memory, and tools — the agent crate is not a pure orchestration layer, it also owns runtime assembly. In the gateway, `Agent::from_config_with_shared_components()` reuses shared `AppState` components (provider, memory, observer) across connections instead of creating new ones per connection.
 
 ## Remote tool calls
 
