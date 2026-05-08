@@ -155,67 +155,59 @@ impl Tool for FileReadTool {
 - Verify the canonical path starts with the workspace prefix
 - IO errors propagated via `?` to `anyhow::Result`
 
-## Step 3: Using Capability Injection
+## Step 3: Constructor Injection
 
-Tools access runtime capabilities (security policy, memory, provider, etc.) via `ctx.get::<T>()`:
+Tools that need runtime dependencies (Memory, Provider, etc.) receive them via constructor injection:
 
 ```rust
 use clawseed_api::{Tool, ToolResult, ToolContext};
-use clawseed_agent::security::SecurityPolicy;
+use clawseed_api::memory_traits::Memory;
 
-pub struct ShellTool;
+pub struct MyMemoryTool {
+    memory: Arc<dyn Memory>,
+}
+
+impl MyMemoryTool {
+    pub fn new(memory: Arc<dyn Memory>) -> Self {
+        Self { memory }
+    }
+}
 
 #[async_trait]
-impl Tool for ShellTool {
-    fn name(&self) -> &str { "shell" }
-    fn description(&self) -> &str { "Execute a shell command" }
+impl Tool for MyMemoryTool {
+    fn name(&self) -> &str { "my_memory_tool" }
+    fn description(&self) -> &str { "Stores and retrieves data" }
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "command": { "type": "string", "description": "The shell command to execute" }
+                "key": { "type": "string", "description": "The key to store" },
+                "value": { "type": "string", "description": "The value to store" }
             },
-            "required": ["command"]
+            "required": ["key", "value"]
         })
     }
 
-    async fn execute(&self, args: Value, ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
-        let command = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
+    async fn execute(&self, args: Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+        let key = args.get("key").and_then(|v| v.as_str()).unwrap_or("");
+        let value = args.get("value").and_then(|v| v.as_str()).unwrap_or("");
 
-        // Security policy check
-        if let Some(policy) = ctx.get::<SecurityPolicy>() {
-            if let Err(reason) = policy.check_command(command) {
-                return Ok(ToolResult {
-                    success: false,
-                    output: String::new(),
-                    error: Some(format!("Blocked by security policy: {reason}")),
-                });
-            }
-        }
-        // No security policy → no check (graceful degradation)
-
-        // Execute command...
-        let output = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(command)
-            .output()?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        // Use injected memory directly
+        self.memory.store(key, value, MemoryCategory::Core, None).await?;
 
         Ok(ToolResult {
-            success: output.status.success(),
-            output: stdout,
-            error: if stderr.is_empty() { None } else { Some(stderr) },
+            success: true,
+            output: format!("Stored '{}'", key),
+            error: None,
         })
     }
 }
 ```
 
 **Key points**:
-- Use `if let Some(policy) = ctx.get::<SecurityPolicy>()` to check if a capability exists
-- Gracefully degrade when capability is absent — don't error
-- Common capabilities: `SecurityPolicy`, `dyn Memory`, `Provider`
+- Receive dependencies via `new(Arc<dyn T>)` constructor
+- Security checks are handled by the `Hook` pipeline (SecurityPolicy), not individual tools
+- Tools access only `ctx.workspace_dir()` from the execution context
 
 ## Step 4: Stateful Tools
 

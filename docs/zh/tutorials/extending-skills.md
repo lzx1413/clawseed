@@ -155,67 +155,59 @@ impl Tool for FileReadTool {
 - 验证 canonical 路径以 workspace 为前缀
 - IO 错误通过 `?` 传播给 `anyhow::Result`
 
-## 第三步：使用能力注入
+## 第三步：构造函数注入
 
-工具通过 `ctx.get::<T>()` 访问运行时能力（如安全策略、记忆、Provider 等）：
+需要运行时依赖（Memory、Provider 等）的工具通过构造函数注入获取：
 
 ```rust
 use clawseed_api::{Tool, ToolResult, ToolContext};
-use clawseed_agent::security::SecurityPolicy;
+use clawseed_api::memory_traits::Memory;
 
-pub struct ShellTool;
+pub struct MyMemoryTool {
+    memory: Arc<dyn Memory>,
+}
+
+impl MyMemoryTool {
+    pub fn new(memory: Arc<dyn Memory>) -> Self {
+        Self { memory }
+    }
+}
 
 #[async_trait]
-impl Tool for ShellTool {
-    fn name(&self) -> &str { "shell" }
-    fn description(&self) -> &str { "Execute a shell command" }
+impl Tool for MyMemoryTool {
+    fn name(&self) -> &str { "my_memory_tool" }
+    fn description(&self) -> &str { "存储和检索数据" }
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "command": { "type": "string", "description": "The shell command to execute" }
+                "key": { "type": "string", "description": "要存储的键" },
+                "value": { "type": "string", "description": "要存储的值" }
             },
-            "required": ["command"]
+            "required": ["key", "value"]
         })
     }
 
-    async fn execute(&self, args: Value, ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
-        let command = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
+    async fn execute(&self, args: Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+        let key = args.get("key").and_then(|v| v.as_str()).unwrap_or("");
+        let value = args.get("value").and_then(|v| v.as_str()).unwrap_or("");
 
-        // 安全策略检查
-        if let Some(policy) = ctx.get::<SecurityPolicy>() {
-            if let Err(reason) = policy.check_command(command) {
-                return Ok(ToolResult {
-                    success: false,
-                    output: String::new(),
-                    error: Some(format!("Blocked by security policy: {reason}")),
-                });
-            }
-        }
-        // 没有安全策略则不检查（优雅降级）
-
-        // 执行命令...
-        let output = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(command)
-            .output()?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        // 直接使用注入的 memory
+        self.memory.store(key, value, MemoryCategory::Core, None).await?;
 
         Ok(ToolResult {
-            success: output.status.success(),
-            output: stdout,
-            error: if stderr.is_empty() { None } else { Some(stderr) },
+            success: true,
+            output: format!("已存储 '{}'", key),
+            error: None,
         })
     }
 }
 ```
 
 **要点**：
-- 使用 `if let Some(policy) = ctx.get::<SecurityPolicy>()` 检查能力是否存在
-- 能力不存在时优雅降级，不要报错
-- 常用能力：`SecurityPolicy`、`dyn Memory`、`Provider`
+- 通过 `new(Arc<dyn T>)` 构造函数接收依赖
+- 安全检查由 `Hook` 管线（SecurityPolicy）处理，不由单个工具负责
+- 工具从执行上下文只访问 `ctx.workspace_dir()`
 
 ## 第四步：带状态的工具
 

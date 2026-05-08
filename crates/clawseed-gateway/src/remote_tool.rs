@@ -210,13 +210,6 @@ mod tests {
             static EMPTY: std::path::PathBuf = std::path::PathBuf::new();
             &EMPTY
         }
-
-        fn get_any(
-            &self,
-            _type_id: std::any::TypeId,
-        ) -> Option<&(dyn std::any::Any + Send + Sync)> {
-            None
-        }
     }
 
     #[test]

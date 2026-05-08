@@ -678,12 +678,6 @@ mod tests {
             fn workspace_dir(&self) -> &std::path::Path {
                 std::path::Path::new("/tmp")
             }
-            fn get_any(
-                &self,
-                _type_id: std::any::TypeId,
-            ) -> Option<&(dyn std::any::Any + Send + Sync)> {
-                None
-            }
         }
         DummyCtx
     }

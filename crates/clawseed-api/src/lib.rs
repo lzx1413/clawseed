@@ -6,9 +6,9 @@
 //!
 //! ## Key design: Extension imports core, core never imports extension
 //!
-//! The Agent holds `Vec<Box<dyn Tool>>`, `Vec<Box<dyn Hook>>`, and
-//! `Vec<Box<dyn ContextProvider>>`. Adding features only requires adding
-//! entries to these vectors; the core code never changes.
+//! The Agent holds `Vec<Box<dyn Tool>>`, `Vec<Box<dyn Hook>>`.
+//! Adding features only requires adding entries to these vectors;
+//! the core code never changes.
 //!
 //! ## Traits
 //! - [`provider::Provider`] — LLM inference backends

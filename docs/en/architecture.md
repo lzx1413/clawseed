@@ -151,21 +151,17 @@ The agent has no branching for remote vs. local tools:
 └──────────────┘                          └──────────────┘
 ```
 
-## Capability Injection
+## Tool Context
 
-Tools don't receive dependencies through constructors. Instead, they look them up at runtime via `ToolContext`:
+Tools receive runtime dependencies (Memory, etc.) via constructor injection. The `ToolContext` trait provides the workspace directory for file operations:
 
 ```rust
-// Inject at construction time
-agent_builder.capability(Arc::new(my_service));
+// Constructor injection — tools receive dependencies at creation time
+let tool = MemoryStoreTool::new(Arc::clone(&memory));
 
-// Look up at execution time
-if let Some(svc) = ctx.get::<MyService>() {
-    svc.do_thing();
-}
+// Workspace directory from context
+let workspace = ctx.workspace_dir();
 ```
-
-Under the hood, this uses a `TypeId` → `Arc<dyn Any>` map, requiring no generic parameters and decoupling tool traits from extension types.
 
 ## Tool Registry
 

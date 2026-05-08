@@ -191,9 +191,7 @@ impl Tool for MyTool {
     fn description(&self) -> &str { "做些有用的事" }
     fn parameters_schema(&self) -> Value { /* JSON Schema */ }
     async fn execute(&self, args: Value, ctx: &dyn ToolContext) -> Result<ToolResult> {
-        if let Some(policy) = ctx.get::<SecurityPolicy>() {
-            policy.can_act()?;
-        }
+        let workspace = ctx.workspace_dir();
         // ...
     }
 }
@@ -225,21 +223,7 @@ impl Hook for AuditHook {
 
 在 `clawseed-providers` 中实现 `Provider` trait，加入工厂函数。支持原生工具调用、流式输出、视觉理解和提示缓存。
 
-### 添加能力
-
-向 Agent 注入任何 `Send + Sync + 'static` 类型——工具在运行时发现它：
-
-```rust
-// 构建时（网关）
-agent_builder.capability(Arc::new(my_custom_service));
-
-// 执行时（工具）
-if let Some(svc) = ctx.get::<MyCustomService>() {
-    svc.do_thing();
-}
-```
-
-## 内置工具
+### 添加 Hook
 
 **文件操作** — 读取、写入、编辑、glob 搜索、内容搜索
 **网络** — HTTP 请求、网页抓取、网页搜索（DuckDuckGo）

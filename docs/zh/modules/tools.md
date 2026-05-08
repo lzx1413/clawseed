@@ -2,7 +2,7 @@
 
 ## 概述
 
-`clawseed-tools` 包含 25+ 内置工具的具体实现。所有工具仅依赖 `clawseed-api` 的 trait，通过 `ctx.get::<T>()` 访问运行时能力。
+`clawseed-tools` 包含 25+ 内置工具的具体实现。所有工具仅依赖 `clawseed-api` 的 trait。需要运行时依赖（Memory 等）的工具通过构造函数注入获取。
 
 ## 工具清单
 
@@ -116,7 +116,7 @@ impl Tool for MyTool {
 1. **无状态结构体** — 工具是单例，状态通过 `Arc<Mutex<T>>` 管理
 2. **参数提取** — 从 JSON Value 中提取，使用 `.and_then()` 链式处理
 3. **工作区沙箱** — 文件工具通过 `ctx.workspace_dir()` 限定路径，使用 canonicalize 防止路径穿越
-4. **安全检查** — 通过 `ctx.get::<SecurityPolicy>()` 获取安全策略
+4. **构造函数注入** — 需要依赖（Memory 等）的工具通过 `new(Arc<dyn Memory>)` 接收
 5. **错误返回** — 所有错误封装在 `ToolResult { success: false, error: Some(...) }`，而非 panic
 
 ### 路径安全模式
@@ -130,15 +130,25 @@ if !canonical.starts_with(&workspace_canon) {
 }
 ```
 
-### 条件能力模式
+### 构造函数注入模式
 
 ```rust
-async fn execute(&self, args: Value, ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
-    // 有记忆能力时使用
-    if let Some(memory) = ctx.get::<dyn Memory>() {
-        memory.store(&result, "tool_output").await?;
+pub struct MemoryStoreTool {
+    memory: Arc<dyn Memory>,
+}
+
+impl MemoryStoreTool {
+    pub fn new(memory: Arc<dyn Memory>) -> Self {
+        Self { memory }
     }
-    // 没有则跳过，优雅降级
-    Ok(ToolResult { success: true, output: result, error: None })
+}
+
+#[async_trait]
+impl Tool for MemoryStoreTool {
+    async fn execute(&self, args: Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+        // 直接使用注入的 memory
+        self.memory.store("key", &value, MemoryCategory::Core, None).await?;
+        Ok(ToolResult { success: true, output: result, error: None })
+    }
 }
 ```

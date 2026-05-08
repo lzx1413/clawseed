@@ -63,7 +63,7 @@ All extensibility flows through these traits — new capabilities register imple
 - **Provider**: `chat()`, `stream_chat()`, `supports_native_tools()`, `warmup()`
 - **Hook**: `before_tool_call()` → Continue/Cancel/Modify, `after_tool_call()`
 - **Memory**: `store()`, `recall()`, `get()`, `forget()`, `list()`
-- **ToolContext**: `workspace_dir()`, `get::<T>()` — type-safe capability lookup via `TypeId`
+- **ToolContext**: `workspace_dir()` — workspace path for file operations
 
 ### Agent Assembly & Loop (clawseed-agent/src/agent.rs)
 
@@ -78,10 +78,6 @@ The agent loop then:
 4. Dispatch tools (parallel when possible)
 5. Feed results back to provider
 6. Repeat until no tool calls or max iterations
-
-### Capability Injection (clawseed-agent/src/context.rs)
-
-Extensions inject typed capabilities (SecurityPolicy, Provider handles, etc.) via `Agent::builder().capability(Arc::new(...))`. Tools access them via `ctx.get::<T>()` — O(1) TypeId lookup, no string keys.
 
 ### Security (clawseed-agent/src/security/)
 

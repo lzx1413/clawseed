@@ -2,7 +2,7 @@
 
 ## Overview
 
-`clawseed-tools` contains 25+ built-in tool implementations. All tools depend only on `clawseed-api` traits and access runtime capabilities via `ctx.get::<T>()`.
+`clawseed-tools` contains 25+ built-in tool implementations. All tools depend only on `clawseed-api` traits. Tools that need runtime dependencies (Memory, etc.) receive them via constructor injection.
 
 ## Tool List
 
@@ -116,7 +116,7 @@ impl Tool for MyTool {
 1. **Stateless struct** — Tools are singletons; state managed via `Arc<Mutex<T>>`
 2. **Parameter extraction** — Extract from JSON Value using `.and_then()` chains
 3. **Workspace sandboxing** — File tools use `ctx.workspace_dir()` to scope paths, with canonicalize to prevent path traversal
-4. **Security checks** — Access security policy via `ctx.get::<SecurityPolicy>()`
+4. **Constructor injection** — Tools that need dependencies (Memory, etc.) receive them via `new(Arc<dyn Memory>)`
 5. **Error returns** — All errors wrapped in `ToolResult { success: false, error: Some(...) }`, never panic
 
 ### Path Safety Pattern
@@ -130,15 +130,25 @@ if !canonical.starts_with(&workspace_canon) {
 }
 ```
 
-### Conditional Capability Pattern
+### Constructor Injection Pattern
 
 ```rust
-async fn execute(&self, args: Value, ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
-    // Use memory capability when available
-    if let Some(memory) = ctx.get::<dyn Memory>() {
-        memory.store(&result, "tool_output").await?;
+pub struct MemoryStoreTool {
+    memory: Arc<dyn Memory>,
+}
+
+impl MemoryStoreTool {
+    pub fn new(memory: Arc<dyn Memory>) -> Self {
+        Self { memory }
     }
-    // Skip if unavailable — graceful degradation
-    Ok(ToolResult { success: true, output: result, error: None })
+}
+
+#[async_trait]
+impl Tool for MemoryStoreTool {
+    async fn execute(&self, args: Value, _ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
+        // Use injected memory directly
+        self.memory.store("key", &value, MemoryCategory::Core, None).await?;
+        Ok(ToolResult { success: true, output: result, error: None })
+    }
 }
 ```

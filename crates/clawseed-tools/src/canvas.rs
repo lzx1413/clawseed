@@ -387,12 +387,6 @@ mod tests {
         fn workspace_dir(&self) -> &std::path::Path {
             &self.workspace
         }
-        fn get_any(
-            &self,
-            _type_id: std::any::TypeId,
-        ) -> Option<&(dyn std::any::Any + Send + Sync)> {
-            None
-        }
     }
 
     fn test_ctx() -> TestToolContext {

@@ -23,8 +23,8 @@ pub struct ToolSpec {
 
 /// Core tool trait — implement for any capability.
 ///
-/// Tools only depend on `clawseed-api` traits. Runtime capabilities
-/// (LLM, memory, security) are accessed via `ctx.get::<T>()`.
+/// Tools only depend on `clawseed-api` traits. Runtime dependencies
+/// (memory, etc.) are received via constructor injection.
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;

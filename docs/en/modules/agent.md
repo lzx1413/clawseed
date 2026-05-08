@@ -41,7 +41,6 @@ let agent = Agent::builder()
     .observer(observer)
     .tool_dispatcher(dispatcher)
     .workspace_dir(path)
-    .capability(Arc::new(security_policy))
     .allowed_tools(Some(vec!["file_*".into()]))   // Glob pattern tool allowlist
     .denied_tools(Some(vec!["shell".into()]))      // Glob pattern tool denylist
     .mcp_tool_filters(Some(filters))               // Per-MCP-server filtering

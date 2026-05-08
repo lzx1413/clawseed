@@ -149,21 +149,17 @@ Agent 无需区分本地和远程工具：
 └──────────────┘                          └──────────────┘
 ```
 
-## 能力注入机制
+## 工具上下文
 
-工具不通过构造函数获取依赖，而是通过 `ToolContext` 在运行时查找：
+工具通过构造函数注入获取运行时依赖（Memory 等）。`ToolContext` trait 提供工作区目录用于文件操作：
 
 ```rust
-// 构建时注入
-agent_builder.capability(Arc::new(my_service));
+// 构造函数注入 — 工具创建时接收依赖
+let tool = MemoryStoreTool::new(Arc::clone(&memory));
 
-// 执行时查找
-if let Some(svc) = ctx.get::<MyService>() {
-    svc.do_thing();
-}
+// 从上下文获取工作区目录
+let workspace = ctx.workspace_dir();
 ```
-
-底层使用 `TypeId` → `Arc<dyn Any>` 映射，无需泛型参数，解耦工具 trait 和扩展类型。
 
 ## 工具注册机制
 

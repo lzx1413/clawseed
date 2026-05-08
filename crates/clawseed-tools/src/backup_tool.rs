@@ -380,12 +380,6 @@ mod tests {
         fn workspace_dir(&self) -> &Path {
             &self.workspace
         }
-        fn get_any(
-            &self,
-            _type_id: std::any::TypeId,
-        ) -> Option<&(dyn std::any::Any + Send + Sync)> {
-            None
-        }
     }
 
     fn make_tool(tmp: &TempDir) -> BackupTool {

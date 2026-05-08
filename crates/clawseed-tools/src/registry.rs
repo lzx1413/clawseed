@@ -45,7 +45,7 @@ use crate::web_search_tool::WebSearchTool;
 /// Return all built-in tools as boxed trait objects.
 ///
 /// The binary calls this once during startup to populate the Agent's tool registry.
-/// Tools that need runtime capabilities access them via `ctx.get::<T>()`.
+/// Tools that need runtime dependencies receive them via constructor injection.
 ///
 /// `workspace_dir` is passed to tools that need it at construction time.
 /// Other tools get workspace info from `ctx.workspace_dir()` at execution time.

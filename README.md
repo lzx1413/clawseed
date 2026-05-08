@@ -190,9 +190,7 @@ impl Tool for MyTool {
     fn description(&self) -> &str { "Does something useful" }
     fn parameters_schema(&self) -> Value { /* JSON Schema */ }
     async fn execute(&self, args: Value, ctx: &dyn ToolContext) -> Result<ToolResult> {
-        if let Some(policy) = ctx.get::<SecurityPolicy>() {
-            policy.can_act()?;
-        }
+        let workspace = ctx.workspace_dir();
         // ...
     }
 }
@@ -224,21 +222,7 @@ impl Hook for AuditHook {
 
 Implement the `Provider` trait in `clawseed-providers`, add to the factory. Supports native tool calling, streaming, vision, and prompt caching.
 
-### Add a capability
-
-Inject any `Send + Sync + 'static` type into the agent — tools discover it at runtime:
-
-```rust
-// At construction (gateway)
-agent_builder.capability(Arc::new(my_custom_service));
-
-// At execution (tool)
-if let Some(svc) = ctx.get::<MyCustomService>() {
-    svc.do_thing();
-}
-```
-
-## Built-in tools
+### Add a hook
 
 **File operations** — read, write, edit, glob search, content search
 **Web** — HTTP request, web fetch, web search (DuckDuckGo)
@@ -263,7 +247,7 @@ Tools that the agent doesn't need are excluded by `allowed_tools` in config — 
 1. **Explicit over implicit** — `all_tools()` lists every tool; the full capability set is visible at a glance
 2. **Declarative over imperative** — config drives composition, not code changes
 3. **Traits at boundaries** — core depends on abstractions; implementations live outside
-4. **Graceful degradation** — missing capability → tool skips the feature; failed memory → NoneMemory fallback; flaky provider → ReliableProvider retries
+4. **Graceful degradation** — failed memory → NoneMemory fallback; flaky provider → ReliableProvider retries
 
 ## Acknowledgments
 
@@ -274,7 +258,7 @@ The key difference is positioning: ZeroClaw is an application (channels, dashboa
 - No bundled channels — applications integrate their own messaging SDKs
 - No bundled dashboard — applications build their own UI (e.g. the Android demo app)
 - Added native remote tool calls for mobile clients
-- Added unified `Hook` trait and `TypeId`-based capability injection
+- Added unified `Hook` trait for tool call interception
 - Added `ProviderFactory` registry for platform-specific provider sets (Android/embedded)
 - Added extended thinking support with reasoning content round-trip for tool calls
 - Added Android demo app running the full agent stack on-device

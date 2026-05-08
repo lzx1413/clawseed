@@ -38,7 +38,6 @@ let agent = Agent::builder()
     .observer(observer)
     .tool_dispatcher(dispatcher)
     .workspace_dir(path)
-    .capability(Arc::new(security_policy))
     .allowed_tools(Some(vec!["file_*".into()]))   // glob 模式工具白名单
     .denied_tools(Some(vec!["shell".into()]))      // glob 模式工具黑名单
     .mcp_tool_filters(Some(filters))               // 按 MCP 服务器过滤

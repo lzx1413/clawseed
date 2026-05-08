@@ -1,8 +1,8 @@
 //! Built-in tool implementations for ClawSeed.
 //!
 //! All tools depend only on `clawseed-api` traits (Tool, ToolContext).
-//! Runtime capabilities (LLM, memory, security) are accessed via
-//! `ctx.get::<T>()` from ToolContext.
+//! Tools that need runtime dependencies (Memory, etc.) receive them via
+//! constructor injection.
 
 #[cfg(not(feature = "android"))]
 pub mod backup_tool;

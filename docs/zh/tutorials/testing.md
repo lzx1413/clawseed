@@ -172,7 +172,6 @@ let agent = Agent::builder()
     .observer(Arc::new(crate::observer::NoopObserver))
     .tool_dispatcher(Box::new(NativeToolDispatcher))
     .workspace_dir(std::env::temp_dir())
-    .capability(Arc::new(SecurityPolicy::read_only()))
     .build()
     .unwrap();
 ```

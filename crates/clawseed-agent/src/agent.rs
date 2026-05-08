@@ -3,7 +3,7 @@
 //! The Agent accepts a message via `turn()`, sends it to the provider,
 //! parses tool calls, dispatches to registered tools, and loops until done.
 
-use crate::context::{AgentToolContext, ContextProvider};
+use crate::context::AgentToolContext;
 use crate::dispatcher::{ParsedToolCall, ToolDispatcher, ToolExecutionResult};
 use crate::hooks::HookRunner;
 use crate::observer::{Observer, ObserverEvent};
@@ -18,7 +18,6 @@ use clawseed_api::provider::{
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_registry::{ToolRegistry, ToolSource};
 use clawseed_config::schema::{AutonomyLevel, IdentityConfig};
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -64,7 +63,6 @@ pub struct Agent {
     memory: Arc<dyn Memory>,
     observer: Arc<dyn Observer>,
     tool_dispatcher: Box<dyn ToolDispatcher>,
-    capabilities: HashMap<std::any::TypeId, Arc<dyn std::any::Any + Send + Sync>>,
     config: clawseed_config::schema::AgentConfig,
     model_name: String,
     temperature: f64,
@@ -89,7 +87,6 @@ pub struct AgentBuilder {
     memory: Option<Arc<dyn Memory>>,
     observer: Option<Arc<dyn Observer>>,
     tool_dispatcher: Option<Box<dyn ToolDispatcher>>,
-    capabilities: HashMap<std::any::TypeId, Arc<dyn std::any::Any + Send + Sync>>,
     config: Option<clawseed_config::schema::AgentConfig>,
     model_name: Option<String>,
     temperature: Option<f64>,
@@ -122,7 +119,6 @@ impl AgentBuilder {
             memory: None,
             observer: None,
             tool_dispatcher: None,
-            capabilities: HashMap::new(),
             config: None,
             model_name: None,
             temperature: None,
@@ -174,20 +170,6 @@ impl AgentBuilder {
 
     pub fn tool_dispatcher(mut self, tool_dispatcher: Box<dyn ToolDispatcher>) -> Self {
         self.tool_dispatcher = Some(tool_dispatcher);
-        self
-    }
-
-    /// Register a context provider. Tools can query capabilities via `ctx.get::<T>()`.
-    pub fn context_provider(mut self, provider: Box<dyn ContextProvider>) -> Self {
-        let type_id = provider.provided_type_id();
-        let arc = provider.into_any_arc();
-        self.capabilities.insert(type_id, arc);
-        self
-    }
-
-    /// Convenience: register a typed capability directly.
-    pub fn capability<T: Send + Sync + 'static>(mut self, value: Arc<T>) -> Self {
-        self.capabilities.insert(std::any::TypeId::of::<T>(), value);
         self
     }
 
@@ -302,7 +284,6 @@ impl AgentBuilder {
             tool_dispatcher: self
                 .tool_dispatcher
                 .ok_or_else(|| anyhow::anyhow!("tool_dispatcher is required"))?,
-            capabilities: self.capabilities,
             config: self.config.unwrap_or_default(),
             model_name: self.model_name.unwrap_or_else(|| "<unconfigured>".into()),
             temperature: self.temperature.unwrap_or(0.7),
@@ -775,11 +756,7 @@ impl Agent {
 
     /// Build the tool context for a single tool execution.
     fn build_tool_context(&self) -> AgentToolContext {
-        let mut ctx = AgentToolContext::new(self.workspace_dir.clone());
-        for (type_id, arc) in &self.capabilities {
-            ctx.add_arc(*type_id, Arc::clone(arc));
-        }
-        ctx
+        AgentToolContext::new(self.workspace_dir.clone())
     }
 
     async fn execute_tool_call(&self, call: &ParsedToolCall) -> ToolExecutionResult {

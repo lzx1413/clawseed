@@ -1,7 +1,7 @@
 //! Agent loop, tool dispatch, cost control, and cron engine for ClawSeed.
 //!
 //! The Agent is a registry — it holds `Vec<Box<dyn Tool>>`, `Vec<Box<dyn Hook>>`,
-//! and `Vec<Box<dyn ContextProvider>>`. Adding features only requires adding
+//! and `Vec<Box<dyn Hook>>`. Adding features only requires adding
 //! entries to these vectors; the core code never changes.
 
 pub mod agent;

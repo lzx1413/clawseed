@@ -577,12 +577,6 @@ mod tests {
             fn workspace_dir(&self) -> &std::path::Path {
                 std::path::Path::new("/tmp")
             }
-            fn get_any(
-                &self,
-                _type_id: std::any::TypeId,
-            ) -> Option<&(dyn std::any::Any + Send + Sync)> {
-                None
-            }
         }
         let result = tool.execute(json!({}), &DummyCtx).await;
         assert!(result.is_err());
@@ -595,12 +589,6 @@ mod tests {
         impl ToolContext for DummyCtx {
             fn workspace_dir(&self) -> &std::path::Path {
                 std::path::Path::new("/tmp")
-            }
-            fn get_any(
-                &self,
-                _type_id: std::any::TypeId,
-            ) -> Option<&(dyn std::any::Any + Send + Sync)> {
-                None
             }
         }
         let result = tool.execute(json!({"query": "test"}), &DummyCtx).await;
