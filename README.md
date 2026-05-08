@@ -66,7 +66,7 @@ ClawSeed borrows its trait-based architecture from [ZeroClaw](https://github.com
    * and any OpenAI-compatible endpoint
 ```
 
-Dependency flow is one-way: **api ← agent ← tools / providers / memory ← gateway**. Nothing points back up.
+Dependency flow is one-way: **api ← agent ← tools / providers / memory ← gateway**. Nothing points back up. Note that at runtime, `Agent::from_config_with_registry()` directly instantiates provider, memory, and tools — the agent crate is not a pure orchestration layer, it also owns runtime assembly.
 
 ## Remote tool calls
 
@@ -86,12 +86,15 @@ Mobile clients register tool specs when they connect over WebSocket. The gateway
 Flow:
 
 1. Client connects and sends `register_tools` with tool specs (name, description, JSON Schema)
-2. Gateway creates a `RemoteTool` for each spec, adds to agent's tool list
+2. Gateway creates a `RemoteTool` for each spec, registers to shared `AppState.tool_registry` (for `/api/tools` visibility) and injects into the per-connection Agent's tool registry (for actual execution)
 3. Agent calls the tool; `RemoteTool::execute()` sends `tool_call_request` to client over WebSocket
 4. Client executes locally, responds with `tool_result` or `tool_error`
 5. Gateway correlates response by call ID (30s timeout), returns result to agent
+6. On disconnect, gateway removes the session's remote tools from the shared registry via `unregister_by_source()`
 
 The agent loop has no branching for remote vs. local tools — both implement the `Tool` trait. Remote tools do not use `ToolContext` (no access to server-side memory, security policy, or other capabilities).
+
+> **Note:** There are two independent tool registries at runtime — `AppState.tool_registry` (gateway-wide, for `/api/tools` endpoint visibility) and `Agent.tool_registry` (per-connection, for actual tool dispatch). In single-connection scenarios they stay in sync, but with multiple concurrent connections, `/api/tools` may show tools that a given agent cannot actually invoke.
 
 ### Android SDK
 
@@ -133,7 +136,7 @@ See [`clients/android/README.md`](clients/android/README.md) for architecture de
 | Crate | Role | Depends on api | Depends on agent |
 |-------|------|:-:|:-:|
 | `clawseed-api` | Trait definitions only | — | — |
-| `clawseed-agent` | Agent loop, hooks, dispatch, parsing | yes | — |
+| `clawseed-agent` | Agent loop, hooks, dispatch, parsing, runtime assembly | yes | — |
 | `clawseed-tools` | 25+ built-in tools | yes | no |
 | `clawseed-providers` | LLM provider implementations | yes | no |
 | `clawseed-memory` | SQLite-backed memory + vector search | yes | no |

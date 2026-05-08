@@ -4,6 +4,8 @@
 
 远程工具调用（Remote Tool Call）是 ClawSeed 的核心特性之一，允许移动客户端通过 WebSocket 注册和执行工具。Agent 无需区分本地工具和远程工具——两者都实现 `Tool` trait，调用方式完全相同。
 
+> **注意：** 远程工具注册在**两个**独立的注册表中——网关级 `AppState.tool_registry`（用于 `/api/tools` 可见性）和连接级 `Agent.tool_registry`（用于实际执行）。完整的三步注册流程见下方"连接生命周期"。
+
 ## 架构总览
 
 ```
@@ -262,18 +264,25 @@ WebSocket 连接建立
     ↓
 客户端发送 register_tools
     ↓
-Gateway 创建 RemoteTool 实例，通过 tool_registry.register_or_replace() 加入注册表（ToolSource::Remote { session }）
+Gateway 创建 RemoteTool 实例：
+  1. 注册到共享 AppState.tool_registry，通过 register_or_replace()（ToolSource::Remote { session }）
+     → 使工具在 /api/tools 端点可见
+  2. 注入到当前连接 Agent，通过 agent.add_remote_tools(tools, session)
+     → 使 Agent 可实际调用这些工具
     ↓
 正常对话和工具调用
     ↓
 WebSocket 断开
     ↓
-Gateway 通过 tool_registry.unregister_by_source() 批量移除该会话的所有远程工具
+Gateway 通过 tool_registry.unregister_by_source() 从共享注册表中移除远程工具
+（Agent 侧的工具随 Agent 被丢弃而清理）
     ↓
 后续对话不再调用已断开客户端的工具
 ```
 
-**重要**：远程工具的生命周期与 WebSocket 连接绑定。连接断开后，相关工具自动从 Agent 中移除。
+**重要**：远程工具的生命周期与 WebSocket 连接绑定。连接断开后，相关工具自动从共享注册表和 Agent 中移除。
+
+> **双重注册表影响：** 共享 `AppState.tool_registry` 和每个 `Agent.tool_registry` 是独立的。`/api/tools` 可能显示来自其他连接但当前 Agent 无法调用的工具。在单连接场景下（当前 Android Demo），两个注册表实际上保持同步。
 
 ## 典型应用场景
 

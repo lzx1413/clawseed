@@ -41,7 +41,7 @@ ClawSeed is a Rust AI agent runtime with trait-based plugin architecture. 8 work
 
 ```
 clawseed-api (traits only, no impls)
-  ← clawseed-agent (orchestration: loop, hooks, dispatch, security, parser)
+  ← clawseed-agent (orchestration + runtime assembly: loop, hooks, dispatch, security, parser, bootstrapping)
     ← clawseed-tools (25+ built-in tools)
     ← clawseed-providers (LLM backends: Anthropic, Gemini, OpenAI, Bedrock, DeepSeek, Ollama, etc.)
     ← clawseed-memory (SQLite + vector/keyword search)
@@ -52,19 +52,24 @@ clawseed-api (traits only, no impls)
 clients/android (Kotlin/Compose demo app, runs gateway on-device)
 ```
 
+> **Note:** The dependency arrows above show crate-level import direction. At runtime, `Agent::from_config_with_registry()` directly instantiates provider, memory, and tools from their respective crates — the agent crate is not a pure orchestration layer, it also owns runtime assembly.
+
 ### Core Traits (clawseed-api)
 
 All extensibility flows through these traits — new capabilities register implementations without modifying agent code:
 
 - **Tool**: `name()`, `description()`, `parameters_schema()`, `execute(args, ctx)` → `ToolResult`
-- **ToolRegistry**: `register()`, `get_tool()`, `tool_specs()`, `unregister()` — unified tool management with `ToolSource` (BuiltIn/MCP/Remote)
+- **ToolRegistry**: `register()`, `get_tool()`, `tool_specs()`, `unregister()` — unified tool management with `ToolSource` (BuiltIn/MCP/Remote). MCP tool source is defined in the enum and registry infrastructure supports it, but the actual MCP protocol client is not yet implemented — see "MCP Status" below.
 - **Provider**: `chat()`, `stream_chat()`, `supports_native_tools()`, `warmup()`
 - **Hook**: `before_tool_call()` → Continue/Cancel/Modify, `after_tool_call()`
 - **Memory**: `store()`, `recall()`, `get()`, `forget()`, `list()`
 - **ToolContext**: `workspace_dir()`, `get::<T>()` — type-safe capability lookup via `TypeId`
 
-### Agent Loop (clawseed-agent/src/agent.rs)
+### Agent Assembly & Loop (clawseed-agent/src/agent.rs)
 
+`Agent::from_config_with_registry()` is the primary constructor. It does runtime assembly — directly instantiates provider (via `ProviderFactoryRegistry`), memory (via `clawseed_memory::create_memory()`), and tools (via `clawseed_tools::registry::all_tools()`), then selects a dispatcher based on `provider.supports_native_tools()`. Tools depend on memory being constructed first; dispatcher depends on provider capabilities. All components are passed to `Agent::builder()` for final construction.
+
+The agent loop then:
 1. Accept message → add to history
 2. Call provider with tool specs
 3. Parse response via ToolDispatcher (XmlToolDispatcher for prompt-guided with multi-format fallback, NativeToolDispatcher for Anthropic/Gemini/OpenAI)
@@ -82,11 +87,31 @@ AutonomyLevel: ReadOnly / Supervised / Full. SecurityPolicy implements the `Hook
 
 ### Remote Tools (clawseed-gateway)
 
-Mobile clients connect via WebSocket, register tool specs, and execute tools locally. Gateway wraps them as `RemoteTool` implementing the `Tool` trait, registered via `tool_registry.register_or_replace(tool, ToolSource::Remote { session })`. Agent sees no difference between local and remote tools.
+Mobile clients connect via WebSocket, register tool specs, and execute tools locally. Gateway wraps them as `RemoteTool` implementing the `Tool` trait. Remote tool registration is a three-step flow:
+
+1. **Register to shared registry** — `state.tool_registry.register_or_replace(tool, ToolSource::Remote { session })` so `/api/tools` reflects the tool globally
+2. **Inject into per-connection Agent** — `agent.add_remote_tools(tools, session)` before processing each message, so the agent can actually invoke the tool
+3. **Cleanup on disconnect** — `state.tool_registry.unregister_by_source(&ToolSource::Remote { session })`
+
+This means the shared registry (`AppState.tool_registry`) and each agent's private registry (`Agent.tool_registry`) are separate instances — see "Dual Tool Registry" below. Agent code sees no difference between local and remote tools once injected.
 
 ### Tool Registration (clawseed-agent/src/tool_registry.rs)
 
 `DefaultToolRegistry` implements the `ToolRegistry` trait using `DashMap` for lock-free concurrent access. Supports three tool sources (BuiltIn/MCP/Remote), glob-based filtering (`allowed_tools`/`denied_tools`), and per-MCP-server filtering. `all_tools()` in clawseed-tools creates enabled tools based on config.
+
+### Dual Tool Registry
+
+At runtime there are **two independent `ToolRegistry` instances** with different scopes:
+
+| Registry | Scope | Created in | Purpose |
+|---|---|---|---|
+| `AppState.tool_registry` | Gateway-wide (shared) | `clawseed-gateway/src/lib.rs` | `/api/tools` endpoint visibility, global tool listing |
+| `Agent.tool_registry` | Per-connection (isolated) | `clawseed-agent/src/agent.rs` (`Agent::builder().build()`) | Actual tool dispatch during agent turns |
+
+Implications:
+- `/api/tools` may show tools (from remote connections) that a given agent cannot actually invoke
+- Remote tools must be registered in **both** registries to be both visible and executable (see "Remote Tools" above)
+- In single-connection scenarios (current Android demo), the two registries are effectively in sync
 
 ### Provider Factory (clawseed-providers/src/factory.rs)
 
@@ -95,6 +120,29 @@ Mobile clients connect via WebSocket, register tool specs, and execute tools loc
 ### Memory (clawseed-memory)
 
 SQLite backend with hybrid search (BM25 keyword + vector embeddings). Categories: Core, Daily, Conversation, Custom. NoneMemory stub when disabled.
+
+### MCP Status (planned, not yet implemented)
+
+The `ToolSource::Mcp` enum variant and `McpConfig` schema exist, and `DefaultToolRegistry` supports per-server tool filtering. However, all MCP types in `crates/clawseed-agent/src/tools.rs` (`McpRegistry`, `DeferredMcpToolSet`, `McpToolWrapper`, `ToolSearchTool`) are **stubs** — they return empty collections or errors. There is no MCP protocol client library. The gateway has wiring that calls `McpRegistry::connect_all()`, but it returns immediately without connecting. Do not treat MCP as a usable capability.
+
+### Runtime Init Chain
+
+The initialization flow from entry point to running agent:
+
+```
+CLI (clawseed/src/main.rs)
+  └→ Gateway: run_gateway() (clawseed-gateway/src/lib.rs)
+       ├─ Creates AppState with shared tool_registry
+       └─ Each WebSocket connection (clawseed-gateway/src/ws.rs):
+            ├─ Agent::from_config() — creates per-connection Agent
+            │    ├─ Instantiates provider, memory, tools
+            │    └─ Agent::builder().build() — creates agent-local tool_registry
+            ├─ Remote tools: register to shared registry + inject into agent
+            └─ Message loop: agent.chat() / agent.run()
+
+Chat mode (clawseed/src/main.rs)
+  └→ Agent::from_config() directly — same assembly path, no gateway layer
+```
 
 ### CETP (ClawSeed External Tool Protocol)
 

@@ -40,6 +40,8 @@
 
 The primary communication channel, supporting the following message types:
 
+Each WebSocket connection creates its own `Agent::from_config()` instance, independent of the gateway's shared state. See [Architecture Overview](../architecture.md) for the runtime init chain.
+
 **Client → Server**:
 - `{"type": "message", "content": "..."}` — Send a chat message
 - `{"type": "register_tools", "tools": [...]}` — Register client tools
@@ -68,7 +70,13 @@ The primary communication channel, supporting the following message types:
 
 ### remote_tool.rs — Remote Tool Bridge
 
-Wraps client-registered tools as `RemoteTool`, implementing the `Tool` trait:
+Wraps client-registered tools as `RemoteTool`, implementing the `Tool` trait. Remote tools follow a three-step registration flow:
+
+1. **Register to shared registry** — `state.tool_registry.register_or_replace(tool, ToolSource::Remote { session })` so `/api/tools` reflects the tool globally
+2. **Inject into per-connection Agent** — `agent.add_remote_tools(tools, session)` before processing each message
+3. **Cleanup on disconnect** — `state.tool_registry.unregister_by_source(&ToolSource::Remote { session })`
+
+This means the shared registry (`AppState.tool_registry`) and each agent's private registry (`Agent.tool_registry`) are separate instances. See the "Dual Tool Registry" section in [Architecture Overview](../architecture.md) for implications.
 
 ```rust
 impl Tool for RemoteTool {

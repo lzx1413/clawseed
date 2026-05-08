@@ -4,6 +4,8 @@
 
 `clawseed-agent` 是 Agent 的核心 crate，负责工具调度、Hook 执行、安全策略、定时任务等。它是连接 Provider、Tool、Memory、Hook 的枢纽。
 
+> **注意：** 除了编排，此 crate 还承担**运行时装配**职责。`Agent::from_config_with_registry()` 直接实例化 provider（通过 `ProviderFactoryRegistry`）、memory（通过 `clawseed_memory::create_memory()`）和 tools（通过 `clawseed_tools::registry::all_tools()`），然后根据 `provider.supports_native_tools()` 选择调度器。tools 依赖 memory 先构造完成；调度器依赖 provider 能力。
+
 ## 核心结构
 
 ### Agent — Agent 注册中心
@@ -22,6 +24,8 @@ pub struct Agent {
 ```
 
 Agent 是一个**注册中心**，通过 `ToolRegistry` trait 统一管理所有来源的工具（内置、MCP、远程），通过 `HookRunner` 管理 Hook 管线。核心代码不感知具体工具实现，扩展只需向注册表中添加条目。
+
+> **MCP 注意事项：** `crates/clawseed-agent/src/tools.rs` 中的所有 MCP 类型（`McpRegistry`、`DeferredMcpToolSet`、`McpToolWrapper`、`ToolSearchTool`）都是 **stub**——返回空集合或错误。`ToolSource::Mcp` 枚举变体和 `McpConfig` schema 已存在，但没有实际的 MCP 协议客户端。请勿将 MCP 视为可用能力。
 
 ### AgentBuilder — 构建器
 
@@ -149,6 +153,8 @@ pub trait HookFactory: Send + Sync {
 - `ToolSpec` 缓存 + 写时失效，避免重复计算
 - 支持 glob 模式的三层过滤：denied 优先 → allowed 白名单 → MCP 服务器级过滤
 - `register_all()` 批量注册、`unregister_by_source()` 按来源批量移除
+
+> **双重注册表注意：** 运行时存在两个独立的 `ToolRegistry` 实例。网关级 `AppState.tool_registry` 用于 `/api/tools` 端点可见性；每个 Agent 的 `tool_registry` 用于实际工具调度。远程工具必须在两者中都注册。详见[架构概览](../architecture.md)中的"双重工具注册表"一节。
 
 ### security/ — 安全策略
 

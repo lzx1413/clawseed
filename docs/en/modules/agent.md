@@ -4,6 +4,8 @@
 
 `clawseed-agent` is the core agent crate, responsible for tool dispatch, hook execution, security policy, cron scheduling, and more. It is the hub connecting Provider, Tool, Memory, and Hook.
 
+> **Note:** Beyond orchestration, this crate also owns **runtime assembly**. `Agent::from_config_with_registry()` directly instantiates provider (via `ProviderFactoryRegistry`), memory (via `clawseed_memory::create_memory()`), and tools (via `clawseed_tools::registry::all_tools()`), then selects a dispatcher based on `provider.supports_native_tools()`. Tools depend on memory being constructed first; dispatcher depends on provider capabilities.
+
 ## Core Structures
 
 ### Agent — Agent Registry
@@ -22,6 +24,8 @@ pub struct Agent {
 ```
 
 Agent is a **registry** that manages all tool sources (built-in, MCP, remote) through the `ToolRegistry` trait, and manages the Hook pipeline through `HookRunner`. Core code has no knowledge of specific tool implementations — extensions simply add entries to the registry.
+
+> **Note on MCP:** All MCP types (`McpRegistry`, `DeferredMcpToolSet`, `McpToolWrapper`, `ToolSearchTool`) in `crates/clawseed-agent/src/tools.rs` are **stubs** — they return empty collections or errors. The `ToolSource::Mcp` enum variant and `McpConfig` schema exist, but there is no actual MCP protocol client. Do not treat MCP as a usable capability.
 
 ### AgentBuilder — Builder Pattern
 
@@ -149,6 +153,8 @@ pub trait HookFactory: Send + Sync {
 - `ToolSpec` caching with write-time invalidation to avoid recomputation
 - Three-layer glob pattern filtering: denied takes precedence → allowed allowlist → per-MCP-server filtering
 - `register_all()` for bulk registration, `unregister_by_source()` for bulk removal by source
+
+> **Dual Registry Note:** At runtime there are two independent `ToolRegistry` instances. The gateway-level `AppState.tool_registry` serves `/api/tools` endpoint visibility; each Agent's `tool_registry` serves actual tool dispatch. Remote tools must be registered in both. See the "Dual Tool Registry" section in [Architecture Overview](../architecture.md) for details.
 
 ### security/ — Security Policy
 

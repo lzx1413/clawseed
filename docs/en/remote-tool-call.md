@@ -4,6 +4,8 @@
 
 Remote Tool Call is one of ClawSeed's core features, allowing mobile clients to register and execute tools over WebSocket. The agent has no distinction between local and remote tools — both implement the `Tool` trait and are invoked identically.
 
+> **Note:** Remote tools are registered in **two** separate registries — the gateway-wide `AppState.tool_registry` (for `/api/tools` visibility) and the per-connection `Agent.tool_registry` (for actual execution). See "Connection Lifecycle" below for the full three-step registration flow.
+
 ## Architecture Overview
 
 ```
@@ -263,18 +265,25 @@ WebSocket connection established
     ↓
 Client sends register_tools
     ↓
-Gateway creates RemoteTool instances, adds to ToolRegistry via register_or_replace() (ToolSource::Remote { session })
+Gateway creates RemoteTool instances:
+  1. Register to shared AppState.tool_registry via register_or_replace() (ToolSource::Remote { session })
+     → Makes tools visible via /api/tools endpoint
+  2. Inject into per-connection Agent via agent.add_remote_tools(tools, session)
+     → Makes tools callable by the agent
     ↓
 Normal conversation and tool calls
     ↓
 WebSocket disconnects
     ↓
-Gateway bulk-removes all remote tools for this session via tool_registry.unregister_by_source()
+Gateway removes remote tools from shared registry via tool_registry.unregister_by_source()
+(Agent-scoped tools are cleaned up when the Agent is dropped)
     ↓
 Subsequent conversations no longer call the disconnected client's tools
 ```
 
-**Important**: Remote tool lifecycle is bound to the WebSocket connection. On disconnect, associated tools are automatically removed from the agent.
+**Important**: Remote tool lifecycle is bound to the WebSocket connection. On disconnect, associated tools are automatically removed from both the shared registry and the agent.
+
+> **Dual Registry Implication:** The shared `AppState.tool_registry` and each `Agent.tool_registry` are independent. `/api/tools` may show tools from other connections that the current agent cannot invoke. In single-connection scenarios (current Android demo), the two registries are effectively in sync.
 
 ## Typical Use Cases
 

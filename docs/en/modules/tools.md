@@ -68,8 +68,10 @@
 All tools are registered through the `all_tools()` function:
 
 ```rust
-pub fn all_tools(workspace_dir: PathBuf, config: &Config) -> Vec<Box<dyn Tool>>
+pub fn all_tools(workspace_dir: PathBuf, config: &Config, memory: Arc<dyn Memory>) -> Vec<Box<dyn Tool>>
 ```
+
+> **Note:** `crates/clawseed-agent/src/tools.rs` contains a transitional `all_tools_with_runtime()` function with a bloated signature (13 parameters, most unused). It delegates to the real `all_tools()` here. The agent crate's `tools.rs` is a stub/re-export layer — the actual implementation lives in this crate.
 
 1. Instantiate all built-in tools
 2. Filter based on configuration

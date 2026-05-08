@@ -67,7 +67,7 @@ ClawSeed 的 trait 驱动架构借鉴自 [ZeroClaw](https://github.com/zeroclaw-
    * 及任何 OpenAI 兼容接口
 ```
 
-依赖流是单向的：**api ← agent ← tools / providers / memory ← gateway**。没有反向依赖。
+依赖流是单向的：**api ← agent ← tools / providers / memory ← gateway**。没有反向依赖。注意：运行时 `Agent::from_config_with_registry()` 直接实例化 provider、memory 和 tools——agent crate 不只是纯编排层，还承担运行时装配职责。
 
 ## 远程工具调用
 
@@ -87,12 +87,15 @@ ClawSeed 的 trait 驱动架构借鉴自 [ZeroClaw](https://github.com/zeroclaw-
 流程：
 
 1. 客户端连接并发送 `register_tools`，包含工具规格（名称、描述、JSON Schema）
-2. 网关为每个规格创建 `RemoteTool`，加入 Agent 的工具列表
+2. 网关为每个规格创建 `RemoteTool`，注册到共享 `AppState.tool_registry`（用于 `/api/tools` 可见性），并注入到当前连接 Agent 的工具注册表（用于实际执行）
 3. Agent 调用工具；`RemoteTool::execute()` 通过 WebSocket 向客户端发送 `tool_call_request`
 4. 客户端本地执行，以 `tool_result` 或 `tool_error` 响应
 5. 网关通过 call ID 关联回调（30 秒超时），将结果返回给 Agent
+6. 连接断开时，网关通过 `unregister_by_source()` 从共享注册表中移除该会话的远程工具
 
 Agent 循环对远程和本地工具没有分支——两者实现同一个 `Tool` trait。远程工具不使用 `ToolContext`（无法访问服务端的内存、安全策略等能力）。
+
+> **注意：** 运行时存在两个独立的工具注册表——`AppState.tool_registry`（网关级，用于 `/api/tools` 端点可见性）和 `Agent.tool_registry`（连接级，用于实际工具调度）。在单连接场景下两者保持同步，但多连接并发时 `/api/tools` 可能显示当前 Agent 无法实际调用的工具。
 
 ### Android SDK
 
@@ -134,7 +137,7 @@ SDK 还将网关二进制作为前台服务运行在设备上——整个 Agent 
 | Crate | 职责 | 依赖 api | 依赖 agent |
 |-------|------|:-:|:-:|
 | `clawseed-api` | 仅 trait 定义 | — | — |
-| `clawseed-agent` | Agent 循环、Hook、分发、解析 | 是 | — |
+| `clawseed-agent` | Agent 循环、Hook、分发、解析、运行时装配 | 是 | — |
 | `clawseed-tools` | 25+ 内置工具 | 是 | 否 |
 | `clawseed-providers` | LLM 提供商实现 | 是 | 否 |
 | `clawseed-memory` | SQLite 存储 + 向量搜索 | 是 | 否 |

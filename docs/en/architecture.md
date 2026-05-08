@@ -74,7 +74,7 @@ clawseed-api (zero deps, trait definitions only)
     ├← clawseed-tools       (tool implementations)
     ├← clawseed-memory       (storage backends)
     ├← clawseed-providers    (LLM providers)
-    └← clawseed-agent        (agent core)
+    └← clawseed-agent        (agent core + runtime assembly)
             ↑
             └← clawseed-config   (config loading)
                     ↑
@@ -85,6 +85,8 @@ clawseed-api (zero deps, trait definitions only)
 
 **Key rule**: `clawseed-api` is the only crate with broad dependencies, and it depends on no other crate. Core never imports extensions.
 
+> **Note:** The arrows above show crate-level import direction. At runtime, `Agent::from_config_with_registry()` directly instantiates provider, memory, and tools from their respective crates — the agent crate is not a pure orchestration layer, it also owns runtime assembly.
+
 ## Core Abstractions
 
 All extension points in ClawSeed are traits:
@@ -93,11 +95,13 @@ All extension points in ClawSeed are traits:
 |-------|---------|---------------|
 | `Provider` | LLM inference backend | Implement in `clawseed-providers`, or register a custom `ProviderFactory` |
 | `Tool` | Agent-callable capability | Implement in `clawseed-tools`, or register remote tools via WebSocket |
-| `ToolRegistry` | Unified tool registration and lookup | `DefaultToolRegistry` in `clawseed-agent`; supports BuiltIn / MCP / Remote sources |
+| `ToolRegistry` | Unified tool registration and lookup | `DefaultToolRegistry` in `clawseed-agent`; supports BuiltIn / MCP / Remote sources. MCP is defined in the enum and registry infrastructure supports it, but the actual MCP protocol client is not yet implemented — see "MCP Status" below |
 | `Hook` | Tool call interceptor | Implement `before_tool_call` / `after_tool_call`, or create declaratively via `HookFactory` from config |
 | `Memory` | Conversation memory backend | Implement in `clawseed-memory` |
 
-## Agent Loop
+## Agent Assembly & Loop
+
+`Agent::from_config_with_registry()` is the primary constructor. It does runtime assembly — directly instantiates provider (via `ProviderFactoryRegistry`), memory (via `clawseed_memory::create_memory()`), and tools (via `clawseed_tools::registry::all_tools()`), then selects a dispatcher based on `provider.supports_native_tools()`. Tools depend on memory being constructed first; dispatcher depends on provider capabilities. All components are passed to `Agent::builder()` for final construction.
 
 The agent's core is a turn loop, triggered by each user message:
 
@@ -126,7 +130,13 @@ Parse response (ToolDispatcher::parse_response())
 
 ## Remote Tool Calls
 
-Mobile clients register tools over WebSocket. The gateway wraps each spec as a `RemoteTool` (implementing the `Tool` trait). The agent has no branching for remote vs. local tools:
+Mobile clients register tools over WebSocket. The gateway wraps each spec as a `RemoteTool` (implementing the `Tool` trait). Remote tool registration is a three-step flow:
+
+1. **Register to shared registry** — `state.tool_registry.register_or_replace(tool, ToolSource::Remote { session })` so `/api/tools` reflects the tool globally
+2. **Inject into per-connection Agent** — `agent.add_remote_tools(tools, session)` before processing each message
+3. **Cleanup on disconnect** — `state.tool_registry.unregister_by_source(&ToolSource::Remote { session })`
+
+The agent has no branching for remote vs. local tools:
 
 ```
 ┌──────────────┐     register_tools       ┌──────────────┐
@@ -175,6 +185,43 @@ let specs = registry.tool_specs();  // Cached ToolSpec list
 ```
 
 `DefaultToolRegistry` (in `clawseed-agent`) uses `DashMap` for lock-free concurrent access, with glob pattern-based tool filtering (`allowed_tools` / `denied_tools`) and per-MCP-server filtering.
+
+## Dual Tool Registry
+
+At runtime there are **two independent `ToolRegistry` instances** with different scopes:
+
+| Registry | Scope | Created in | Purpose |
+|---|---|---|---|
+| `AppState.tool_registry` | Gateway-wide (shared) | `clawseed-gateway/src/lib.rs` | `/api/tools` endpoint visibility, global tool listing |
+| `Agent.tool_registry` | Per-connection (isolated) | `clawseed-agent/src/agent.rs` (`Agent::builder().build()`) | Actual tool dispatch during agent turns |
+
+Implications:
+- `/api/tools` may show tools (from remote connections) that a given agent cannot actually invoke
+- Remote tools must be registered in **both** registries to be both visible and executable
+- In single-connection scenarios (current Android demo), the two registries are effectively in sync
+
+## MCP Status (planned, not yet implemented)
+
+The `ToolSource::Mcp` enum variant and `McpConfig` schema exist, and `DefaultToolRegistry` supports per-server tool filtering. However, all MCP types in `crates/clawseed-agent/src/tools.rs` (`McpRegistry`, `DeferredMcpToolSet`, `McpToolWrapper`, `ToolSearchTool`) are **stubs** — they return empty collections or errors. There is no MCP protocol client library. The gateway has wiring that calls `McpRegistry::connect_all()`, but it returns immediately without connecting. Do not treat MCP as a usable capability.
+
+## Runtime Init Chain
+
+The initialization flow from entry point to running agent:
+
+```
+CLI (clawseed/src/main.rs)
+  └→ Gateway: run_gateway() (clawseed-gateway/src/lib.rs)
+       ├─ Creates AppState with shared tool_registry
+       └─ Each WebSocket connection (clawseed-gateway/src/ws.rs):
+            ├─ Agent::from_config() — creates per-connection Agent
+            │    ├─ Instantiates provider, memory, tools
+            │    └─ Agent::builder().build() — creates agent-local tool_registry
+            ├─ Remote tools: register to shared registry + inject into agent
+            └─ Message loop: agent.chat() / agent.run()
+
+Chat mode (clawseed/src/main.rs)
+  └→ Agent::from_config() directly — same assembly path, no gateway layer
+```
 
 ## Provider Factory
 
@@ -288,7 +335,7 @@ Key features:
 | Crate | Role | Depends on api | Depends on agent |
 |-------|------|:--------------:|:----------------:|
 | `clawseed-api` | Trait definitions only | — | — |
-| `clawseed-agent` | Agent loop, hooks, dispatch, parsing | yes | — |
+| `clawseed-agent` | Agent loop, hooks, dispatch, parsing, runtime assembly | yes | — |
 | `clawseed-tools` | 25+ built-in tools | yes | no |
 | `clawseed-providers` | LLM provider implementations | yes | no |
 | `clawseed-memory` | SQLite-backed memory + vector search | yes | no |

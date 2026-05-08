@@ -74,7 +74,7 @@ clawseed-api（零依赖，仅 trait 定义）
     ├← clawseed-tools      （工具实现）
     ├← clawseed-memory      （存储后端）
     ├← clawseed-providers   （LLM 提供商）
-    └← clawseed-agent       （Agent 核心）
+    └← clawseed-agent       （Agent 核心 + 运行时装配）
             ↑
             └← clawseed-config  （配置加载）
                     ↑
@@ -85,6 +85,8 @@ clawseed-api（零依赖，仅 trait 定义）
 
 **关键规则**：`clawseed-api` 是唯一被广泛依赖的 crate，且它自身不依赖任何其他 crate。核心永远不导入扩展。
 
+> **注意：** 上图箭头表示 crate 级别的导入方向。运行时，`Agent::from_config_with_registry()` 直接从各自 crate 实例化 provider、memory 和 tools——agent crate 不只是纯编排层，还承担运行时装配职责。
+
 ## 核心抽象
 
 ClawSeed 的所有扩展点都是 trait：
@@ -93,11 +95,13 @@ ClawSeed 的所有扩展点都是 trait：
 |-------|------|---------|
 | `Provider` | LLM 推理后端 | 在 `clawseed-providers` 中实现，或通过 `ProviderFactory` 注册自定义工厂 |
 | `Tool` | Agent 可调用的能力 | 在 `clawseed-tools` 中实现，或通过 WebSocket 注册远程工具 |
-| `ToolRegistry` | 统一工具注册与查找 | 在 `clawseed-agent` 中提供 `DefaultToolRegistry`，支持 BuiltIn / MCP / Remote 三种来源 |
+| `ToolRegistry` | 统一工具注册与查找 | 在 `clawseed-agent` 中提供 `DefaultToolRegistry`，支持 BuiltIn / MCP / Remote 三种来源。MCP 在枚举和注册表基础设施中已有定义，但实际的 MCP 协议客户端尚未实现——见下方"MCP 状态" |
 | `Hook` | 工具调用拦截器 | 实现 `before_tool_call` / `after_tool_call`，或通过 `HookFactory` 从配置声明式创建 |
 | `Memory` | 对话记忆后端 | 在 `clawseed-memory` 中实现 |
 
-## Agent 循环
+## Agent 装配与循环
+
+`Agent::from_config_with_registry()` 是主要构造函数。它执行运行时装配——直接实例化 provider（通过 `ProviderFactoryRegistry`）、memory（通过 `clawseed_memory::create_memory()`）和 tools（通过 `clawseed_tools::registry::all_tools()`），然后根据 `provider.supports_native_tools()` 选择调度器。tools 依赖 memory 先构造完成；调度器依赖 provider 能力。所有组件最终传入 `Agent::builder()` 完成构建。
 
 Agent 的核心是一个 turn 循环，每次用户消息触发一次：
 
@@ -126,7 +130,13 @@ Agent 的核心是一个 turn 循环，每次用户消息触发一次：
 
 ## 远程工具调用
 
-移动客户端通过 WebSocket 注册工具，Gateway 将其包装为 `RemoteTool`（实现了 `Tool` trait），Agent 无需区分本地和远程工具：
+移动客户端通过 WebSocket 注册工具，Gateway 将其包装为 `RemoteTool`（实现了 `Tool` trait）。远程工具注册是三步流程：
+
+1. **注册到共享注册表** — `state.tool_registry.register_or_replace(tool, ToolSource::Remote { session })`，使 `/api/tools` 全局可见
+2. **注入到当前连接的 Agent** — `agent.add_remote_tools(tools, session)`，在处理每条消息前注入，使 Agent 可实际调用
+3. **断连清理** — `state.tool_registry.unregister_by_source(&ToolSource::Remote { session })`
+
+Agent 无需区分本地和远程工具：
 
 ```
 ┌──────────────┐     register_tools       ┌──────────────┐
@@ -175,6 +185,43 @@ let specs = registry.tool_specs();  // 带缓存的 ToolSpec 列表
 ```
 
 `DefaultToolRegistry`（在 `clawseed-agent` 中）使用 `DashMap` 实现无锁并发访问，支持 glob 模式的工具过滤（`allowed_tools` / `denied_tools`）和按 MCP 服务器过滤。
+
+## 双重工具注册表
+
+运行时存在**两个独立的 `ToolRegistry` 实例**，作用域不同：
+
+| 注册表 | 作用域 | 创建位置 | 用途 |
+|---|---|---|---|
+| `AppState.tool_registry` | 网关级（共享） | `clawseed-gateway/src/lib.rs` | `/api/tools` 端点可见性，全局工具列表 |
+| `Agent.tool_registry` | 连接级（隔离） | `clawseed-agent/src/agent.rs`（`Agent::builder().build()`） | Agent turn 期间的实际工具调度 |
+
+影响：
+- `/api/tools` 可能显示（来自其他连接的）当前 Agent 无法实际调用的工具
+- 远程工具必须在**两个**注册表中都注册，才能既可见又可执行
+- 在单连接场景下（当前 Android Demo），两个注册表实际上保持同步
+
+## MCP 状态（已规划，尚未实现）
+
+`ToolSource::Mcp` 枚举变体和 `McpConfig` schema 已存在，`DefaultToolRegistry` 也支持按服务器过滤。然而，`crates/clawseed-agent/src/tools.rs` 中的所有 MCP 类型（`McpRegistry`、`DeferredMcpToolSet`、`McpToolWrapper`、`ToolSearchTool`）都是 **stub**——返回空集合或错误。没有 MCP 协议客户端库。Gateway 中的代码会调用 `McpRegistry::connect_all()`，但它立即返回而不建立连接。请勿将 MCP 视为可用能力。
+
+## 运行时初始化链路
+
+从入口到运行中 Agent 的初始化流程：
+
+```
+CLI (clawseed/src/main.rs)
+  └→ Gateway: run_gateway() (clawseed-gateway/src/lib.rs)
+       ├─ 创建 AppState，包含共享 tool_registry
+       └─ 每个 WebSocket 连接 (clawseed-gateway/src/ws.rs):
+            ├─ Agent::from_config() — 创建连接级 Agent
+            │    ├─ 实例化 provider、memory、tools
+            │    └─ Agent::builder().build() — 创建 Agent 本地 tool_registry
+            ├─ 远程工具：注册到共享注册表 + 注入 Agent
+            └─ 消息循环：agent.chat() / agent.run()
+
+Chat 模式 (clawseed/src/main.rs)
+  └→ 直接 Agent::from_config() — 相同的装配路径，无网关层
+```
 
 ## Provider 工厂机制
 
@@ -287,7 +334,7 @@ System prompt（始终保留）
 | Crate | 职责 | 依赖 api | 依赖 agent |
 |-------|------|:---------:|:----------:|
 | `clawseed-api` | 仅 trait 定义 | — | — |
-| `clawseed-agent` | Agent 循环、Hook、调度、解析 | yes | — |
+| `clawseed-agent` | Agent 循环、Hook、调度、解析、运行时装配 | yes | — |
 | `clawseed-tools` | 25+ 内置工具 | yes | no |
 | `clawseed-providers` | LLM 提供商实现 | yes | no |
 | `clawseed-memory` | SQLite 存储 + 向量搜索 | yes | no |

@@ -68,8 +68,10 @@
 所有工具通过 `all_tools()` 函数统一注册：
 
 ```rust
-pub fn all_tools(workspace_dir: PathBuf, config: &Config) -> Vec<Box<dyn Tool>>
+pub fn all_tools(workspace_dir: PathBuf, config: &Config, memory: Arc<dyn Memory>) -> Vec<Box<dyn Tool>>
 ```
+
+> **注意：** `crates/clawseed-agent/src/tools.rs` 中有一个过渡性的 `all_tools_with_runtime()` 函数，签名臃肿（13 个参数，大多未使用），实际委托给本 crate 的 `all_tools()`。agent crate 的 `tools.rs` 是 stub/re-export 层——真正的实现在本 crate 中。
 
 1. 实例化所有内置工具
 2. 根据配置过滤条件启用/禁用

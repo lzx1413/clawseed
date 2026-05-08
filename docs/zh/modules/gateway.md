@@ -40,6 +40,8 @@
 
 主要通信通道，支持以下消息类型：
 
+每个 WebSocket 连接通过 `Agent::from_config()` 创建独立的 Agent 实例，与网关共享状态无关。运行时初始化链路详见[架构概览](../architecture.md)。
+
 **客户端 → 服务器**：
 - `{"type": "message", "content": "..."}` — 发送聊天消息
 - `{"type": "register_tools", "tools": [...]}` — 注册客户端工具
@@ -68,7 +70,13 @@
 
 ### remote_tool.rs — 远程工具桥接
 
-将客户端注册的工具包装为 `RemoteTool`，实现 `Tool` trait：
+将客户端注册的工具包装为 `RemoteTool`，实现 `Tool` trait。远程工具注册是三步流程：
+
+1. **注册到共享注册表** — `state.tool_registry.register_or_replace(tool, ToolSource::Remote { session })`，使 `/api/tools` 全局可见
+2. **注入到当前连接的 Agent** — `agent.add_remote_tools(tools, session)`，在处理每条消息前注入
+3. **断连清理** — `state.tool_registry.unregister_by_source(&ToolSource::Remote { session })`
+
+这意味着共享注册表（`AppState.tool_registry`）和每个 Agent 的私有注册表（`Agent.tool_registry`）是独立实例。影响详见[架构概览](../architecture.md)中的"双重工具注册表"一节。
 
 ```rust
 impl Tool for RemoteTool {
