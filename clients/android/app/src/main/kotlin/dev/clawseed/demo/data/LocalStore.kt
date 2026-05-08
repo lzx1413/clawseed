@@ -51,6 +51,24 @@ class LocalStore(private val context: Context) {
         }
     }
 
+    // --- Theme mode (light / dark / system) ---
+    private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+
+    val themeMode: Flow<String> = store.data.map { it[KEY_THEME_MODE] ?: "system" }
+
+    suspend fun setThemeMode(mode: String) {
+        store.edit { prefs -> prefs[KEY_THEME_MODE] = mode }
+    }
+
+    // --- OLED mode (pure black background in dark theme) ---
+    private val KEY_OLED_MODE = booleanPreferencesKey("oled_mode")
+
+    val oledMode: Flow<Boolean> = store.data.map { it[KEY_OLED_MODE] ?: false }
+
+    suspend fun setOledMode(enabled: Boolean) {
+        store.edit { prefs -> prefs[KEY_OLED_MODE] = enabled }
+    }
+
     // --- Debug mode ---
     private val KEY_SHOW_DEBUG = booleanPreferencesKey("show_debug_info")
 

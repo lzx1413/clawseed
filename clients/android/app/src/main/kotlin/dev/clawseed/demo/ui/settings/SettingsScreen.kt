@@ -1,5 +1,9 @@
 package dev.clawseed.demo.ui.settings
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,13 +70,66 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.clawseed.demo.data.LocalStore
 import kotlinx.coroutines.launch
 
+@Composable
+private fun ExpandableSection(
+    title: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    subtitle: String? = null,
+    content: @Composable () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            IconButton(onClick = onToggle) {
+                Icon(
+                    if (expanded) Icons.Default.KeyboardArrowDown
+                    else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = if (expanded) "收起" else "展开",
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(),
+            exit = shrinkVertically(),
+        ) {
+            content()
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
     val viewModel: SettingsViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    var llmExpanded by remember { mutableStateOf(false) }
+    var searchEngineExpanded by remember { mutableStateOf(false) }
+    var soulExpanded by remember { mutableStateOf(false) }
     var toolsExpanded by remember { mutableStateOf(false) }
+    var developerExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
@@ -81,10 +138,10 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
         }
     }
 
-    LaunchedEffect(uiState.saveSuccess) {
-        if (uiState.saveSuccess) {
-            snackbarHostState.showSnackbar("配置已保存")
-            viewModel.clearSaveSuccess()
+    LaunchedEffect(uiState.successMessage) {
+        uiState.successMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearSuccess()
         }
     }
 
@@ -125,100 +182,188 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
 
                 item { StatusCard(uiState.status) }
 
-                item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = uiState.editMode == EditMode.FORM,
-                            onClick = { viewModel.setEditMode(EditMode.FORM) },
-                            label = { Text("表单") },
-                        )
-                        FilterChip(
-                            selected = uiState.editMode == EditMode.TOML,
-                            onClick = { viewModel.setEditMode(EditMode.TOML) },
-                            label = { Text("TOML") },
-                        )
-                    }
-                }
-
-                item {
-                    when (uiState.editMode) {
-                        EditMode.FORM -> ProviderFormEditor(
-                            state = uiState,
-                            onSelectProvider = viewModel::selectProvider,
-                            onBaseUrlChange = viewModel::updateBaseUrl,
-                            onApiKeyChange = viewModel::updateApiKey,
-                            onFetchModels = viewModel::fetchModels,
-                            onSelectModel = viewModel::selectModel,
-                            onToggleThinking = viewModel::toggleThinking,
-                        )
-                        EditMode.TOML -> TomlEditor(
-                            toml = uiState.configToml,
-                            onTomlChange = { viewModel.updateConfigToml(it) },
-                        )
-                    }
-                }
-
-                if (uiState.editMode == EditMode.FORM) {
-                    item {
-                        SearchEngineCard(
-                            searchEngine = uiState.searchEngine,
-                            tavilyApiKey = uiState.tavilyApiKey,
-                            tavilyApiKeyVisible = uiState.tavilyApiKeyVisible,
-                            onSearchEngineChange = viewModel::updateSearchEngine,
-                            onTavilyApiKeyChange = viewModel::updateTavilyApiKey,
-                            onToggleTavilyApiKeyVisibility = viewModel::toggleTavilyApiKeyVisibility,
-                        )
-                    }
-                }
-
-                item {
-                    Button(
-                        onClick = { viewModel.saveConfig() },
-                        enabled = !uiState.isSaving && uiState.selectedModel.isNotBlank(),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        if (uiState.isSaving) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
-                        Text(if (uiState.isSaving) "保存中..." else "保存配置")
-                    }
-                }
-
-                item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .then(Modifier.padding(vertical = 4.dp)),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(
-                            text = "已注册工具 (${uiState.tools.size})",
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        IconButton(onClick = { toolsExpanded = !toolsExpanded }) {
-                            Icon(
-                                if (toolsExpanded) Icons.Default.KeyboardArrowDown
-                                else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = if (toolsExpanded) "收起" else "展开",
-                            )
-                        }
-                    }
-                }
-
-                if (toolsExpanded) {
-                    items(uiState.tools, key = { it.name }) { tool ->
-                        ToolCard(tool)
-                    }
-                }
-
                 if (localStore != null) {
-                    item { DeveloperOptionsCard(localStore) }
+                    item { AppearanceCard(localStore) }
+                }
+
+                // LLM Config section
+                item {
+                    ExpandableSection(
+                        title = "LLM 配置",
+                        expanded = llmExpanded,
+                        onToggle = { llmExpanded = !llmExpanded },
+                        subtitle = if (!llmExpanded && uiState.selectedModel.isNotBlank())
+                            "${PROVIDER_PRESETS[uiState.selectedPresetIndex].displayName} / ${uiState.selectedModel}"
+                        else if (!llmExpanded) "未配置" else null,
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(
+                                    selected = uiState.editMode == EditMode.FORM,
+                                    onClick = { viewModel.setEditMode(EditMode.FORM) },
+                                    label = { Text("表单") },
+                                )
+                                FilterChip(
+                                    selected = uiState.editMode == EditMode.TOML,
+                                    onClick = { viewModel.setEditMode(EditMode.TOML) },
+                                    label = { Text("TOML") },
+                                )
+                            }
+
+                            when (uiState.editMode) {
+                                EditMode.FORM -> ProviderFormEditor(
+                                    state = uiState,
+                                    onSelectProvider = viewModel::selectProvider,
+                                    onBaseUrlChange = viewModel::updateBaseUrl,
+                                    onApiKeyChange = viewModel::updateApiKey,
+                                    onFetchModels = viewModel::fetchModels,
+                                    onSelectModel = viewModel::selectModel,
+                                    onToggleThinking = viewModel::toggleThinking,
+                                )
+                                EditMode.TOML -> TomlEditor(
+                                    toml = uiState.configToml,
+                                    onTomlChange = { viewModel.updateConfigToml(it) },
+                                )
+                            }
+
+                            if (uiState.editMode == EditMode.FORM) {
+                                SearchEngineCard(
+                                    searchEngine = uiState.searchEngine,
+                                    tavilyApiKey = uiState.tavilyApiKey,
+                                    tavilyApiKeyVisible = uiState.tavilyApiKeyVisible,
+                                    onSearchEngineChange = viewModel::updateSearchEngine,
+                                    onTavilyApiKeyChange = viewModel::updateTavilyApiKey,
+                                    onToggleTavilyApiKeyVisibility = viewModel::toggleTavilyApiKeyVisibility,
+                                )
+                            }
+
+                            Button(
+                                onClick = { viewModel.saveConfig() },
+                                enabled = !uiState.isSaving && uiState.selectedModel.isNotBlank(),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                if (uiState.isSaving) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                                Text(if (uiState.isSaving) "保存中..." else "保存配置")
+                            }
+                        }
+                    }
+                }
+
+                // Soul section
+                item {
+                    val soulPreview = uiState.soulContent.lineSequence()
+                        .firstOrNull()?.removePrefix("# ")?.trim()
+                    ExpandableSection(
+                        title = "Soul",
+                        expanded = soulExpanded,
+                        onToggle = { soulExpanded = !soulExpanded },
+                        subtitle = if (!soulExpanded) {
+                            if (soulPreview.isNullOrBlank()) "未自定义" else soulPreview
+                        } else null,
+                    ) {
+                        SoulEditor(
+                            content = uiState.soulContent,
+                            onContentChange = viewModel::updateSoulContent,
+                            isSaving = uiState.isSavingSoul,
+                            onSave = viewModel::saveSoul,
+                        )
+                    }
+                }
+
+                // Tools section
+                item {
+                    ExpandableSection(
+                        title = "已注册工具 (${uiState.tools.size})",
+                        expanded = toolsExpanded,
+                        onToggle = { toolsExpanded = !toolsExpanded },
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            uiState.tools.forEach { tool ->
+                                ToolCard(tool)
+                            }
+                        }
+                    }
+                }
+
+                // Developer Options section
+                if (localStore != null) {
+                    item {
+                        ExpandableSection(
+                            title = "开发者选项",
+                            expanded = developerExpanded,
+                            onToggle = { developerExpanded = !developerExpanded },
+                        ) {
+                            DeveloperOptionsCard(localStore)
+                        }
+                    }
                 }
 
                 item { Spacer(modifier = Modifier.height(16.dp)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppearanceCard(localStore: LocalStore) {
+    val themeMode by localStore.themeMode.collectAsState(initial = "system")
+    val oledMode by localStore.oledMode.collectAsState(initial = false)
+    val scope = rememberCoroutineScope()
+    val useDarkTheme = when (themeMode) {
+        "light" -> false
+        "dark" -> true
+        else -> isSystemInDarkTheme()
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("外观", style = MaterialTheme.typography.titleSmall)
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = themeMode == "light",
+                    onClick = { scope.launch { localStore.setThemeMode("light") } },
+                    label = { Text("浅色") },
+                )
+                FilterChip(
+                    selected = themeMode == "dark",
+                    onClick = { scope.launch { localStore.setThemeMode("dark") } },
+                    label = { Text("深色") },
+                )
+                FilterChip(
+                    selected = themeMode == "system",
+                    onClick = { scope.launch { localStore.setThemeMode("system") } },
+                    label = { Text("跟随系统") },
+                )
+            }
+            if (useDarkTheme) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("OLED 纯黑背景", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "使用纯黑背景以节省 OLED 屏幕电量",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        )
+                    }
+                    Switch(
+                        checked = oledMode,
+                        onCheckedChange = { scope.launch { localStore.setOledMode(it) } },
+                    )
+                }
             }
         }
     }
@@ -236,8 +381,6 @@ private fun DeveloperOptionsCard(localStore: LocalStore) {
         ),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("开发者选项", style = MaterialTheme.typography.titleSmall)
-            Spacer(modifier = Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -257,6 +400,59 @@ private fun DeveloperOptionsCard(localStore: LocalStore) {
                 text = "开启后，每次发送消息时会在聊天界面显示实际发送给 LLM 的完整内容，并估计 Token 数量",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SoulEditor(
+    content: String,
+    onContentChange: (String) -> Unit,
+    isSaving: Boolean,
+    onSave: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedTextField(
+                value = content,
+                onValueChange = onContentChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(300.dp),
+                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                label = { Text("SOUL.md") },
+                placeholder = { Text("定义 AI 助手的人格和行为准则...") },
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                OutlinedButton(
+                    onClick = onSave,
+                    enabled = !isSaving,
+                ) {
+                    if (isSaving) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text(if (isSaving) "保存中..." else "保存 Soul")
+                }
+            }
+
+            Text(
+                text = "修改后需要新会话才能生效。Soul 定义了 AI 助手的核心行为和人格。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
             )
         }
     }
@@ -331,8 +527,6 @@ private fun ProviderFormEditor(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("LLM 配置", style = MaterialTheme.typography.titleSmall)
-
             // Provider dropdown
             ExposedDropdownMenuBox(
                 expanded = providerExpanded,
