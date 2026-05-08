@@ -3,6 +3,7 @@ package dev.clawseed.demo.ui.settings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -82,7 +83,8 @@ private fun ExpandableSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp),
+                .padding(vertical = 4.dp)
+                .clickable(onClick = onToggle),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -101,13 +103,11 @@ private fun ExpandableSection(
                     )
                 }
             }
-            IconButton(onClick = onToggle) {
-                Icon(
-                    if (expanded) Icons.Default.KeyboardArrowDown
-                    else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = if (expanded) "收起" else "展开",
-                )
-            }
+            Icon(
+                if (expanded) Icons.Default.KeyboardArrowDown
+                else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = if (expanded) "收起" else "展开",
+            )
         }
         AnimatedVisibility(
             visible = expanded,
