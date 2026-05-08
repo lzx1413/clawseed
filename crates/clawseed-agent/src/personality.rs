@@ -17,6 +17,12 @@ const PERSONALITY_FILES: &[&str] = &[
     "MEMORY.md",
 ];
 
+/// Returns the list of recognized personality file names.
+/// Used by the gateway API to validate write targets.
+pub fn allowed_personality_files() -> &'static [&'static str] {
+    PERSONALITY_FILES
+}
+
 #[derive(Debug, Clone)]
 pub struct PersonalityFile {
     pub name: String,

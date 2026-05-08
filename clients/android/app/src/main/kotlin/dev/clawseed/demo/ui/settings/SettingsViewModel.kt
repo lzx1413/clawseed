@@ -34,7 +34,7 @@ data class SettingsUiState(
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
     val error: String? = null,
-    val saveSuccess: Boolean = false,
+    val successMessage: String? = null,
     val editMode: EditMode = EditMode.FORM,
     val selectedPresetIndex: Int = PROVIDER_PRESETS.size - 1,
     val baseUrl: String = "",
@@ -48,6 +48,8 @@ data class SettingsUiState(
     val searchEngine: String = "",
     val tavilyApiKey: String = "",
     val tavilyApiKeyVisible: Boolean = false,
+    val soulContent: String? = null,
+    val isSavingSoul: Boolean = false,
 )
 
 enum class EditMode { FORM, TOML }
@@ -74,6 +76,7 @@ class SettingsViewModel : ViewModel() {
             val statusResult = client().status()
             val toolsResult = client().tools()
             val configResult = client().config()
+            val personalityResult = client().personality()
 
             val toml = configResult.getOrElse { "" }
             val status = statusResult.getOrNull()
@@ -110,16 +113,17 @@ class SettingsViewModel : ViewModel() {
                 thinkingEnabled = thinking,
                 searchEngine = searchEngine,
                 tavilyApiKey = tavilyKey,
+                soulContent = personalityResult.getOrElse { null }?.get("SOUL.md"),
             )
         }
     }
 
     fun setEditMode(mode: EditMode) {
-        _uiState.value = _uiState.value.copy(editMode = mode, saveSuccess = false)
+        _uiState.value = _uiState.value.copy(editMode = mode, successMessage = null)
     }
 
     fun updateConfigToml(toml: String) {
-        _uiState.value = _uiState.value.copy(configToml = toml, saveSuccess = false)
+        _uiState.value = _uiState.value.copy(configToml = toml, successMessage = null)
     }
 
     fun selectProvider(index: Int) {
@@ -141,7 +145,7 @@ class SettingsViewModel : ViewModel() {
             thinkingEnabled = saved?.thinking ?: false,
             availableModels = emptyList(),
             connectionOk = null,
-            saveSuccess = false,
+            successMessage = null,
         )
     }
 
@@ -150,28 +154,28 @@ class SettingsViewModel : ViewModel() {
             baseUrl = url,
             availableModels = emptyList(),
             connectionOk = null,
-            saveSuccess = false,
+            successMessage = null,
         )
     }
 
     fun updateApiKey(key: String) {
-        _uiState.value = _uiState.value.copy(apiKey = key, saveSuccess = false)
+        _uiState.value = _uiState.value.copy(apiKey = key, successMessage = null)
     }
 
     fun selectModel(model: String) {
-        _uiState.value = _uiState.value.copy(selectedModel = model, saveSuccess = false)
+        _uiState.value = _uiState.value.copy(selectedModel = model, successMessage = null)
     }
 
     fun toggleThinking(enabled: Boolean) {
-        _uiState.value = _uiState.value.copy(thinkingEnabled = enabled, saveSuccess = false)
+        _uiState.value = _uiState.value.copy(thinkingEnabled = enabled, successMessage = null)
     }
 
     fun updateSearchEngine(engine: String) {
-        _uiState.value = _uiState.value.copy(searchEngine = engine, saveSuccess = false)
+        _uiState.value = _uiState.value.copy(searchEngine = engine, successMessage = null)
     }
 
     fun updateTavilyApiKey(key: String) {
-        _uiState.value = _uiState.value.copy(tavilyApiKey = key, saveSuccess = false)
+        _uiState.value = _uiState.value.copy(tavilyApiKey = key, successMessage = null)
     }
 
     fun toggleTavilyApiKeyVisibility() {
@@ -211,12 +215,12 @@ class SettingsViewModel : ViewModel() {
     fun saveConfig() {
         viewModelScope.launch {
             val state = _uiState.value
-            _uiState.value = state.copy(isSaving = true, error = null, saveSuccess = false)
+            _uiState.value = state.copy(isSaving = true, error = null, successMessage = null)
 
             val toml = buildConfigToml(state)
             client().updateConfig(toml)
                 .onSuccess {
-                    _uiState.value = _uiState.value.copy(isSaving = false, saveSuccess = true)
+                    _uiState.value = _uiState.value.copy(isSaving = false, successMessage = "配置已保存")
                     preservedApiKey = state.apiKey.ifBlank { null }
                     loadAll()
                 }
@@ -297,8 +301,30 @@ class SettingsViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(error = null)
     }
 
-    fun clearSaveSuccess() {
-        _uiState.value = _uiState.value.copy(saveSuccess = false)
+    fun clearSuccess() {
+        _uiState.value = _uiState.value.copy(successMessage = null)
+    }
+
+    fun updateSoulContent(content: String) {
+        _uiState.value = _uiState.value.copy(soulContent = content, successMessage = null)
+    }
+
+    fun saveSoul() {
+        viewModelScope.launch {
+            val content = _uiState.value.soulContent ?: return@launch
+            _uiState.value = _uiState.value.copy(isSavingSoul = true, error = null, successMessage = null)
+
+            client().updatePersonality(mapOf("SOUL.md" to content))
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(isSavingSoul = false, successMessage = "Soul 已保存")
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        isSavingSoul = false,
+                        error = "保存 Soul 失败: ${e.message?.take(100)}",
+                    )
+                }
+        }
     }
 
     companion object {

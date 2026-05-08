@@ -130,6 +130,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
     var soulExpanded by remember { mutableStateOf(false) }
     var toolsExpanded by remember { mutableStateOf(false) }
     var developerExpanded by remember { mutableStateOf(false) }
+    var appearanceExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
@@ -183,7 +184,21 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                 item { StatusCard(uiState.status) }
 
                 if (localStore != null) {
-                    item { AppearanceCard(localStore) }
+                    item {
+                        val themeMode by localStore.themeMode.collectAsState(initial = "system")
+                        ExpandableSection(
+                            title = "外观",
+                            expanded = appearanceExpanded,
+                            onToggle = { appearanceExpanded = !appearanceExpanded },
+                            subtitle = if (!appearanceExpanded) when (themeMode) {
+                                "light" -> "浅色"
+                                "dark" -> "深色"
+                                else -> "跟随系统"
+                            } else null,
+                        ) {
+                            AppearanceCard(localStore)
+                        }
+                    }
                 }
 
                 // LLM Config section
@@ -226,17 +241,6 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                                 )
                             }
 
-                            if (uiState.editMode == EditMode.FORM) {
-                                SearchEngineCard(
-                                    searchEngine = uiState.searchEngine,
-                                    tavilyApiKey = uiState.tavilyApiKey,
-                                    tavilyApiKeyVisible = uiState.tavilyApiKeyVisible,
-                                    onSearchEngineChange = viewModel::updateSearchEngine,
-                                    onTavilyApiKeyChange = viewModel::updateTavilyApiKey,
-                                    onToggleTavilyApiKeyVisibility = viewModel::toggleTavilyApiKeyVisibility,
-                                )
-                            }
-
                             Button(
                                 onClick = { viewModel.saveConfig() },
                                 enabled = !uiState.isSaving && uiState.selectedModel.isNotBlank(),
@@ -252,24 +256,73 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                     }
                 }
 
+                // Search Engine section
+                if (uiState.editMode == EditMode.FORM) {
+                    item {
+                        val searchSubtitle = when (uiState.searchEngine) {
+                            "tavily" -> "Tavily"
+                            "bing" -> "Bing"
+                            else -> null
+                        }
+                        ExpandableSection(
+                            title = "搜索引擎",
+                            expanded = searchEngineExpanded,
+                            onToggle = { searchEngineExpanded = !searchEngineExpanded },
+                            subtitle = if (!searchEngineExpanded) searchSubtitle else null,
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                SearchEngineCard(
+                                    searchEngine = uiState.searchEngine,
+                                    tavilyApiKey = uiState.tavilyApiKey,
+                                    tavilyApiKeyVisible = uiState.tavilyApiKeyVisible,
+                                    onSearchEngineChange = viewModel::updateSearchEngine,
+                                    onTavilyApiKeyChange = viewModel::updateTavilyApiKey,
+                                    onToggleTavilyApiKeyVisibility = viewModel::toggleTavilyApiKeyVisibility,
+                                )
+                                Button(
+                                    onClick = { viewModel.saveConfig() },
+                                    enabled = !uiState.isSaving,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    if (uiState.isSaving) {
+                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                    }
+                                    Text(if (uiState.isSaving) "保存中..." else "保存搜索配置")
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Soul section
                 item {
-                    val soulPreview = uiState.soulContent.lineSequence()
-                        .firstOrNull()?.removePrefix("# ")?.trim()
+                    val soulLoaded = uiState.soulContent != null
+                    val soulPreview = uiState.soulContent?.lineSequence()
+                        ?.firstOrNull()?.removePrefix("# ")?.trim()
                     ExpandableSection(
                         title = "Soul",
                         expanded = soulExpanded,
                         onToggle = { soulExpanded = !soulExpanded },
-                        subtitle = if (!soulExpanded) {
-                            if (soulPreview.isNullOrBlank()) "未自定义" else soulPreview
-                        } else null,
+                        subtitle = if (!soulExpanded && !soulLoaded) "加载失败"
+                        else if (!soulExpanded && soulPreview.isNullOrBlank()) "未自定义"
+                        else if (!soulExpanded) soulPreview
+                        else null,
                     ) {
-                        SoulEditor(
-                            content = uiState.soulContent,
-                            onContentChange = viewModel::updateSoulContent,
-                            isSaving = uiState.isSavingSoul,
-                            onSave = viewModel::saveSoul,
-                        )
+                        if (soulLoaded) {
+                            SoulEditor(
+                                content = uiState.soulContent!!,
+                                onContentChange = viewModel::updateSoulContent,
+                                isSaving = uiState.isSavingSoul,
+                                onSave = viewModel::saveSoul,
+                            )
+                        } else {
+                            Text(
+                                text = "Soul 内容加载失败，请刷新重试",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
                 }
 
@@ -325,8 +378,6 @@ private fun AppearanceCard(localStore: LocalStore) {
         ),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("外观", style = MaterialTheme.typography.titleSmall)
-            Spacer(modifier = Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = themeMode == "light",

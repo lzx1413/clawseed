@@ -228,6 +228,78 @@ pub async fn handle_api_config_put(
     })).into_response()
 }
 
+/// GET /api/personality — read personality files from workspace
+pub async fn handle_api_personality_get(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+
+    let config = state.config.lock().clone();
+    let workspace_dir = clawseed_config::resolve_workspace_dir(&config);
+    let allowed = clawseed_agent::personality::allowed_personality_files();
+
+    let mut files = serde_json::Map::new();
+    for &name in allowed {
+        let path = workspace_dir.join(name);
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            files.insert(name.to_string(), serde_json::Value::String(content));
+        }
+    }
+
+    Json(serde_json::json!({ "files": files })).into_response()
+}
+
+/// PUT /api/personality — write personality files to workspace
+#[derive(Deserialize)]
+pub struct PersonalityPutBody {
+    pub files: std::collections::HashMap<String, String>,
+}
+
+pub async fn handle_api_personality_put(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<PersonalityPutBody>,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+
+    let config = state.config.lock().clone();
+    let workspace_dir = clawseed_config::resolve_workspace_dir(&config);
+    let allowed = clawseed_agent::personality::allowed_personality_files();
+
+    if let Err(e) = std::fs::create_dir_all(&workspace_dir) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Failed to create workspace dir: {e}")})),
+        )
+            .into_response();
+    }
+
+    for (name, content) in &body.files {
+        if !allowed.contains(&name.as_str()) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("Unknown personality file: {name}")})),
+            )
+                .into_response();
+        }
+        let path = workspace_dir.join(name);
+        if let Err(e) = std::fs::write(&path, content) {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to write {name}: {e}")})),
+            )
+                .into_response();
+        }
+    }
+
+    Json(serde_json::json!({"status": "ok"})).into_response()
+}
+
 /// GET /api/provider/models — proxy model list fetch using configured API key
 pub async fn handle_api_provider_models(
     State(state): State<AppState>,

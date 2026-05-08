@@ -141,6 +141,37 @@ class GatewayClient(
         return execute(req).map {}
     }
 
+    /** Retrieves personality files (SOUL.md, etc.) from the gateway. */
+    suspend fun personality(): Result<Map<String, String>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val req = Request.Builder().url("$baseUrl/api/personality").addAuth().build()
+            val body = execute(req).getOrThrow()
+            val element = json.parseToJsonElement(body).jsonObject
+            val filesObj = element["files"]?.jsonObject ?: return@runCatching emptyMap()
+            filesObj.mapValues { it.value.jsonPrimitive.content }
+        }
+    }
+
+    /** Updates personality files on the gateway. */
+    suspend fun updatePersonality(files: Map<String, String>): Result<Unit> {
+        val jsonBuilder = buildString {
+            append("{\"files\":{")
+            files.entries.forEachIndexed { i, (k, v) ->
+                if (i > 0) append(",")
+                append(kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.serializer<String>(), k))
+                append(":")
+                append(kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.serializer<String>(), v))
+            }
+            append("}}")
+        }
+        val req = Request.Builder()
+            .url("$baseUrl/api/personality")
+            .addAuth()
+            .put(jsonBuilder.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        return execute(req).map {}
+    }
+
     /** Lists the tools currently available in the gateway runtime. */
     suspend fun tools(): Result<List<ToolInfo>> = withContext(Dispatchers.IO) {
         runCatching {

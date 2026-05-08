@@ -508,6 +508,11 @@ pub async fn run_gateway(
         .route("/api/config", put(api::handle_api_config_put))
         .layer(RequestBodyLimitLayer::new(1_048_576));
 
+    // Personality PUT needs 65KB body limit
+    let personality_put_router = Router::new()
+        .route("/api/personality", put(api::handle_api_personality_put))
+        .layer(RequestBodyLimitLayer::new(65_536));
+
     // Build router with middleware
     let inner = Router::new()
         // ── Admin routes (for CLI management) ──
@@ -527,6 +532,7 @@ pub async fn run_gateway(
         .route("/api/config", get(api::handle_api_config_get))
         .route("/api/tools", get(api::handle_api_tools))
         .route("/api/provider/models", get(api::handle_api_provider_models))
+        .route("/api/personality", get(api::handle_api_personality_get))
         .route("/api/cron", get(api::handle_api_cron_list))
         .route("/api/cron", post(api::handle_api_cron_add))
         .route(
@@ -583,6 +589,7 @@ pub async fn run_gateway(
         .route("/_app/{*path}", get(static_files::handle_static))
         // ── Config PUT with larger body limit ──
         .merge(config_put_router)
+        .merge(personality_put_router)
         // ── SPA fallback: non-API GET requests serve index.html ──
         .fallback(get(static_files::handle_spa_fallback))
         .with_state(state)
