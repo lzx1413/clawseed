@@ -19,8 +19,19 @@ data class GatewayStatus(
 data class ToolInfo(
     val name: String = "",
     val description: String = "",
+    val enabled: Boolean = true,
     @SerialName("source_type") val sourceType: String = "builtin",
     val source: String? = null,
+)
+
+/** Description of one skill available in the gateway. */
+@Serializable
+data class SkillInfo(
+    val name: String = "",
+    val description: String = "",
+    val enabled: Boolean = true,
+    val triggers: List<String> = emptyList(),
+    val permissions: List<String> = emptyList(),
 )
 
 /** Health probe response returned by `/health`. */

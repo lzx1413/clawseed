@@ -39,6 +39,9 @@ pub trait ToolRegistry: Send + Sync {
     /// Look up a tool by name for execution.
     fn get_tool(&self, name: &str) -> Option<Arc<dyn Tool>>;
 
+    /// Look up a tool by name regardless of filtering.
+    fn get_tool_unfiltered(&self, name: &str) -> Option<Arc<dyn Tool>>;
+
     /// Get all tool specs for LLM registration.
     fn tool_specs(&self) -> Vec<ToolSpec>;
 
@@ -47,6 +50,12 @@ pub trait ToolRegistry: Send + Sync {
 
     /// List all registered tool names.
     fn tool_names(&self) -> Vec<String>;
+
+    /// List all registered tool names regardless of filtering.
+    fn all_tool_names(&self) -> Vec<String>;
+
+    /// Check if a tool name passes the current filter rules.
+    fn is_tool_enabled(&self, name: &str) -> bool;
 
     /// Register a tool, replacing any existing tool with the same name.
     /// Returns the previous entry if one was replaced.
@@ -62,4 +71,7 @@ pub trait ToolRegistry: Send + Sync {
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Downcast support for runtime type inspection.
+    fn as_any(&self) -> &dyn std::any::Any;
 }

@@ -115,6 +115,10 @@ pub struct AppState {
     pub tool_registry: Arc<dyn clawseed_api::tool_registry::ToolRegistry>,
     /// Shared BuiltIn tool instances — reused across connections to avoid per-connection construction
     pub shared_builtin_tools: Arc<[Arc<dyn clawseed_api::tool::Tool>]>,
+    /// Skill index entries for the /api/skills endpoint (all entries, including excluded)
+    pub skill_index: Arc<parking_lot::RwLock<Vec<clawseed_agent::skills::SkillIndexEntry>>>,
+    /// Skill names excluded by config (mutable for hot-update)
+    pub skills_excluded: Arc<std::sync::Mutex<Vec<String>>>,
     /// Cost tracker (optional, for web dashboard cost page)
     pub cost_tracker: Option<Arc<CostTracker>>,
     /// SSE broadcast channel for real-time events
@@ -302,7 +306,11 @@ pub async fn run_gateway(
         .map(|t| Arc::from(t) as Arc<dyn clawseed_api::tool::Tool>)
         .collect();
     let shared_tool_registry: Arc<dyn clawseed_api::tool_registry::ToolRegistry> = {
-        let reg = clawseed_agent::tool_registry::DefaultToolRegistry::new();
+        let reg = clawseed_agent::tool_registry::DefaultToolRegistry::with_filters(
+            config.agent.allowed_tools.clone(),
+            config.agent.denied_tools.clone(),
+            config.agent.mcp_tool_filters.clone(),
+        );
         reg.register_all_arc(
             shared_builtin_tools.to_vec(),
             clawseed_api::tool_registry::ToolSource::BuiltIn,
@@ -470,6 +478,27 @@ pub async fn run_gateway(
     let broadcast_observer: Arc<dyn clawseed_agent::observability::Observer> =
         Arc::new(clawseed_agent::observability::NoopObserver);
 
+    // Load skill index for the /api/skills endpoint (all entries, before exclusion filter)
+    let (skill_index, skills_excluded): (
+        Arc<parking_lot::RwLock<Vec<clawseed_agent::skills::SkillIndexEntry>>>,
+        Arc<std::sync::Mutex<Vec<String>>>,
+    ) = {
+        let extra_roots: Vec<String> = config.skills.extra_roots.clone();
+        let excluded = config.skills.excluded.clone();
+        if config.skills.enabled {
+            (
+                Arc::new(parking_lot::RwLock::new(
+                    clawseed_agent::skills::load_skill_index_with_roots(&config.workspace_dir, &extra_roots)
+                        .into_iter()
+                        .collect(),
+                )),
+                Arc::new(std::sync::Mutex::new(excluded)),
+            )
+        } else {
+            (Arc::new(parking_lot::RwLock::new(Vec::new())), Arc::new(std::sync::Mutex::new(excluded)))
+        }
+    };
+
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
 
     let node_registry = Arc::new(NodeRegistry::new(config.nodes.max_nodes));
@@ -490,6 +519,8 @@ pub async fn run_gateway(
         observer: broadcast_observer,
         tool_registry: shared_tool_registry,
         shared_builtin_tools,
+        skill_index,
+        skills_excluded,
         cost_tracker,
         event_tx,
         event_buffer,
@@ -531,6 +562,8 @@ pub async fn run_gateway(
         .route("/api/status", get(api::handle_api_status))
         .route("/api/config", get(api::handle_api_config_get))
         .route("/api/tools", get(api::handle_api_tools))
+        .route("/api/skills", get(api::handle_api_skills))
+        .route("/api/skills/reload", post(api::handle_api_skills_reload))
         .route("/api/provider/models", get(api::handle_api_provider_models))
         .route("/api/personality", get(api::handle_api_personality_get))
         .route("/api/cron", get(api::handle_api_cron_list))

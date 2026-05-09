@@ -110,7 +110,11 @@ pub fn all_tools(
     tools.push(Box::new(ModelRoutingConfigTool::new()));
     tools.push(Box::new(PdfReadTool::new()));
     tools.push(Box::new(ShellTool::new()));
-    tools.push(Box::new(SkillTool::new()));
+
+    // Skill tool: only include when skill system is enabled
+    if config.skills.enabled {
+        tools.push(Box::new(SkillTool::new()));
+    }
 
     // web_fetch: only include when enabled
     if config.web_fetch.enabled {

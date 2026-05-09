@@ -4,6 +4,7 @@ import dev.clawseed.sdk.core.model.GatewayStatus
 import dev.clawseed.sdk.core.model.HealthInfo
 import dev.clawseed.sdk.core.model.SessionMessage
 import dev.clawseed.sdk.core.model.SessionSummary
+import dev.clawseed.sdk.core.model.SkillInfo
 import dev.clawseed.sdk.core.model.ToolInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -180,6 +181,31 @@ class GatewayClient(
             val element = json.parseToJsonElement(body).jsonObject
             val arr = element["tools"]?.jsonArray ?: return@runCatching emptyList()
             arr.map { json.decodeFromJsonElement(ToolInfo.serializer(), it) }
+        }
+    }
+
+    /** Lists the skills currently available in the gateway runtime. */
+    suspend fun skills(): Result<List<SkillInfo>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val req = Request.Builder().url("$baseUrl/api/skills").addAuth().build()
+            val body = execute(req).getOrThrow()
+            val element = json.parseToJsonElement(body).jsonObject
+            val arr = element["skills"]?.jsonArray ?: return@runCatching emptyList()
+            arr.map { json.decodeFromJsonElement(SkillInfo.serializer(), it) }
+        }
+    }
+
+    /** Reloads the skill index from disk and returns the new count. */
+    suspend fun reloadSkills(): Result<Int> = withContext(Dispatchers.IO) {
+        runCatching {
+            val req = Request.Builder()
+                .url("$baseUrl/api/skills/reload")
+                .addAuth()
+                .post("{}".toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            val body = execute(req).getOrThrow()
+            val element = json.parseToJsonElement(body).jsonObject
+            element["skills_count"]?.jsonPrimitive?.content?.toInt() ?: 0
         }
     }
 

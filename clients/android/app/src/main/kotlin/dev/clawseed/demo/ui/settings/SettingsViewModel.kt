@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.core.client.GatewayClient
 import dev.clawseed.sdk.core.model.GatewayStatus
+import dev.clawseed.sdk.core.model.SkillInfo
 import dev.clawseed.sdk.core.model.ToolInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +31,7 @@ val PROVIDER_PRESETS = listOf(
 data class SettingsUiState(
     val status: GatewayStatus? = null,
     val tools: List<ToolInfo> = emptyList(),
+    val skills: List<SkillInfo> = emptyList(),
     val configToml: String = "",
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
@@ -49,6 +51,7 @@ data class SettingsUiState(
     val tavilyApiKey: String = "",
     val tavilyApiKeyVisible: Boolean = false,
     val soulContent: String? = null,
+    val isRefreshingSkills: Boolean = false,
     val isSavingSoul: Boolean = false,
 )
 
@@ -75,6 +78,7 @@ class SettingsViewModel : ViewModel() {
 
             val statusResult = client().status()
             val toolsResult = client().tools()
+            val skillsResult = client().skills()
             val configResult = client().config()
             val personalityResult = client().personality()
 
@@ -101,6 +105,7 @@ class SettingsViewModel : ViewModel() {
             _uiState.value = _uiState.value.copy(
                 status = status,
                 tools = toolsResult.getOrElse { emptyList() },
+                skills = skillsResult.getOrElse { emptyList() },
                 configToml = toml,
                 isLoading = false,
                 error = statusResult.exceptionOrNull()?.message
@@ -327,6 +332,75 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
+    fun toggleTool(name: String, enabled: Boolean) {
+        // Optimistically update local tool state
+        val state = _uiState.value
+        _uiState.value = state.copy(
+            tools = state.tools.map { if (it.name == name) it.copy(enabled = enabled) else it }
+        )
+
+        viewModelScope.launch {
+            val currentToml = _uiState.value.configToml
+            val currentDisabled = _uiState.value.tools.filter { !it.enabled }.map { it.name }
+            var toml = updateTomlArray(currentToml, "[agent]", "denied_tools", currentDisabled)
+            client().updateConfig(toml)
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(configToml = toml)
+                }
+                .onFailure { e ->
+                    // Revert on failure
+                    _uiState.value = state.copy(
+                        tools = state.tools,
+                        error = "保存失败: ${e.message?.take(100)}",
+                    )
+                }
+        }
+    }
+
+    fun toggleSkill(name: String, enabled: Boolean) {
+        val state = _uiState.value
+        _uiState.value = state.copy(
+            skills = state.skills.map { if (it.name == name) it.copy(enabled = enabled) else it }
+        )
+
+        viewModelScope.launch {
+            val currentToml = _uiState.value.configToml
+            val currentExcluded = _uiState.value.skills.filter { !it.enabled }.map { it.name }
+            var toml = updateTomlArray(currentToml, "[skills]", "excluded", currentExcluded)
+            client().updateConfig(toml)
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(configToml = toml)
+                }
+                .onFailure { e ->
+                    _uiState.value = state.copy(
+                        skills = state.skills,
+                        error = "保存失败: ${e.message?.take(100)}",
+                    )
+                }
+        }
+    }
+
+    fun refreshSkills() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isRefreshingSkills = true, error = null)
+            client().reloadSkills()
+                .onSuccess {
+                    val skillsResult = client().skills()
+                    _uiState.value = _uiState.value.copy(
+                        isRefreshingSkills = false,
+                        skills = skillsResult.getOrElse { emptyList() },
+                        successMessage = "技能已刷新",
+                    )
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        isRefreshingSkills = false,
+                        error = "刷新技能失败: ${e.message?.take(100)}",
+                    )
+                }
+        }
+    }
+
     companion object {
         private fun extractProviderBaseUrl(toml: String): String {
             val fallback = extractTomlValue(toml, "fallback") ?: return ""
@@ -537,5 +611,64 @@ class SettingsViewModel : ViewModel() {
         }
         private const val THINKING_ENABLED_LINE = "provider_extra = { thinking = { type = \"enabled\" } }"
         private const val THINKING_DISABLED_LINE = "provider_extra = { thinking = { type = \"disabled\" } }"
+
+        /** Parse a TOML array value like `denied_tools = ["shell", "http_request"]` from a section. */
+        fun parseTomlArray(toml: String, sectionHeader: String, key: String): List<String> {
+            val section = findSection(toml, sectionHeader)
+            if (section.isEmpty()) return emptyList()
+            for (line in section.lines()) {
+                val trimmed = line.trim()
+                if (trimmed.startsWith("$key ") || trimmed.startsWith("$key=")) {
+                    val eqIdx = trimmed.indexOf('=')
+                    if (eqIdx >= 0) {
+                        val value = trimmed.substring(eqIdx + 1).trim()
+                        if (value.startsWith("[") && value.endsWith("]")) {
+                            val inner = value.substring(1, value.length - 1)
+                            return inner.split(",")
+                                .map { it.trim().removeSurrounding("\"") }
+                                .filter { it.isNotBlank() }
+                        }
+                    }
+                }
+            }
+            return emptyList()
+        }
+
+        /** Update or add a TOML array value in a section. Creates the section if missing. */
+        fun updateTomlArray(toml: String, sectionHeader: String, key: String, values: List<String>): String {
+            val arrayStr = if (values.isEmpty()) {
+                "[]"
+            } else {
+                values.joinToString(", ", "[", "]") { "\"$it\"" }
+            }
+            val newLine = "$key = $arrayStr"
+
+            if (!toml.contains(sectionHeader)) {
+                // Section doesn't exist — append it
+                return toml.trimEnd() + "\n\n$sectionHeader\n$newLine\n"
+            }
+
+            val idx = toml.indexOf(sectionHeader)
+            val afterHeader = idx + sectionHeader.length
+            val nextSection = toml.indexOf("\n[", afterHeader).let { if (it == -1) toml.length else it }
+            val before = toml.substring(0, afterHeader)
+            val section = toml.substring(afterHeader, nextSection)
+            val after = toml.substring(nextSection)
+
+            val lines = section.lines().toMutableList()
+            var found = false
+            for (i in lines.indices) {
+                val trimmed = lines[i].trim()
+                if (trimmed.startsWith("$key ") || trimmed.startsWith("$key=")) {
+                    lines[i] = newLine
+                    found = true
+                    break
+                }
+            }
+            if (!found) {
+                lines.add(newLine)
+            }
+            return before + lines.joinToString("\n") + after
+        }
     }
 }

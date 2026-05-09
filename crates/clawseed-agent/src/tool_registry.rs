@@ -15,8 +15,8 @@ use clawseed_api::tool_registry::{ToolEntry, ToolRegistry, ToolSource};
 pub struct DefaultToolRegistry {
     tools: DashMap<String, (Arc<dyn Tool>, ToolEntry)>,
     cached_specs: RwLock<Option<Vec<ToolSpec>>>,
-    allowed_patterns: Vec<String>,
-    denied_patterns: Vec<String>,
+    allowed_patterns: std::sync::RwLock<Vec<String>>,
+    denied_patterns: std::sync::RwLock<Vec<String>>,
     mcp_tool_filters: std::collections::HashMap<String, Vec<String>>,
 }
 
@@ -31,8 +31,8 @@ impl DefaultToolRegistry {
         Self {
             tools: DashMap::new(),
             cached_specs: RwLock::new(None),
-            allowed_patterns: Vec::new(),
-            denied_patterns: Vec::new(),
+            allowed_patterns: std::sync::RwLock::new(Vec::new()),
+            denied_patterns: std::sync::RwLock::new(Vec::new()),
             mcp_tool_filters: std::collections::HashMap::new(),
         }
     }
@@ -46,20 +46,34 @@ impl DefaultToolRegistry {
         Self {
             tools: DashMap::new(),
             cached_specs: RwLock::new(None),
-            allowed_patterns: allowed_tools,
-            denied_patterns: denied_tools,
+            allowed_patterns: std::sync::RwLock::new(allowed_tools),
+            denied_patterns: std::sync::RwLock::new(denied_tools),
             mcp_tool_filters,
         }
     }
 
+    /// Update filter patterns at runtime (e.g. on config change).
+    /// Invalidates cached specs so the next query reflects the new filters.
+    pub fn update_filters(
+        &self,
+        allowed_tools: Vec<String>,
+        denied_tools: Vec<String>,
+    ) {
+        *self.allowed_patterns.write().unwrap() = allowed_tools;
+        *self.denied_patterns.write().unwrap() = denied_tools;
+        *self.cached_specs.write() = None;
+    }
+
     /// Check if a tool name is allowed based on config patterns.
     fn is_tool_allowed(&self, name: &str, source: &ToolSource) -> bool {
+        let allowed = self.allowed_patterns.read().unwrap();
+        let denied = self.denied_patterns.read().unwrap();
         // Denied takes precedence
-        if self.denied_patterns.iter().any(|p| glob_match(name, p)) {
+        if denied.iter().any(|p| glob_match(name, p)) {
             return false;
         }
         // If allowed_patterns is empty, allow all (except MCP filters)
-        if self.allowed_patterns.is_empty() {
+        if allowed.is_empty() {
             if let ToolSource::Mcp { server } = source
                 && let Some(filters) = self.mcp_tool_filters.get(server)
             {
@@ -68,7 +82,7 @@ impl DefaultToolRegistry {
             return true;
         }
         // Check allowed patterns
-        self.allowed_patterns.iter().any(|p| glob_match(name, p))
+        allowed.iter().any(|p| glob_match(name, p))
     }
 
     /// Register a tool, replacing any existing tool with the same name.
@@ -223,6 +237,16 @@ impl ToolRegistry for DefaultToolRegistry {
     }
 
     fn get_tool(&self, name: &str) -> Option<Arc<dyn Tool>> {
+        self.tools.get(name).and_then(|entry| {
+            if self.is_tool_allowed(entry.key(), &entry.value().1.source) {
+                Some(Arc::clone(&entry.value().0))
+            } else {
+                None
+            }
+        })
+    }
+
+    fn get_tool_unfiltered(&self, name: &str) -> Option<Arc<dyn Tool>> {
         self.tools
             .get(name)
             .map(|entry| Arc::clone(&entry.value().0))
@@ -249,11 +273,30 @@ impl ToolRegistry for DefaultToolRegistry {
     }
 
     fn tool_names(&self) -> Vec<String> {
+        self.tools
+            .iter()
+            .filter(|entry| self.is_tool_allowed(entry.key(), &entry.value().1.source))
+            .map(|entry| entry.key().clone())
+            .collect()
+    }
+
+    fn all_tool_names(&self) -> Vec<String> {
         self.tools.iter().map(|entry| entry.key().clone()).collect()
+    }
+
+    fn is_tool_enabled(&self, name: &str) -> bool {
+        self.tools
+            .get(name)
+            .map(|entry| self.is_tool_allowed(entry.key(), &entry.value().1.source))
+            .unwrap_or(false)
     }
 
     fn len(&self) -> usize {
         self.tools.len()
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -403,5 +446,48 @@ mod tests {
         let mut names = registry.tool_names();
         names.sort();
         assert_eq!(names, vec!["bar", "foo"]);
+    }
+
+    #[test]
+    fn test_denied_tool_not_returned_by_get_tool() {
+        let registry = DefaultToolRegistry::with_filters(
+            vec![],
+            vec!["shell".to_string()],
+            std::collections::HashMap::new(),
+        );
+        registry.register(Box::new(MockTool::new("calculator")), ToolSource::BuiltIn);
+        registry.register(Box::new(MockTool::new("shell")), ToolSource::BuiltIn);
+
+        assert!(registry.get_tool("calculator").is_some());
+        assert!(registry.get_tool("shell").is_none(), "denied tool should not be returned by get_tool");
+    }
+
+    #[test]
+    fn test_denied_tool_excluded_from_tool_names() {
+        let registry = DefaultToolRegistry::with_filters(
+            vec![],
+            vec!["shell".to_string()],
+            std::collections::HashMap::new(),
+        );
+        registry.register(Box::new(MockTool::new("calculator")), ToolSource::BuiltIn);
+        registry.register(Box::new(MockTool::new("shell")), ToolSource::BuiltIn);
+
+        let names = registry.tool_names();
+        assert_eq!(names, vec!["calculator"]);
+    }
+
+    #[test]
+    fn test_allowed_tool_filter() {
+        let registry = DefaultToolRegistry::with_filters(
+            vec!["file_*".to_string()],
+            vec![],
+            std::collections::HashMap::new(),
+        );
+        registry.register(Box::new(MockTool::new("file_read")), ToolSource::BuiltIn);
+        registry.register(Box::new(MockTool::new("shell")), ToolSource::BuiltIn);
+
+        assert!(registry.get_tool("file_read").is_some());
+        assert!(registry.get_tool("shell").is_none(), "non-allowed tool should not be returned");
+        assert_eq!(registry.tool_names(), vec!["file_read"]);
     }
 }

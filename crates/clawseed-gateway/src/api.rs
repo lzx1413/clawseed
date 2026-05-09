@@ -219,8 +219,24 @@ pub async fn handle_api_config_put(
             .into_response();
     }
 
+    // Hot-update tool registry filters and skill exclusion list
+    let (allowed_tools, denied_tools, skills_excluded) = (
+        new_config.agent.allowed_tools.clone(),
+        new_config.agent.denied_tools.clone(),
+        new_config.skills.excluded.clone(),
+    );
+
     // Update in-memory config
     *state.config.lock() = new_config;
+
+    if let Some(reg) = state
+        .tool_registry
+        .as_any()
+        .downcast_ref::<clawseed_agent::tool_registry::DefaultToolRegistry>()
+    {
+        reg.update_filters(allowed_tools, denied_tools);
+    }
+    *state.skills_excluded.lock().unwrap() = skills_excluded;
 
     Json(serde_json::json!({
         "status": "ok",
@@ -373,7 +389,7 @@ pub async fn handle_api_provider_models(
     }
 }
 
-/// GET /api/tools — list registered tool specs
+/// GET /api/tools — list all registered tool specs (including disabled)
 pub async fn handle_api_tools(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -382,12 +398,13 @@ pub async fn handle_api_tools(
         return e.into_response();
     }
 
-    let tools: Vec<serde_json::Value> = state
-        .tool_registry
-        .tool_specs()
+    let registry = &state.tool_registry;
+    let tools: Vec<serde_json::Value> = registry
+        .all_tool_names()
         .iter()
-        .map(|spec| {
-            let entry = state.tool_registry.get_entry(&spec.name);
+        .map(|name| {
+            let spec = registry.get_tool_unfiltered(name).map(|t| t.spec());
+            let entry = registry.get_entry(name);
             let source_type = entry.as_ref().map(|e| match &e.source {
                 clawseed_api::tool_registry::ToolSource::BuiltIn => "builtin",
                 clawseed_api::tool_registry::ToolSource::Mcp { .. } => "mcp",
@@ -398,10 +415,12 @@ pub async fn handle_api_tools(
                 clawseed_api::tool_registry::ToolSource::Mcp { server } => server.clone(),
                 clawseed_api::tool_registry::ToolSource::Remote { session } => session.clone(),
             });
+            let enabled = registry.is_tool_enabled(name);
             serde_json::json!({
-                "name": spec.name,
-                "description": spec.description,
-                "parameters": spec.parameters,
+                "name": name,
+                "description": spec.as_ref().map(|s| s.description.clone()).unwrap_or_default(),
+                "parameters": spec.as_ref().map(|s| s.parameters.clone()).unwrap_or(serde_json::json!({})),
+                "enabled": enabled,
                 "source_type": source_type,
                 "source": source,
             })
@@ -409,6 +428,73 @@ pub async fn handle_api_tools(
         .collect();
 
     Json(serde_json::json!({"tools": tools})).into_response()
+}
+
+/// GET /api/skills — list all skill index entries (including excluded)
+pub async fn handle_api_skills(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+
+    let excluded = state.skills_excluded.lock().unwrap().clone();
+    let index = state.skill_index.read();
+    let skills: Vec<serde_json::Value> = index
+        .iter()
+        .map(|entry| {
+            let enabled = !excluded.contains(&entry.name);
+            serde_json::json!({
+                "name": entry.name,
+                "description": entry.description,
+                "triggers": entry.trigger_phrases,
+                "permissions": entry.permissions,
+                "enabled": enabled,
+            })
+        })
+        .collect();
+
+    Json(serde_json::json!({"skills": skills})).into_response()
+}
+
+/// POST /api/skills/reload — hot-reload skill index from disk
+pub async fn handle_api_skills_reload(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+
+    let config = state.config.lock().clone();
+    let extra_roots: Vec<String> = config.skills.extra_roots.clone();
+    let new_excluded: Vec<String> = config.skills.excluded.clone();
+
+    let new_index = if config.skills.enabled {
+        clawseed_agent::skills::load_skill_index_with_roots(&config.workspace_dir, &extra_roots)
+            .into_iter()
+            .collect()
+    } else {
+        Vec::new()
+    };
+    drop(config);
+
+    let count = new_index.len();
+    {
+        let mut index = state.skill_index.write();
+        *index = new_index;
+    }
+    {
+        let mut excluded = state.skills_excluded.lock().unwrap();
+        *excluded = new_excluded;
+    }
+
+    Json(serde_json::json!({
+        "ok": true,
+        "skills_count": count,
+    }))
+    .into_response()
 }
 
 /// GET /api/cron — list cron jobs
@@ -1888,6 +1974,8 @@ mod tests {
             observer: Arc::new(clawseed_agent::observability::NoopObserver),
             tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
             shared_builtin_tools: Arc::new([]),
+            skill_index: Arc::new(parking_lot::RwLock::new(Vec::new())),
+            skills_excluded: Arc::new(std::sync::Mutex::new(Vec::new())),
             cost_tracker: None,
             event_tx: tokio::sync::broadcast::channel(16).0,
             event_buffer: Arc::new(crate::EventBuffer::new(16)),

@@ -77,6 +77,8 @@ pub struct Agent {
     active_skills: Vec<crate::skills::ActiveSkill>,
     max_active_skills: usize,
     skills_extra_roots: Vec<String>,
+    skills_enabled: bool,
+    skills_excluded: Vec<String>,
 }
 
 /// Builder for constructing an Agent.
@@ -102,6 +104,8 @@ pub struct AgentBuilder {
     skill_index: Option<Vec<crate::skills::SkillIndexEntry>>,
     max_active_skills: Option<usize>,
     skills_extra_roots: Option<Vec<String>>,
+    skills_enabled: Option<bool>,
+    skills_excluded: Option<Vec<String>>,
 }
 
 impl Default for AgentBuilder {
@@ -134,6 +138,8 @@ impl AgentBuilder {
             skill_index: None,
             max_active_skills: None,
             skills_extra_roots: None,
+            skills_enabled: None,
+            skills_excluded: None,
         }
     }
 
@@ -251,6 +257,16 @@ impl AgentBuilder {
         self
     }
 
+    pub fn skills_enabled(mut self, enabled: bool) -> Self {
+        self.skills_enabled = Some(enabled);
+        self
+    }
+
+    pub fn skills_excluded(mut self, excluded: Vec<String>) -> Self {
+        self.skills_excluded = Some(excluded);
+        self
+    }
+
     pub fn build(self) -> Result<Agent> {
         // Build the tool registry: prefer pre-built registry, otherwise create from tools
         let registry: Arc<dyn ToolRegistry> = if let Some(reg) = self.tool_registry {
@@ -300,6 +316,8 @@ impl AgentBuilder {
             active_skills: Vec::new(),
             max_active_skills: self.max_active_skills.unwrap_or(5),
             skills_extra_roots: self.skills_extra_roots.unwrap_or_default(),
+            skills_enabled: self.skills_enabled.unwrap_or(true),
+            skills_excluded: self.skills_excluded.unwrap_or_default(),
         })
     }
 }
@@ -511,7 +529,9 @@ impl Agent {
             .hook_runner(Some(Arc::new(hook_runner)))
             .skill_index(skill_index)
             .max_active_skills(config.skills.max_active)
-            .skills_extra_roots(extra_roots);
+            .skills_extra_roots(extra_roots)
+            .skills_enabled(config.skills.enabled)
+            .skills_excluded(config.skills.excluded.clone());
 
         if let Some(ref session_id) = config.memory.namespace {
             builder = builder.memory_session_id(Some(session_id.clone()));
@@ -534,6 +554,29 @@ impl Agent {
 
     /// Activate a skill by name.
     pub fn activate_skill(&mut self, name: &str) -> Result<String> {
+        // Check if skill system is enabled
+        if !self.skills_enabled {
+            return Err(anyhow::anyhow!(
+                "Skill system is disabled. Enable it in config to use skills."
+            ));
+        }
+
+        // Check if skill is excluded
+        if self.skills_excluded.contains(&name.to_string()) {
+            return Err(anyhow::anyhow!(
+                "Skill '{}' is disabled and cannot be activated.",
+                name
+            ));
+        }
+
+        // Check if skill is in the index (i.e. actually discoverable)
+        if !self.skill_index.iter().any(|e| e.name == name) {
+            return Err(anyhow::anyhow!(
+                "Skill '{}' not found in available skills.",
+                name
+            ));
+        }
+
         // Check if already active
         if self.active_skills.iter().any(|s| s.skill.name == name) {
             return Ok(format!(

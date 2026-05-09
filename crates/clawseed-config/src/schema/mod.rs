@@ -317,6 +317,7 @@ pub struct AutonomyConfig {
     #[serde(default)]
     pub allowed_commands: Vec<String>,
     /// Tools excluded from non-CLI channels.
+    /// Deprecated: use `[agent].denied_tools` instead.
     #[serde(default)]
     pub non_cli_excluded_tools: Vec<String>,
     /// Maximum number of actions per hour (0 = rate-limited / no budget).

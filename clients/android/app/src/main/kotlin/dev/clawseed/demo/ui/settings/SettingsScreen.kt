@@ -129,6 +129,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
     var searchEngineExpanded by remember { mutableStateOf(false) }
     var soulExpanded by remember { mutableStateOf(false) }
     var toolsExpanded by remember { mutableStateOf(false) }
+    var skillsExpanded by remember { mutableStateOf(false) }
     var developerExpanded by remember { mutableStateOf(false) }
     var appearanceExpanded by remember { mutableStateOf(false) }
 
@@ -335,7 +336,45 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             uiState.tools.forEach { tool ->
-                                ToolCard(tool)
+                                ToolCard(
+                                    tool = tool,
+                                    onToggle = { viewModel.toggleTool(tool.name, it) },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Skills section
+                item {
+                    ExpandableSection(
+                        title = "可用技能 (${uiState.skills.size})",
+                        expanded = skillsExpanded,
+                        onToggle = { skillsExpanded = !skillsExpanded },
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { viewModel.refreshSkills() },
+                                enabled = !uiState.isRefreshingSkills,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                if (uiState.isRefreshingSkills) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(if (uiState.isRefreshingSkills) "刷新中..." else "刷新技能")
+                            }
+                            uiState.skills.forEach { skill ->
+                                SkillCard(
+                                    skill = skill,
+                                    onToggle = { viewModel.toggleSkill(skill.name, it) },
+                                )
                             }
                         }
                     }
@@ -770,7 +809,10 @@ private fun TomlEditor(toml: String, onTomlChange: (String) -> Unit) {
 }
 
 @Composable
-private fun ToolCard(tool: dev.clawseed.sdk.core.model.ToolInfo) {
+private fun ToolCard(
+    tool: dev.clawseed.sdk.core.model.ToolInfo,
+    onToggle: (Boolean) -> Unit,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -790,32 +832,123 @@ private fun ToolCard(tool: dev.clawseed.sdk.core.model.ToolInfo) {
                 Text(
                     text = tool.name,
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (tool.enabled) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                FilterChip(
-                    selected = false,
-                    onClick = {},
-                    label = {
-                        Text(
-                            text = when (tool.sourceType) {
-                                "remote" -> "Remote"
-                                "mcp" -> "MCP"
-                                else -> "Built-in"
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    },
-                    modifier = Modifier.height(24.dp),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(
+                        selected = false,
+                        onClick = {},
+                        label = {
+                            Text(
+                                text = when (tool.sourceType) {
+                                    "remote" -> "Remote"
+                                    "mcp" -> "MCP"
+                                    else -> "Built-in"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        },
+                        modifier = Modifier.height(24.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Switch(
+                        checked = tool.enabled,
+                        onCheckedChange = onToggle,
+                        modifier = Modifier.height(24.dp),
+                    )
+                }
             }
             Text(
                 text = tool.description,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                color = if (tool.enabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+    }
+}
+
+@Composable
+private fun SkillCard(
+    skill: dev.clawseed.sdk.core.model.SkillInfo,
+    onToggle: (Boolean) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = skill.name,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (skill.enabled) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Switch(
+                    checked = skill.enabled,
+                    onCheckedChange = onToggle,
+                    modifier = Modifier.height(24.dp),
+                )
+            }
+            if (skill.description.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = skill.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (skill.enabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (skill.triggers.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    skill.triggers.forEach { trigger ->
+                        FilterChip(
+                            selected = false,
+                            onClick = {},
+                            label = {
+                                Text(
+                                    text = trigger,
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            },
+                            modifier = Modifier.height(24.dp),
+                        )
+                    }
+                }
+            }
+            if (skill.permissions.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    skill.permissions.forEach { perm ->
+                        FilterChip(
+                            selected = false,
+                            onClick = {},
+                            label = {
+                                Text(
+                                    text = perm,
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            },
+                            modifier = Modifier.height(24.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }
