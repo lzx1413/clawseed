@@ -82,9 +82,25 @@ async fn create_memory_with_storage_and_routes() {
 }
 
 #[test]
-fn should_skip_autosave_content_always_false() {
+fn should_skip_autosave_content_filters_noise() {
+    // Normal content is not skipped
     assert!(!clawseed_memory::should_skip_autosave_content(
         "any content"
     ));
-    assert!(!clawseed_memory::should_skip_autosave_content(""));
+    // Empty content is skipped
+    assert!(clawseed_memory::should_skip_autosave_content(""));
+    assert!(clawseed_memory::should_skip_autosave_content("   "));
+    // Noise patterns are skipped
+    assert!(clawseed_memory::should_skip_autosave_content(
+        "[cron: cleanup]"
+    ));
+    assert!(clawseed_memory::should_skip_autosave_content(
+        "[heartbeat] alive"
+    ));
+    assert!(clawseed_memory::should_skip_autosave_content(
+        "[distilled_123] summary"
+    ));
+    assert!(clawseed_memory::should_skip_autosave_content(
+        "[memory context] stuff"
+    ));
 }

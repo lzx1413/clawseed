@@ -54,11 +54,7 @@ impl DefaultToolRegistry {
 
     /// Update filter patterns at runtime (e.g. on config change).
     /// Invalidates cached specs so the next query reflects the new filters.
-    pub fn update_filters(
-        &self,
-        allowed_tools: Vec<String>,
-        denied_tools: Vec<String>,
-    ) {
+    pub fn update_filters(&self, allowed_tools: Vec<String>, denied_tools: Vec<String>) {
         *self.allowed_patterns.write().unwrap() = allowed_tools;
         *self.denied_patterns.write().unwrap() = denied_tools;
         *self.cached_specs.write() = None;
@@ -459,7 +455,10 @@ mod tests {
         registry.register(Box::new(MockTool::new("shell")), ToolSource::BuiltIn);
 
         assert!(registry.get_tool("calculator").is_some());
-        assert!(registry.get_tool("shell").is_none(), "denied tool should not be returned by get_tool");
+        assert!(
+            registry.get_tool("shell").is_none(),
+            "denied tool should not be returned by get_tool"
+        );
     }
 
     #[test]
@@ -487,7 +486,10 @@ mod tests {
         registry.register(Box::new(MockTool::new("shell")), ToolSource::BuiltIn);
 
         assert!(registry.get_tool("file_read").is_some());
-        assert!(registry.get_tool("shell").is_none(), "non-allowed tool should not be returned");
+        assert!(
+            registry.get_tool("shell").is_none(),
+            "non-allowed tool should not be returned"
+        );
         assert_eq!(registry.tool_names(), vec!["file_read"]);
     }
 }

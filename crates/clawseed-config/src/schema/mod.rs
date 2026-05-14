@@ -259,6 +259,21 @@ pub struct MemoryConfig {
     /// Qdrant vector database configuration.
     #[serde(default)]
     pub qdrant: QdrantConfig,
+    /// Run periodic hygiene pass to prune stale Conversation/Daily entries.
+    #[serde(default = "default_hygiene_enabled")]
+    pub hygiene_enabled: bool,
+    /// Drop Conversation rows older than this many days. Core memories are never pruned.
+    #[serde(default = "default_conversation_retention_days")]
+    pub conversation_retention_days: u32,
+    /// Enable periodic export of Core memories to MEMORY_SNAPSHOT.md.
+    #[serde(default)]
+    pub snapshot_enabled: bool,
+    /// Auto-hydrate from MEMORY_SNAPSHOT.md when brain.db is missing.
+    #[serde(default = "default_true_val")]
+    pub auto_hydrate: bool,
+    /// Jaccard similarity threshold for conflict detection (0.0–1.0).
+    #[serde(default = "default_conflict_threshold")]
+    pub conflict_threshold: f64,
 }
 
 fn default_memory_backend() -> String {
@@ -276,6 +291,18 @@ fn default_cache_max() -> usize {
 fn default_cache_hot() -> usize {
     100
 }
+fn default_hygiene_enabled() -> bool {
+    true
+}
+fn default_conversation_retention_days() -> u32 {
+    30
+}
+fn default_true_val() -> bool {
+    true
+}
+fn default_conflict_threshold() -> f64 {
+    0.6
+}
 
 impl Default for MemoryConfig {
     fn default() -> Self {
@@ -289,6 +316,11 @@ impl Default for MemoryConfig {
             response_cache_hot_entries: default_cache_hot(),
             namespace: None,
             qdrant: QdrantConfig::default(),
+            hygiene_enabled: default_hygiene_enabled(),
+            conversation_retention_days: default_conversation_retention_days(),
+            snapshot_enabled: false,
+            auto_hydrate: default_true_val(),
+            conflict_threshold: default_conflict_threshold(),
         }
     }
 }

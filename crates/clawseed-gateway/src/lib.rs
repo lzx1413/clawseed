@@ -479,23 +479,29 @@ pub async fn run_gateway(
         Arc::new(clawseed_agent::observability::NoopObserver);
 
     // Load skill index for the /api/skills endpoint (all entries, before exclusion filter)
-    let (skill_index, skills_excluded): (
-        Arc<parking_lot::RwLock<Vec<clawseed_agent::skills::SkillIndexEntry>>>,
-        Arc<std::sync::Mutex<Vec<String>>>,
-    ) = {
+    type SkillIndex = Arc<parking_lot::RwLock<Vec<clawseed_agent::skills::SkillIndexEntry>>>;
+    type SkillExcluded = Arc<std::sync::Mutex<Vec<String>>>;
+
+    let (skill_index, skills_excluded): (SkillIndex, SkillExcluded) = {
         let extra_roots: Vec<String> = config.skills.extra_roots.clone();
         let excluded = config.skills.excluded.clone();
         if config.skills.enabled {
             (
                 Arc::new(parking_lot::RwLock::new(
-                    clawseed_agent::skills::load_skill_index_with_roots(&config.workspace_dir, &extra_roots)
-                        .into_iter()
-                        .collect(),
+                    clawseed_agent::skills::load_skill_index_with_roots(
+                        &config.workspace_dir,
+                        &extra_roots,
+                    )
+                    .into_iter()
+                    .collect(),
                 )),
                 Arc::new(std::sync::Mutex::new(excluded)),
             )
         } else {
-            (Arc::new(parking_lot::RwLock::new(Vec::new())), Arc::new(std::sync::Mutex::new(excluded)))
+            (
+                Arc::new(parking_lot::RwLock::new(Vec::new())),
+                Arc::new(std::sync::Mutex::new(excluded)),
+            )
         }
     };
 

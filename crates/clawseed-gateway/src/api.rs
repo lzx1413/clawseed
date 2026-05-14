@@ -251,12 +251,9 @@ pub async fn handle_api_config_put(
         let config = state.config.lock().clone();
         let extra_roots = config.skills.extra_roots.clone();
         let new_index = if config.skills.enabled {
-            clawseed_agent::skills::load_skill_index_with_roots(
-                &config.workspace_dir,
-                &extra_roots,
-            )
-            .into_iter()
-            .collect()
+            clawseed_agent::skills::load_skill_index_with_roots(&config.workspace_dir, &extra_roots)
+                .into_iter()
+                .collect()
         } else {
             Vec::new()
         };

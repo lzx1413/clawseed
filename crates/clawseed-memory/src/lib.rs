@@ -4,13 +4,16 @@
 
 pub mod backend;
 pub mod chunker;
+pub mod conflict;
 pub mod consolidation;
 pub mod decay;
 pub mod embeddings;
+pub mod hygiene;
 pub mod importance;
 pub mod namespaced;
 pub mod none;
 pub mod retrieval;
+pub mod snapshot;
 pub mod sqlite;
 pub mod traits;
 pub mod vector;
@@ -24,11 +27,40 @@ use std::sync::Arc;
 /// Returns `NoneMemory` when the backend is "none" or when SQLite
 /// initialization fails (graceful degradation). Returns `SqliteMemory`
 /// for the "sqlite" backend.
+///
+/// Also runs hygiene (if due) and auto-hydration (if brain.db is missing).
 pub fn create_memory(
     config: &MemoryConfig,
     workspace_dir: &std::path::Path,
     _api_key: Option<&str>,
 ) -> anyhow::Result<Arc<dyn Memory>> {
+    // Best-effort hygiene pass (throttled by state file).
+    if let Err(e) = hygiene::run_if_due(config, workspace_dir) {
+        tracing::warn!("memory hygiene skipped: {e}");
+    }
+
+    // Snapshot after hygiene if enabled.
+    if config.snapshot_enabled
+        && let Err(e) = snapshot::export_snapshot(workspace_dir)
+    {
+        tracing::warn!("memory snapshot skipped: {e}");
+    }
+
+    // Auto-hydrate from snapshot if brain.db is missing.
+    if config.auto_hydrate && snapshot::should_hydrate(workspace_dir) {
+        tracing::info!("Cold boot detected — hydrating from MEMORY_SNAPSHOT.md");
+        match snapshot::hydrate_from_snapshot(workspace_dir) {
+            Ok(count) => {
+                if count > 0 {
+                    tracing::info!("Hydrated {count} core memories from snapshot");
+                }
+            }
+            Err(e) => {
+                tracing::warn!("memory hydration failed: {e}");
+            }
+        }
+    }
+
     match config.backend.as_str() {
         "none" => Ok(Arc::new(none::NoneMemory::new())),
         _ => {
@@ -61,7 +93,17 @@ pub fn create_memory_with_storage_and_routes(
     create_memory(config, workspace_dir, api_key)
 }
 
-/// Check if content should be skipped for autosave (stub).
-pub fn should_skip_autosave_content(_content: &str) -> bool {
-    false
+/// Check if content should be skipped for autosave.
+///
+/// Filters out noise from automated tasks and system-generated content
+/// that would pollute memory with low-value entries.
+pub fn should_skip_autosave_content(content: &str) -> bool {
+    if content.trim().is_empty() {
+        return true;
+    }
+    let trimmed = content.trim_start();
+    trimmed.starts_with("[cron:")
+        || trimmed.starts_with("[heartbeat")
+        || trimmed.starts_with("[distilled_")
+        || trimmed.starts_with("[memory context]")
 }
