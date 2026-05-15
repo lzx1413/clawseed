@@ -6,6 +6,7 @@ import dev.clawseed.sdk.core.model.SessionMessage
 import dev.clawseed.sdk.core.model.SessionSummary
 import dev.clawseed.sdk.core.model.SkillInfo
 import dev.clawseed.sdk.core.model.ToolInfo
+import dev.clawseed.sdk.core.model.WebhookResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -243,6 +244,29 @@ class GatewayClient(
             val body = resp.body?.string() ?: ""
             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}: ${body.take(200)}")
             parseModelsResponse(body)
+        }
+    }
+
+    /** Sends a message to the `/webhook` synchronous execution endpoint. */
+    suspend fun webhook(
+        message: String,
+        sessionId: String? = null,
+    ): Result<WebhookResponse> = withContext(Dispatchers.IO) {
+        runCatching {
+            val body = """{"message":${kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.serializer<String>(), message)}}"""
+            val reqBuilder = Request.Builder()
+                .url("$baseUrl/webhook")
+                .addAuth()
+                .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            sessionId?.let { reqBuilder.addHeader("X-Session-Id", it) }
+            val longClient = client.newBuilder()
+                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(300, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            val resp = longClient.newCall(reqBuilder.build()).execute()
+            val respBody = resp.body?.string() ?: ""
+            if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}: ${respBody.take(200)}")
+            json.decodeFromString<WebhookResponse>(respBody)
         }
     }
 

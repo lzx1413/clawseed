@@ -6,11 +6,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.demo.ui.chat.ChatScreen
+import dev.clawseed.demo.ui.scheduled.ScheduledTasksScreen
 import dev.clawseed.demo.ui.settings.SettingsScreen
 
 object Routes {
     const val CHAT = "chat"
     const val SETTINGS = "settings"
+    const val SCHEDULED_TASKS = "scheduled_tasks"
 }
 
 @Composable
@@ -40,6 +42,9 @@ fun ClawseedNavHost(
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(onBack = { navController.popBackStack() }, localStore = localStore)
+        }
+        composable(Routes.SCHEDULED_TASKS) {
+            ScheduledTasksScreen(onBack = { navController.popBackStack() })
         }
     }
 }

@@ -54,6 +54,10 @@ fun ClawseedApp(localStore: LocalStore) {
                     scope.launch { drawerState.close() }
                     navController.navigate(Routes.SETTINGS)
                 },
+                onScheduledTasks = {
+                    scope.launch { drawerState.close() }
+                    navController.navigate(Routes.SCHEDULED_TASKS)
+                },
                 isDrawerOpen = drawerState.isOpen,
                 refreshKey = refreshKey,
             )

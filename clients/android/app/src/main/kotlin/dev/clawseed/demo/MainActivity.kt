@@ -20,6 +20,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import dev.clawseed.demo.data.LocalStore
+import dev.clawseed.demo.scheduled.ScheduledTaskManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -42,6 +46,10 @@ class MainActivity : ComponentActivity() {
         val serviceIntent = Intent(this, ClawseedService::class.java)
         ContextCompat.startForegroundService(this, serviceIntent)
         bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
+
+        CoroutineScope(Dispatchers.IO).launch {
+            ScheduledTaskManager.rescheduleAll(this@MainActivity)
+        }
 
         setContent {
             val themeMode by localStore.themeMode.collectAsState(initial = "system")

@@ -14,6 +14,10 @@ import androidx.lifecycle.viewModelScope
 import dev.clawseed.demo.data.ChatEntry
 import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.demo.data.TurnState
+import dev.clawseed.demo.scheduled.ScheduledTask
+import dev.clawseed.demo.scheduled.ScheduledTaskManager
+import dev.clawseed.demo.scheduled.ScheduledTaskStore
+import dev.clawseed.demo.scheduled.TaskRepeat
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.android.ChatAccumulator
 import dev.clawseed.sdk.android.cetp.AuthRequiredEvent
@@ -27,6 +31,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.util.Locale
 
@@ -55,7 +63,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val localStore = LocalStore(application)
     private var debugEnabled = false
     private var historyLoaded = false
-    private var toolsRegistered = false
+    private var registeredSession: ClawSeedSession? = null
     private var accumulator: ChatAccumulator? = null
     private var currentSession: ClawSeedSession? = null
     private var connectJob: Job? = null
@@ -108,9 +116,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val session = sessionManager().connect(sessionId)
                 currentSession = session
 
-                if (!toolsRegistered) {
+                if (registeredSession !== session) {
                     registerTools(session)
-                    toolsRegistered = true
+                    registeredSession = session
                 }
 
                 if (sessionId != null) {
@@ -158,6 +166,28 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             parameters = """{"type":"object","properties":{},"required":[]}""",
         ) { _ ->
             handleGetLocation()
+        }
+
+        session.tools.register(
+            name = "scheduled_task",
+            description = "管理定时任务。支持查询、创建、删除定时任务。定时任务会在设定的时间自动唤醒设备并执行指定的消息。" +
+                "操作类型：list=查询所有任务，add=创建新任务，delete=删除指定任务。" +
+                "repeat可选值：once=单次，daily=每天，weekday=工作日。",
+            parameters = """{
+                "type":"object",
+                "properties":{
+                    "operation":{"type":"string","enum":["list","add","delete"],"description":"操作类型"},
+                    "name":{"type":"string","description":"任务名称（add时必填）"},
+                    "message":{"type":"string","description":"到时间后发送给AI执行的消息内容（add时必填）"},
+                    "hour":{"type":"integer","description":"执行时间-小时0-23（add时必填）"},
+                    "minute":{"type":"integer","description":"执行时间-分钟0-59（add时必填）"},
+                    "repeat":{"type":"string","enum":["once","daily","weekday"],"description":"重复模式，默认daily"},
+                    "task_id":{"type":"string","description":"任务ID（delete时必填）"}
+                },
+                "required":["operation"]
+            }""",
+        ) { args ->
+            handleScheduledTask(args)
         }
     }
 
@@ -330,6 +360,84 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     ),
                 )
             }
+        }
+    }
+
+    private suspend fun handleScheduledTask(args: kotlinx.serialization.json.JsonObject): ToolResult {
+        val op = args["operation"]?.jsonPrimitive?.content ?: return ToolResult.Failure("缺少 operation 参数")
+        val ctx = getApplication<Application>()
+        val store = ScheduledTaskStore(ctx)
+
+        when (op) {
+            "list" -> {
+                val tasks = store.tasksAsList()
+                val arr = kotlinx.serialization.json.buildJsonArray {
+                    for (task in tasks) {
+                        add(kotlinx.serialization.json.buildJsonObject {
+                            put("id", task.id)
+                            put("name", task.name)
+                            put("message", task.message)
+                            put("hour", task.hour)
+                            put("minute", task.minute)
+                            put("repeat", task.repeat.name.lowercase())
+                            put("enabled", task.enabled)
+                            task.lastRunAt?.let { put("last_run_at", it) }
+                            task.lastStatus?.let { put("last_status", it.name.lowercase()) }
+                            task.lastError?.let { put("last_error", it) }
+                            task.lastResult?.let { put("last_result", it) }
+                        })
+                    }
+                }
+                return ToolResult.Success(buildJsonObject { put("tasks", arr) }.toString())
+            }
+            "add" -> {
+                val name = args["name"]?.jsonPrimitive?.content
+                    ?: return ToolResult.Failure("缺少 name 参数")
+                val message = args["message"]?.jsonPrimitive?.content
+                    ?: return ToolResult.Failure("缺少 message 参数")
+                val hour = args["hour"]?.jsonPrimitive?.int
+                    ?: return ToolResult.Failure("缺少 hour 参数")
+                val minute = args["minute"]?.jsonPrimitive?.int
+                    ?: return ToolResult.Failure("缺少 minute 参数")
+                if (hour !in 0..23) return ToolResult.Failure("hour 必须在 0-23 之间")
+                if (minute !in 0..59) return ToolResult.Failure("minute 必须在 0-59 之间")
+                val repeatStr = args["repeat"]?.jsonPrimitive?.content ?: "daily"
+                val repeat = when (repeatStr) {
+                    "once" -> TaskRepeat.ONCE
+                    "daily" -> TaskRepeat.DAILY
+                    "weekday" -> TaskRepeat.WEEKDAY
+                    else -> return ToolResult.Failure("repeat 必须是 once/daily/weekday")
+                }
+                val currentSessionId = currentSession?.sessionInfo?.value?.sessionId
+                val task = ScheduledTask(
+                    name = name,
+                    message = message,
+                    hour = hour,
+                    minute = minute,
+                    repeat = repeat,
+                    sessionId = currentSessionId,
+                )
+                store.addTask(task)
+                ScheduledTaskManager.scheduleAlarm(ctx, task)
+                return ToolResult.Success(buildJsonObject {
+                    put("id", task.id)
+                    put("name", task.name)
+                    put("scheduled", "${String.format("%02d:%02d", hour, minute)} ${repeatStr}")
+                }.toString())
+            }
+            "delete" -> {
+                val taskId = args["task_id"]?.jsonPrimitive?.content
+                    ?: return ToolResult.Failure("缺少 task_id 参数")
+                val existing = store.tasksAsList().find { it.id == taskId }
+                    ?: return ToolResult.Failure("任务 $taskId 不存在")
+                ScheduledTaskManager.cancelAlarm(ctx, taskId)
+                store.deleteTask(taskId)
+                return ToolResult.Success(buildJsonObject {
+                    put("deleted", taskId)
+                    put("name", existing.name)
+                }.toString())
+            }
+            else -> return ToolResult.Failure("未知操作: $op，支持 list/add/delete")
         }
     }
 

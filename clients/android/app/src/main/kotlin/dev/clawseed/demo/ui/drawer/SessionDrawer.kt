@@ -42,6 +42,7 @@ fun SessionDrawer(
     onSelectSession: (String) -> Unit,
     onDeleteCurrentSession: () -> Unit = {},
     onSettings: () -> Unit,
+    onScheduledTasks: () -> Unit = {},
     isDrawerOpen: Boolean = false,
     refreshKey: Int = 0,
     viewModel: SessionsViewModel = viewModel(),
@@ -104,6 +105,13 @@ fun SessionDrawer(
             }
 
             HorizontalDivider()
+
+            NavigationDrawerItem(
+                label = { Text("定时任务") },
+                selected = false,
+                onClick = onScheduledTasks,
+                icon = { Icon(Icons.Default.Info, contentDescription = null) },
+            )
 
             NavigationDrawerItem(
                 label = { Text("设置") },

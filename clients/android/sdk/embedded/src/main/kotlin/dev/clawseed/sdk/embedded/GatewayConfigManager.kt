@@ -59,6 +59,20 @@ class GatewayConfigManager(private val context: Context) {
                 }
             }
 
+            // Ensure [gateway] has require_pairing = false for embedded use
+            val gwIdx = content.indexOf("[gateway]")
+            if (gwIdx != -1) {
+                val nextGwSection = content.indexOf("\n[", gwIdx + 1).let { if (it == -1) content.length else it }
+                val gwSection = content.substring(gwIdx, nextGwSection)
+                if (!gwSection.contains("require_pairing")) {
+                    content = content.substring(0, nextGwSection) +
+                        "\nrequire_pairing = false" +
+                        content.substring(nextGwSection)
+                    changed = true
+                    Log.i(TAG, "Added require_pairing = false to [gateway]")
+                }
+            }
+
             if (changed) configFile.writeText(content)
         } else {
             configFile.writeText(INITIAL_CONFIG.replace("{WORKSPACE_DIR}", workspaceDir.absolutePath))
@@ -102,6 +116,7 @@ class GatewayConfigManager(private val context: Context) {
         )
 
         private val REQUIRED_SECTIONS = listOf(
+            "[gateway]" to "session_persistence = true\nrequire_pairing = false",
             "[web_fetch]" to "enabled = true\nallowed_domains = [\"*\"]",
             "[http_request]" to "enabled = true\nallowed_domains = [\"*\"]",
             "[web_search]" to "enabled = true\nprovider = \"bing\"",
@@ -112,6 +127,7 @@ workspace_dir = "{WORKSPACE_DIR}"
 
 [gateway]
 session_persistence = true
+require_pairing = false
 
 [web_fetch]
 enabled = true

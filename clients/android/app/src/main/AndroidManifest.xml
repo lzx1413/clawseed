@@ -12,6 +12,11 @@
     <!-- Required on Android 13+ to show notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"
         android:minSdkVersion="33" />
+    <!-- Required for scheduling exact alarms for scheduled tasks -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:minSdkVersion="31" />
+    <!-- Required to re-register alarms after device reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:label="@string/app_name"
@@ -35,6 +40,15 @@
             android:name=".ClawseedService"
             android:exported="false"
             android:foregroundServiceType="specialUse" />
+
+        <!-- Re-register scheduled task alarms after device reboot -->
+        <receiver
+            android:name=".scheduled.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
     </application>
 

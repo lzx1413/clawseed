@@ -40,3 +40,10 @@ data class HealthInfo(
     val status: String = "",
     val version: String? = null,
 )
+
+/** Response from the `/webhook` synchronous execution endpoint. */
+@Serializable
+data class WebhookResponse(
+    val response: String = "",
+    val model: String = "",
+)
