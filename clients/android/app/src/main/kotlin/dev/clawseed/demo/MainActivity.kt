@@ -29,6 +29,7 @@ class MainActivity : ComponentActivity() {
 
     private val serviceRef = mutableStateOf<ClawseedService?>(null)
     private lateinit var localStore: LocalStore
+    private val pendingSessionId = mutableStateOf<String?>(null)
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
@@ -50,6 +51,9 @@ class MainActivity : ComponentActivity() {
         CoroutineScope(Dispatchers.IO).launch {
             ScheduledTaskManager.rescheduleAll(this@MainActivity)
         }
+
+        // Handle session ID from notification tap
+        handleIntentSession(intent)
 
         setContent {
             val themeMode by localStore.themeMode.collectAsState(initial = "system")
@@ -75,14 +79,31 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     ClawseedApp(
                         localStore = localStore,
+                        notificationSessionId = pendingSessionId,
                     )
                 }
             }
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntentSession(intent)
+    }
+
+    private fun handleIntentSession(intent: Intent?) {
+        val sessionId = intent?.getStringExtra(EXTRA_SESSION_ID)
+        if (sessionId != null) {
+            pendingSessionId.value = sessionId
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         unbindService(serviceConnection)
+    }
+
+    companion object {
+        const val EXTRA_SESSION_ID = "session_id"
     }
 }

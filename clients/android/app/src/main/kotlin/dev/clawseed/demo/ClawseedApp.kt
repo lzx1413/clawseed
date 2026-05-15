@@ -16,13 +16,28 @@ import dev.clawseed.demo.ui.navigation.Routes
 import kotlinx.coroutines.launch
 
 @Composable
-fun ClawseedApp(localStore: LocalStore) {
+fun ClawseedApp(localStore: LocalStore, notificationSessionId: androidx.compose.runtime.MutableState<String?> = remember { mutableStateOf(null) }) {
     val drawerState = androidx.compose.material3.rememberDrawerState(androidx.compose.material3.DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val navController = rememberNavController()
     var currentSessionId by rememberSaveable { mutableStateOf<String?>(null) }
     var sessionVersion by rememberSaveable { mutableStateOf(0) }
     var refreshKey by remember { mutableStateOf(0) }
+
+    // Navigate to session from notification tap
+    val notifSessionId = notificationSessionId.value
+    androidx.compose.runtime.LaunchedEffect(notifSessionId) {
+        if (notifSessionId != null && notifSessionId != currentSessionId) {
+            currentSessionId = notifSessionId
+            sessionVersion++
+            refreshKey++
+            localStore.setActiveSessionId(notifSessionId)
+            navController.navigate(Routes.CHAT) {
+                popUpTo(Routes.CHAT) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
 
     // Back key: close drawer if open
     BackHandler(enabled = drawerState.isOpen) {

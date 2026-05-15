@@ -59,6 +59,18 @@ object ClawSeedAndroid {
         return _externalToolBridge ?: error("ClawSeedAndroid not initialized. Call init() first.")
     }
 
+    private var _gatewayRestarter: (suspend () -> Unit)? = null
+
+    /** Registers a callback that restarts the embedded gateway process. Called by the hosting service. */
+    fun setGatewayRestarter(restarter: suspend () -> Unit) {
+        _gatewayRestarter = restarter
+    }
+
+    /** Restarts the embedded gateway. Throws if no restarter has been registered. */
+    suspend fun restartGateway() {
+        _gatewayRestarter?.invoke() ?: error("Gateway restarter not registered")
+    }
+
     internal val context: Context get() = _context ?: error("ClawSeedAndroid not initialized.")
 
     /** Suspends until [init] has completed. */

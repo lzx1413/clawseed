@@ -225,7 +225,8 @@ class SettingsViewModel : ViewModel() {
             val toml = buildConfigToml(state)
             client().updateConfig(toml)
                 .onSuccess {
-                    _uiState.value = _uiState.value.copy(isSaving = false, successMessage = "配置已保存")
+                    ClawSeedAndroid.restartGateway()
+                    _uiState.value = _uiState.value.copy(isSaving = false, successMessage = "配置已保存，Gateway 已重启")
                     preservedApiKey = state.apiKey.ifBlank { null }
                     loadAll()
                 }

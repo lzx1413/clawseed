@@ -3,6 +3,7 @@ package dev.clawseed.demo
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -97,6 +98,7 @@ class ClawseedService : Service() {
                             this@ClawseedService,
                             gateway.localConfig(),
                         )
+                        ClawSeedAndroid.setGatewayRestarter { gateway.restart() }
                         isReady = true
                         withContext(Dispatchers.Main) {
                             readyCallbacks.forEach { it() }
@@ -169,7 +171,7 @@ class ClawseedService : Service() {
         val result = client.webhook(task.message, task.sessionId)
 
         result.onSuccess { response ->
-            showTaskResultNotification(task, response.response)
+            showTaskResultNotification(task, response.response, task.sessionId)
             store.updateTaskById(taskId) { current ->
                 current.copy(
                     lastRunAt = System.currentTimeMillis(),
@@ -215,25 +217,38 @@ class ClawseedService : Service() {
         ScheduledTaskManager.onTaskFired(this@ClawseedService, taskId)
     }
 
-    private fun showTaskResultNotification(task: ScheduledTask, result: String) {
+    private fun showTaskResultNotification(task: ScheduledTask, result: String, sessionId: String?) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID_TASKS)
-            .setContentTitle("✓ ${task.name}")
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(MainActivity.EXTRA_SESSION_ID, sessionId)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, task.id.hashCode(), intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID_TASKS_REMINDER)
+            .setContentTitle("⏰ ${task.name}")
             .setContentText(result.take(100))
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setStyle(NotificationCompat.BigTextStyle().bigText(result.take(500)))
             .setAutoCancel(true)
+            .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
             .build()
         nm.notify(task.id.hashCode(), notification)
     }
 
     private fun showTaskErrorNotification(task: ScheduledTask, error: String) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID_TASKS)
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID_TASKS_REMINDER)
             .setContentTitle("✗ ${task.name}")
             .setContentText(error.take(100))
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setAutoCancel(true)
+            .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
         nm.notify(task.id.hashCode(), notification)
     }
@@ -246,21 +261,30 @@ class ClawseedService : Service() {
 
         val taskNotificationChannel = NotificationChannel(
             CHANNEL_ID_TASKS, "定时任务",
-            NotificationManager.IMPORTANCE_DEFAULT,
+            NotificationManager.IMPORTANCE_LOW,
         ).apply { description = "定时任务执行结果" }
+
+        val reminderChannel = NotificationChannel(
+            CHANNEL_ID_TASKS_REMINDER, "任务提醒",
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = "定时任务提醒"
+            enableVibration(true)
+        }
 
         getSystemService(NotificationManager::class.java).run {
             createNotificationChannel(gatewayChannel)
             createNotificationChannel(taskNotificationChannel)
+            createNotificationChannel(reminderChannel)
         }
     }
 
     private fun buildNotification(text: String): Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("ClawSeed")
-            .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
+            .setSilent(true)
             .build()
 
     private fun updateNotification(text: String) {
@@ -272,6 +296,7 @@ class ClawseedService : Service() {
         const val EXTRA_TASK_ID = "task_id"
         private const val CHANNEL_ID = "clawseed_gateway"
         private const val CHANNEL_ID_TASKS = "scheduled_tasks"
+        private const val CHANNEL_ID_TASKS_REMINDER = "task_reminders"
         private const val NOTIFICATION_ID = 1001
     }
 }
