@@ -52,6 +52,17 @@ class ScheduledTasksViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
+    fun updateTask(taskId: String, updated: ScheduledTask) {
+        viewModelScope.launch {
+            ScheduledTaskManager.cancelAlarm(getApplication(), taskId)
+            store.updateTaskById(taskId) { updated.copy(id = taskId) }
+            val task = store.tasksAsList().find { it.id == taskId }
+            if (task != null && task.enabled) {
+                ScheduledTaskManager.scheduleAlarm(getApplication(), task)
+            }
+        }
+    }
+
     fun toggleTask(taskId: String, enabled: Boolean) {
         viewModelScope.launch {
             store.updateTaskById(taskId) { it.copy(enabled = enabled) }

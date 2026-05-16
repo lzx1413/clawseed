@@ -183,11 +183,17 @@ class ClawseedService : Service() {
         // Use WebSocket session so remote tools (device_info, get_location, etc.) are available
         val finalSessionId = sessionId
         try {
-            val sessionManager = ClawSeedAndroid.sessionManager()
-            val session = sessionManager.connect(finalSessionId)
+            val config = gateway.localConfig()
+            val session = dev.clawseed.sdk.core.ClawSeed.createSession(config)
 
             // Register remote tools for this service session
             registerServiceTools(session)
+
+            // Connect with the session ID (independent of the shared SessionManager)
+            session.connect(finalSessionId)
+
+            // Bridge CETP external tools
+            runCatching { ClawSeedAndroid.externalToolBridge().attachToRegistry(session.tools) }
 
             // Wait for connection
             val connected = kotlinx.coroutines.withTimeoutOrNull(10_000L) {
@@ -249,6 +255,7 @@ class ClawseedService : Service() {
             }
 
             responseJob.cancel()
+            session.disconnect()
 
             val response = responseBuilder.toString()
             if (response.isNotEmpty() && !response.startsWith("Error:")) {

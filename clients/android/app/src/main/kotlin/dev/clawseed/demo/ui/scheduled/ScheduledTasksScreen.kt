@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -76,6 +77,7 @@ fun ScheduledTasksScreen(
     val canScheduleExactAlarms by viewModel.canScheduleExactAlarms.collectAsState()
     val context = LocalContext.current
     var showAddDialog by remember { mutableStateOf(false) }
+    var editingTask by remember { mutableStateOf<ScheduledTask?>(null) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -94,11 +96,22 @@ fun ScheduledTasksScreen(
     }
 
     if (showAddDialog) {
-        AddTaskDialog(
+        TaskDialog(
             onDismiss = { showAddDialog = false },
             onConfirm = { task ->
                 viewModel.addTask(task)
                 showAddDialog = false
+            },
+        )
+    }
+
+    editingTask?.let { task ->
+        TaskDialog(
+            initialTask = task,
+            onDismiss = { editingTask = null },
+            onConfirm = { updated ->
+                viewModel.updateTask(task.id, updated)
+                editingTask = null
             },
         )
     }
@@ -184,6 +197,7 @@ fun ScheduledTasksScreen(
                         TaskCard(
                             task = task,
                             onToggle = { enabled -> viewModel.toggleTask(task.id, enabled) },
+                            onEdit = { editingTask = task },
                             onDelete = { viewModel.deleteTask(task.id) },
                         )
                     }
@@ -197,6 +211,7 @@ fun ScheduledTasksScreen(
 private fun TaskCard(
     task: ScheduledTask,
     onToggle: (Boolean) -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
     Card(
@@ -229,6 +244,13 @@ private fun TaskCard(
                     checked = task.enabled,
                     onCheckedChange = onToggle,
                 )
+                IconButton(onClick = onEdit) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "编辑",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 IconButton(onClick = onDelete) {
                     Icon(
                         Icons.Default.Delete,
@@ -315,22 +337,23 @@ private fun formatLastRun(task: ScheduledTask): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddTaskDialog(
+private fun TaskDialog(
     onDismiss: () -> Unit,
     onConfirm: (ScheduledTask) -> Unit,
+    initialTask: ScheduledTask? = null,
 ) {
-    var name by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf("") }
-    var repeat by remember { mutableStateOf(TaskRepeat.DAILY) }
+    var name by remember { mutableStateOf(initialTask?.name ?: "") }
+    var message by remember { mutableStateOf(initialTask?.message ?: "") }
+    var repeat by remember { mutableStateOf(initialTask?.repeat ?: TaskRepeat.DAILY) }
     val timePickerState = rememberTimePickerState(
-        initialHour = 8,
-        initialMinute = 0,
+        initialHour = initialTask?.hour ?: 8,
+        initialMinute = initialTask?.minute ?: 0,
         is24Hour = true,
     )
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("添加定时任务") },
+        title = { Text(if (initialTask != null) "编辑定时任务" else "添加定时任务") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
