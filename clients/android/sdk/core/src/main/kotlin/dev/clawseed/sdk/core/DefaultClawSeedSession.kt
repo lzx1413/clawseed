@@ -69,6 +69,10 @@ internal class DefaultClawSeedSession(
         chatClient.sendMessage(content, debug)
     }
 
+    override fun regenerate(debug: Boolean) {
+        chatClient.sendRegenerate(debug)
+    }
+
     override suspend fun abort() {
         // Try WebSocket abort first (lower latency)
         chatClient.sendAbort()

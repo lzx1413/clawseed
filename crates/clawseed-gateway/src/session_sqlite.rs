@@ -263,4 +263,30 @@ impl SessionBackend for SqliteSessionBackend {
         )?;
         Ok(deleted)
     }
+
+    fn remove_last_assistant_turn(&self, session_key: &str) -> Option<String> {
+        let conn = self.conn.lock();
+        // Find the last user message
+        let last_user: Option<(i64, String)> = conn
+            .query_row(
+                "SELECT id, content FROM messages WHERE session_key = ?1 AND role = 'user' ORDER BY id DESC LIMIT 1",
+                params![session_key],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .ok();
+        let (user_id, user_content) = last_user?;
+        // Delete all messages after the last user message (the assistant turn)
+        conn.execute(
+            "DELETE FROM messages WHERE session_key = ?1 AND id > ?2",
+            params![session_key, user_id],
+        )
+        .ok();
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE sessions SET last_activity = ?1 WHERE session_key = ?2",
+            params![now, session_key],
+        )
+        .ok();
+        Some(user_content)
+    }
 }

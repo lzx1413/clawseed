@@ -4,7 +4,6 @@ import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,10 +42,11 @@ import kotlinx.coroutines.delay
 fun MessageBubble(
     entry: ChatEntry,
     modifier: Modifier = Modifier,
+    onRegenerate: (() -> Unit)? = null,
 ) {
     when (entry) {
         is ChatEntry.UserMessage -> UserBubble(entry.content, modifier)
-        is ChatEntry.AssistantMessage -> AssistantBubble(entry.content, entry.isStreaming, modifier)
+        is ChatEntry.AssistantMessage -> AssistantBubble(entry.content, entry.isStreaming, onRegenerate, modifier)
         is ChatEntry.ToolCall -> ToolCallCard(entry, modifier)
         is ChatEntry.ToolResult -> ToolResultCard(entry, modifier)
         is ChatEntry.Thinking -> ThinkingCard(entry.content, modifier)
@@ -57,9 +57,6 @@ fun MessageBubble(
 
 @Composable
 private fun UserBubble(content: String, modifier: Modifier = Modifier) {
-    val clipboardManager = LocalClipboardManager.current
-    val context = LocalContext.current
-
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End,
@@ -68,26 +65,21 @@ private fun UserBubble(content: String, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp))
                 .background(MaterialTheme.colorScheme.primary)
-                .combinedClickable(
-                    onClick = {},
-                    onLongClick = {
-                        clipboardManager.setText(AnnotatedString(content))
-                        Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
-                    },
-                )
                 .padding(horizontal = 16.dp, vertical = 10.dp),
         ) {
-            Text(
-                text = content,
-                color = MaterialTheme.colorScheme.onPrimary,
-                style = MaterialTheme.typography.bodyLarge,
-            )
+            SelectionContainer {
+                Text(
+                    text = content,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun AssistantBubble(content: String, isStreaming: Boolean, modifier: Modifier = Modifier) {
+private fun AssistantBubble(content: String, isStreaming: Boolean, onRegenerate: (() -> Unit)?, modifier: Modifier = Modifier) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
 
@@ -100,34 +92,37 @@ private fun AssistantBubble(content: String, isStreaming: Boolean, modifier: Mod
                 modifier = Modifier
                     .clip(RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .combinedClickable(
-                        onClick = {},
-                        onLongClick = {
-                            clipboardManager.setText(AnnotatedString(content))
-                            Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
-                        },
-                    )
                     .padding(horizontal = 16.dp, vertical = 10.dp),
             ) {
-                Column {
-                    MarkdownContent(content = content)
-                    if (isStreaming) {
-                        Text(
-                            text = "█",
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
+                SelectionContainer {
+                    Column {
+                        MarkdownContent(content = content)
+                        if (isStreaming) {
+                            Text(
+                                text = "█",
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        }
                     }
                 }
             }
             if (!isStreaming && content.isNotBlank()) {
-                CopyButton(
-                    onClick = {
-                        clipboardManager.setText(AnnotatedString(content))
-                        Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
-                    },
+                Row(
                     modifier = Modifier.padding(start = 4.dp, top = 2.dp),
-                )
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CopyButton(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(content))
+                            Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+                        },
+                    )
+                    if (onRegenerate != null) {
+                        RegenerateButton(onClick = onRegenerate)
+                    }
+                }
             }
         }
     }
@@ -172,6 +167,52 @@ private fun CopyButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
             )
         }
     }
+}
+
+@Composable
+private fun RegenerateButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(4.dp))
+            .clickable { onClick() }
+            .padding(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Icon(
+            imageVector = RefreshIcon,
+            contentDescription = "重新生成",
+            modifier = Modifier.size(14.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+        )
+    }
+}
+
+private val RefreshIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "Refresh",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(17.65f, 6.35f)
+            curveTo(16.2f, 4.9f, 14.21f, 4f, 12f, 4f)
+            curveTo(7.58f, 4f, 4.01f, 7.58f, 4.01f, 12f)
+            curveTo(4.01f, 16.42f, 7.58f, 20f, 12f, 20f)
+            curveTo(15.73f, 20f, 18.84f, 17.45f, 19.73f, 14f)
+            horizontalLineTo(17.65f)
+            curveTo(16.83f, 16.33f, 14.61f, 18f, 12f, 18f)
+            curveTo(8.69f, 18f, 6f, 15.31f, 6f, 12f)
+            curveTo(6f, 8.69f, 8.69f, 6f, 12f, 6f)
+            curveTo(13.66f, 6f, 15.14f, 6.69f, 16.22f, 7.78f)
+            lineTo(13f, 11f)
+            horizontalLineTo(20f)
+            verticalLineTo(4f)
+            close()
+        }
+    }.build()
 }
 
 private val CopyIcon: ImageVector by lazy {
@@ -330,12 +371,14 @@ private fun ThinkingCard(content: String, modifier: Modifier = Modifier) {
             )
         }
         AnimatedVisibility(visible = expanded) {
-            Text(
-                text = content,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                modifier = Modifier.padding(top = 8.dp),
-            )
+            SelectionContainer {
+                Text(
+                    text = content,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
         }
     }
 }

@@ -181,7 +181,16 @@ fun ChatScreen(
                     items = uiState.messages,
                     key = { it.id },
                 ) { entry ->
-                    MessageBubble(entry = entry)
+                    val isLastAssistant = entry is ChatEntry.AssistantMessage
+                        && !entry.isStreaming
+                        && uiState.messages.lastOrNull()
+                            ?.let { it is ChatEntry.AssistantMessage || it is ChatEntry.ToolResult || it is ChatEntry.ToolCall || it is ChatEntry.Thinking }
+                            ?: false
+                        && uiState.messages.indexOf(entry) == uiState.messages.indexOfLast { it is ChatEntry.AssistantMessage }
+                    MessageBubble(
+                        entry = entry,
+                        onRegenerate = if (isLastAssistant) ({ viewModel.regenerateLastResponse() }) else null,
+                    )
                 }
                 if (uiState.thinkingContent.isNotEmpty()) {
                     item(key = "__thinking__") {

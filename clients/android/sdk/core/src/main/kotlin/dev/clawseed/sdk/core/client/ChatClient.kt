@@ -129,6 +129,22 @@ internal class ChatClient(
         webSocket?.send(msg)
     }
 
+    fun sendRegenerate(debug: Boolean = false) {
+        val state = _connectionState.value
+        check(state == ConnectionState.CONNECTED || state == ConnectionState.RECONNECTING) {
+            "Cannot regenerate in state $state"
+        }
+        val msg = buildJsonObject {
+            put("type", "regenerate")
+            if (debug) put("debug", true)
+        }.toString()
+        if (state == ConnectionState.CONNECTED) {
+            webSocket?.send(msg)
+        } else {
+            pendingMessages.add(msg)
+        }
+    }
+
     private fun openWebSocket() {
         val wsUrl = if (sessionId != null) {
             val separator = if ("?" in url) "&" else "?"

@@ -73,4 +73,8 @@ pub trait SessionBackend: Send + Sync + 'static {
 
     /// Clean up sessions older than the given TTL in hours.
     fn cleanup_stale(&self, ttl_hours: u32) -> anyhow::Result<usize>;
+
+    /// Remove all messages after the last user message (inclusive).
+    /// Returns the content of that last user message, or None if no user message exists.
+    fn remove_last_assistant_turn(&self, session_key: &str) -> Option<String>;
 }

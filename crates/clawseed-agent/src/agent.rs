@@ -548,6 +548,28 @@ impl Agent {
         self.history.clear();
     }
 
+    /// Remove the last assistant turn and the preceding user message from history.
+    /// Returns the original user message content (without timestamp prefix) if found,
+    /// so the caller can re-run the turn.
+    pub fn remove_last_assistant_turn(&mut self) -> Option<String> {
+        let last_user_idx = self.history.iter().rposition(|m| {
+            matches!(m, ConversationMessage::Chat(chat) if chat.role == "user")
+        })?;
+        let user_content = match &self.history[last_user_idx] {
+            ConversationMessage::Chat(chat) => chat.content.clone(),
+            _ => return None,
+        };
+        // Remove the user message and everything after it
+        self.history.truncate(last_user_idx);
+        // Strip the timestamp prefix that prepare_turn adds: "[YYYY-MM-DD HH:MM:SS TZ] actual message"
+        let stripped = user_content
+            .strip_prefix('[')
+            .and_then(|s| s.find("] "))
+            .map(|idx| user_content[idx + 2..].to_string())
+            .unwrap_or(user_content);
+        Some(stripped)
+    }
+
     pub fn set_memory_session_id(&mut self, session_id: Option<String>) {
         self.memory_session_id = session_id;
     }

@@ -561,6 +561,68 @@ async fn handle_socket(
                     continue;
                 }
 
+                if msg_type == "regenerate" {
+                    // Remove the last assistant turn + user message from agent history
+                    let user_content = agent.remove_last_assistant_turn();
+                    let Some(content) = user_content else {
+                        let err = serde_json::json!({
+                            "type": "error",
+                            "message": "No user message found to regenerate from",
+                            "code": "NO_USER_MESSAGE"
+                        });
+                        let _ = sender.send(Message::Text(err.to_string().into())).await;
+                        continue;
+                    };
+
+                    // Remove from session persistence
+                    if let Some(ref backend) = state.session_backend {
+                        backend.remove_last_assistant_turn(&session_key);
+                    }
+
+                    // Inject remote tools
+                    {
+                        let handle = remote_registry_handle.read().await;
+                        if !handle.is_empty() {
+                            let remote_tools = std::sync::Arc::new(handle.clone()).build_tools();
+                            agent.add_remote_tools(remote_tools, session_id.clone());
+                        }
+                    }
+
+                    // Acquire session lock
+                    let _session_guard = match state.session_queue.acquire(&session_key).await {
+                        Ok(guard) => guard,
+                        Err(e) => {
+                            let err = serde_json::json!({
+                                "type": "error",
+                                "message": e.to_string(),
+                                "code": "SESSION_BUSY"
+                            });
+                            let _ = sender.send(Message::Text(err.to_string().into())).await;
+                            continue;
+                        }
+                    };
+
+                    // Persist user message (it was removed from backend too)
+                    if let Some(ref backend) = state.session_backend {
+                        let user_msg = clawseed_api::provider::ChatMessage::user(&content);
+                        let _ = backend.append(&session_key, &user_msg);
+                    }
+
+                    process_chat_message(
+                        &state,
+                        &mut agent,
+                        &mut sender,
+                        &mut receiver,
+                        &mut remote_request_rx,
+                        pending_remote_calls.clone(),
+                        &content,
+                        &session_key,
+                        parsed["debug"].as_bool().unwrap_or(false),
+                    )
+                    .await;
+                    continue;
+                }
+
                 if msg_type != "message" {
                     let err = serde_json::json!({
                         "type": "error",

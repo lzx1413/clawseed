@@ -33,6 +33,7 @@ class ChatAccumulator(private val session: ClawSeedSession) {
     private val idCounter = AtomicLong(0)
     private var collectionJob: kotlinx.coroutines.Job? = null
     private var currentTurnFlushed = false
+    private var regenerating = false
 
     /** Starts collecting [session] events inside [scope]. */
     fun startIn(scope: CoroutineScope) {
@@ -52,6 +53,19 @@ class ChatAccumulator(private val session: ClawSeedSession) {
         ))
     }
 
+    /** Prepares the accumulator for a regenerate: clears the last assistant turn and keeps the user message. */
+    fun prepareRegenerate() {
+        val messages = _messages.value
+        val lastUserIndex = messages.indexOfLast { it is AccumulatedMessage.User }
+        if (lastUserIndex < 0) return
+        // Remove everything after the last user message
+        val kept = messages.subList(0, lastUserIndex + 1).toList()
+        // Remove the last user message too (server will re-add it)
+        _messages.value = kept.subList(0, lastUserIndex).toList()
+        regenerating = true
+        currentTurnFlushed = false
+    }
+
     /** Clears all accumulated state for session switching or full reset. */
     fun reset() {
         _streamingContent.value = ""
@@ -60,6 +74,7 @@ class ChatAccumulator(private val session: ClawSeedSession) {
         _sessionTitle.value = null
         idCounter.set(0)
         currentTurnFlushed = false
+        regenerating = false
     }
 
     private fun handleEvent(event: ChatEvent) {

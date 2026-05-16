@@ -30,6 +30,8 @@ interface ClawSeedSession : Closeable {
     suspend fun disconnect()
     /** Sends a user message to the agent. */
     fun sendMessage(content: String, debug: Boolean = false)
+    /** Requests the agent to regenerate its last response. */
+    fun regenerate(debug: Boolean = false)
     /** Requests cancellation of the current agent turn. */
     suspend fun abort()
 

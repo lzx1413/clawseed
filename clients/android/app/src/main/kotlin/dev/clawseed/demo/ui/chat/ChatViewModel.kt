@@ -323,6 +323,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun regenerateLastResponse() {
+        accumulator?.prepareRegenerate()
+        currentSession?.regenerate(debugEnabled)
+    }
+
     fun abortGeneration() {
         viewModelScope.launch {
             currentSession?.abort()
