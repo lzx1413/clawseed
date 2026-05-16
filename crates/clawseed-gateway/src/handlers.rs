@@ -336,10 +336,13 @@ pub async fn handle_webhook(
     // Persist user message to session store if session_id is provided
     let session_key = session_id.as_ref().map(|sid| format!("gw_{sid}"));
     if let (Some(skey), Some(backend)) = (&session_key, &state.session_backend) {
-        let _ = backend.append(skey, &clawseed_api::provider::ChatMessage {
-            role: "user".to_string(),
-            content: message.clone(),
-        });
+        let _ = backend.append(
+            skey,
+            &clawseed_api::provider::ChatMessage {
+                role: "user".to_string(),
+                content: message.clone(),
+            },
+        );
     }
 
     if state.auto_save && !clawseed_memory::should_skip_autosave_content(message) {
@@ -383,10 +386,13 @@ pub async fn handle_webhook(
         Ok(response) => {
             // Persist assistant response to session store
             if let (Some(skey), Some(backend)) = (&session_key, &state.session_backend) {
-                let _ = backend.append(skey, &clawseed_api::provider::ChatMessage {
-                    role: "assistant".to_string(),
-                    content: response.clone(),
-                });
+                let _ = backend.append(
+                    skey,
+                    &clawseed_api::provider::ChatMessage {
+                        role: "assistant".to_string(),
+                        content: response.clone(),
+                    },
+                );
             }
 
             let duration = started_at.elapsed();

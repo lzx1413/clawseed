@@ -241,8 +241,9 @@ pub enum ToolsPayload {
 
 /// Industry-neutral default temperature.
 pub const BASELINE_TEMPERATURE: f64 = 0.7;
-/// Default max output tokens.
-pub const BASELINE_MAX_TOKENS: u32 = 4096;
+/// Default max output tokens (128k — high enough for agent tool-use loops
+/// and scheduled task responses that can be lengthy).
+pub const BASELINE_MAX_TOKENS: u32 = 131_072;
 
 /// Provider trait — every LLM provider implements this.
 #[async_trait]
@@ -331,7 +332,9 @@ pub trait Provider: Send + Sync {
                 let tool_values = match self.convert_tools(tools) {
                     ToolsPayload::OpenAI { tools } => tools,
                     ToolsPayload::Anthropic { tools } => tools,
-                    ToolsPayload::Gemini { function_declarations } => function_declarations,
+                    ToolsPayload::Gemini {
+                        function_declarations,
+                    } => function_declarations,
                     ToolsPayload::PromptGuided { .. } => {
                         anyhow::bail!(
                             "Provider returned prompt-guided tools payload while supports_native_tools() is true"
