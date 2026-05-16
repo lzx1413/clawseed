@@ -124,7 +124,11 @@ A full-featured Android chat client is included at [`clients/android/`](clients/
 - Real-time streaming chat with Markdown rendering (headings, code blocks, tables, bold/italic)
 - Extended thinking display — collapsible cards showing the model's chain-of-thought
 - Session management (create, resume, rename, delete, auto-naming)
+- Regenerate — re-generate last assistant response with a single tap
 - On-device tools: `device_info`, `get_location` (WGS84 to GCJ-02 with reverse geocoding)
+- Scheduled background tasks — AlarmManager-based prompts with repeat modes (daily/weekday/once)
+- Soul customization — in-app personality editor for workspace SOUL.md
+- Appearance settings — light/dark/system theme with OLED mode
 - LLM configuration UI with 11 provider presets (DeepSeek, Qwen, OpenAI, Anthropic, Ollama, etc.)
 - Thinking mode toggle for models that support extended thinking (e.g. DeepSeek V4)
 - Debug mode showing full LLM prompt and token estimates

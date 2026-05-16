@@ -123,6 +123,7 @@ sdk/embedded/src/main/kotlin/dev/clawseed/sdk/embedded/
 ### Chat
 - Real-time streaming via WebSocket
 - Full message history per session
+- Regenerate — re-generate last assistant response with a single tap
 - Extended Thinking display (collapsible)
 - Debug mode showing full prompt and token estimate
 
@@ -147,6 +148,23 @@ sdk/embedded/src/main/kotlin/dev/clawseed/sdk/embedded/
 - Model list fetching (direct or via gateway proxy)
 - Thinking Mode toggle
 - Form editing or raw TOML editing
+- Gateway auto-restarts on config save for provider/model changes to take effect
+
+### Soul Customization
+- In-app personality editor for workspace SOUL.md and other personality files
+- Reads/writes via `/api/personality` API (allowlist-validated)
+
+### Scheduled Tasks
+- AlarmManager-based background tasks that wake the device at specified times
+- Repeat modes: once, daily, weekday
+- High-priority notifications with sound/vibration
+- Tap notification to navigate to the task's chat session
+- `BootReceiver` re-schedules all tasks after device reboot
+- Independent WebSocket session per task execution (avoids chat UI conflicts)
+
+### Appearance
+- Light / Dark / System theme selection
+- OLED mode (true black backgrounds)
 
 ### Search Engine Configuration
 - Search engine selector (Bing / Tavily)
@@ -208,6 +226,7 @@ URL: `ws://127.0.0.1:42617/ws/chat?session_id={id}`
 | → | `message` | Send user message |
 | → | `register_tools` | Register on-device tools |
 | → | `tool_result` | Return tool execution result |
+| → | `regenerate` | Regenerate last assistant response |
 | ← | `chunk` | Streaming text fragment |
 | ← | `thinking` | Thinking process fragment |
 | ← | `tool_call_request` | Request tool execution |
@@ -230,6 +249,9 @@ Base URL: `http://127.0.0.1:42617`
 | GET | `/api/tools` | List registered tools |
 | GET | `/api/status` | Gateway status |
 | GET | `/api/provider/models` | Fetch model list via gateway proxy |
+| GET | `/api/personality` | Read personality files |
+| PUT | `/api/personality` | Write personality files |
+| POST | `/api/skills/reload` | Reload skill index from disk |
 
 ## Building
 

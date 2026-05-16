@@ -75,7 +75,7 @@ clients/android/
 | 类 | 职责 |
 |----|------|
 | `MainActivity` | Compose UI，连接/消息/工具注册入口 |
-| `ClawseedService` | 前台服务，管理 Gateway 进程生命周期 |
+| `ClawseedService` | 前台服务，管理 Gateway 进程生命周期，定时任务执行 |
 
 ## ClawseedClient — WebSocket 客户端
 
@@ -150,6 +150,7 @@ private fun dispatchToolCall(request: ToolCallRequest) {
 | 工具注册 | `{"type":"register_tools","tools":[...]}` | 注册工具列表 |
 | 工具结果 | `{"type":"tool_result","id":"...","output":"...","success":true}` | 返回成功结果 |
 | 工具错误 | `{"type":"tool_error","id":"...","error":"...","success":false}` | 返回执行错误 |
+| 重新生成 | `{"type":"regenerate"}` | 重新生成最后一条助手响应 |
 
 ### 服务端 → 客户端
 
@@ -306,6 +307,8 @@ private suspend fun waitUntilReady() {
 | `FOREGROUND_SERVICE` | 前台服务运行 |
 | `FOREGROUND_SERVICE_SPECIAL_USE` | Android 14+ 前台服务类型声明 |
 | `POST_NOTIFICATIONS` | Android 13+ 通知权限 |
+| `SCHEDULE_EXACT_ALARM` | 精确定时闹钟权限，用于定时任务（Android 12+；未授予时回退到非精确闹钟） |
+| `RECEIVE_BOOT_COMPLETED` | 设备重启后重新调度已启用的任务 |
 
 ## 构建配置
 
@@ -326,3 +329,55 @@ private suspend fun waitUntilReady() {
 3. **添加权限**：如需设备能力（相机、位置等），在 `AndroidManifest.xml` 中声明
 4. **配置 Gateway**：修改 `ClawseedService.INITIAL_CONFIG` 调整默认配置
 5. **API Key**：放置在 `filesDir/.clawseed/api_key` 文件中
+
+## 定时后台任务
+
+应用支持基于 AlarmManager 的定时任务，可在指定时间唤醒设备、通过 WebSocket 执行 AI 提示，并通知用户结果。
+
+### 架构
+
+- `ScheduledTaskManager` — 通过 `AlarmManager.setExactAndAllowWhileIdle()` 管理闹钟调度
+- `ScheduledTaskStore` — DataStore 持久化，支持原子合并更新
+- `BootReceiver` — 设备重启后重新调度所有已启用任务（`RECEIVE_BOOT_COMPLETED`）
+- `ClawseedService` 任务模式 — 通过独立 WebSocket 会话执行任务，避免与聊天 UI 冲突
+
+### 任务模型
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | UUID | 唯一任务 ID |
+| `name` | String | 显示名称 |
+| `message` | String | 发送给 AI 的提示 |
+| `hour` / `minute` | Int | 定时时间（24 小时制） |
+| `repeat` | Enum | `ONCE`（一次）、`DAILY`（每天）、`WEEKDAY`（工作日） |
+| `enabled` | Boolean | 启用/禁用（不删除） |
+| `sessionId` | String? | 可选的目标会话 |
+
+### 重复模式
+
+- **ONCE** — 触发一次后自动禁用
+- **DAILY** — 每天在指定时间触发
+- **WEEKDAY** — 仅周一至周五触发
+
+### 执行流程
+
+1. `AlarmManager` 在定时时间触发
+2. `onTaskFired()` 通过 `Channel` 队列唤醒 `ClawseedService`
+3. 服务打开独立的 WebSocket 会话（非聊天 UI 的会话）
+4. 发送 AI 提示，可使用工具（device_info、get_location、CETP）
+5. 高优先级通知（带声音/振动）显示结果
+6. 点击通知跳转到任务对应会话的聊天界面
+7. 循环任务自动重新调度下一次闹钟
+
+## 外观设置
+
+应用支持浅色/深色/跟随系统主题选择，以及 OLED 模式选项：
+
+- **跟随系统** — 跟随 Android 系统设置（默认）
+- **浅色** — 始终使用浅色主题
+- **深色** — 始终使用深色主题
+- **OLED** — 深色主题，使用纯黑背景适合 OLED 屏幕
+
+## Soul 自定义
+
+设置界面包含专门的 Soul 编辑器，通过 `/api/personality` API 端点读写工作区人格文件（SOUL.md 等）。仅允许编辑白名单中的文件。保存后 Gateway 自动重启以应用人格变更。

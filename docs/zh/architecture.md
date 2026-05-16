@@ -317,6 +317,10 @@ System prompt（始终保留）
 核心特性：
 - **混合检索**：向量相似度（语义）与 BM25（关键词）加权融合，由 `SearchMode` 枚举控制（`Hybrid` / `Embedding` / `Bm25`）
 - **记忆分类**：`Core`（持久化知识）、`Daily`（临时信息）、`Conversation`（对话上下文）、`Custom(String)`（用户自定义）
+- **整合**：每次 agent turn 后的启发式两阶段提取——自动创建带时间戳的 Daily 条目，将高重要性内容（≥ 0.6）晋升为 Core 记忆
+- **卫生**：基于节奏控制的定期清理（12 小时周期），修剪过期的 Conversation/Daily 条目；Core 记忆永不被修剪
+- **快照**：将 Core 记忆导出到 `MEMORY_SNAPSHOT.md`，冷启动时若 `brain.db` 缺失可自动水合恢复
+- **冲突检测**：基于词重叠的 Jaccard 相似度检测矛盾的 Core 条目，将较旧条目标记为 `[SUPERSEDED by 'newer_key']`
 - **命名空间隔离**：`recall_namespaced()` 按命名空间过滤，支持多租户或按用户隔离
 - **导出**：`export()` 配合 `ExportFilter` 支持按命名空间、会话、分类和时间范围过滤
 - **优雅降级**：SQLite 初始化失败时使用 `NoneMemory` 作为无操作兜底——依赖记忆的工具直接跳过该功能

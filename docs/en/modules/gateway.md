@@ -61,12 +61,51 @@ Each WebSocket connection creates its own Agent via `Agent::from_config_with_sha
 
 ### api.rs — REST Endpoints
 
+#### System
 - `GET /health` — Health check
+- `GET /api/doctor` — System diagnostics (tool count, memory health, etc.)
+- `GET /api/cost` — Token cost metrics
+
+#### Tools & Skills
 - `GET /api/tools` — List registered tools (via `tool_registry.tool_specs()`)
+- `GET /api/cli-tools` — List available CLI tools
+- `POST /api/skills/reload` — Re-read skill index from disk without restarting (returns `{ ok, skills_count }`)
+
+#### Sessions
 - `POST /sessions` — Create session
+- `GET /api/sessions` — List all sessions
+- `GET /api/sessions/running` — Get running sessions
 - `GET /sessions/{id}` — Get session
-- `POST /webhook` — Webhook ingestion
-- `GET /api/doctor` — System diagnostics (tool count via `tool_registry.len()`)
+- `GET /api/sessions/{id}/messages` — Get session messages
+- `GET /api/sessions/{id}/state` — Get session state
+- `PUT /sessions/{id}` — Rename session
+- `DELETE /sessions/{id}` — Delete session
+- `POST /sessions/{id}/abort` — Abort running session
+
+#### Memory
+- `GET /api/memory` — List memories
+- `POST /api/memory` — Store new memory
+- `DELETE /api/memory/{key}` — Delete memory
+
+#### Cron Jobs
+- `GET /api/cron` — List jobs
+- `POST /api/cron` — Add job
+- `GET /api/cron/{id}` — Get job details
+- `PATCH /api/cron/{id}` — Update job
+- `DELETE /api/cron/{id}` — Delete job
+- `GET /api/cron/{id}/runs` — Job execution history
+- `GET /api/cron/settings` — Cron settings
+- `PATCH /api/cron/settings` — Update cron settings
+
+#### Personality & Configuration
+- `GET /api/personality` — Read personality files (SOUL.md, etc.) from workspace
+- `PUT /api/personality` — Write personality files (allowlist-validated)
+- `GET /api/config` — Get TOML configuration
+- `PUT /api/config` — Update configuration (returns warning: provider/model/memory changes require gateway restart)
+- `GET /api/provider/models` — Proxy fetch available models using configured API key
+
+#### Webhook
+- `POST /webhook` — Webhook ingestion (persists messages to session store, returns session_id)
 
 ### remote_tool.rs — Remote Tool Bridge
 
@@ -115,5 +154,5 @@ impl Tool for RemoteTool {
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `MAX_BODY_SIZE` | 64KB | Request body size limit |
-| `REQUEST_TIMEOUT_SECS` | 30 | Request timeout (overridable via `CLAWSEED_GATEWAY_TIMEOUT_SECS` env var) |
+| `REQUEST_TIMEOUT_SECS` | 30 | Request timeout (overridable via `CLAWSEED_GATEWAY_TIMEOUT_SECS` env var; Android default: 300s) |
 | `REMOTE_TOOL_TIMEOUT` | 30s | Remote tool execution timeout |

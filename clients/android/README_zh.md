@@ -121,6 +121,7 @@ sdk/embedded/src/main/kotlin/dev/clawseed/sdk/embedded/
 ### 对话
 - WebSocket 实时流式输出
 - 按会话保存完整消息历史
+- 重新生成——一键重新生成最后一条助手响应
 - Extended Thinking 展示（折叠/展开）
 - Debug 模式查看完整 prompt 和 token 估算
 
@@ -145,6 +146,23 @@ sdk/embedded/src/main/kotlin/dev/clawseed/sdk/embedded/
 - 模型列表获取（直连或通过 Gateway 代理）
 - Thinking Mode 开关
 - 表单编辑 或 TOML 直接编辑
+- 保存配置后 Gateway 自动重启以使 provider/model 变更生效
+
+### Soul 自定义
+- 应用内人格编辑器，编辑工作区 SOUL.md 等人格文件
+- 通过 `/api/personality` API 读写（白名单验证）
+
+### 定时任务
+- 基于 AlarmManager 的后台任务，在指定时间唤醒设备
+- 重复模式：单次、每天、工作日
+- 高优先级通知，带声音/振动
+- 点击通知跳转到任务对应的聊天会话
+- `BootReceiver` 在设备重启后重新调度所有任务
+- 每个任务使用独立 WebSocket 会话执行（避免与聊天 UI 冲突）
+
+### 外观
+- 浅色 / 深色 / 跟随系统主题选择
+- OLED 模式（纯黑背景）
 
 ### 搜索引擎配置
 - 搜索引擎选择器（Bing / Tavily）
@@ -206,6 +224,7 @@ tavily_api_key = "tvly-..."
 | → | `message` | 发送用户消息 |
 | → | `register_tools` | 注册设备端工具 |
 | → | `tool_result` | 返回工具执行结果 |
+| → | `regenerate` | 重新生成最后一条助手响应 |
 | ← | `chunk` | 流式文本片段 |
 | ← | `thinking` | 思考过程片段 |
 | ← | `tool_call_request` | 请求执行工具 |
@@ -228,6 +247,9 @@ tavily_api_key = "tvly-..."
 | GET | `/api/tools` | 已注册工具列表 |
 | GET | `/api/status` | Gateway 状态 |
 | GET | `/api/provider/models` | 通过 Gateway 代理获取模型列表 |
+| GET | `/api/personality` | 读取人格文件 |
+| PUT | `/api/personality` | 写入人格文件 |
+| POST | `/api/skills/reload` | 从磁盘重新加载技能索引 |
 
 ## 构建
 

@@ -90,7 +90,23 @@ Scores memories based on relevance signals, prioritizing important ones.
 
 ### consolidation.rs — Memory Consolidation
 
-Merges related memories to reduce redundancy.
+Heuristic two-phase extraction that runs after each agent turn (no LLM call):
+
+1. **Daily history** — Creates timestamped Daily entries from conversation context automatically
+2. **Core promotion** — Promotes high-importance content to Core memory when importance ≥ 0.6 and content length ≥ 10 characters
+
+### hygiene.rs — Memory Hygiene
+
+Cadence-gated pruning that runs on a 12-hour cycle. Prunes Conversation and Daily rows older than the configured retention period. **Core memories are never pruned.** Tracks its last-run timestamp in `memory_hygiene_state.json` to avoid redundant scans.
+
+### snapshot.rs — Memory Snapshot & Hydration
+
+- **Snapshot** — Exports all Core memories to `MEMORY_SNAPSHOT.md` in the workspace root, preserving timestamps and metadata
+- **Auto-hydration** — On cold boot, if `brain.db` is missing but `MEMORY_SNAPSHOT.md` exists, re-indexes entries back into SQLite
+
+### conflict.rs — Conflict Detection
+
+Uses Jaccard similarity on word overlap to detect contradictory Core memories. When two entries exceed the similarity threshold, the older one is marked `[SUPERSEDED by 'newer_key']` rather than deleted. Only checks Core category entries.
 
 ### vector.rs — Vector Storage
 
@@ -131,4 +147,9 @@ pub fn create_memory(config: &MemoryConfig) -> Arc<dyn Memory>
 [memory]
 backend = "sqlite"
 auto_save = true
+hygiene_enabled = true                    # Enable periodic cleanup (default: true)
+conversation_retention_days = 30          # Days before Conversation/Daily pruning (default: 30)
+snapshot_enabled = false                  # Export Core memories to MEMORY_SNAPSHOT.md (default: false)
+auto_hydrate = true                       # Re-index from snapshot if brain.db missing (default: true)
+conflict_threshold = 0.6                  # Jaccard threshold for conflict detection (default: 0.6)
 ```

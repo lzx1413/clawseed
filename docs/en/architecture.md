@@ -323,6 +323,10 @@ Memory is backed by `clawseed-memory`, implementing the `Memory` trait from `cla
 Key features:
 - **Hybrid search**: Combines vector similarity (semantic) and BM25 (keyword) with configurable weights; controlled by `SearchMode` enum (`Hybrid` / `Embedding` / `Bm25`)
 - **Memory categories**: `Core` (persistent knowledge), `Daily` (ephemeral), `Conversation` (context), `Custom(String)` (user-defined)
+- **Consolidation**: Heuristic two-phase extraction after each agent turn — creates timestamped Daily entries and promotes high-importance content (≥ 0.6) to Core memory
+- **Hygiene**: Cadence-gated pruning (12-hour cycle) of stale Conversation/Daily entries; Core memories are never pruned
+- **Snapshot**: Exports Core memories to `MEMORY_SNAPSHOT.md` with auto-hydration on cold boot if `brain.db` is missing
+- **Conflict detection**: Jaccard similarity on word overlap to find contradictory Core entries; marks older as `[SUPERSEDED by 'newer_key']`
 - **Namespace isolation**: `recall_namespaced()` filters by namespace for multi-tenant or per-user separation
 - **Export**: `export()` with `ExportFilter` supports filtering by namespace, session, category, and time range
 - **Graceful degradation**: If SQLite initialization fails, `NoneMemory` is used as a no-op fallback — tools that depend on memory simply skip the feature

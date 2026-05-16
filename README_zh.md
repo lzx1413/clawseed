@@ -125,7 +125,11 @@ SDK 还将网关二进制作为前台服务运行在设备上——整个 Agent 
 - 实时流式对话，支持 Markdown 渲染（标题、代码块、表格、加粗/斜体）
 - 扩展思维链展示——可折叠卡片显示模型的推理过程
 - 会话管理（创建、恢复、重命名、删除、自动命名）
+- 重新生成——一键重新生成最后一条助手响应
 - 设备端工具：`device_info`、`get_location`（WGS84 转 GCJ-02 + 逆地理编码）
+- 定时后台任务——基于 AlarmManager 的定时提示，支持每日/工作日/单次模式
+- Soul 自定义——应用内人格编辑器，编辑工作区 SOUL.md
+- 外观设置——浅色/深色/跟随系统主题，支持 OLED 模式
 - LLM 配置界面，内置 11 个提供商预设（DeepSeek、Qwen、OpenAI、Anthropic、Ollama 等）
 - Thinking Mode 开关，支持扩展思维链模型（如 DeepSeek V4）
 - Debug 模式查看完整 LLM prompt 和 token 估算
@@ -259,7 +263,7 @@ ClawSeed 的 trait 驱动架构和 Provider/Tool/Memory 抽象模式源自 [Zero
 - 不捆绑渠道——应用自己集成消息 SDK
 - 不捆绑面板——应用自己构建 UI（如 Android Demo 应用）
 - 新增原生远程工具调用，支持移动客户端
-- 新增统一的 `Hook` trait 和基于 `TypeId` 的能力注入
+- 新增统一的 `Hook` trait 拦截工具调用
 - 新增 `ProviderFactory` 注册机制，支持按平台裁剪提供商（Android/嵌入式）
 - 新增扩展思维链支持，推理内容在工具调用中完整传递
 - 新增 Android Demo 应用，整个 Agent 栈运行在设备上

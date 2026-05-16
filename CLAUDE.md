@@ -119,7 +119,7 @@ Implications:
 
 ### Memory (clawseed-memory)
 
-SQLite backend with hybrid search (BM25 keyword + vector embeddings). Categories: Core, Daily, Conversation, Custom. NoneMemory stub when disabled.
+SQLite backend with hybrid search (BM25 keyword + vector embeddings). Categories: Core, Daily, Conversation, Custom. NoneMemory stub when disabled. Advanced features: consolidation (heuristic two-phase extraction — Daily history + importance-gated Core promotion), hygiene (12-hour cadence-gated pruning of stale Conversation/Daily entries; never touches Core), snapshot (export Core memories to `MEMORY_SNAPSHOT.md` + auto-hydrate on cold boot), conflict detection (Jaccard similarity with `[SUPERSEDED]` marking for contradictory Core entries). Config: `hygiene_enabled`, `conversation_retention_days`, `snapshot_enabled`, `auto_hydrate`, `conflict_threshold`.
 
 ### MCP Status (planned, not yet implemented)
 
@@ -154,7 +154,7 @@ Protocol for third-party Android apps to expose read-only data tools to ClawSeed
 
 ### Android Demo App (clients/android)
 
-Full-featured chat client (Kotlin + Jetpack Compose) that runs the gateway on-device as a foreground service. Architecture: `MainActivity` → `ClawseedService` (manages gateway process + WebSocket) → `ChatViewModel`/`SessionsViewModel`/`SettingsViewModel` → Compose UI. The `lib/` module provides a reusable `ClawseedClient` WebSocket library. Features: streaming chat, Markdown rendering (tables, code blocks, inline formatting), extended thinking display, session management, on-device tools (device_info, get_location), CETP external tool bridge, LLM configuration with 11 provider presets, thinking mode toggle, debug mode.
+Full-featured chat client (Kotlin + Jetpack Compose) that runs the gateway on-device as a foreground service. Architecture: `MainActivity` → `ClawseedService` (manages gateway process + WebSocket) → `ChatViewModel`/`SessionsViewModel`/`SettingsViewModel` → Compose UI. The `lib/` module provides a reusable `ClawseedClient` WebSocket library. Features: streaming chat, Markdown rendering (tables, code blocks, inline formatting), extended thinking display, session management, regenerate last response, on-device tools (device_info, get_location), CETP external tool bridge, scheduled background tasks (AlarmManager with daily/weekday/once repeat modes, BootReceiver for re-scheduling after reboot), Soul customization (in-app personality editor via `/api/personality`), appearance settings (light/dark/system theme + OLED mode), LLM configuration with 11 provider presets, thinking mode toggle, debug mode.
 
 ## Key Conventions
 

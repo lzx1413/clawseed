@@ -61,12 +61,51 @@
 
 ### api.rs — REST 端点
 
+#### 系统
 - `GET /health` — 健康检查
+- `GET /api/doctor` — 系统诊断（工具数量、记忆健康等）
+- `GET /api/cost` — Token 费用指标
+
+#### 工具与技能
 - `GET /api/tools` — 列出注册的工具（通过 `tool_registry.tool_specs()` 获取）
+- `GET /api/cli-tools` — 列出可用的 CLI 工具
+- `POST /api/skills/reload` — 从磁盘重新读取技能索引，无需重启（返回 `{ ok, skills_count }`）
+
+#### 会话
 - `POST /sessions` — 创建会话
+- `GET /api/sessions` — 列出所有会话
+- `GET /api/sessions/running` — 获取运行中的会话
 - `GET /sessions/{id}` — 获取会话
-- `POST /webhook` — Webhook 接收
-- `GET /api/doctor` — 系统诊断（工具数量通过 `tool_registry.len()` 获取）
+- `GET /api/sessions/{id}/messages` — 获取会话消息
+- `GET /api/sessions/{id}/state` — 获取会话状态
+- `PUT /sessions/{id}` — 重命名会话
+- `DELETE /sessions/{id}` — 删除会话
+- `POST /sessions/{id}/abort` — 中止运行中的会话
+
+#### 记忆
+- `GET /api/memory` — 列出记忆
+- `POST /api/memory` — 存储新记忆
+- `DELETE /api/memory/{key}` — 删除记忆
+
+#### 定时任务
+- `GET /api/cron` — 列出任务
+- `POST /api/cron` — 添加任务
+- `GET /api/cron/{id}` — 获取任务详情
+- `PATCH /api/cron/{id}` — 更新任务
+- `DELETE /api/cron/{id}` — 删除任务
+- `GET /api/cron/{id}/runs` — 任务执行历史
+- `GET /api/cron/settings` — 定时任务设置
+- `PATCH /api/cron/settings` — 更新定时任务设置
+
+#### 人格与配置
+- `GET /api/personality` — 读取工作区的人格文件（SOUL.md 等）
+- `PUT /api/personality` — 写入人格文件（白名单验证）
+- `GET /api/config` — 获取 TOML 配置
+- `PUT /api/config` — 更新配置（返回警告：provider/model/memory 变更需要重启网关）
+- `GET /api/provider/models` — 通过网关代理获取可用模型列表
+
+#### Webhook
+- `POST /webhook` — Webhook 接收（消息持久化到会话存储，返回 session_id）
 
 ### remote_tool.rs — 远程工具桥接
 
@@ -115,5 +154,5 @@ impl Tool for RemoteTool {
 | 常量 | 值 | 说明 |
 |------|-----|------|
 | `MAX_BODY_SIZE` | 64KB | 请求体大小限制 |
-| `REQUEST_TIMEOUT_SECS` | 30 | 请求超时（可通过 `CLAWSEED_GATEWAY_TIMEOUT_SECS` 环境变量覆盖） |
+| `REQUEST_TIMEOUT_SECS` | 30 | 请求超时（可通过 `CLAWSEED_GATEWAY_TIMEOUT_SECS` 环境变量覆盖；Android 默认：300s） |
 | `REMOTE_TOOL_TIMEOUT` | 30s | 远程工具执行超时 |

@@ -75,7 +75,7 @@ clients/android/
 | Class | Responsibility |
 |-------|---------------|
 | `MainActivity` | Compose UI, connection/message/tool registration entry point |
-| `ClawseedService` | Foreground service, manages Gateway process lifecycle |
+| `ClawseedService` | Foreground service, manages Gateway process lifecycle, scheduled task execution |
 
 ## ClawseedClient — WebSocket Client
 
@@ -150,6 +150,7 @@ private fun dispatchToolCall(request: ToolCallRequest) {
 | Tool registration | `{"type":"register_tools","tools":[...]}` | Register tool list |
 | Tool result | `{"type":"tool_result","id":"...","output":"...","success":true}` | Return success result |
 | Tool error | `{"type":"tool_error","id":"...","error":"...","success":false}` | Return execution error |
+| Regenerate | `{"type":"regenerate"}` | Regenerate last assistant response |
 
 ### Server → Client
 
@@ -306,6 +307,8 @@ Only localhost cleartext connections are allowed (Gateway runs locally on port 4
 | `FOREGROUND_SERVICE` | Run foreground service |
 | `FOREGROUND_SERVICE_SPECIAL_USE` | Android 14+ foreground service type declaration |
 | `POST_NOTIFICATIONS` | Android 13+ notification permission |
+| `SCHEDULE_EXACT_ALARM` | Schedule exact alarms for scheduled tasks (Android 12+; falls back to inexact alarms if not granted) |
+| `RECEIVE_BOOT_COMPLETED` | Re-schedule enabled tasks after device reboot |
 
 ## Build Configuration
 
@@ -326,3 +329,55 @@ Only localhost cleartext connections are allowed (Gateway runs locally on port 4
 3. **Add permissions**: Declare device capabilities (camera, location, etc.) in `AndroidManifest.xml`
 4. **Configure Gateway**: Modify `ClawseedService.INITIAL_CONFIG` to adjust defaults
 5. **API Key**: Place in `filesDir/.clawseed/api_key` file
+
+## Scheduled Background Tasks
+
+The app supports AlarmManager-based scheduled tasks that wake the device at specified times, execute AI prompts via WebSocket, and notify the user of results.
+
+### Architecture
+
+- `ScheduledTaskManager` — Manages alarm scheduling via `AlarmManager.setExactAndAllowWhileIdle()`
+- `ScheduledTaskStore` — DataStore persistence with atomic merge updates
+- `BootReceiver` — Re-schedules all enabled tasks after device reboot (`RECEIVE_BOOT_COMPLETED`)
+- `ClawseedService` task mode — Executes tasks via independent WebSocket session to avoid conflicts with chat UI
+
+### Task Model
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Unique task ID |
+| `name` | String | Display name |
+| `message` | String | AI prompt to send |
+| `hour` / `minute` | Int | Scheduled time (24-hour format) |
+| `repeat` | Enum | `ONCE`, `DAILY`, or `WEEKDAY` |
+| `enabled` | Boolean | Enable/disable without deletion |
+| `sessionId` | String? | Optional session target |
+
+### Repeat Modes
+
+- **ONCE** — Fires once, then auto-disables
+- **DAILY** — Fires every day at the specified time
+- **WEEKDAY** — Fires Monday–Friday only
+
+### Execution Flow
+
+1. `AlarmManager` fires at scheduled time
+2. `onTaskFired()` wakes `ClawseedService` via `Channel` queue
+3. Service opens an independent WebSocket session (not the chat UI's session)
+4. AI prompt is sent and tools (device_info, get_location, CETP) are available
+5. High-priority notification with sound/vibration shows the result
+6. Tapping the notification navigates to the task's session in chat
+7. For recurring tasks, the next alarm is rescheduled automatically
+
+## Appearance Settings
+
+The app supports light/dark/system theme selection with an OLED mode option:
+
+- **System** — Follows Android system setting (default)
+- **Light** — Always light theme
+- **Dark** — Always dark theme
+- **OLED** — Dark theme with true black backgrounds for OLED displays
+
+## Soul Customization
+
+The settings UI includes a dedicated Soul editor that reads and writes workspace personality files (SOUL.md, etc.) via the `/api/personality` API endpoint. Only files in the allowlist can be edited. The Gateway restarts automatically after saving to apply personality changes.

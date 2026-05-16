@@ -89,7 +89,23 @@ pub trait Memory: Send + Sync {
 
 ### consolidation.rs — 记忆整合
 
-合并相关记忆，减少冗余。
+启发式两阶段提取，在每次 agent turn 后运行（不调用 LLM）：
+
+1. **Daily 历史** — 从对话上下文自动创建带时间戳的 Daily 条目
+2. **Core 晋升** — 当重要性评分 ≥ 0.6 且内容长度 ≥ 10 字符时，将高重要性内容晋升为 Core 记忆
+
+### hygiene.rs — 记忆卫生
+
+基于节奏控制的定期清理，每 12 小时运行一次。修剪超过配置保留期限的 Conversation 和 Daily 条目。**Core 记忆永不被修剪。** 在 `memory_hygiene_state.json` 中记录上次运行时间戳，避免重复扫描。
+
+### snapshot.rs — 记忆快照与水合
+
+- **快照** — 将所有 Core 记忆导出到工作区根目录的 `MEMORY_SNAPSHOT.md`，保留时间戳和元数据
+- **自动水合** — 冷启动时，若 `brain.db` 不存在但 `MEMORY_SNAPSHOT.md` 存在，则将条目重新索引回 SQLite
+
+### conflict.rs — 冲突检测
+
+基于词重叠的 Jaccard 相似度检测矛盾的 Core 记忆。当两个条目超过相似度阈值时，较旧的条目标记为 `[SUPERSEDED by 'newer_key']` 而非删除。仅检查 Core 类别条目。
 
 ### vector.rs — 向量存储
 
@@ -130,4 +146,9 @@ pub fn create_memory(config: &MemoryConfig) -> Arc<dyn Memory>
 [memory]
 backend = "sqlite"
 auto_save = true
+hygiene_enabled = true                    # 启用定期清理（默认：true）
+conversation_retention_days = 30          # Conversation/Daily 修剪保留天数（默认：30）
+snapshot_enabled = false                  # 导出 Core 记忆到 MEMORY_SNAPSHOT.md（默认：false）
+auto_hydrate = true                       # brain.db 缺失时从快照重新索引（默认：true）
+conflict_threshold = 0.6                  # 冲突检测 Jaccard 阈值（默认：0.6）
 ```
