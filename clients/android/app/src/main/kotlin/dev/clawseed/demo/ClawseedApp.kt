@@ -26,12 +26,15 @@ fun ClawseedApp(localStore: LocalStore, notificationSessionId: androidx.compose.
 
     // Navigate to session from notification tap
     val notifSessionId = notificationSessionId.value
-    androidx.compose.runtime.LaunchedEffect(notifSessionId) {
-        if (notifSessionId != null && notifSessionId != currentSessionId) {
-            currentSessionId = notifSessionId
-            sessionVersion++
-            refreshKey++
-            localStore.setActiveSessionId(notifSessionId)
+    if (notifSessionId != null) {
+        val target = notifSessionId
+        notificationSessionId.value = null
+        currentSessionId = target
+        sessionVersion++
+        refreshKey++
+        scope.launch {
+            localStore.setActiveSessionId(target)
+            drawerState.close()
             navController.navigate(Routes.CHAT) {
                 popUpTo(Routes.CHAT) { inclusive = true }
                 launchSingleTop = true

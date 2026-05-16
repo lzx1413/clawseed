@@ -46,4 +46,5 @@ data class HealthInfo(
 data class WebhookResponse(
     val response: String = "",
     val model: String = "",
+    @SerialName("session_id") val sessionId: String? = null,
 )

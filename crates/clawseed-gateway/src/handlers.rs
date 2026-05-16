@@ -333,6 +333,15 @@ pub async fn handle_webhook(
     let message = &webhook_body.message;
     let session_id = webhook_session_id(&headers);
 
+    // Persist user message to session store if session_id is provided
+    let session_key = session_id.as_ref().map(|sid| format!("gw_{sid}"));
+    if let (Some(skey), Some(backend)) = (&session_key, &state.session_backend) {
+        let _ = backend.append(skey, &clawseed_api::provider::ChatMessage {
+            role: "user".to_string(),
+            content: message.clone(),
+        });
+    }
+
     if state.auto_save && !clawseed_memory::should_skip_autosave_content(message) {
         let key = webhook_memory_key();
         let _ = state
@@ -372,6 +381,14 @@ pub async fn handle_webhook(
 
     match run_gateway_chat_with_tools(&state, message, session_id.as_deref()).await {
         Ok(response) => {
+            // Persist assistant response to session store
+            if let (Some(skey), Some(backend)) = (&session_key, &state.session_backend) {
+                let _ = backend.append(skey, &clawseed_api::provider::ChatMessage {
+                    role: "assistant".to_string(),
+                    content: response.clone(),
+                });
+            }
+
             let duration = started_at.elapsed();
             state.observer.record_event(
                 &clawseed_agent::observability::ObserverEvent::LlmResponse {
@@ -397,7 +414,7 @@ pub async fn handle_webhook(
                     cost_usd: None,
                 });
 
-            let body = serde_json::json!({"response": response, "model": state.model});
+            let body = serde_json::json!({"response": response, "model": state.model, "session_id": session_id});
             (StatusCode::OK, Json(body))
         }
         Err(e) => {

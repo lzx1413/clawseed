@@ -326,8 +326,22 @@ pub trait Provider: Send + Sync {
     ) -> anyhow::Result<ChatResponse> {
         if let Some(tools) = request.tools
             && !tools.is_empty()
-            && !self.supports_native_tools()
         {
+            if self.supports_native_tools() {
+                let tool_values = match self.convert_tools(tools) {
+                    ToolsPayload::OpenAI { tools } => tools,
+                    ToolsPayload::Anthropic { tools } => tools,
+                    ToolsPayload::Gemini { function_declarations } => function_declarations,
+                    ToolsPayload::PromptGuided { .. } => {
+                        anyhow::bail!(
+                            "Provider returned prompt-guided tools payload while supports_native_tools() is true"
+                        )
+                    }
+                };
+                return self
+                    .chat_with_tools(request.messages, &tool_values, model, temperature)
+                    .await;
+            }
             let tool_instructions = match self.convert_tools(tools) {
                 ToolsPayload::PromptGuided { instructions } => instructions,
                 payload => {

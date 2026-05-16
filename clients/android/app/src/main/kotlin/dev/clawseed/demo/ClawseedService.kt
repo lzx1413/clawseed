@@ -1,5 +1,6 @@
 package dev.clawseed.demo
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,9 +8,14 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationManager
 import android.os.Binder
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import dev.clawseed.demo.scheduled.ScheduledTask
 import dev.clawseed.demo.scheduled.ScheduledTaskManager
 import dev.clawseed.demo.scheduled.ScheduledTaskStore
@@ -167,32 +173,205 @@ class ClawseedService : Service() {
 
         updateNotification("正在执行: ${task.name}")
 
-        val client = ClawSeedAndroid.gatewayClient()
-        val result = client.webhook(task.message, task.sessionId)
+        // Ensure session ID exists — generate one if not set
+        var sessionId = task.sessionId
+        if (sessionId.isNullOrBlank()) {
+            sessionId = java.util.UUID.randomUUID().toString()
+            store.updateTaskById(taskId) { it.copy(sessionId = sessionId) }
+        }
 
-        result.onSuccess { response ->
-            showTaskResultNotification(task, response.response, task.sessionId)
-            store.updateTaskById(taskId) { current ->
-                current.copy(
-                    lastRunAt = System.currentTimeMillis(),
-                    lastStatus = TaskStatus.SUCCESS,
-                    lastResult = response.response.take(500),
-                    lastError = null,
-                )
+        // Use WebSocket session so remote tools (device_info, get_location, etc.) are available
+        val finalSessionId = sessionId
+        try {
+            val sessionManager = ClawSeedAndroid.sessionManager()
+            val session = sessionManager.connect(finalSessionId)
+
+            // Register remote tools for this service session
+            registerServiceTools(session)
+
+            // Wait for connection
+            val connected = kotlinx.coroutines.withTimeoutOrNull(10_000L) {
+                while (session.connectionState.value != dev.clawseed.sdk.core.model.ConnectionState.CONNECTED) {
+                    kotlinx.coroutines.delay(200)
+                }
+                true
+            } ?: false
+
+            if (!connected) {
+                showTaskErrorNotification(task, "连接超时", finalSessionId)
+                store.updateTaskById(taskId) { current ->
+                    current.copy(
+                        lastRunAt = System.currentTimeMillis(),
+                        lastStatus = TaskStatus.FAILED,
+                        lastError = "连接超时",
+                    )
+                }
+                ScheduledTaskManager.onTaskFired(this, taskId)
+                return
             }
-        }.onFailure { error ->
-            showTaskErrorNotification(task, error.message ?: "Unknown error")
+
+            // Collect response and title from events
+            val responseBuilder = StringBuilder()
+            var sessionTitle: String? = null
+            val responseJob = scope.launch {
+                session.events.collect { event ->
+                    when (event) {
+                        is dev.clawseed.sdk.core.model.ChatEvent.Done -> {
+                            responseBuilder.clear()
+                            responseBuilder.append(event.fullResponse)
+                        }
+                        is dev.clawseed.sdk.core.model.ChatEvent.TitleUpdated -> {
+                            sessionTitle = event.title
+                        }
+                        is dev.clawseed.sdk.core.model.ChatEvent.Error -> {
+                            responseBuilder.clear()
+                            responseBuilder.append("Error: ${event.message}")
+                        }
+                        else -> {}
+                    }
+                }
+            }
+
+            // Send message
+            session.sendMessage(task.message)
+
+            // Wait for Done event (up to 5 minutes)
+            val done = kotlinx.coroutines.withTimeoutOrNull(300_000L) {
+                while (responseBuilder.isEmpty()) {
+                    kotlinx.coroutines.delay(500)
+                }
+                true
+            } ?: false
+
+            // Wait a bit longer for title generation to complete
+            if (done) {
+                kotlinx.coroutines.delay(3000)
+            }
+
+            responseJob.cancel()
+
+            val response = responseBuilder.toString()
+            if (response.isNotEmpty() && !response.startsWith("Error:")) {
+                val actualSessionId = session.sessionInfo.value?.sessionId ?: finalSessionId
+                showTaskResultNotification(task, response, actualSessionId)
+                store.updateTaskById(taskId) { current ->
+                    current.copy(
+                        lastRunAt = System.currentTimeMillis(),
+                        lastStatus = TaskStatus.SUCCESS,
+                        lastResult = response.take(500),
+                        lastError = null,
+                    )
+                }
+            } else {
+                showTaskErrorNotification(task, response.ifBlank { "超时无响应" }, finalSessionId)
+                store.updateTaskById(taskId) { current ->
+                    current.copy(
+                        lastRunAt = System.currentTimeMillis(),
+                        lastStatus = TaskStatus.FAILED,
+                        lastResult = null,
+                        lastError = response.ifBlank { "超时无响应" }.take(200),
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            showTaskErrorNotification(task, e.message ?: "执行失败", finalSessionId)
             store.updateTaskById(taskId) { current ->
                 current.copy(
                     lastRunAt = System.currentTimeMillis(),
                     lastStatus = TaskStatus.FAILED,
                     lastResult = null,
-                    lastError = error.message?.take(200),
+                    lastError = e.message?.take(200),
                 )
             }
         }
 
         ScheduledTaskManager.onTaskFired(this, taskId)
+    }
+
+    private fun registerServiceTools(session: dev.clawseed.sdk.core.ClawSeedSession) {
+        session.tools.register(
+            name = "device_info",
+            description = "获取Android设备信息，包括型号、制造商、Android版本",
+            parameters = """{"type":"object","properties":{},"required":[]}""",
+        ) { _ ->
+            val info = kotlinx.serialization.json.buildJsonObject {
+                put("model", kotlinx.serialization.json.JsonPrimitive(android.os.Build.MODEL))
+                put("manufacturer", kotlinx.serialization.json.JsonPrimitive(android.os.Build.MANUFACTURER))
+                put("android_version", kotlinx.serialization.json.JsonPrimitive(android.os.Build.VERSION.RELEASE))
+                put("sdk_int", kotlinx.serialization.json.JsonPrimitive(android.os.Build.VERSION.SDK_INT))
+            }
+            dev.clawseed.sdk.core.tool.ToolResult.Success(info.toString())
+        }
+
+        session.tools.register(
+            name = "get_location",
+            description = "获取用户当前的地理位置信息",
+            parameters = """{"type":"object","properties":{},"required":[]}""",
+        ) { _ ->
+            handleGetLocation()
+        }
+
+        // Bridge CETP external tools
+        runCatching { ClawSeedAndroid.externalToolBridge().attachToRegistry(session.tools) }
+    }
+
+    private fun handleGetLocation(): dev.clawseed.sdk.core.tool.ToolResult {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!hasPermission) {
+            return dev.clawseed.sdk.core.tool.ToolResult.Failure("位置权限未授予")
+        }
+
+        val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val providers = listOf(
+            LocationManager.GPS_PROVIDER,
+            LocationManager.NETWORK_PROVIDER,
+            LocationManager.PASSIVE_PROVIDER,
+        )
+
+        var bestLocation: Location? = null
+        for (provider in providers) {
+            if (!locationManager.isProviderEnabled(provider)) continue
+            val loc = try { locationManager.getLastKnownLocation(provider) } catch (_: Exception) { null }
+            if (loc != null && (bestLocation == null || loc.time > bestLocation.time)) {
+                bestLocation = loc
+            }
+        }
+
+        if (bestLocation == null) {
+            return dev.clawseed.sdk.core.tool.ToolResult.Failure("无法获取位置信息，请确保GPS或网络定位已开启")
+        }
+
+        val gcj02 = CoordinateConverter.wgs84ToGcj02(bestLocation.latitude, bestLocation.longitude)
+        val result = kotlinx.serialization.json.buildJsonObject {
+            put("latitude", kotlinx.serialization.json.JsonPrimitive(gcj02.latitude))
+            put("longitude", kotlinx.serialization.json.JsonPrimitive(gcj02.longitude))
+            put("accuracy_meters", kotlinx.serialization.json.JsonPrimitive(bestLocation.accuracy.toDouble()))
+            put("provider", kotlinx.serialization.json.JsonPrimitive(bestLocation.provider ?: ""))
+        }
+
+        try {
+            val geocoder = Geocoder(this, java.util.Locale.getDefault())
+            @Suppress("DEPRECATION")
+            val addresses = geocoder.getFromLocation(bestLocation.latitude, bestLocation.longitude, 1)
+            if (!addresses.isNullOrEmpty()) {
+                val addr = addresses[0]
+                val merged = kotlinx.serialization.json.buildJsonObject {
+                    result.forEach { (k, v) -> put(k, v) }
+                    addr.locality?.let { put("city", kotlinx.serialization.json.JsonPrimitive(it)) }
+                    addr.adminArea?.let { put("province", kotlinx.serialization.json.JsonPrimitive(it)) }
+                    addr.subLocality?.let { put("district", kotlinx.serialization.json.JsonPrimitive(it)) }
+                    addr.getAddressLine(0)?.let { put("address", kotlinx.serialization.json.JsonPrimitive(it)) }
+                }
+                return dev.clawseed.sdk.core.tool.ToolResult.Success(merged.toString())
+            }
+        } catch (_: Exception) {}
+
+        return dev.clawseed.sdk.core.tool.ToolResult.Success(result.toString())
     }
 
     private suspend fun drainClosedChannel(channel: Channel<String>) {
@@ -240,8 +419,16 @@ class ClawseedService : Service() {
         nm.notify(task.id.hashCode(), notification)
     }
 
-    private fun showTaskErrorNotification(task: ScheduledTask, error: String) {
+    private fun showTaskErrorNotification(task: ScheduledTask, error: String, sessionId: String? = null) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(MainActivity.EXTRA_SESSION_ID, sessionId)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, task.id.hashCode(), intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         val notification = NotificationCompat.Builder(this, CHANNEL_ID_TASKS_REMINDER)
             .setContentTitle("✗ ${task.name}")
             .setContentText(error.take(100))
@@ -249,6 +436,7 @@ class ClawseedService : Service() {
             .setAutoCancel(true)
             .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
             .build()
         nm.notify(task.id.hashCode(), notification)
     }

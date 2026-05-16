@@ -49,6 +49,7 @@ class EmbeddedGateway(
                     pb.environment()["HOME"] = filesDir.absolutePath
                     pb.environment()["XDG_CONFIG_HOME"] = filesDir.absolutePath
                     pb.environment()["XDG_DATA_HOME"] = filesDir.absolutePath
+                    pb.environment()["CLAWSEED_GATEWAY_TIMEOUT_SECS"] = "300"
                     val apiKeyFile = File(filesDir, ".clawseed/api_key")
                     if (apiKeyFile.exists()) {
                         val key = apiKeyFile.readText().trim()
