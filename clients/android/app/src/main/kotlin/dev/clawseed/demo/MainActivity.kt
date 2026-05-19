@@ -65,6 +65,12 @@ class MainActivity : ComponentActivity() {
             }
             val colorScheme = when {
                 useDarkTheme && oledMode -> darkColorScheme(
+                    primary = Color(0xFFE8A44A),
+                    onPrimary = Color(0xFF432800),
+                    primaryContainer = Color(0xFF5F3A00),
+                    onPrimaryContainer = Color(0xFFFFDDB3),
+                    secondary = Color(0xFFD4914A),
+                    onSecondary = Color(0xFF3B1E00),
                     background = Color.Black,
                     onBackground = Color.White,
                     surface = Color.Black,
@@ -72,8 +78,22 @@ class MainActivity : ComponentActivity() {
                     surfaceVariant = Color(0xFF1C1C1C),
                     onSurfaceVariant = Color(0xFFBFBFBF),
                 )
-                useDarkTheme -> darkColorScheme()
-                else -> lightColorScheme()
+                useDarkTheme -> darkColorScheme(
+                    primary = Color(0xFFE8A44A),
+                    onPrimary = Color(0xFF432800),
+                    primaryContainer = Color(0xFF5F3A00),
+                    onPrimaryContainer = Color(0xFFFFDDB3),
+                    secondary = Color(0xFFD4914A),
+                    onSecondary = Color(0xFF3B1E00),
+                )
+                else -> lightColorScheme(
+                    primary = Color(0xFFB0722A),
+                    onPrimary = Color(0xFFFFFFFF),
+                    primaryContainer = Color(0xFFFFDDB3),
+                    onPrimaryContainer = Color(0xFF3B1E00),
+                    secondary = Color(0xFF9A6324),
+                    onSecondary = Color(0xFFFFFFFF),
+                )
             }
             MaterialTheme(colorScheme = colorScheme) {
                 Surface(modifier = Modifier.fillMaxSize()) {
