@@ -47,6 +47,7 @@ data class SettingsUiState(
     val isFetchingModels: Boolean = false,
     val connectionOk: Boolean? = null,
     val thinkingEnabled: Boolean = false,
+    val maxTokens: String = "262144",
     val searchEngine: String = "",
     val tavilyApiKey: String = "",
     val tavilyApiKeyVisible: Boolean = false,
@@ -96,6 +97,7 @@ class SettingsViewModel : ViewModel() {
             preservedApiKey = null
             val currentModel = extractProviderModel(toml, status)
             val thinking = extractProviderThinking(toml)
+            val maxTokens = extractProviderMaxTokens(toml)
             val searchEngine = extractSearchEngine(toml)
             val tavilyKey = extractTavilyApiKey(toml)
 
@@ -116,6 +118,7 @@ class SettingsViewModel : ViewModel() {
                 hasServerApiKey = serverHasKey,
                 selectedModel = currentModel,
                 thinkingEnabled = thinking,
+                maxTokens = maxTokens,
                 searchEngine = searchEngine,
                 tavilyApiKey = tavilyKey,
                 soulContent = personalityResult.getOrElse { null }?.get("SOUL.md"),
@@ -148,6 +151,7 @@ class SettingsViewModel : ViewModel() {
             hasServerApiKey = serverHasKey,
             selectedModel = saved?.model ?: "",
             thinkingEnabled = saved?.thinking ?: false,
+            maxTokens = saved?.maxTokens ?: "262144",
             availableModels = emptyList(),
             connectionOk = null,
             successMessage = null,
@@ -173,6 +177,10 @@ class SettingsViewModel : ViewModel() {
 
     fun toggleThinking(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(thinkingEnabled = enabled, successMessage = null)
+    }
+
+    fun updateMaxTokens(value: String) {
+        _uiState.value = _uiState.value.copy(maxTokens = value, successMessage = null)
     }
 
     fun updateSearchEngine(engine: String) {
@@ -264,6 +272,7 @@ class SettingsViewModel : ViewModel() {
             if (isRealKey) {
                 toml = replaceInSection(toml, sectionHeader, "api_key", state.apiKey)
             }
+            toml = replaceInIntSection(toml, sectionHeader, "max_tokens", state.maxTokens)
             toml = setProviderExtraInSection(toml, sectionHeader, state.thinkingEnabled)
         } else {
             val section = buildString {
@@ -277,6 +286,7 @@ class SettingsViewModel : ViewModel() {
                 if (isRealKey) {
                     appendLine("api_key = \"${state.apiKey}\"")
                 }
+                appendLine("max_tokens = ${state.maxTokens}")
                 if (state.thinkingEnabled) {
                     appendLine(THINKING_ENABLED_LINE)
                 } else {
@@ -444,10 +454,17 @@ class SettingsViewModel : ViewModel() {
             return false
         }
 
+        private fun extractProviderMaxTokens(toml: String): String {
+            val fallback = extractTomlValue(toml, "fallback") ?: return "262144"
+            val section = findSection(toml, "[providers.models.\"$fallback\"]")
+            return extractTomlValueInBlock(section, "max_tokens") ?: "262144"
+        }
+
         private data class SavedProviderSettings(
             val apiKey: String,
             val model: String,
             val thinking: Boolean,
+            val maxTokens: String,
         )
 
         private fun findSavedProviderSettings(toml: String, baseUrl: String): SavedProviderSettings? {
@@ -459,6 +476,7 @@ class SettingsViewModel : ViewModel() {
             if (section.isEmpty()) return null
             val apiKey = extractTomlValueInBlock(section, "api_key") ?: ""
             val model = extractTomlValueInBlock(section, "model") ?: ""
+            val maxTokens = extractTomlValueInBlock(section, "max_tokens") ?: "262144"
             var thinking = sectionHasThinkingEnabled(section)
             if (!thinking) {
                 val subSection = findSection(toml, "[providers.models.\"$providerKey\".provider_extra.thinking]")
@@ -466,7 +484,7 @@ class SettingsViewModel : ViewModel() {
                     thinking = extractTomlValueInBlock(subSection, "type") == "enabled"
                 }
             }
-            return SavedProviderSettings(apiKey, model, thinking)
+            return SavedProviderSettings(apiKey, model, thinking, maxTokens)
         }
 
         private fun sectionHasThinkingEnabled(section: String): Boolean {
@@ -553,6 +571,14 @@ class SettingsViewModel : ViewModel() {
         }
 
         private fun replaceInSection(toml: String, sectionHeader: String, key: String, value: String): String {
+            return replaceInSectionRaw(toml, sectionHeader, key, " \"$value\"")
+        }
+
+        private fun replaceInIntSection(toml: String, sectionHeader: String, key: String, value: String): String {
+            return replaceInSectionRaw(toml, sectionHeader, key, " $value")
+        }
+
+        private fun replaceInSectionRaw(toml: String, sectionHeader: String, key: String, rawValue: String): String {
             val idx = toml.indexOf(sectionHeader)
             if (idx == -1) return toml
             val afterHeader = idx + sectionHeader.length
@@ -568,14 +594,14 @@ class SettingsViewModel : ViewModel() {
                 if (trimmed.startsWith("$key ") || trimmed.startsWith("$key=")) {
                     val eqIdx = lines[i].indexOf('=')
                     if (eqIdx >= 0) {
-                        lines[i] = lines[i].substring(0, eqIdx + 1) + " \"$value\""
+                        lines[i] = lines[i].substring(0, eqIdx + 1) + rawValue
                         found = true
                         break
                     }
                 }
             }
             if (!found) {
-                lines.add("$key = \"$value\"")
+                lines.add("$key =$rawValue")
             }
             return before + lines.joinToString("\n") + after
         }

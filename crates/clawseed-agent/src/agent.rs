@@ -552,9 +552,10 @@ impl Agent {
     /// Returns the original user message content (without timestamp prefix) if found,
     /// so the caller can re-run the turn.
     pub fn remove_last_assistant_turn(&mut self) -> Option<String> {
-        let last_user_idx = self.history.iter().rposition(|m| {
-            matches!(m, ConversationMessage::Chat(chat) if chat.role == "user")
-        })?;
+        let last_user_idx = self
+            .history
+            .iter()
+            .rposition(|m| matches!(m, ConversationMessage::Chat(chat) if chat.role == "user"))?;
         let user_content = match &self.history[last_user_idx] {
             ConversationMessage::Chat(chat) => chat.content.clone(),
             _ => return None,

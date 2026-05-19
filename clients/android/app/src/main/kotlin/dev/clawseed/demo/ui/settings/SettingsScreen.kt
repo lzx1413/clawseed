@@ -235,6 +235,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                                     onFetchModels = viewModel::fetchModels,
                                     onSelectModel = viewModel::selectModel,
                                     onToggleThinking = viewModel::toggleThinking,
+                                    onUpdateMaxTokens = viewModel::updateMaxTokens,
                                 )
                                 EditMode.TOML -> TomlEditor(
                                     toml = uiState.configToml,
@@ -602,6 +603,7 @@ private fun ProviderFormEditor(
     onFetchModels: () -> Unit,
     onSelectModel: (String) -> Unit,
     onToggleThinking: (Boolean) -> Unit,
+    onUpdateMaxTokens: (String) -> Unit,
 ) {
     var providerExpanded by remember { mutableStateOf(false) }
     var modelExpanded by remember { mutableStateOf(false) }
@@ -791,6 +793,25 @@ private fun ProviderFormEditor(
                     onCheckedChange = onToggleThinking,
                 )
             }
+
+            OutlinedTextField(
+                value = state.maxTokens,
+                onValueChange = { newValue ->
+                    if (newValue.all { it.isDigit() }) {
+                        onUpdateMaxTokens(newValue)
+                    }
+                },
+                label = { Text("Max Tokens") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text("262144") },
+                supportingText = {
+                    Text(
+                        "最大输出 Token 数（思考+回复共享），建议 262144 (256K)。过小可能导致长回复被截断",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                },
+            )
         }
     }
 }

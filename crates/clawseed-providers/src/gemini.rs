@@ -24,6 +24,8 @@ pub struct GeminiProvider {
     auth_service: Option<AuthService>,
     /// Override profile name for managed auth.
     auth_profile_override: Option<String>,
+    /// Maximum output tokens for API requests.
+    max_output_tokens: u32,
 }
 
 /// Mutable OAuth token state — supports runtime refresh for long-lived processes.
@@ -496,6 +498,7 @@ impl GeminiProvider {
             oauth_index: Arc::new(tokio::sync::Mutex::new(0)),
             auth_service: None,
             auth_profile_override: None,
+            max_output_tokens: 8192,
         }
     }
 
@@ -569,7 +572,14 @@ impl GeminiProvider {
                 None
             },
             auth_profile_override: profile_override,
+            max_output_tokens: 8192,
         }
+    }
+
+    /// Override the maximum output tokens for API requests.
+    pub fn with_max_output_tokens(mut self, max_output_tokens: u32) -> Self {
+        self.max_output_tokens = max_output_tokens;
+        self
     }
 
     fn normalize_non_empty(value: &str) -> Option<String> {
@@ -1362,6 +1372,7 @@ mod tests {
             oauth_index: Arc::new(tokio::sync::Mutex::new(0)),
             auth_service: None,
             auth_profile_override: None,
+            max_output_tokens: 8192,
         }
     }
 
@@ -2119,6 +2130,7 @@ mod tests {
             oauth_index: Arc::new(tokio::sync::Mutex::new(0)),
             auth_service: None, // Missing auth_service
             auth_profile_override: None,
+            max_output_tokens: 8192,
         };
 
         let result = provider.warmup().await;

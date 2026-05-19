@@ -83,11 +83,13 @@ impl ProviderFactory for AnthropicFactory {
         _provider_name: &str,
         api_key: Option<&str>,
         base_url: Option<&str>,
-        _options: &crate::options::ProviderRuntimeOptions,
+        options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
-        Ok(Box::new(
-            crate::anthropic::AnthropicProvider::with_base_url(api_key, base_url),
-        ))
+        let mut provider = crate::anthropic::AnthropicProvider::with_base_url(api_key, base_url);
+        if let Some(max_tokens) = options.provider_max_tokens {
+            provider = provider.with_max_tokens(max_tokens);
+        }
+        Ok(Box::new(provider))
     }
 }
 
@@ -107,9 +109,13 @@ impl ProviderFactory for GeminiFactory {
         _provider_name: &str,
         api_key: Option<&str>,
         _base_url: Option<&str>,
-        _options: &crate::options::ProviderRuntimeOptions,
+        options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
-        Ok(Box::new(crate::gemini::GeminiProvider::new(api_key)))
+        let mut provider = crate::gemini::GeminiProvider::new(api_key);
+        if let Some(max_tokens) = options.provider_max_tokens {
+            provider = provider.with_max_output_tokens(max_tokens);
+        }
+        Ok(Box::new(provider))
     }
 }
 
@@ -129,13 +135,16 @@ impl ProviderFactory for BedrockFactory {
         _provider_name: &str,
         api_key: Option<&str>,
         _base_url: Option<&str>,
-        _options: &crate::options::ProviderRuntimeOptions,
+        options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
-        let bp = if let Some(key) = api_key {
+        let mut bp = if let Some(key) = api_key {
             crate::bedrock::BedrockProvider::with_bearer_token(key)
         } else {
             crate::bedrock::BedrockProvider::new()
         };
+        if let Some(max_tokens) = options.provider_max_tokens {
+            bp = bp.with_max_tokens(max_tokens);
+        }
         Ok(Box::new(bp))
     }
 }
@@ -208,7 +217,7 @@ impl ProviderFactory for OpenAiCompatFactory {
         _provider_name: &str,
         api_key: Option<&str>,
         base_url: Option<&str>,
-        _options: &crate::options::ProviderRuntimeOptions,
+        options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
         let url = base_url.unwrap_or(self.default_base_url);
         let mut provider = if self.with_vision {
@@ -234,8 +243,11 @@ impl ProviderFactory for OpenAiCompatFactory {
         if self.merge_system_into_user {
             provider = provider.with_merge_system_into_user();
         }
-        if let Some(extra) = _options.provider_extra.clone() {
+        if let Some(extra) = options.provider_extra.clone() {
             provider = provider.with_provider_extra(extra);
+        }
+        if options.provider_max_tokens.is_some() {
+            provider = provider.with_max_tokens(options.provider_max_tokens);
         }
 
         Ok(Box::new(provider))
@@ -266,7 +278,7 @@ impl ProviderFactory for GenericCompatFactory {
         provider_name: &str,
         api_key: Option<&str>,
         base_url: Option<&str>,
-        _options: &crate::options::ProviderRuntimeOptions,
+        options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
         let url = base_url.unwrap_or_else(|| {
             tracing::warn!(
@@ -281,8 +293,11 @@ impl ProviderFactory for GenericCompatFactory {
             api_key,
             AuthStyle::Bearer,
         );
-        if let Some(extra) = _options.provider_extra.clone() {
+        if let Some(extra) = options.provider_extra.clone() {
             provider = provider.with_provider_extra(extra);
+        }
+        if options.provider_max_tokens.is_some() {
+            provider = provider.with_max_tokens(options.provider_max_tokens);
         }
         Ok(Box::new(provider))
     }
@@ -306,7 +321,7 @@ impl ProviderFactory for AzureOpenAiFactory {
         _provider_name: &str,
         api_key: Option<&str>,
         base_url: Option<&str>,
-        _options: &crate::options::ProviderRuntimeOptions,
+        options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
         let url = match base_url {
             Some(u) => u,
@@ -314,12 +329,16 @@ impl ProviderFactory for AzureOpenAiFactory {
                 "Azure OpenAI requires a base URL. Format: https://<resource>.openai.azure.com/openai/deployments/<deployment>"
             ),
         };
-        Ok(Box::new(crate::compatible::OpenAiCompatibleProvider::new(
+        let mut provider = crate::compatible::OpenAiCompatibleProvider::new(
             "Azure OpenAI",
             url,
             api_key,
             AuthStyle::Bearer,
-        )))
+        );
+        if options.provider_max_tokens.is_some() {
+            provider = provider.with_max_tokens(options.provider_max_tokens);
+        }
+        Ok(Box::new(provider))
     }
 }
 
@@ -348,17 +367,21 @@ impl ProviderFactory for GlmFactory {
         provider_name: &str,
         api_key: Option<&str>,
         base_url: Option<&str>,
-        _options: &crate::options::ProviderRuntimeOptions,
+        options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
         let url = base_url.unwrap_or_else(|| {
             crate::aliases::glm_base_url(provider_name).unwrap_or("https://api.z.ai/api/paas/v4")
         });
-        Ok(Box::new(crate::compatible::OpenAiCompatibleProvider::new(
+        let mut provider = crate::compatible::OpenAiCompatibleProvider::new(
             "GLM",
             url,
             api_key,
             AuthStyle::ZhipuJwt,
-        )))
+        );
+        if options.provider_max_tokens.is_some() {
+            provider = provider.with_max_tokens(options.provider_max_tokens);
+        }
+        Ok(Box::new(provider))
     }
 }
 
@@ -390,20 +413,22 @@ impl ProviderFactory for MinimaxFactory {
         provider_name: &str,
         api_key: Option<&str>,
         base_url: Option<&str>,
-        _options: &crate::options::ProviderRuntimeOptions,
+        options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
         let url = base_url.unwrap_or_else(|| {
             crate::aliases::minimax_base_url(provider_name).unwrap_or("https://api.minimax.io/v1")
         });
-        Ok(Box::new(
-            crate::compatible::OpenAiCompatibleProvider::new(
-                "MiniMax",
-                url,
-                api_key,
-                AuthStyle::Bearer,
-            )
-            .with_merge_system_into_user(),
-        ))
+        let mut provider = crate::compatible::OpenAiCompatibleProvider::new(
+            "MiniMax",
+            url,
+            api_key,
+            AuthStyle::Bearer,
+        )
+        .with_merge_system_into_user();
+        if options.provider_max_tokens.is_some() {
+            provider = provider.with_max_tokens(options.provider_max_tokens);
+        }
+        Ok(Box::new(provider))
     }
 }
 
@@ -431,17 +456,21 @@ impl ProviderFactory for MoonshotFactory {
         provider_name: &str,
         api_key: Option<&str>,
         base_url: Option<&str>,
-        _options: &crate::options::ProviderRuntimeOptions,
+        options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
         let url = base_url.unwrap_or_else(|| {
             crate::aliases::moonshot_base_url(provider_name).unwrap_or("https://api.moonshot.cn/v1")
         });
-        Ok(Box::new(crate::compatible::OpenAiCompatibleProvider::new(
+        let mut provider = crate::compatible::OpenAiCompatibleProvider::new(
             "Moonshot",
             url,
             api_key,
             AuthStyle::Bearer,
-        )))
+        );
+        if options.provider_max_tokens.is_some() {
+            provider = provider.with_max_tokens(options.provider_max_tokens);
+        }
+        Ok(Box::new(provider))
     }
 }
 
@@ -474,21 +503,23 @@ impl ProviderFactory for QwenFactory {
         provider_name: &str,
         api_key: Option<&str>,
         base_url: Option<&str>,
-        _options: &crate::options::ProviderRuntimeOptions,
+        options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
         let url = base_url.unwrap_or_else(|| {
             crate::aliases::qwen_base_url(provider_name)
                 .unwrap_or("https://dashscope.aliyuncs.com/compatible-mode/v1")
         });
-        Ok(Box::new(
-            crate::compatible::OpenAiCompatibleProvider::new_with_vision(
-                "Qwen",
-                url,
-                api_key,
-                AuthStyle::Bearer,
-                true,
-            ),
-        ))
+        let mut provider = crate::compatible::OpenAiCompatibleProvider::new_with_vision(
+            "Qwen",
+            url,
+            api_key,
+            AuthStyle::Bearer,
+            true,
+        );
+        if options.provider_max_tokens.is_some() {
+            provider = provider.with_max_tokens(options.provider_max_tokens);
+        }
+        Ok(Box::new(provider))
     }
 }
 
@@ -508,18 +539,20 @@ impl ProviderFactory for BailianFactory {
         _provider_name: &str,
         api_key: Option<&str>,
         base_url: Option<&str>,
-        _options: &crate::options::ProviderRuntimeOptions,
+        options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
         let url = base_url.unwrap_or(crate::aliases::BAILIAN_BASE_URL);
-        Ok(Box::new(
-            crate::compatible::OpenAiCompatibleProvider::new_with_vision(
-                "Bailian",
-                url,
-                api_key,
-                AuthStyle::Bearer,
-                true,
-            ),
-        ))
+        let mut provider = crate::compatible::OpenAiCompatibleProvider::new_with_vision(
+            "Bailian",
+            url,
+            api_key,
+            AuthStyle::Bearer,
+            true,
+        );
+        if options.provider_max_tokens.is_some() {
+            provider = provider.with_max_tokens(options.provider_max_tokens);
+        }
+        Ok(Box::new(provider))
     }
 }
 
@@ -539,18 +572,22 @@ impl ProviderFactory for ZaiFactory {
         provider_name: &str,
         api_key: Option<&str>,
         base_url: Option<&str>,
-        _options: &crate::options::ProviderRuntimeOptions,
+        options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
         let url = base_url.unwrap_or_else(|| {
             crate::aliases::zai_base_url(provider_name)
                 .unwrap_or("https://api.z.ai/api/coding/paas/v4")
         });
-        Ok(Box::new(crate::compatible::OpenAiCompatibleProvider::new(
+        let mut provider = crate::compatible::OpenAiCompatibleProvider::new(
             "Z.AI",
             url,
             api_key,
             AuthStyle::ZhipuJwt,
-        )))
+        );
+        if options.provider_max_tokens.is_some() {
+            provider = provider.with_max_tokens(options.provider_max_tokens);
+        }
+        Ok(Box::new(provider))
     }
 }
 
@@ -570,15 +607,19 @@ impl ProviderFactory for QianfanFactory {
         _provider_name: &str,
         api_key: Option<&str>,
         base_url: Option<&str>,
-        _options: &crate::options::ProviderRuntimeOptions,
+        options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
         let qianfan_url = crate::aliases::qianfan_base_url(base_url);
-        Ok(Box::new(crate::compatible::OpenAiCompatibleProvider::new(
+        let mut provider = crate::compatible::OpenAiCompatibleProvider::new(
             "Qianfan",
             &qianfan_url,
             api_key,
             AuthStyle::Bearer,
-        )))
+        );
+        if options.provider_max_tokens.is_some() {
+            provider = provider.with_max_tokens(options.provider_max_tokens);
+        }
+        Ok(Box::new(provider))
     }
 }
 
@@ -598,15 +639,19 @@ impl ProviderFactory for DoubaoFactory {
         _provider_name: &str,
         api_key: Option<&str>,
         base_url: Option<&str>,
-        _options: &crate::options::ProviderRuntimeOptions,
+        options: &crate::options::ProviderRuntimeOptions,
     ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
         let url = base_url.unwrap_or("https://ark.cn-beijing.volces.com/api/v3");
-        Ok(Box::new(crate::compatible::OpenAiCompatibleProvider::new(
+        let mut provider = crate::compatible::OpenAiCompatibleProvider::new(
             "Doubao",
             url,
             api_key,
             AuthStyle::Bearer,
-        )))
+        );
+        if options.provider_max_tokens.is_some() {
+            provider = provider.with_max_tokens(options.provider_max_tokens);
+        }
+        Ok(Box::new(provider))
     }
 }
 
