@@ -66,6 +66,8 @@ pub(super) struct UsageInfo {
 #[derive(Debug, Deserialize)]
 pub(super) struct Choice {
     pub(super) message: ResponseMessage,
+    #[serde(default)]
+    pub(super) finish_reason: Option<String>,
 }
 
 /// Remove `<think>...</think>` blocks from model output.
@@ -635,6 +637,7 @@ pub(crate) fn sse_bytes_to_events(
         let mut buffer = String::new();
         let mut tool_calls: Vec<StreamToolCallAccumulator> = Vec::new();
         let mut emitted_tool_calls = false;
+        let mut last_stop_reason = clawseed_api::provider::StopReason::EndTurn;
 
         match response.error_for_status_ref() {
             Ok(_) => {}
@@ -737,6 +740,13 @@ pub(crate) fn sse_bytes_to_events(
                             if choice.finish_reason.as_deref() == Some("tool_calls") {
                                 should_emit_tool_calls = true;
                             }
+                            if let Some(reason) = &choice.finish_reason {
+                                last_stop_reason = match reason.as_str() {
+                                    "length" => clawseed_api::provider::StopReason::MaxTokens,
+                                    "tool_calls" => clawseed_api::provider::StopReason::ToolUse,
+                                    _ => clawseed_api::provider::StopReason::EndTurn,
+                                };
+                            }
                         }
 
                         if should_emit_tool_calls && !emitted_tool_calls {
@@ -770,7 +780,11 @@ pub(crate) fn sse_bytes_to_events(
             }
         }
 
-        let _ = tx.send(Ok(StreamEvent::Final)).await;
+        let _ = tx
+            .send(Ok(StreamEvent::Final {
+                stop_reason: last_stop_reason,
+            }))
+            .await;
     });
 
     stream::unfold(rx, |mut rx| async move {

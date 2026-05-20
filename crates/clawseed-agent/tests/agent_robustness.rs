@@ -164,6 +164,7 @@ async fn agent_handles_empty_provider_response() {
             tool_calls: vec![],
             usage: None,
             reasoning_content: None,
+            stop_reason: clawseed_api::provider::StopReason::EndTurn,
         },
     ]));
 
@@ -181,6 +182,7 @@ async fn agent_handles_none_text_response() {
             tool_calls: vec![],
             usage: None,
             reasoning_content: None,
+            stop_reason: clawseed_api::provider::StopReason::EndTurn,
         },
     ]));
 

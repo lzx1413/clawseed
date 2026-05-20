@@ -1077,6 +1077,8 @@ impl Agent {
 
         let effective_model = self.model_name.clone();
 
+        let mut auto_continue_count: usize = 0;
+
         for _ in 0..self.config.max_tool_iterations {
             let messages = self.tool_dispatcher.to_provider_messages(&self.history);
 
@@ -1114,6 +1116,28 @@ impl Agent {
                         final_text.clone(),
                     )));
                 self.trim_history();
+
+                // Auto-continue when truncated due to max_tokens
+                if response.stop_reason == clawseed_api::provider::StopReason::MaxTokens
+                    && self.config.auto_continue_on_truncation
+                    && auto_continue_count < self.config.max_auto_continue
+                {
+                    auto_continue_count += 1;
+                    tracing::warn!(
+                        auto_continue = auto_continue_count,
+                        max = self.config.max_auto_continue,
+                        "Response truncated by max_tokens, auto-continuing"
+                    );
+                    print!("\n[⚠ 输出被截断，自动续接中...]\n");
+                    use std::io::Write;
+                    let _ = std::io::stdout().lock().flush();
+                    self.history
+                        .push(ConversationMessage::Chat(ChatMessage::user(
+                            "请继续输出，不要重复已输出的内容",
+                        )));
+                    continue;
+                }
+
                 return Ok(final_text);
             }
 
@@ -1152,6 +1176,8 @@ impl Agent {
 
         // Try streaming first, fall back to non-streaming
         use futures_util::StreamExt;
+
+        let mut auto_continue_count: usize = 0;
 
         for iteration in 0..self.config.max_tool_iterations {
             if cancel_token
@@ -1194,6 +1220,7 @@ impl Agent {
             let mut streamed_text = String::new();
             let mut streamed_reasoning = String::new();
             let mut streamed_tool_calls: Vec<clawseed_api::provider::ToolCall> = Vec::new();
+            let mut streamed_stop_reason = clawseed_api::provider::StopReason::EndTurn;
             let mut got_stream = false;
 
             loop {
@@ -1254,7 +1281,10 @@ impl Agent {
                                 })
                                 .await;
                         }
-                        clawseed_api::provider::StreamEvent::Final => break,
+                        clawseed_api::provider::StreamEvent::Final { stop_reason } => {
+                            streamed_stop_reason = stop_reason;
+                            break;
+                        }
                     },
                     Err(_) => break,
                 }
@@ -1271,6 +1301,7 @@ impl Agent {
                     } else {
                         Some(streamed_reasoning)
                     },
+                    stop_reason: streamed_stop_reason,
                 }
             } else {
                 // Fall back to non-streaming
@@ -1314,6 +1345,30 @@ impl Agent {
                         final_text.clone(),
                     )));
                 self.trim_history();
+
+                // Auto-continue when truncated due to max_tokens
+                if response.stop_reason == clawseed_api::provider::StopReason::MaxTokens
+                    && self.config.auto_continue_on_truncation
+                    && auto_continue_count < self.config.max_auto_continue
+                {
+                    auto_continue_count += 1;
+                    tracing::warn!(
+                        auto_continue = auto_continue_count,
+                        max = self.config.max_auto_continue,
+                        "Response truncated by max_tokens, auto-continuing"
+                    );
+                    let _ = event_tx
+                        .send(TurnEvent::Chunk {
+                            delta: "\n[⚠ 输出被截断，自动续接中...]\n".to_string(),
+                        })
+                        .await;
+                    self.history
+                        .push(ConversationMessage::Chat(ChatMessage::user(
+                            "请继续输出，不要重复已输出的内容",
+                        )));
+                    continue;
+                }
+
                 return Ok(final_text);
             }
 
@@ -1410,6 +1465,7 @@ mod tests {
                     tool_calls: vec![],
                     usage: None,
                     reasoning_content: None,
+                    stop_reason: clawseed_api::provider::StopReason::EndTurn,
                 });
             }
             Ok(guard.remove(0))
@@ -1455,6 +1511,7 @@ mod tests {
                 tool_calls: vec![],
                 usage: None,
                 reasoning_content: None,
+                stop_reason: clawseed_api::provider::StopReason::EndTurn,
             }]),
         });
 
@@ -1486,12 +1543,14 @@ mod tests {
                     }],
                     usage: None,
                     reasoning_content: None,
+                    stop_reason: clawseed_api::provider::StopReason::EndTurn,
                 },
                 ChatResponse {
                     text: Some("done".into()),
                     tool_calls: vec![],
                     usage: None,
                     reasoning_content: None,
+                    stop_reason: clawseed_api::provider::StopReason::EndTurn,
                 },
             ]),
         });
@@ -1656,12 +1715,14 @@ description = "A test skill"
                     }],
                     usage: None,
                     reasoning_content: None,
+                    stop_reason: clawseed_api::provider::StopReason::EndTurn,
                 },
                 ChatResponse {
                     text: Some("done".into()),
                     tool_calls: vec![],
                     usage: None,
                     reasoning_content: None,
+                    stop_reason: clawseed_api::provider::StopReason::EndTurn,
                 },
             ]),
         });

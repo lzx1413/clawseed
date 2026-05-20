@@ -62,6 +62,18 @@ pub struct TokenUsage {
     pub cached_input_tokens: Option<u64>,
 }
 
+/// Reason the LLM stopped generating.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StopReason {
+    /// Normal completion — the model finished its response naturally.
+    #[default]
+    EndTurn,
+    /// Output was truncated because the max_tokens limit was reached.
+    MaxTokens,
+    /// The model stopped to invoke one or more tools.
+    ToolUse,
+}
+
 /// An LLM response that may contain text, tool calls, or both.
 #[derive(Debug, Clone)]
 pub struct ChatResponse {
@@ -69,6 +81,7 @@ pub struct ChatResponse {
     pub tool_calls: Vec<ToolCall>,
     pub usage: Option<TokenUsage>,
     pub reasoning_content: Option<String>,
+    pub stop_reason: StopReason,
 }
 
 impl ChatResponse {
@@ -115,6 +128,7 @@ pub struct StreamChunk {
     pub reasoning: Option<String>,
     pub is_final: bool,
     pub token_count: usize,
+    pub stop_reason: Option<StopReason>,
 }
 
 impl StreamChunk {
@@ -124,6 +138,7 @@ impl StreamChunk {
             reasoning: None,
             is_final: false,
             token_count: 0,
+            stop_reason: None,
         }
     }
 
@@ -133,6 +148,7 @@ impl StreamChunk {
             reasoning: Some(text.into()),
             is_final: false,
             token_count: 0,
+            stop_reason: None,
         }
     }
 
@@ -142,6 +158,17 @@ impl StreamChunk {
             reasoning: None,
             is_final: true,
             token_count: 0,
+            stop_reason: None,
+        }
+    }
+
+    pub fn final_chunk_with_reason(reason: StopReason) -> Self {
+        Self {
+            delta: String::new(),
+            reasoning: None,
+            is_final: true,
+            token_count: 0,
+            stop_reason: Some(reason),
         }
     }
 
@@ -151,6 +178,7 @@ impl StreamChunk {
             reasoning: None,
             is_final: true,
             token_count: 0,
+            stop_reason: None,
         }
     }
 
@@ -167,13 +195,15 @@ pub enum StreamEvent {
     ToolCall(ToolCall),
     PreExecutedToolCall { name: String, args: String },
     PreExecutedToolResult { name: String, output: String },
-    Final,
+    Final { stop_reason: StopReason },
 }
 
 impl StreamEvent {
     pub fn from_chunk(chunk: StreamChunk) -> Self {
         if chunk.is_final {
-            Self::Final
+            Self::Final {
+                stop_reason: chunk.stop_reason.unwrap_or_default(),
+            }
         } else {
             Self::TextDelta(chunk)
         }
@@ -241,9 +271,9 @@ pub enum ToolsPayload {
 
 /// Industry-neutral default temperature.
 pub const BASELINE_TEMPERATURE: f64 = 0.7;
-/// Default max output tokens (128k — high enough for agent tool-use loops
+/// Default max output tokens (256k — high enough for agent tool-use loops
 /// and scheduled task responses that can be lengthy).
-pub const BASELINE_MAX_TOKENS: u32 = 131_072;
+pub const BASELINE_MAX_TOKENS: u32 = 262_144;
 
 /// Provider trait — every LLM provider implements this.
 #[async_trait]
@@ -371,6 +401,7 @@ pub trait Provider: Send + Sync {
                 tool_calls: Vec::new(),
                 usage: None,
                 reasoning_content: None,
+                stop_reason: StopReason::EndTurn,
             });
         }
         let text = self
@@ -381,6 +412,7 @@ pub trait Provider: Send + Sync {
             tool_calls: Vec::new(),
             usage: None,
             reasoning_content: None,
+            stop_reason: StopReason::EndTurn,
         })
     }
 
@@ -409,6 +441,7 @@ pub trait Provider: Send + Sync {
             tool_calls: Vec::new(),
             usage: None,
             reasoning_content: None,
+            stop_reason: StopReason::EndTurn,
         })
     }
 

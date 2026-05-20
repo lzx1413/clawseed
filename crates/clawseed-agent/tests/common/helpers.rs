@@ -29,6 +29,7 @@ pub fn text_response(text: &str) -> ChatResponse {
         tool_calls: vec![],
         usage: None,
         reasoning_content: None,
+        stop_reason: clawseed_api::provider::StopReason::EndTurn,
     }
 }
 
@@ -39,6 +40,7 @@ pub fn tool_response(calls: Vec<ToolCall>) -> ChatResponse {
         tool_calls: calls,
         usage: None,
         reasoning_content: None,
+        stop_reason: clawseed_api::provider::StopReason::EndTurn,
     }
 }
 

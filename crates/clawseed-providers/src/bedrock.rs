@@ -418,9 +418,8 @@ struct InputSchema {
 struct ConverseResponse {
     #[serde(default)]
     output: Option<ConverseOutput>,
-    #[serde(default)]
-    #[serde(rename = "stopReason")]
-    _stop_reason: Option<String>,
+    #[serde(default, rename = "stopReason")]
+    stop_reason: Option<String>,
     #[serde(default)]
     usage: Option<BedrockUsage>,
 }
@@ -936,6 +935,11 @@ impl BedrockProvider {
     // ── Response parsing ────────────────────────────────────────
 
     fn parse_converse_response(response: ConverseResponse) -> ProviderChatResponse {
+        let stop_reason = match response.stop_reason.as_deref() {
+            Some("max_tokens") => clawseed_api::provider::StopReason::MaxTokens,
+            Some("tool_use") => clawseed_api::provider::StopReason::ToolUse,
+            _ => clawseed_api::provider::StopReason::EndTurn,
+        };
         let mut text_parts = Vec::new();
         let mut tool_calls = Vec::new();
 
@@ -979,6 +983,7 @@ impl BedrockProvider {
             tool_calls,
             usage,
             reasoning_content: None,
+            stop_reason,
         }
     }
 

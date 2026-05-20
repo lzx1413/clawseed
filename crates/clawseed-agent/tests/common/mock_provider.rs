@@ -50,6 +50,7 @@ impl Provider for MockProvider {
                 tool_calls: vec![],
                 usage: None,
                 reasoning_content: None,
+                stop_reason: clawseed_api::provider::StopReason::EndTurn,
             });
         }
         Ok(guard.remove(0))
@@ -105,6 +106,7 @@ impl Provider for RecordingProvider {
                 tool_calls: vec![],
                 usage: None,
                 reasoning_content: None,
+                stop_reason: clawseed_api::provider::StopReason::EndTurn,
             });
         }
         Ok(guard.remove(0))

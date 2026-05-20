@@ -156,6 +156,8 @@ struct NativeChatResponse {
     #[serde(default)]
     content: Vec<NativeContentIn>,
     #[serde(default)]
+    stop_reason: Option<String>,
+    #[serde(default)]
     usage: Option<AnthropicUsage>,
 }
 
@@ -513,7 +515,10 @@ impl AnthropicProvider {
         (system_prompt, native_messages)
     }
 
-    fn parse_native_response(response: NativeChatResponse) -> ProviderChatResponse {
+    fn parse_native_response(
+        response: NativeChatResponse,
+        stop_reason: Option<String>,
+    ) -> ProviderChatResponse {
         let mut text_parts = Vec::new();
         let mut tool_calls = Vec::new();
 
@@ -559,6 +564,11 @@ impl AnthropicProvider {
             tool_calls,
             usage,
             reasoning_content: None,
+            stop_reason: match stop_reason.as_deref() {
+                Some("max_tokens") => clawseed_api::provider::StopReason::MaxTokens,
+                Some("tool_use") => clawseed_api::provider::StopReason::ToolUse,
+                _ => clawseed_api::provider::StopReason::EndTurn,
+            },
         }
     }
 
@@ -595,6 +605,7 @@ impl AnthropicProvider {
         let mut tool_id: Option<String> = None;
         let mut tool_name: Option<String> = None;
         let mut tool_input_json = String::new();
+        let mut last_stop_reason = clawseed_api::provider::StopReason::EndTurn;
 
         while let Ok(Some(line)) = lines.next_line().await {
             let line = line.trim().to_string();
@@ -707,7 +718,7 @@ impl AnthropicProvider {
                     }
                 }
                 "message_delta" => {
-                    let stop_reason = event
+                    let stop_reason_str = event
                         .get("delta")
                         .and_then(|d| d.get("stop_reason"))
                         .and_then(|s| s.as_str())
@@ -717,22 +728,32 @@ impl AnthropicProvider {
                         .and_then(|u| u.get("output_tokens"))
                         .and_then(|t| t.as_u64())
                         .unwrap_or(0);
-                    if stop_reason == "max_tokens" {
-                        tracing::warn!(
-                            output_tokens = output_tokens,
-                            "Anthropic response truncated: hit max_tokens limit. Increase provider_max_tokens in config."
-                        );
-                    } else {
-                        tracing::debug!(
-                            stop_reason = %stop_reason,
-                            output_tokens = output_tokens,
-                            "Anthropic stream: message_delta"
-                        );
-                    }
+                    last_stop_reason = match stop_reason_str {
+                        "max_tokens" => {
+                            tracing::warn!(
+                                output_tokens = output_tokens,
+                                "Anthropic response truncated: hit max_tokens limit."
+                            );
+                            clawseed_api::provider::StopReason::MaxTokens
+                        }
+                        "tool_use" => clawseed_api::provider::StopReason::ToolUse,
+                        _ => {
+                            tracing::debug!(
+                                stop_reason = %stop_reason_str,
+                                output_tokens = output_tokens,
+                                "Anthropic stream: message_delta"
+                            );
+                            clawseed_api::provider::StopReason::EndTurn
+                        }
+                    };
                 }
                 "message_stop" => {
                     tracing::debug!("Anthropic stream: message_stop");
-                    let _ = tx.send(Ok(StreamEvent::Final)).await;
+                    let _ = tx
+                        .send(Ok(StreamEvent::Final {
+                            stop_reason: last_stop_reason,
+                        }))
+                        .await;
                     return;
                 }
                 "error" => {
@@ -748,7 +769,11 @@ impl AnthropicProvider {
             }
         }
 
-        let _ = tx.send(Ok(StreamEvent::Final)).await;
+        let _ = tx
+            .send(Ok(StreamEvent::Final {
+                stop_reason: last_stop_reason,
+            }))
+            .await;
     }
 }
 
@@ -818,7 +843,7 @@ impl Provider for AnthropicProvider {
         }
 
         let chat_response: NativeChatResponse = response.json().await?;
-        let parsed = Self::parse_native_response(chat_response);
+        let parsed = Self::parse_native_response(chat_response, None);
         parsed
             .text
             .ok_or_else(|| anyhow::anyhow!("No response from Anthropic"))
@@ -888,7 +913,8 @@ impl Provider for AnthropicProvider {
         }
 
         let native_response: NativeChatResponse = response.json().await?;
-        Ok(Self::parse_native_response(native_response))
+        let stop_reason = native_response.stop_reason.clone();
+        Ok(Self::parse_native_response(native_response, stop_reason))
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
@@ -986,7 +1012,12 @@ impl Provider for AnthropicProvider {
         options: StreamOptions,
     ) -> stream::BoxStream<'static, StreamResult<StreamEvent>> {
         if !options.enabled {
-            return stream::once(async { Ok(StreamEvent::Final) }).boxed();
+            return stream::once(async {
+                Ok(StreamEvent::Final {
+                    stop_reason: clawseed_api::provider::StopReason::EndTurn,
+                })
+            })
+            .boxed();
         }
         let temperature = temperature.unwrap_or(self.default_temperature());
 
@@ -1886,7 +1917,7 @@ mod tests {
             "usage": {"input_tokens": 300, "output_tokens": 75}
         }"#;
         let resp: NativeChatResponse = serde_json::from_str(json).unwrap();
-        let result = AnthropicProvider::parse_native_response(resp);
+        let result = AnthropicProvider::parse_native_response(resp, None);
         let usage = result.usage.unwrap();
         assert_eq!(usage.input_tokens, Some(300));
         assert_eq!(usage.output_tokens, Some(75));
@@ -1896,7 +1927,7 @@ mod tests {
     fn native_response_parses_without_usage() {
         let json = r#"{"content": [{"type": "text", "text": "Hello"}]}"#;
         let resp: NativeChatResponse = serde_json::from_str(json).unwrap();
-        let result = AnthropicProvider::parse_native_response(resp);
+        let result = AnthropicProvider::parse_native_response(resp, None);
         assert!(result.usage.is_none());
     }
 

@@ -19,6 +19,16 @@ pub struct AgentConfig {
     #[serde(default)]
     pub max_tokens: Option<u32>,
 
+    /// When true, automatically continue generation when the LLM response is
+    /// truncated due to max_tokens. A continuation message is appended and
+    /// the provider is called again.
+    #[serde(default = "default_auto_continue_on_truncation")]
+    pub auto_continue_on_truncation: bool,
+
+    /// Maximum consecutive auto-continuation rounds (safety limit).
+    #[serde(default = "default_max_auto_continue")]
+    pub max_auto_continue: usize,
+
     /// Enable web search tool.
     #[serde(default)]
     pub web_search_enabled: bool,
@@ -64,12 +74,22 @@ fn default_max_tool_iterations() -> usize {
     25
 }
 
+fn default_auto_continue_on_truncation() -> bool {
+    true
+}
+
+fn default_max_auto_continue() -> usize {
+    10
+}
+
 impl Default for AgentConfig {
     fn default() -> Self {
         Self {
             max_tool_iterations: default_max_tool_iterations(),
             temperature: None,
             max_tokens: None,
+            auto_continue_on_truncation: true,
+            max_auto_continue: default_max_auto_continue(),
             web_search_enabled: false,
             web_search_provider: None,
             system_prompt: None,

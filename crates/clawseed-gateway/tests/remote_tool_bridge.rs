@@ -62,6 +62,7 @@ impl Provider for MockProvider {
                 tool_calls: vec![],
                 usage: None,
                 reasoning_content: None,
+                stop_reason: clawseed_api::provider::StopReason::EndTurn,
             });
         }
         Ok(guard.remove(0))
@@ -74,6 +75,7 @@ fn text_response(text: &str) -> ChatResponse {
         tool_calls: vec![],
         usage: None,
         reasoning_content: None,
+        stop_reason: clawseed_api::provider::StopReason::EndTurn,
     }
 }
 
@@ -83,6 +85,7 @@ fn tool_response(calls: Vec<ToolCall>) -> ChatResponse {
         tool_calls: calls,
         usage: None,
         reasoning_content: None,
+        stop_reason: clawseed_api::provider::StopReason::EndTurn,
     }
 }
 

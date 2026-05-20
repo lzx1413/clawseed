@@ -236,6 +236,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                                     onSelectModel = viewModel::selectModel,
                                     onToggleThinking = viewModel::toggleThinking,
                                     onUpdateMaxTokens = viewModel::updateMaxTokens,
+                                    onToggleAutoContinue = viewModel::toggleAutoContinueOnTruncation,
                                 )
                                 EditMode.TOML -> TomlEditor(
                                     toml = uiState.configToml,
@@ -604,6 +605,7 @@ private fun ProviderFormEditor(
     onSelectModel: (String) -> Unit,
     onToggleThinking: (Boolean) -> Unit,
     onUpdateMaxTokens: (String) -> Unit,
+    onToggleAutoContinue: (Boolean) -> Unit,
 ) {
     var providerExpanded by remember { mutableStateOf(false) }
     var modelExpanded by remember { mutableStateOf(false) }
@@ -812,6 +814,27 @@ private fun ProviderFormEditor(
                     )
                 },
             )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("自动续接", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "当回复因 Token 限制被截断时自动续接输出",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    )
+                }
+                Switch(
+                    checked = state.autoContinueOnTruncation,
+                    onCheckedChange = onToggleAutoContinue,
+                )
+            }
         }
     }
 }

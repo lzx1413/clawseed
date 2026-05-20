@@ -91,6 +91,7 @@ async fn e2e_xml_dispatcher_tool_call() {
             tool_calls: vec![],
             usage: None,
             reasoning_content: None,
+            stop_reason: clawseed_api::provider::StopReason::EndTurn,
         },
         text_response("XML tool executed"),
     ]));

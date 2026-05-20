@@ -293,7 +293,10 @@ impl OpenAiCompatibleProvider {
         modified_messages
     }
 
-    fn parse_native_response(message: ResponseMessage) -> ProviderChatResponse {
+    fn parse_native_response(
+        message: ResponseMessage,
+        finish_reason: Option<String>,
+    ) -> ProviderChatResponse {
         let text = message.effective_content_optional();
         let reasoning_content = message.reasoning_content.clone();
         let tool_calls = message
@@ -327,6 +330,11 @@ impl OpenAiCompatibleProvider {
             tool_calls,
             usage: None,
             reasoning_content,
+            stop_reason: match finish_reason.as_deref() {
+                Some("length") => clawseed_api::provider::StopReason::MaxTokens,
+                Some("tool_calls") => clawseed_api::provider::StopReason::ToolUse,
+                _ => clawseed_api::provider::StopReason::EndTurn,
+            },
         }
     }
 
@@ -663,6 +671,7 @@ impl Provider for OpenAiCompatibleProvider {
                     tool_calls: vec![],
                     usage: None,
                     reasoning_content: None,
+                    stop_reason: clawseed_api::provider::StopReason::EndTurn,
                 });
             }
         };
@@ -708,6 +717,7 @@ impl Provider for OpenAiCompatibleProvider {
             tool_calls,
             usage,
             reasoning_content,
+            stop_reason: clawseed_api::provider::StopReason::EndTurn,
         })
     }
 
@@ -760,6 +770,7 @@ impl Provider for OpenAiCompatibleProvider {
                             tool_calls: vec![],
                             usage: None,
                             reasoning_content: None,
+                            stop_reason: clawseed_api::provider::StopReason::EndTurn,
                         })
                         .map_err(|responses_err| {
                             anyhow::anyhow!(
@@ -789,6 +800,7 @@ impl Provider for OpenAiCompatibleProvider {
                     tool_calls: vec![],
                     usage: None,
                     reasoning_content: None,
+                    stop_reason: clawseed_api::provider::StopReason::EndTurn,
                 });
             }
 
@@ -801,6 +813,7 @@ impl Provider for OpenAiCompatibleProvider {
                         tool_calls: vec![],
                         usage: None,
                         reasoning_content: None,
+                        stop_reason: clawseed_api::provider::StopReason::EndTurn,
                     })
                     .map_err(|responses_err| {
                         anyhow::anyhow!(
@@ -819,14 +832,13 @@ impl Provider for OpenAiCompatibleProvider {
             output_tokens: u.completion_tokens,
             cached_input_tokens: None,
         });
-        let message = native_response
+        let choice = native_response
             .choices
             .into_iter()
             .next()
-            .map(|choice| choice.message)
             .ok_or_else(|| anyhow::anyhow!("No response from {}", self.name))?;
-
-        let mut result = Self::parse_native_response(message);
+        let finish_reason = choice.finish_reason.clone();
+        let mut result = Self::parse_native_response(choice.message, finish_reason);
         result.usage = usage;
         Ok(result)
     }
@@ -851,7 +863,12 @@ impl Provider for OpenAiCompatibleProvider {
         options: StreamOptions,
     ) -> stream::BoxStream<'static, StreamResult<StreamEvent>> {
         if !options.enabled {
-            return stream::once(async { Ok(StreamEvent::Final) }).boxed();
+            return stream::once(async {
+                Ok(StreamEvent::Final {
+                    stop_reason: clawseed_api::provider::StopReason::EndTurn,
+                })
+            })
+            .boxed();
         }
 
         let temperature = temperature.unwrap_or(self.default_temperature());

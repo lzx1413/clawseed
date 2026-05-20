@@ -224,6 +224,8 @@ struct InternalGenerateContentResponse {
 struct Candidate {
     #[serde(default)]
     content: Option<CandidateContent>,
+    #[serde(default, rename = "finishReason")]
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1000,7 +1002,11 @@ impl GeminiProvider {
         system_instruction: Option<Content>,
         model: &str,
         temperature: f64,
-    ) -> anyhow::Result<(String, Option<TokenUsage>)> {
+    ) -> anyhow::Result<(
+        String,
+        Option<TokenUsage>,
+        clawseed_api::provider::StopReason,
+    )> {
         let auth = self.auth.as_ref().ok_or_else(|| {
             anyhow::anyhow!(
                 "Gemini API key not found. Options:\n\
@@ -1194,14 +1200,23 @@ impl GeminiProvider {
             cached_input_tokens: None,
         });
 
-        let text = result
-            .candidates
-            .and_then(|c| c.into_iter().next())
+        let candidate = result.candidates.and_then(|c| c.into_iter().next());
+
+        let stop_reason = candidate
+            .as_ref()
+            .and_then(|c| c.finish_reason.as_deref())
+            .map(|r| match r {
+                "MAX_TOKENS" | "RECITATION" => clawseed_api::provider::StopReason::MaxTokens,
+                _ => clawseed_api::provider::StopReason::EndTurn,
+            })
+            .unwrap_or(clawseed_api::provider::StopReason::EndTurn);
+
+        let text = candidate
             .and_then(|c| c.content)
             .and_then(|c| c.effective_text())
             .ok_or_else(|| anyhow::anyhow!("No response from Gemini"))?;
 
-        Ok((text, usage))
+        Ok((text, usage, stop_reason))
     }
 }
 
@@ -1238,7 +1253,7 @@ impl Provider for GeminiProvider {
             parts: build_parts(message),
         }];
 
-        let (text, _usage) = self
+        let (text, _usage, _stop_reason) = self
             .send_generate_content(contents, system_instruction, model, temperature)
             .await?;
         Ok(text)
@@ -1285,7 +1300,7 @@ impl Provider for GeminiProvider {
             })
         };
 
-        let (text, _usage) = self
+        let (text, _usage, _stop_reason) = self
             .send_generate_content(contents, system_instruction, model, temperature)
             .await?;
         Ok(text)

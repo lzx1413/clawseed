@@ -48,6 +48,7 @@ data class SettingsUiState(
     val connectionOk: Boolean? = null,
     val thinkingEnabled: Boolean = false,
     val maxTokens: String = "262144",
+    val autoContinueOnTruncation: Boolean = true,
     val searchEngine: String = "",
     val tavilyApiKey: String = "",
     val tavilyApiKeyVisible: Boolean = false,
@@ -98,6 +99,7 @@ class SettingsViewModel : ViewModel() {
             val currentModel = extractProviderModel(toml, status)
             val thinking = extractProviderThinking(toml)
             val maxTokens = extractProviderMaxTokens(toml)
+            val autoContinue = extractAutoContinueOnTruncation(toml)
             val searchEngine = extractSearchEngine(toml)
             val tavilyKey = extractTavilyApiKey(toml)
 
@@ -119,6 +121,7 @@ class SettingsViewModel : ViewModel() {
                 selectedModel = currentModel,
                 thinkingEnabled = thinking,
                 maxTokens = maxTokens,
+                autoContinueOnTruncation = autoContinue,
                 searchEngine = searchEngine,
                 tavilyApiKey = tavilyKey,
                 soulContent = personalityResult.getOrElse { null }?.get("SOUL.md"),
@@ -152,6 +155,7 @@ class SettingsViewModel : ViewModel() {
             selectedModel = saved?.model ?: "",
             thinkingEnabled = saved?.thinking ?: false,
             maxTokens = saved?.maxTokens ?: "262144",
+            autoContinueOnTruncation = true,
             availableModels = emptyList(),
             connectionOk = null,
             successMessage = null,
@@ -181,6 +185,10 @@ class SettingsViewModel : ViewModel() {
 
     fun updateMaxTokens(value: String) {
         _uiState.value = _uiState.value.copy(maxTokens = value, successMessage = null)
+    }
+
+    fun toggleAutoContinueOnTruncation(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(autoContinueOnTruncation = enabled, successMessage = null)
     }
 
     fun updateSearchEngine(engine: String) {
@@ -308,6 +316,14 @@ class SettingsViewModel : ViewModel() {
             if (state.searchEngine == "tavily" && state.tavilyApiKey.isNotBlank()) {
                 toml = replaceInSection(toml, webSearchHeader, "tavily_api_key", state.tavilyApiKey)
             }
+        }
+
+        // Update [agent] auto_continue_on_truncation
+        val agentHeader = "[agent]"
+        if (toml.contains(agentHeader)) {
+            toml = replaceInSectionRaw(toml, agentHeader, "auto_continue_on_truncation", if (state.autoContinueOnTruncation) " true" else " false")
+        } else {
+            toml = toml.trimEnd() + "\n\n[agent]\nauto_continue_on_truncation = ${state.autoContinueOnTruncation}\n"
         }
 
         return toml
@@ -458,6 +474,12 @@ class SettingsViewModel : ViewModel() {
             val fallback = extractTomlValue(toml, "fallback") ?: return "262144"
             val section = findSection(toml, "[providers.models.\"$fallback\"]")
             return extractTomlValueInBlock(section, "max_tokens") ?: "262144"
+        }
+
+        private fun extractAutoContinueOnTruncation(toml: String): Boolean {
+            val section = findSection(toml, "[agent]")
+            val value = extractTomlValueInBlock(section, "auto_continue_on_truncation")
+            return value != "false"
         }
 
         private data class SavedProviderSettings(
