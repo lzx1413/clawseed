@@ -70,6 +70,8 @@ pub struct Agent {
     autonomy_level: AutonomyLevel,
     identity_config: IdentityConfig,
     auto_save: bool,
+    auto_recall: bool,
+    auto_recall_limit: usize,
     memory_session_id: Option<String>,
     history: Vec<ConversationMessage>,
     hook_runner: Option<Arc<HookRunner>>,
@@ -96,6 +98,8 @@ pub struct AgentBuilder {
     autonomy_level: Option<AutonomyLevel>,
     identity_config: Option<IdentityConfig>,
     auto_save: Option<bool>,
+    auto_recall: Option<bool>,
+    auto_recall_limit: Option<usize>,
     memory_session_id: Option<String>,
     allowed_tools: Option<Vec<String>>,
     denied_tools: Option<Vec<String>>,
@@ -130,6 +134,8 @@ impl AgentBuilder {
             autonomy_level: None,
             identity_config: None,
             auto_save: None,
+            auto_recall: None,
+            auto_recall_limit: None,
             memory_session_id: None,
             allowed_tools: None,
             denied_tools: None,
@@ -211,6 +217,16 @@ impl AgentBuilder {
 
     pub fn auto_save(mut self, auto_save: bool) -> Self {
         self.auto_save = Some(auto_save);
+        self
+    }
+
+    pub fn auto_recall(mut self, auto_recall: bool) -> Self {
+        self.auto_recall = Some(auto_recall);
+        self
+    }
+
+    pub fn auto_recall_limit(mut self, limit: usize) -> Self {
+        self.auto_recall_limit = Some(limit);
         self
     }
 
@@ -309,6 +325,8 @@ impl AgentBuilder {
             autonomy_level: self.autonomy_level.unwrap_or_default(),
             identity_config: self.identity_config.unwrap_or_default(),
             auto_save: self.auto_save.unwrap_or(false),
+            auto_recall: self.auto_recall.unwrap_or(true),
+            auto_recall_limit: self.auto_recall_limit.unwrap_or(5),
             memory_session_id: self.memory_session_id,
             history: Vec::new(),
             hook_runner: self.hook_runner,
@@ -526,6 +544,8 @@ impl Agent {
             .autonomy_level(config.autonomy.level)
             .identity_config(config.identity.clone())
             .auto_save(config.memory.auto_save)
+            .auto_recall(config.memory.auto_recall)
+            .auto_recall_limit(config.memory.auto_recall_limit)
             .hook_runner(Some(Arc::new(hook_runner)))
             .skill_index(skill_index)
             .max_active_skills(config.skills.max_active)
@@ -1075,6 +1095,28 @@ impl Agent {
                 .await;
         }
 
+        // Auto-recall relevant memories and prepend context to user message.
+        if self.auto_recall
+            && self.memory.name() != "none"
+            && let Ok(entries) = self
+                .memory
+                .recall(user_message, self.auto_recall_limit, None, None, None)
+                .await
+        {
+            let ctx: String = entries
+                .iter()
+                .filter(|e| !matches!(e.category, MemoryCategory::Conversation))
+                .map(|e| format!("- {}: {}", e.key, e.content))
+                .collect::<Vec<_>>()
+                .join("\n");
+            if !ctx.is_empty() {
+                let memory_prefix = format!("[Memory context]\n{ctx}\n[/Memory context]\n\n");
+                if let Some(ConversationMessage::Chat(msg)) = self.history.last_mut() {
+                    msg.content = format!("{memory_prefix}{}", msg.content);
+                }
+            }
+        }
+
         let effective_model = self.model_name.clone();
 
         let mut auto_continue_count: usize = 0;
@@ -1171,6 +1213,28 @@ impl Agent {
         debug: bool,
     ) -> Result<String> {
         self.prepare_turn(user_message)?;
+
+        // Auto-recall relevant memories and prepend context to user message.
+        if self.auto_recall
+            && self.memory.name() != "none"
+            && let Ok(entries) = self
+                .memory
+                .recall(user_message, self.auto_recall_limit, None, None, None)
+                .await
+        {
+            let ctx: String = entries
+                .iter()
+                .filter(|e| !matches!(e.category, MemoryCategory::Conversation))
+                .map(|e| format!("- {}: {}", e.key, e.content))
+                .collect::<Vec<_>>()
+                .join("\n");
+            if !ctx.is_empty() {
+                let memory_prefix = format!("[Memory context]\n{ctx}\n[/Memory context]\n\n");
+                if let Some(ConversationMessage::Chat(msg)) = self.history.last_mut() {
+                    msg.content = format!("{memory_prefix}{}", msg.content);
+                }
+            }
+        }
 
         let effective_model = self.model_name.clone();
 

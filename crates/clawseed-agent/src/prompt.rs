@@ -45,6 +45,7 @@ impl SystemPromptBuilder {
                 Box::new(PlatformSection),
                 Box::new(WorkspaceSection),
                 Box::new(ToolsSection),
+                Box::new(MemorySection),
                 Box::new(SafetySection),
                 Box::new(ToolHonestySection),
                 Box::new(SkillsIndexSection),
@@ -81,6 +82,7 @@ pub struct WorkspaceSection;
 pub struct ToolsSection;
 pub struct SafetySection;
 pub struct ToolHonestySection;
+pub struct MemorySection;
 pub struct SkillsIndexSection;
 pub struct ActiveSkillsSection;
 
@@ -237,6 +239,23 @@ impl PromptSection for ToolHonestySection {
              - NEVER fabricate, invent, or guess tool results.\n\
              - If a tool call fails, report the error — never make up data.\n\
              - When unsure, ask the user rather than guessing."
+            .into())
+    }
+}
+
+impl PromptSection for MemorySection {
+    fn name(&self) -> &str {
+        "memory"
+    }
+
+    fn build(&self, _ctx: &PromptContext<'_>) -> Result<String> {
+        Ok("## Memory\n\n\
+             You have a long-term memory system. Relevant memories are automatically recalled \
+             and provided as context at the start of each turn.\n\
+             - Use `memory_recall` to search for additional or more specific memories when the \
+             auto-recalled context is insufficient.\n\
+             - Use `memory_store` to save important facts, preferences, or context that the user \
+             mentions or that seem important for future interactions."
             .into())
     }
 }

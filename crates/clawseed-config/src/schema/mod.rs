@@ -274,6 +274,12 @@ pub struct MemoryConfig {
     /// Jaccard similarity threshold for conflict detection (0.0–1.0).
     #[serde(default = "default_conflict_threshold")]
     pub conflict_threshold: f64,
+    /// Auto-recall relevant memories at the start of each turn.
+    #[serde(default = "default_true_val")]
+    pub auto_recall: bool,
+    /// Number of memories to auto-recall per turn.
+    #[serde(default = "default_auto_recall_limit")]
+    pub auto_recall_limit: usize,
 }
 
 fn default_memory_backend() -> String {
@@ -303,6 +309,9 @@ fn default_true_val() -> bool {
 fn default_conflict_threshold() -> f64 {
     0.6
 }
+fn default_auto_recall_limit() -> usize {
+    5
+}
 
 impl Default for MemoryConfig {
     fn default() -> Self {
@@ -321,6 +330,8 @@ impl Default for MemoryConfig {
             snapshot_enabled: false,
             auto_hydrate: default_true_val(),
             conflict_threshold: default_conflict_threshold(),
+            auto_recall: default_true_val(),
+            auto_recall_limit: default_auto_recall_limit(),
         }
     }
 }

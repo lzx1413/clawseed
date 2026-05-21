@@ -102,8 +102,9 @@ pub fn should_skip_autosave_content(content: &str) -> bool {
         return true;
     }
     let trimmed = content.trim_start();
+    let lower = trimmed.to_lowercase();
     trimmed.starts_with("[cron:")
         || trimmed.starts_with("[heartbeat")
         || trimmed.starts_with("[distilled_")
-        || trimmed.starts_with("[memory context]")
+        || lower.starts_with("[memory context]")
 }
