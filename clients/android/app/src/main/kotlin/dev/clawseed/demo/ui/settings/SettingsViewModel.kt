@@ -7,6 +7,7 @@ import dev.clawseed.sdk.core.client.GatewayClient
 import dev.clawseed.sdk.core.model.GatewayStatus
 import dev.clawseed.sdk.core.model.SkillInfo
 import dev.clawseed.sdk.core.model.ToolInfo
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -244,6 +245,8 @@ class SettingsViewModel : ViewModel() {
                     ClawSeedAndroid.restartGateway()
                     _uiState.value = _uiState.value.copy(isSaving = false, successMessage = "配置已保存，Gateway 已重启")
                     preservedApiKey = state.apiKey.ifBlank { null }
+                    // Gateway just restarted — give it a brief window before fetching data
+                    delay(500)
                     loadAll()
                 }
                 .onFailure { e ->

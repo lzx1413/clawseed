@@ -74,9 +74,21 @@ class EmbeddedGateway(
         }
     }
 
-    /** Stops the embedded gateway process if it is running. */
+    /** Stops the embedded gateway process if it is running.
+     *  Waits for the process to fully exit before returning, to avoid port conflicts on restart. */
     suspend fun stop() {
-        process?.destroy()
+        val proc = process
+        if (proc != null) {
+            proc.destroy()
+            withContext(Dispatchers.IO) {
+                // Wait up to 3s for clean exit, then force-kill
+                val exited = proc.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
+                if (!exited) {
+                    proc.destroyForcibly()
+                    proc.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
+                }
+            }
+        }
         process = null
         _state.value = GatewayState.Stopped
     }

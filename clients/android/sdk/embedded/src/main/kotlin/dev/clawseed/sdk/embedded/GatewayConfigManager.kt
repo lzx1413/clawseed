@@ -64,12 +64,20 @@ class GatewayConfigManager(private val context: Context) {
             if (gwIdx != -1) {
                 val nextGwSection = content.indexOf("\n[", gwIdx + 1).let { if (it == -1) content.length else it }
                 val gwSection = content.substring(gwIdx, nextGwSection)
+                var gwPatch = ""
                 if (!gwSection.contains("require_pairing")) {
+                    gwPatch += "\nrequire_pairing = false"
+                }
+                // Disable auto-cleanup: never delete sessions, user deletes manually
+                if (!gwSection.contains("session_ttl_hours")) {
+                    gwPatch += "\nsession_ttl_hours = 0"
+                }
+                if (gwPatch.isNotEmpty()) {
                     content = content.substring(0, nextGwSection) +
-                        "\nrequire_pairing = false" +
+                        gwPatch +
                         content.substring(nextGwSection)
                     changed = true
-                    Log.i(TAG, "Added require_pairing = false to [gateway]")
+                    Log.i(TAG, "Patched [gateway] section: $gwPatch")
                 }
             }
 
@@ -116,7 +124,7 @@ class GatewayConfigManager(private val context: Context) {
         )
 
         private val REQUIRED_SECTIONS = listOf(
-            "[gateway]" to "session_persistence = true\nrequire_pairing = false",
+            "[gateway]" to "session_persistence = true\nsession_ttl_hours = 0\nrequire_pairing = false",
             "[web_fetch]" to "enabled = true\nallowed_domains = [\"*\"]",
             "[http_request]" to "enabled = true\nallowed_domains = [\"*\"]",
             "[web_search]" to "enabled = true\nprovider = \"bing\"",
@@ -127,6 +135,7 @@ workspace_dir = "{WORKSPACE_DIR}"
 
 [gateway]
 session_persistence = true
+session_ttl_hours = 0
 require_pairing = false
 
 [web_fetch]
