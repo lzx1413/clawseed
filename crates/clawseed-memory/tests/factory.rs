@@ -76,6 +76,7 @@ async fn create_memory_with_storage_and_routes() {
         tmp.path(),
         None,
     )
+    .await
     .unwrap();
 
     assert_eq!(mem.name(), "sqlite");

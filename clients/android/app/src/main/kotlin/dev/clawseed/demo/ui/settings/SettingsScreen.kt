@@ -37,6 +37,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -126,6 +127,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var llmExpanded by remember { mutableStateOf(false) }
+    var embeddingExpanded by remember { mutableStateOf(false) }
     var searchEngineExpanded by remember { mutableStateOf(false) }
     var soulExpanded by remember { mutableStateOf(false) }
     var toolsExpanded by remember { mutableStateOf(false) }
@@ -182,7 +184,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
             ) {
                 item { Spacer(modifier = Modifier.height(4.dp)) }
 
-                item { StatusCard(uiState.status) }
+                item { StatusCard(uiState.status, uiState.downloadProgress) }
 
                 if (localStore != null) {
                     item {
@@ -292,6 +294,62 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                                         Spacer(modifier = Modifier.width(8.dp))
                                     }
                                     Text(if (uiState.isSaving) "保存中..." else "保存搜索配置")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Embedding section
+                if (uiState.editMode == EditMode.FORM) {
+                    item {
+                        val embeddingSubtitle = when (uiState.embeddingProvider) {
+                            "local" -> "本地模型"
+                            "openai" -> "OpenAI"
+                            "openrouter" -> "OpenRouter"
+                            "" -> "关闭"
+                            else -> if (uiState.embeddingProvider.startsWith("custom:")) "自定义" else uiState.embeddingProvider
+                        }
+                        ExpandableSection(
+                            title = "向量搜索",
+                            expanded = embeddingExpanded,
+                            onToggle = { embeddingExpanded = !embeddingExpanded },
+                            subtitle = if (!embeddingExpanded) embeddingSubtitle else null,
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                EmbeddingCard(
+                                    embeddingProvider = uiState.embeddingProvider,
+                                    embeddingModel = uiState.embeddingModel,
+                                    embeddingDims = uiState.embeddingDims,
+                                    embeddingApiKey = uiState.embeddingApiKey,
+                                    embeddingApiKeyVisible = uiState.embeddingApiKeyVisible,
+                                    onProviderChange = viewModel::updateEmbeddingProvider,
+                                    onModelChange = viewModel::updateEmbeddingModel,
+                                    onDimsChange = viewModel::updateEmbeddingDims,
+                                    onApiKeyChange = viewModel::updateEmbeddingApiKey,
+                                    onToggleApiKeyVisibility = viewModel::toggleEmbeddingApiKeyVisibility,
+                                )
+                                val progress = uiState.downloadProgress
+                                if (uiState.embeddingProvider == "local" && progress != null && !progress.isComplete) {
+                                    DownloadProgressIndicator(progress)
+                                }
+                                if (uiState.embeddingProvider == "local" && progress != null && progress.isComplete) {
+                                    Text(
+                                        text = "模型下载完成，Gateway 正在启动...",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                                Button(
+                                    onClick = { viewModel.saveConfig() },
+                                    enabled = !uiState.isSaving,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    if (uiState.isSaving) {
+                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                    }
+                                    Text(if (uiState.isSaving) "保存中..." else "保存向量配置")
                                 }
                             }
                         }
@@ -551,7 +609,10 @@ private fun SoulEditor(
 }
 
 @Composable
-private fun StatusCard(status: dev.clawseed.sdk.core.model.GatewayStatus?) {
+private fun StatusCard(
+    status: dev.clawseed.sdk.core.model.GatewayStatus?,
+    downloadProgress: dev.clawseed.sdk.core.model.EmbeddingDownloadProgress?,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -564,9 +625,28 @@ private fun StatusCard(status: dev.clawseed.sdk.core.model.GatewayStatus?) {
             if (status != null) {
                 StatusRow("Provider", status.provider ?: "未知")
                 StatusRow("Model", status.model)
-                StatusRow("Memory", status.memoryBackend ?: "none")
+                val mem = status.memory
+                if (mem != null) {
+                    StatusRow("Memory", mem.backend)
+                    if (mem.embeddingProvider != "none") {
+                        StatusRow("Embedding", "${mem.embeddingProvider}/${mem.embeddingModel}")
+                        StatusRow("Dimensions", mem.embeddingDims.toString())
+                        StatusRow("Search", mem.searchMode)
+                    }
+                    StatusRow("Memories", mem.count.toString())
+                } else {
+                    StatusRow("Memory", status.memoryBackend ?: "none")
+                }
+            } else if (downloadProgress != null && !downloadProgress.isComplete) {
+                Text(
+                    "Gateway 正在启动，正在下载嵌入模型...",
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                DownloadProgressIndicator(downloadProgress)
             } else {
-                Text("无法获取状态", color = MaterialTheme.colorScheme.error)
+                Text("无法连接 Gateway（正在启动或启动失败）", color = MaterialTheme.colorScheme.error)
             }
         }
     }
@@ -991,6 +1071,179 @@ private fun SkillCard(
                             modifier = Modifier.height(24.dp),
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DownloadProgressIndicator(progress: dev.clawseed.sdk.core.model.EmbeddingDownloadProgress) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "正在下载: ${progress.filename}",
+                style = MaterialTheme.typography.titleSmall,
+            )
+
+            if (progress.percent != null) {
+                val pct = progress.percent ?: 0
+                LinearProgressIndicator(
+                    progress = { pct.toFloat() / 100f },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = "${pct}%",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = formatBytes(progress.downloadedBytes) + " / " + formatBytes(progress.totalBytes ?: 0L),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    text = "已下载: ${formatBytes(progress.downloadedBytes)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1_000_000_000 -> "${bytes / 1_000_000_000} GB"
+    bytes >= 1_000_000 -> "%.1f MB".format(bytes / 1_000_000.0)
+    bytes >= 1_000 -> "${bytes / 1_000} KB"
+    else -> "$bytes B"
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EmbeddingCard(
+    embeddingProvider: String,
+    embeddingModel: String,
+    embeddingDims: String,
+    embeddingApiKey: String,
+    embeddingApiKeyVisible: Boolean,
+    onProviderChange: (String) -> Unit,
+    onModelChange: (String) -> Unit,
+    onDimsChange: (String) -> Unit,
+    onApiKeyChange: (String) -> Unit,
+    onToggleApiKeyVisibility: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("向量搜索 / Embedding", style = MaterialTheme.typography.titleSmall)
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = embeddingProvider.isBlank(),
+                    onClick = { onProviderChange("") },
+                    label = { Text("关闭") },
+                )
+                FilterChip(
+                    selected = embeddingProvider == "local",
+                    onClick = { onProviderChange("local") },
+                    label = { Text("本地模型") },
+                )
+                FilterChip(
+                    selected = embeddingProvider == "openai",
+                    onClick = { onProviderChange("openai") },
+                    label = { Text("OpenAI") },
+                )
+                FilterChip(
+                    selected = embeddingProvider == "openrouter",
+                    onClick = { onProviderChange("openrouter") },
+                    label = { Text("OpenRouter") },
+                )
+            }
+
+            if (embeddingProvider.isNotBlank()) {
+                val isLocal = embeddingProvider == "local"
+
+                if (!isLocal) {
+                    OutlinedTextField(
+                        value = if (embeddingProvider.startsWith("custom:")) embeddingProvider.removePrefix("custom:") else "",
+                        onValueChange = { onProviderChange("custom:$it") },
+                        label = { Text("Base URL") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("https://api.example.com/v1") },
+                        enabled = !embeddingProvider.startsWith("openai") && !embeddingProvider.startsWith("openrouter"),
+                    )
+                }
+
+                OutlinedTextField(
+                    value = embeddingModel,
+                    onValueChange = onModelChange,
+                    label = { Text("Model") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text(if (isLocal) "gte-multilingual-base" else "text-embedding-3-small") },
+                )
+
+                OutlinedTextField(
+                    value = embeddingDims,
+                    onValueChange = { if (it.all { c -> c.isDigit() }) onDimsChange(it) },
+                    label = { Text("Dimensions") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text(if (isLocal) "768" else "1536") },
+                )
+
+                if (isLocal) {
+                    Text(
+                        text = "首次使用将下载约 80MB 模型文件，之后缓存到本地",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = embeddingApiKey,
+                        onValueChange = onApiKeyChange,
+                        label = { Text("API Key") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation = if (embeddingApiKey.isNotEmpty() && !embeddingApiKeyVisible)
+                            PasswordVisualTransformation() else VisualTransformation.None,
+                        trailingIcon = if (embeddingApiKey.isNotEmpty()) {
+                            {
+                                IconButton(onClick = onToggleApiKeyVisibility) {
+                                    Text(
+                                        if (embeddingApiKeyVisible) "隐藏" else "显示",
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                }
+                            }
+                        } else null,
+                    )
                 }
             }
         }

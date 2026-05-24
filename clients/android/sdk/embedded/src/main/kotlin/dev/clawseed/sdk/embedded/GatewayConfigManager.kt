@@ -96,6 +96,37 @@ class GatewayConfigManager(private val context: Context) {
     /** Returns the workspace directory exposed to file tools. */
     fun workspaceDir(): File = File(configDir(), "workspace")
 
+    /** Copies bundled embedding model files from APK assets to the workspace model directory.
+     *  Only copies if the target files don't already exist, so this is safe to call on every startup.
+     *  Copies ALL files found in the assets model directory, not just a hardcoded list. */
+    fun ensureBundledModelFiles() {
+        val modelName = "gte-multilingual-base"
+        val modelDir = File(workspaceDir(), "models/$modelName")
+        modelDir.mkdirs()
+
+        val assetBase = "models/$modelName"
+        val assetFiles = try {
+            context.assets.list(assetBase)?.filterNotNull() ?: emptyList()
+        } catch (_: Exception) { emptyList() }
+
+        for (filename in assetFiles) {
+            val target = File(modelDir, filename)
+            if (target.exists() && target.length() > 0) continue
+
+            val assetPath = "$assetBase/$filename"
+            try {
+                context.assets.open(assetPath).use { input ->
+                    target.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                Log.i(TAG, "Copied bundled model file: $assetPath → ${target.absolutePath} (${target.length()} bytes)")
+            } catch (e: Exception) {
+                Log.w(TAG, "Bundled model file $assetPath not found in assets — will be downloaded at runtime")
+            }
+        }
+    }
+
     private fun enableSectionIfPresent(content: String, sectionHeader: String, patch: Pair<String, String>): String {
         val sectionIdx = content.indexOf("\n$sectionHeader\n")
         if (sectionIdx == -1) return content
@@ -128,6 +159,7 @@ class GatewayConfigManager(private val context: Context) {
             "[web_fetch]" to "enabled = true\nallowed_domains = [\"*\"]",
             "[http_request]" to "enabled = true\nallowed_domains = [\"*\"]",
             "[web_search]" to "enabled = true\nprovider = \"bing\"",
+            "[memory]" to "embedding_provider = \"local\"\nembedding_model = \"gte-multilingual-base\"",
         )
 
         private val INITIAL_CONFIG = """
@@ -137,6 +169,10 @@ workspace_dir = "{WORKSPACE_DIR}"
 session_persistence = true
 session_ttl_hours = 0
 require_pairing = false
+
+[memory]
+embedding_provider = "local"
+embedding_model = "gte-multilingual-base"
 
 [web_fetch]
 enabled = true

@@ -47,6 +47,7 @@ rand = "0.9"
 [features]
 default = []
 android = ["clawseed-agent/android", "clawseed-tools/android"]
+local-embedding = ["clawseed-agent/local-embedding", "clawseed-memory/local-embedding"]
 channel-nostr = []
 observability-prometheus = []
 tls-tests = ["dep:rcgen", "dep:tempfile"]

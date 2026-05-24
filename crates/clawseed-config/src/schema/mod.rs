@@ -27,6 +27,16 @@ pub enum SearchMode {
     Bm25,
 }
 
+impl std::fmt::Display for SearchMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SearchMode::Hybrid => write!(f, "hybrid"),
+            SearchMode::Embedding => write!(f, "embedding"),
+            SearchMode::Bm25 => write!(f, "bm25"),
+        }
+    }
+}
+
 /// Multimodal (image) configuration for provider requests.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultimodalConfig {
@@ -280,6 +290,32 @@ pub struct MemoryConfig {
     /// Number of memories to auto-recall per turn.
     #[serde(default = "default_auto_recall_limit")]
     pub auto_recall_limit: usize,
+    /// Embedding provider: "local" for on-device ONNX, "openai"/"openrouter"/"custom:URL" for remote API.
+    /// None means no embedding (NoopEmbedding, BM25+LIKE only).
+    #[serde(default)]
+    pub embedding_provider: Option<String>,
+    /// Embedding model name (e.g. "gte-multilingual-base" for local, "text-embedding-3-small" for OpenAI).
+    #[serde(default)]
+    pub embedding_model: Option<String>,
+    /// Embedding dimensions override. None = auto-detect from model (768 for gte-multilingual).
+    #[serde(default)]
+    pub embedding_dims: Option<usize>,
+    /// Search mode: "hybrid" (vector+keyword), "embedding" (vector only), or "bm25" (keyword only).
+    /// None defaults to Hybrid.
+    #[serde(default)]
+    pub search_mode: Option<SearchMode>,
+    /// Weight for vector similarity in hybrid search (0.0–1.0). None defaults to 0.7.
+    #[serde(default)]
+    pub vector_weight: Option<f32>,
+    /// Weight for BM25 keyword search in hybrid search (0.0–1.0). None defaults to 0.3.
+    #[serde(default)]
+    pub keyword_weight: Option<f32>,
+    /// Maximum entries in the embedding cache. None defaults to 10_000.
+    #[serde(default)]
+    pub embedding_cache_max: Option<usize>,
+    /// Batch-embed all memories with NULL embeddings at startup.
+    #[serde(default)]
+    pub backfill_on_startup: bool,
 }
 
 fn default_memory_backend() -> String {
@@ -332,7 +368,42 @@ impl Default for MemoryConfig {
             conflict_threshold: default_conflict_threshold(),
             auto_recall: default_true_val(),
             auto_recall_limit: default_auto_recall_limit(),
+            embedding_provider: None,
+            embedding_model: None,
+            embedding_dims: None,
+            search_mode: None,
+            vector_weight: None,
+            keyword_weight: None,
+            embedding_cache_max: None,
+            backfill_on_startup: false,
         }
+    }
+}
+
+impl MemoryConfig {
+    /// Resolve the effective search mode (Hybrid when None).
+    pub fn effective_search_mode(&self) -> SearchMode {
+        self.search_mode.unwrap_or_default()
+    }
+
+    /// Resolve the effective vector weight (0.7 when None).
+    pub fn effective_vector_weight(&self) -> f32 {
+        self.vector_weight.unwrap_or(0.7)
+    }
+
+    /// Resolve the effective keyword weight (0.3 when None).
+    pub fn effective_keyword_weight(&self) -> f32 {
+        self.keyword_weight.unwrap_or(0.3)
+    }
+
+    /// Resolve the effective embedding cache max (10_000 when None).
+    pub fn effective_embedding_cache_max(&self) -> usize {
+        self.embedding_cache_max.unwrap_or(10_000)
+    }
+
+    /// Whether embedding is enabled (provider is set).
+    pub fn embedding_enabled(&self) -> bool {
+        self.embedding_provider.is_some()
     }
 }
 
@@ -776,6 +847,22 @@ encrypt = true
         }
         if let Ok(v) = std::env::var("CLAWSEED_WEB_SEARCH_TAVILY_API_KEY") {
             self.web_search.tavily_api_key = Some(v);
+        }
+        if let Ok(v) = std::env::var("CLAWSEED_EMBEDDING_PROVIDER") {
+            self.memory.embedding_provider = Some(v);
+        }
+        if let Ok(v) = std::env::var("CLAWSEED_EMBEDDING_MODEL") {
+            self.memory.embedding_model = Some(v);
+        }
+        if let Ok(v) = std::env::var("CLAWSEED_EMBEDDING_API_KEY")
+            && let Some(route) = self.providers.embedding_routes.first_mut()
+        {
+            route.api_key = Some(v);
+        }
+        if let Ok(v) = std::env::var("CLAWSEED_EMBEDDING_DIMENSIONS")
+            && let Ok(dims) = v.parse::<usize>()
+        {
+            self.memory.embedding_dims = Some(dims);
         }
         self
     }

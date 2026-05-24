@@ -24,5 +24,6 @@ clap = { workspace = true, features = ["derive"] }
 rustyline = { workspace = true }
 
 [features]
-default = []
+default = ["local-embedding"]
 android = ["clawseed-agent/android", "clawseed-gateway/android"]
+local-embedding = ["clawseed-agent/local-embedding", "clawseed-gateway/local-embedding"]

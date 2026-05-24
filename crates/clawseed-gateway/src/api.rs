@@ -129,6 +129,29 @@ pub async fn handle_api_status(
         .and_then(|e| e.temperature)
         .unwrap_or(state.temperature);
 
+    let mem_count = state.mem.count().await.unwrap_or(0);
+
+    let memory_info = serde_json::json!({
+        "backend": state.mem.name(),
+        "embedding_provider": config.memory.embedding_provider.as_deref().unwrap_or("none"),
+        "embedding_model": config.memory.embedding_model.as_deref().unwrap_or(""),
+        "embedding_dims": match state.mem.name() {
+            "sqlite" => {
+                // Since we can't downcast Arc<dyn Memory> to SqliteMemory, use config dims
+                config.memory.embedding_dims.unwrap_or(
+                    match config.memory.embedding_provider.as_deref() {
+                        Some("local") => 768,
+                        Some("openai") | Some("openrouter") => 1536,
+                        _ => 0,
+                    }
+                )
+            }
+            _ => 0,
+        },
+        "search_mode": config.memory.effective_search_mode().to_string(),
+        "count": mem_count,
+    });
+
     let body = serde_json::json!({
         "provider": config.providers.fallback,
         "model": model,
@@ -136,7 +159,7 @@ pub async fn handle_api_status(
         "uptime_seconds": health.get("uptime_seconds").and_then(|v| v.as_f64()).unwrap_or(0.0),
         "gateway_port": config.gateway.port,
         "locale": locale,
-        "memory_backend": state.mem.name(),
+        "memory": memory_info,
         "paired": state.pairing.is_paired(),
         "channels": channels,
         "health": health,

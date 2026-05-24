@@ -3,6 +3,10 @@ package dev.clawseed.sdk.android
 import android.content.Context
 import dev.clawseed.sdk.core.ClawSeedConfig
 import dev.clawseed.sdk.core.client.GatewayClient
+import dev.clawseed.sdk.core.model.EmbeddingDownloadProgress
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 import dev.clawseed.sdk.android.cetp.ExternalToolBridge
 
@@ -16,6 +20,7 @@ object ClawSeedAndroid {
     private var _sessionManager: SessionManager? = null
     private var _gatewayClient: GatewayClient? = null
     private var _externalToolBridge: ExternalToolBridge? = null
+    private var _downloadProgressFlow: StateFlow<EmbeddingDownloadProgress?> = MutableStateFlow(null).asStateFlow()
     @Volatile
     private var _initialized = false
     private val initLock = Object()
@@ -58,6 +63,14 @@ object ClawSeedAndroid {
     fun externalToolBridge(): ExternalToolBridge {
         return _externalToolBridge ?: error("ClawSeedAndroid not initialized. Call init() first.")
     }
+
+    /** Registers the download progress flow from the embedded gateway. Called by the hosting service. */
+    fun setDownloadProgress(flow: StateFlow<EmbeddingDownloadProgress?>) {
+        _downloadProgressFlow = flow
+    }
+
+    /** Returns the current embedding download progress, or null if no download is active. */
+    fun downloadProgress(): StateFlow<EmbeddingDownloadProgress?> = _downloadProgressFlow
 
     private var _gatewayRestarter: (suspend () -> Unit)? = null
 

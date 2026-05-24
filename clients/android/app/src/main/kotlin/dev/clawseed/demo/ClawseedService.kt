@@ -97,6 +97,8 @@ class ClawseedService : Service() {
             gatewayFailed = false
             serviceJob = scope.launch {
                 try {
+                    // Register flows before starting so they're available during Starting state
+                    ClawSeedAndroid.setDownloadProgress(gateway.downloadProgress)
                     gateway.start()
                     val gwState = gateway.state.value
                     if (gwState is GatewayState.Running) {

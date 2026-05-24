@@ -199,7 +199,8 @@ pub async fn run_gateway(
         Some(&config.storage),
         &config.workspace_dir,
         fallback.and_then(|e| e.api_key.as_deref()),
-    )?;
+    )
+    .await?;
     let runtime: Box<dyn std::any::Any> = Box::new(());
     let security = Arc::new(SecurityPolicy::from_config(
         &config.autonomy,

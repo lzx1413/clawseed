@@ -386,11 +386,14 @@ impl Agent {
         };
 
         // Memory
-        let mem = clawseed_memory::create_memory(
+        let mem = clawseed_memory::create_memory_with_storage_and_routes(
             &config.memory,
+            &config.providers,
+            Some(&config.storage),
             &config.workspace_dir,
             fallback.and_then(|e| e.api_key.as_deref()),
-        )?;
+        )
+        .await?;
 
         // Observer
         let observer: Arc<dyn Observer> = Arc::new(crate::observer::NoopObserver);

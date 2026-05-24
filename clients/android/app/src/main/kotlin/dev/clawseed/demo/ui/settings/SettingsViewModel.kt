@@ -1,12 +1,14 @@
 package dev.clawseed.demo.ui.settings
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.core.client.GatewayClient
 import dev.clawseed.sdk.core.model.GatewayStatus
 import dev.clawseed.sdk.core.model.SkillInfo
 import dev.clawseed.sdk.core.model.ToolInfo
+import dev.clawseed.sdk.embedded.GatewayConfigManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,6 +55,12 @@ data class SettingsUiState(
     val searchEngine: String = "",
     val tavilyApiKey: String = "",
     val tavilyApiKeyVisible: Boolean = false,
+    val embeddingProvider: String = "",  // "" | "local" | "openai" | "openrouter" | "custom:URL"
+    val embeddingModel: String = "",
+    val embeddingDims: String = "",
+    val embeddingApiKey: String = "",
+    val embeddingApiKeyVisible: Boolean = false,
+    val downloadProgress: dev.clawseed.sdk.core.model.EmbeddingDownloadProgress? = null,
     val soulContent: String? = null,
     val isRefreshingSkills: Boolean = false,
     val isSavingSoul: Boolean = false,
@@ -60,7 +68,7 @@ data class SettingsUiState(
 
 enum class EditMode { FORM, TOML }
 
-class SettingsViewModel : ViewModel() {
+class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun client(): dev.clawseed.sdk.core.client.GatewayClient {
         return ClawSeedAndroid.gatewayClient()
@@ -72,12 +80,25 @@ class SettingsViewModel : ViewModel() {
 
     init {
         loadAll()
+        observeDownloadProgress()
+    }
+
+    private fun observeDownloadProgress() {
+        viewModelScope.launch {
+            ClawSeedAndroid.downloadProgress().collect { progress ->
+                _uiState.value = _uiState.value.copy(downloadProgress = progress)
+            }
+        }
     }
 
     fun loadAll() {
         viewModelScope.launch {
-            if (!ClawSeedAndroid.isInitialized) return@launch
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+
+            if (!ClawSeedAndroid.isInitialized) {
+                loadFromLocalConfig()
+                return@launch
+            }
 
             val statusResult = client().status()
             val toolsResult = client().tools()
@@ -103,6 +124,9 @@ class SettingsViewModel : ViewModel() {
             val autoContinue = extractAutoContinueOnTruncation(toml)
             val searchEngine = extractSearchEngine(toml)
             val tavilyKey = extractTavilyApiKey(toml)
+            val embeddingProv = extractEmbeddingProvider(toml)
+            val embeddingMod = extractEmbeddingModel(toml)
+            val embeddingDim = extractEmbeddingDims(toml)
 
             val presetIdx = PROVIDER_PRESETS.indexOfFirst { it.baseUrl.isNotBlank() && currentBaseUrl.contains(it.baseUrl.removeSuffix("/v1").removeSuffix("/")) }
                 .let { if (it == -1) PROVIDER_PRESETS.size - 1 else it }
@@ -125,6 +149,9 @@ class SettingsViewModel : ViewModel() {
                 autoContinueOnTruncation = autoContinue,
                 searchEngine = searchEngine,
                 tavilyApiKey = tavilyKey,
+                embeddingProvider = embeddingProv,
+                embeddingModel = embeddingMod,
+                embeddingDims = embeddingDim,
                 soulContent = personalityResult.getOrElse { null }?.get("SOUL.md"),
             )
         }
@@ -204,6 +231,37 @@ class SettingsViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(tavilyApiKeyVisible = !_uiState.value.tavilyApiKeyVisible)
     }
 
+    fun updateEmbeddingProvider(provider: String) {
+        val defaults = when (provider) {
+            "local" -> "gte-multilingual-base" to "768"
+            "openai" -> "text-embedding-3-small" to "1536"
+            "openrouter" -> "openai/text-embedding-3-small" to "1536"
+            else -> "" to ""
+        }
+        _uiState.value = _uiState.value.copy(
+            embeddingProvider = provider,
+            embeddingModel = if (_uiState.value.embeddingModel.isBlank()) defaults.first else _uiState.value.embeddingModel,
+            embeddingDims = if (_uiState.value.embeddingDims.isBlank()) defaults.second else _uiState.value.embeddingDims,
+            successMessage = null,
+        )
+    }
+
+    fun updateEmbeddingModel(model: String) {
+        _uiState.value = _uiState.value.copy(embeddingModel = model, successMessage = null)
+    }
+
+    fun updateEmbeddingDims(dims: String) {
+        _uiState.value = _uiState.value.copy(embeddingDims = dims, successMessage = null)
+    }
+
+    fun updateEmbeddingApiKey(key: String) {
+        _uiState.value = _uiState.value.copy(embeddingApiKey = key, successMessage = null)
+    }
+
+    fun toggleEmbeddingApiKeyVisibility() {
+        _uiState.value = _uiState.value.copy(embeddingApiKeyVisible = !_uiState.value.embeddingApiKeyVisible)
+    }
+
     fun fetchModels() {
         val state = _uiState.value
         if (state.baseUrl.isBlank()) return
@@ -234,25 +292,96 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
+    private fun loadFromLocalConfig() {
+        val configManager = GatewayConfigManager(getApplication())
+        val file = configManager.ensureConfig()
+        val toml = file.readText()
+
+        val currentBaseUrl = extractProviderBaseUrl(toml)
+        val rawApiKey = extractProviderApiKey(toml)
+        val serverHasKey = rawApiKey.contains("***") || rawApiKey.isNotBlank()
+        val currentApiKey = when {
+            rawApiKey.contains("***") && preservedApiKey != null -> preservedApiKey!!
+            rawApiKey.contains("***") -> MASKED_KEY_PLACEHOLDER
+            else -> rawApiKey
+        }
+        preservedApiKey = null
+        val currentModel = extractProviderModel(toml, null)
+        val thinking = extractProviderThinking(toml)
+        val maxTokens = extractProviderMaxTokens(toml)
+        val autoContinue = extractAutoContinueOnTruncation(toml)
+        val searchEngine = extractSearchEngine(toml)
+        val tavilyKey = extractTavilyApiKey(toml)
+        val embeddingProv = extractEmbeddingProvider(toml)
+        val embeddingMod = extractEmbeddingModel(toml)
+        val embeddingDim = extractEmbeddingDims(toml)
+
+        val presetIdx = PROVIDER_PRESETS.indexOfFirst { it.baseUrl.isNotBlank() && currentBaseUrl.contains(it.baseUrl.removeSuffix("/v1").removeSuffix("/")) }
+            .let { if (it == -1) PROVIDER_PRESETS.size - 1 else it }
+
+        _uiState.value = _uiState.value.copy(
+            status = null,
+            tools = emptyList(),
+            skills = emptyList(),
+            configToml = toml,
+            isLoading = false,
+            selectedPresetIndex = presetIdx,
+            baseUrl = currentBaseUrl,
+            apiKey = currentApiKey,
+            hasServerApiKey = serverHasKey,
+            selectedModel = currentModel,
+            thinkingEnabled = thinking,
+            maxTokens = maxTokens,
+            autoContinueOnTruncation = autoContinue,
+            searchEngine = searchEngine,
+            tavilyApiKey = tavilyKey,
+            embeddingProvider = embeddingProv,
+            embeddingModel = embeddingMod,
+            embeddingDims = embeddingDim,
+        )
+    }
+
+    private fun saveToLocalConfig(toml: String) {
+        val configManager = GatewayConfigManager(getApplication())
+        val file = configManager.ensureConfig()
+        file.writeText(toml)
+    }
+
     fun saveConfig() {
         viewModelScope.launch {
             val state = _uiState.value
             _uiState.value = state.copy(isSaving = true, error = null, successMessage = null)
 
             val toml = buildConfigToml(state)
+
+            if (!ClawSeedAndroid.isInitialized) {
+                // Gateway not running — save directly to local config file
+                saveToLocalConfig(toml)
+                _uiState.value = _uiState.value.copy(
+                    isSaving = false,
+                    successMessage = "配置已保存到本地文件，请重启应用以生效",
+                )
+                _uiState.value = _uiState.value.copy(configToml = toml)
+                return@launch
+            }
+
             client().updateConfig(toml)
                 .onSuccess {
-                    ClawSeedAndroid.restartGateway()
-                    _uiState.value = _uiState.value.copy(isSaving = false, successMessage = "配置已保存，Gateway 已重启")
+                    _uiState.value = _uiState.value.copy(isSaving = false, successMessage = "配置已保存，Gateway 正在重启...")
                     preservedApiKey = state.apiKey.ifBlank { null }
-                    // Gateway just restarted — give it a brief window before fetching data
-                    delay(500)
-                    loadAll()
+                    // Restart gateway in background — don't block the save coroutine
+                    viewModelScope.launch {
+                        ClawSeedAndroid.restartGateway()
+                        loadAll()
+                    }
                 }
                 .onFailure { e ->
+                    // API failed (gateway might have crashed during save) — save to local file
+                    saveToLocalConfig(toml)
                     _uiState.value = _uiState.value.copy(
                         isSaving = false,
-                        error = e.message ?: "保存失败",
+                        successMessage = "配置已保存到本地文件，请重启应用以生效",
+                        configToml = toml,
                     )
                 }
         }
@@ -327,6 +456,53 @@ class SettingsViewModel : ViewModel() {
             toml = replaceInSectionRaw(toml, agentHeader, "auto_continue_on_truncation", if (state.autoContinueOnTruncation) " true" else " false")
         } else {
             toml = toml.trimEnd() + "\n\n[agent]\nauto_continue_on_truncation = ${state.autoContinueOnTruncation}\n"
+        }
+
+        // Update [memory] section for embedding
+        val memoryHeader = "[memory]"
+        if (state.embeddingProvider.isBlank()) {
+            // Embedding disabled — remove [memory] section if it exists
+            if (toml.contains(memoryHeader)) {
+                val idx = toml.indexOf(memoryHeader)
+                val nextSection = toml.indexOf("\n[", idx + 1).let { if (it == -1) toml.length else it }
+                toml = toml.substring(0, idx).trimEnd() + "\n" + toml.substring(nextSection)
+            }
+        } else {
+            val embeddingModel = if (state.embeddingProvider == "local") {
+                state.embeddingModel.ifBlank { "gte-multilingual-base" }
+            } else {
+                state.embeddingModel
+            }
+            val isLocal = state.embeddingProvider == "local"
+            val embeddingDims = state.embeddingDims.ifBlank {
+                if (isLocal) "768" else ""
+            }
+            val isRealEmbeddingApiKey = state.embeddingApiKey.isNotBlank()
+                    && state.embeddingApiKey != MASKED_KEY_PLACEHOLDER
+                    && !state.embeddingApiKey.contains("***")
+            val memorySection = buildString {
+                append(memoryHeader)
+                appendLine()
+                append("embedding_provider = \"${state.embeddingProvider}\"")
+                appendLine()
+                append("embedding_model = \"$embeddingModel\"")
+                appendLine()
+                if (embeddingDims.isNotBlank()) {
+                    append("embedding_dims = $embeddingDims")
+                    appendLine()
+                }
+                if (!isLocal && isRealEmbeddingApiKey) {
+                    append("embedding_api_key = \"${state.embeddingApiKey}\"")
+                    appendLine()
+                }
+            }
+            if (toml.contains(memoryHeader)) {
+                val idx = toml.indexOf(memoryHeader)
+                val nextSection = toml.indexOf("\n[", idx + 1).let { if (it == -1) toml.length else it }
+                toml = toml.substring(0, idx) + memorySection + toml.substring(nextSection)
+            } else {
+                toml = toml.trimEnd() + "\n\n" + memorySection
+            }
         }
 
         return toml
@@ -651,6 +827,21 @@ class SettingsViewModel : ViewModel() {
         }
 
         const val MASKED_KEY_PLACEHOLDER = "••••••••"
+
+        private fun extractEmbeddingProvider(toml: String): String {
+            val section = findSection(toml, "[memory]")
+            return extractTomlValueInBlock(section, "embedding_provider") ?: ""
+        }
+
+        private fun extractEmbeddingModel(toml: String): String {
+            val section = findSection(toml, "[memory]")
+            return extractTomlValueInBlock(section, "embedding_model") ?: ""
+        }
+
+        private fun extractEmbeddingDims(toml: String): String {
+            val section = findSection(toml, "[memory]")
+            return extractTomlValueInBlock(section, "embedding_dims") ?: ""
+        }
 
         private fun extractSearchEngine(toml: String): String {
             val section = findSection(toml, "[web_search]")

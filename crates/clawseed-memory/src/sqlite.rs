@@ -37,6 +37,11 @@ pub struct SqliteMemory {
 }
 
 impl SqliteMemory {
+    /// Return the embedding dimensions (0 = no embedding, vector search disabled).
+    pub fn dimensions(&self) -> usize {
+        self.embedder.dimensions()
+    }
+
     pub fn new(workspace_dir: &Path) -> anyhow::Result<Self> {
         Self::with_embedder(
             workspace_dir,
@@ -52,27 +57,15 @@ impl SqliteMemory {
     /// Like `new`, but stores data in `{db_name}.db` instead of `brain.db`.
     pub fn new_named(workspace_dir: &Path, db_name: &str) -> anyhow::Result<Self> {
         let db_path = workspace_dir.join("memory").join(format!("{db_name}.db"));
-        if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let conn = Self::open_connection(&db_path, None)?;
-        conn.execute_batch(
-            "PRAGMA journal_mode = WAL;
-             PRAGMA synchronous  = NORMAL;
-             PRAGMA mmap_size    = 8388608;
-             PRAGMA cache_size   = -2000;
-             PRAGMA temp_store   = MEMORY;",
-        )?;
-        Self::init_schema(&conn)?;
-        Ok(Self {
-            conn: Arc::new(Mutex::new(conn)),
-            _db_path: db_path,
-            embedder: Arc::new(super::embeddings::NoopEmbedding),
-            vector_weight: 0.7,
-            keyword_weight: 0.3,
-            cache_max: 10_000,
-            search_mode: SearchMode::default(),
-        })
+        Self::with_embedder_path(
+            &db_path,
+            Arc::new(super::embeddings::NoopEmbedding),
+            0.7,
+            0.3,
+            10_000,
+            None,
+            SearchMode::default(),
+        )
     }
 
     /// Build SQLite memory with optional open timeout.
@@ -90,12 +83,32 @@ impl SqliteMemory {
         search_mode: SearchMode,
     ) -> anyhow::Result<Self> {
         let db_path = workspace_dir.join("memory").join("brain.db");
+        Self::with_embedder_path(
+            &db_path,
+            embedder,
+            vector_weight,
+            keyword_weight,
+            cache_max,
+            open_timeout_secs,
+            search_mode,
+        )
+    }
 
+    /// Build SQLite memory with an explicit database path and embedder.
+    fn with_embedder_path(
+        db_path: &Path,
+        embedder: Arc<dyn EmbeddingProvider>,
+        vector_weight: f32,
+        keyword_weight: f32,
+        cache_max: usize,
+        open_timeout_secs: Option<u64>,
+        search_mode: SearchMode,
+    ) -> anyhow::Result<Self> {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
 
-        let conn = Self::open_connection(&db_path, open_timeout_secs)?;
+        let conn = Self::open_connection(db_path, open_timeout_secs)?;
 
         // ── Production-grade PRAGMA tuning ──────────────────────
         // WAL mode: concurrent reads during writes, crash-safe
@@ -115,7 +128,7 @@ impl SqliteMemory {
 
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
-            _db_path: db_path,
+            _db_path: db_path.to_path_buf(),
             embedder,
             vector_weight,
             keyword_weight,
@@ -431,7 +444,6 @@ impl SqliteMemory {
     }
 
     /// Safe reindex: rebuild FTS5 + embeddings with rollback on failure
-    #[cfg(test)]
     pub async fn reindex(&self) -> anyhow::Result<usize> {
         // Step 1: Rebuild FTS5
         {
@@ -481,6 +493,70 @@ impl SqliteMemory {
         }
 
         Ok(count)
+    }
+
+    /// Backfill embeddings for memories that lack them.
+    ///
+    /// Processes `batch_size` memories at a time to avoid API rate limits
+    /// and long blocking operations. Returns the total number of memories
+    /// that were successfully embedded.
+    pub async fn backfill_embeddings(&self, batch_size: usize) -> anyhow::Result<usize> {
+        if self.embedder.dimensions() == 0 {
+            return Ok(0);
+        }
+
+        let mut total_count = 0;
+
+        loop {
+            let conn = self.conn.clone();
+            let entries: Vec<(String, String)> = tokio::task::spawn_blocking(move || {
+                let conn = conn.lock();
+                let mut stmt = conn
+                    .prepare("SELECT id, content FROM memories WHERE embedding IS NULL LIMIT ?1")?;
+                let rows = stmt.query_map(params![batch_size], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?;
+                Ok::<_, anyhow::Error>(rows.filter_map(std::result::Result::ok).collect())
+            })
+            .await??;
+
+            if entries.is_empty() {
+                break;
+            }
+
+            let batch_len = entries.len();
+            let mut batch_count = 0;
+
+            for (id, content) in &entries {
+                if let Ok(Some(emb)) = self.get_or_compute_embedding(content).await {
+                    let bytes = vector::vec_to_bytes(&emb);
+                    let conn = self.conn.clone();
+                    let id = id.clone();
+                    tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                        let conn = conn.lock();
+                        conn.execute(
+                            "UPDATE memories SET embedding = ?1 WHERE id = ?2",
+                            params![bytes, id],
+                        )?;
+                        Ok(())
+                    })
+                    .await??;
+                    batch_count += 1;
+                }
+            }
+
+            total_count += batch_count;
+            tracing::info!(
+                "Backfill batch: embedded {batch_count}/{batch_len} memories (total: {total_count})"
+            );
+
+            // If we got fewer entries than batch_size, we've exhausted all NULL rows.
+            if entries.len() < batch_size {
+                break;
+            }
+        }
+
+        Ok(total_count)
     }
 
     /// List memories by time range (used when query is empty).

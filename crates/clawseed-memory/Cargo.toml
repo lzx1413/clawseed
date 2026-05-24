@@ -21,7 +21,17 @@ chrono = { workspace = true }
 parking_lot = { workspace = true }
 uuid = { workspace = true }
 sha2 = "0.10"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
+lzma-rust2 = { version = "0.15", optional = true }
+tar = { version = "0.4", optional = true }
+ort = { version = "2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "load-dynamic", "api-24"], optional = true }
+tokenizers = { version = "0.21", optional = true }
+ndarray = { version = "0.17", optional = true }
+
+[features]
+default = []
+local-embedding = ["ort", "tokenizers", "ndarray", "lzma-rust2", "tar"]
 
 [dev-dependencies]
 tempfile = "3.26"

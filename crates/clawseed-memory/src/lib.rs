@@ -18,6 +18,9 @@ pub mod sqlite;
 pub mod traits;
 pub mod vector;
 
+#[cfg(feature = "local-embedding")]
+pub mod model_cache;
+
 use clawseed_api::memory_traits::Memory;
 use clawseed_config::schema::MemoryConfig;
 use std::sync::Arc;
@@ -80,17 +83,92 @@ pub fn create_memory(
 
 /// Create a memory backend with storage and routes.
 ///
-/// Delegates to `create_memory()` for the actual backend. The additional
-/// parameters (embedding routes, storage config) are reserved for future
-/// vector-search and consolidated storage support.
-pub fn create_memory_with_storage_and_routes(
+/// Resolves the embedding provider from config (local ONNX or remote API)
+/// and constructs SqliteMemory with config-driven search weights and mode.
+/// Falls back to NoopEmbedding when no embedding provider is configured.
+pub async fn create_memory_with_storage_and_routes(
     config: &MemoryConfig,
-    _embedding_routes: &clawseed_config::schema::ProvidersConfig,
+    providers_config: &clawseed_config::schema::ProvidersConfig,
     _storage_config: Option<&clawseed_config::schema::StorageConfig>,
     workspace_dir: &std::path::Path,
-    api_key: Option<&str>,
+    _api_key: Option<&str>,
 ) -> anyhow::Result<Arc<dyn Memory>> {
-    create_memory(config, workspace_dir, api_key)
+    // Best-effort hygiene pass (throttled by state file).
+    if let Err(e) = hygiene::run_if_due(config, workspace_dir) {
+        tracing::warn!("memory hygiene skipped: {e}");
+    }
+
+    // Snapshot after hygiene if enabled.
+    if config.snapshot_enabled
+        && let Err(e) = snapshot::export_snapshot(workspace_dir)
+    {
+        tracing::warn!("memory snapshot skipped: {e}");
+    }
+
+    // Auto-hydrate from snapshot if brain.db is missing.
+    if config.auto_hydrate && snapshot::should_hydrate(workspace_dir) {
+        tracing::info!("Cold boot detected — hydrating from MEMORY_SNAPSHOT.md");
+        match snapshot::hydrate_from_snapshot(workspace_dir) {
+            Ok(count) => {
+                if count > 0 {
+                    tracing::info!("Hydrated {count} core memories from snapshot");
+                }
+            }
+            Err(e) => {
+                tracing::warn!("memory hydration failed: {e}");
+            }
+        }
+    }
+
+    match config.backend.as_str() {
+        "none" => Ok(Arc::new(none::NoneMemory::new())),
+        _ => {
+            // Resolve embedding provider from config, fall back to NoopEmbedding on failure.
+            let embedder =
+                embeddings::resolve_embedding_provider(config, providers_config, workspace_dir)
+                    .await
+                    .unwrap_or_else(|e| {
+                        tracing::warn!("Embedding provider failed: {e}, using keyword-only search");
+                        Arc::new(embeddings::NoopEmbedding)
+                    });
+
+            let search_mode = config.effective_search_mode();
+            let vector_weight = config.effective_vector_weight();
+            let keyword_weight = config.effective_keyword_weight();
+            let cache_max = config.effective_embedding_cache_max();
+
+            // Default to SQLite; fall back to NoneMemory on error.
+            match sqlite::SqliteMemory::with_embedder(
+                workspace_dir,
+                embedder,
+                vector_weight,
+                keyword_weight,
+                cache_max,
+                None,
+                search_mode,
+            ) {
+                Ok(mem) => {
+                    // Optional: backfill NULL embeddings at startup.
+                    if config.backfill_on_startup && mem.dimensions() > 0 {
+                        tracing::info!("Backfilling embeddings for existing memories...");
+                        match mem.backfill_embeddings(100).await {
+                            Ok(count) => {
+                                tracing::info!("Backfilled {count} memories with embeddings")
+                            }
+                            Err(e) => tracing::warn!("Embedding backfill failed: {e}"),
+                        }
+                    }
+                    Ok(Arc::new(mem))
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to create SQLite memory, falling back to NoneMemory: {e}"
+                    );
+                    Ok(Arc::new(none::NoneMemory::new()))
+                }
+            }
+        }
+    }
 }
 
 /// Check if content should be skipped for autosave.

@@ -279,14 +279,18 @@ async fn run_agent_job(
     let memory_context = if !job.uses_memory {
         String::new()
     } else {
-        match clawseed_memory::create_memory(
+        match clawseed_memory::create_memory_with_storage_and_routes(
             &config.memory,
+            &config.providers,
+            Some(&config.storage),
             &config.workspace_dir,
             config
                 .providers
                 .fallback_provider()
                 .and_then(|e| e.api_key.as_deref()),
-        ) {
+        )
+        .await
+        {
             Ok(mem) => match mem.recall(&prompt, 5, None, None, None).await {
                 Ok(entries) if !entries.is_empty() => {
                     let ctx: String = entries
@@ -345,14 +349,18 @@ async fn run_agent_job(
             // Purge memories written during this failed run so they don't
             // pollute future recall and cause context snowball.
             let mem_session_key = format!("cli:{}", session_path.display());
-            if let Ok(mem) = clawseed_memory::create_memory(
+            if let Ok(mem) = clawseed_memory::create_memory_with_storage_and_routes(
                 &config.memory,
+                &config.providers,
+                Some(&config.storage),
                 &config.workspace_dir,
                 config
                     .providers
                     .fallback_provider()
                     .and_then(|e| e.api_key.as_deref()),
-            ) {
+            )
+            .await
+            {
                 let _ = mem.purge_session(&mem_session_key).await;
             }
             (false, format!("agent job failed: {e}"))

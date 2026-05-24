@@ -3,15 +3,28 @@ package dev.clawseed.sdk.core.model
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** Snapshot of gateway runtime status and selected provider configuration. */
+/** Snapshot of gateway runtime status and provider configuration. */
 @Serializable
 data class GatewayStatus(
     val provider: String? = null,
     val model: String = "",
     val temperature: Double = 0.7,
+    /** Legacy field — replaced by `memory` object. */
     @SerialName("memory_backend") val memoryBackend: String? = null,
     val paired: Boolean = false,
     @SerialName("gateway_port") val gatewayPort: Int = 0,
+    val memory: MemoryStatus? = null,
+)
+
+/** Memory subsystem status from the gateway. */
+@Serializable
+data class MemoryStatus(
+    val backend: String = "none",
+    @SerialName("embedding_provider") val embeddingProvider: String = "none",
+    @SerialName("embedding_model") val embeddingModel: String = "",
+    @SerialName("embedding_dims") val embeddingDims: Int = 0,
+    @SerialName("search_mode") val searchMode: String = "hybrid",
+    val count: Int = 0,
 )
 
 /** Description of one tool exposed by the gateway. */

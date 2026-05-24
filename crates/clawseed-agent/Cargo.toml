@@ -38,6 +38,7 @@ toml = { workspace = true }
 default = ["cron-engine"]
 cron-engine = ["dep:cron", "dep:chrono-tz"]
 android = ["clawseed-tools/android"]
+local-embedding = ["clawseed-memory/local-embedding"]
 
 [dev-dependencies]
 tempfile = "3.26"
