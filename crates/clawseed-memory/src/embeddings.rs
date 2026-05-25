@@ -265,13 +265,23 @@ impl EmbeddingProvider for LocalOnnxEmbedding {
             let attn_mask_value = ort::value::Value::from_array(attn_mask_arr)?;
 
             let mut inputs_vec: Vec<(String, ort::session::SessionInputValue)> = vec![
-                ("input_ids".into(), ort::session::SessionInputValue::from(input_ids_value)),
-                ("attention_mask".into(), ort::session::SessionInputValue::from(attn_mask_value)),
+                (
+                    "input_ids".into(),
+                    ort::session::SessionInputValue::from(input_ids_value),
+                ),
+                (
+                    "attention_mask".into(),
+                    ort::session::SessionInputValue::from(attn_mask_value),
+                ),
             ];
             if has_token_type_ids {
-                let token_type_ids_arr = ndarray::Array2::from_shape_vec((1, seq_len), token_type_ids)?;
+                let token_type_ids_arr =
+                    ndarray::Array2::from_shape_vec((1, seq_len), token_type_ids)?;
                 let token_type_ids_value = ort::value::Value::from_array(token_type_ids_arr)?;
-                inputs_vec.push(("token_type_ids".into(), ort::session::SessionInputValue::from(token_type_ids_value)));
+                inputs_vec.push((
+                    "token_type_ids".into(),
+                    ort::session::SessionInputValue::from(token_type_ids_value),
+                ));
             }
 
             let inputs = ort::session::SessionInputs::from(inputs_vec);
@@ -281,11 +291,13 @@ impl EmbeddingProvider for LocalOnnxEmbedding {
 
             if has_sentence_embedding {
                 // Model provides pre-computed sentence_embedding (already L2-normalized)
-                let (_shape, sentence_emb) = outputs["sentence_embedding"].try_extract_tensor::<f32>()?;
+                let (_shape, sentence_emb) =
+                    outputs["sentence_embedding"].try_extract_tensor::<f32>()?;
                 results.push(sentence_emb.to_vec());
             } else {
                 // BERT-style: last_hidden_state → manual mean pooling + L2 normalization
-                let (_shape, last_hidden) = outputs["last_hidden_state"].try_extract_tensor::<f32>()?;
+                let (_shape, last_hidden) =
+                    outputs["last_hidden_state"].try_extract_tensor::<f32>()?;
                 let hidden_dim = self.dims;
                 let mut pooled = vec![0.0f32; hidden_dim];
                 let mut mask_sum = 0.0f32;

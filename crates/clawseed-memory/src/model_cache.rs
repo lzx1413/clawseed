@@ -121,19 +121,22 @@ fn ort_dist_url() -> &'static str {
 pub async fn ensure_ort_lib_available(model_dir: &Path) -> anyhow::Result<PathBuf> {
     let ort_lib_path = model_dir.join("libonnxruntime.so");
     if ort_lib_path.exists() {
-        tracing::info!("ONNX Runtime .so already available at {}", ort_lib_path.display());
+        tracing::info!(
+            "ONNX Runtime .so already available at {}",
+            ort_lib_path.display()
+        );
         return Ok(ort_lib_path);
     }
 
     std::fs::create_dir_all(model_dir)?;
 
-    tracing::info!("Downloading ONNX Runtime shared library to {}", model_dir.display());
-
-    let client = clawseed_config::schema::build_runtime_proxy_client_with_timeouts(
-        "ort-download",
-        300,
-        30,
+    tracing::info!(
+        "Downloading ONNX Runtime shared library to {}",
+        model_dir.display()
     );
+
+    let client =
+        clawseed_config::schema::build_runtime_proxy_client_with_timeouts("ort-download", 300, 30);
 
     let url = ort_dist_url();
     let resp = client.get(url).send().await?;
@@ -223,7 +226,9 @@ async fn download_file(client: &reqwest::Client, url: &str, dest: &Path) -> anyh
     tracing::info!(
         "EMBEDDING_DOWNLOAD_START:{}:{}",
         filename,
-        total_size.map(|s| s.to_string()).unwrap_or_else(|| "-1".to_string())
+        total_size
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "-1".to_string())
     );
 
     let mut file = std::fs::File::create(dest)?;
@@ -269,17 +274,15 @@ async fn download_file(client: &reqwest::Client, url: &str, dest: &Path) -> anyh
                 "EMBEDDING_DOWNLOAD_PROGRESS:{}:{}:{}:{}",
                 percent,
                 downloaded,
-                total_size.map(|s| s.to_string()).unwrap_or_else(|| "-1".to_string()),
+                total_size
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "-1".to_string()),
                 filename
             );
         }
     }
 
-    tracing::info!(
-        "EMBEDDING_DOWNLOAD_COMPLETE:{}:{}",
-        filename,
-        downloaded
-    );
+    tracing::info!("EMBEDDING_DOWNLOAD_COMPLETE:{}:{}", filename, downloaded);
 
     Ok(())
 }
