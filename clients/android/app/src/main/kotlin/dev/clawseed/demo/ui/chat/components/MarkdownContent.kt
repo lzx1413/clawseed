@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 fun MarkdownContent(
     content: String,
     modifier: Modifier = Modifier,
+    contentColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
 ) {
     val blocks = remember(content) { parseBlocks(content) }
     Column(modifier = modifier) {
@@ -50,6 +51,7 @@ fun MarkdownContent(
                 is MdBlock.CodeBlock -> CodeBlock(
                     code = block.code,
                     language = block.language,
+                    contentColor = contentColor,
                     modifier = Modifier.padding(vertical = 4.dp),
                 )
                 is MdBlock.Paragraph -> {
@@ -57,7 +59,7 @@ fun MarkdownContent(
                     Text(
                         text = styled,
                         style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Ltr),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = contentColor,
                     )
                 }
                 is MdBlock.Heading -> {
@@ -67,7 +69,7 @@ fun MarkdownContent(
                         else -> MaterialTheme.typography.titleMedium
                     }
                     val styled = remember(block.text) { parseInlineMarkdown(block.text) }
-                    Text(text = styled, style = style.copy(textDirection = TextDirection.Ltr))
+                    Text(text = styled, style = style.copy(textDirection = TextDirection.Ltr), color = contentColor)
                 }
                 is MdBlock.ListItem -> {
                     val styled = remember(block.text) { parseInlineMarkdown(block.text) }
@@ -79,12 +81,12 @@ fun MarkdownContent(
                         Text(
                             text = "•",
                             style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = contentColor,
                         )
                         Text(
                             text = styled,
                             style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Ltr),
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = contentColor,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -92,6 +94,7 @@ fun MarkdownContent(
                 is MdBlock.Table -> TableBlock(
                     headers = block.headers,
                     rows = block.rows,
+                    contentColor = contentColor,
                     modifier = Modifier.padding(vertical = 4.dp),
                 )
             }
@@ -104,6 +107,7 @@ fun CodeBlock(
     code: String,
     language: String?,
     modifier: Modifier = Modifier,
+    contentColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
 ) {
     val clipboardManager = LocalClip.current
     var copied by remember { mutableStateOf(false) }
@@ -146,7 +150,7 @@ fun CodeBlock(
             Text(
                 text = code,
                 style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = contentColor,
             )
         }
     }
@@ -246,6 +250,7 @@ private fun TableBlock(
     headers: List<String>,
     rows: List<List<String>>,
     modifier: Modifier = Modifier,
+    contentColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
 ) {
     val colCount = headers.size
     Column(
@@ -301,6 +306,7 @@ private fun RowScope.TableCell(
     text: AnnotatedString,
     bold: Boolean,
     showDivider: Boolean,
+    contentColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
 ) {
     Box(
         modifier = Modifier
@@ -315,7 +321,7 @@ private fun RowScope.TableCell(
                 fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
                 textDirection = TextDirection.Ltr,
             ),
-            color = MaterialTheme.colorScheme.onSurface,
+            color = contentColor,
         )
     }
     if (showDivider) {

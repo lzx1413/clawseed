@@ -381,10 +381,9 @@ private fun ThinkingCard(content: String, modifier: Modifier = Modifier) {
         }
         AnimatedVisibility(visible = expanded) {
             SelectionContainer {
-                Text(
-                    text = content,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                MarkdownContent(
+                    content = content,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
