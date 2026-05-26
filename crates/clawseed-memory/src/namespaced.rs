@@ -68,7 +68,15 @@ impl Memory for NamespacedMemory {
         search_mode: Option<SearchMode>,
     ) -> anyhow::Result<Vec<MemoryEntry>> {
         self.inner
-            .recall_namespaced(&self.namespace, query, limit, session_id, since, until, search_mode)
+            .recall_namespaced(
+                &self.namespace,
+                query,
+                limit,
+                session_id,
+                since,
+                until,
+                search_mode,
+            )
             .await
     }
 
@@ -127,7 +135,15 @@ impl Memory for NamespacedMemory {
         // Otherwise, return empty results (namespace isolation).
         if namespace == self.namespace {
             self.inner
-                .recall_namespaced(&self.namespace, query, limit, session_id, since, until, search_mode)
+                .recall_namespaced(
+                    &self.namespace,
+                    query,
+                    limit,
+                    session_id,
+                    since,
+                    until,
+                    search_mode,
+                )
                 .await
         } else {
             Ok(Vec::new())

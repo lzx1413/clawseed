@@ -1927,7 +1927,7 @@ mod tests {
     use async_trait::async_trait;
     use axum::response::IntoResponse;
     use clawseed_agent::security::pairing::PairingGuard;
-    use clawseed_api::memory_traits::{Memory, MemoryCategory, MemoryEntry};
+    use clawseed_api::memory_traits::{Memory, MemoryCategory, MemoryEntry, SearchMode};
     use clawseed_api::provider::Provider;
     use http_body_util::BodyExt;
     use parking_lot::Mutex;
@@ -1959,6 +1959,7 @@ mod tests {
             _session_id: Option<&str>,
             _since: Option<&str>,
             _until: Option<&str>,
+            _search_mode: Option<SearchMode>,
         ) -> anyhow::Result<Vec<MemoryEntry>> {
             Ok(Vec::new())
         }

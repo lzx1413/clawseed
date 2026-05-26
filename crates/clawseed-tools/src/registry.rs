@@ -38,6 +38,7 @@ use crate::memory_store::MemoryStoreTool;
 use crate::model_routing_config::ModelRoutingConfigTool;
 use crate::pdf_read::PdfReadTool;
 use crate::shell::ShellTool;
+use crate::skill_create::SkillCreateTool;
 use crate::skill_tool::SkillTool;
 use crate::web_fetch::WebFetchTool;
 use crate::web_search_tool::WebSearchTool;
@@ -114,6 +115,7 @@ pub fn all_tools(
     // Skill tool: only include when skill system is enabled
     if config.skills.enabled {
         tools.push(Box::new(SkillTool::new()));
+        tools.push(Box::new(SkillCreateTool::new()));
     }
 
     // web_fetch: only include when enabled

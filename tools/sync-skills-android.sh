@@ -35,8 +35,9 @@ echo "==> Pushing skills to device (package: ${PACKAGE})"
 adb push "${SKILLS_SRC}/" "${DEVICE_TMP}/" >/dev/null
 
 # Copy from temp to app internal storage via run-as
-# The app's workspace is context.filesDir which maps to /data/data/<pkg>/files/.clawseed/
-SKILLS_DIR="/data/data/${PACKAGE}/files/.clawseed/skills"
+# Skills are stored under the workspace directory so the agent can manage them
+# via file tools. Workspace path: /data/data/<pkg>/files/.clawseed/workspace/
+SKILLS_DIR="/data/data/${PACKAGE}/files/.clawseed/workspace/.clawseed/skills"
 
 adb shell "run-as ${PACKAGE} mkdir -p ${SKILLS_DIR}" 2>/dev/null
 

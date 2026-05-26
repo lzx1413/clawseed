@@ -127,6 +127,81 @@ class GatewayConfigManager(private val context: Context) {
         }
     }
 
+    /** Copies bundled skills from APK assets to the workspace skills directory.
+     *  Only copies if the target skill directory doesn't already exist, so user-modified
+     *  skills are never overwritten. Scans all skill directories found under assets/skills/.
+     *  This follows the same pattern as ensureBundledModelFiles(). */
+    fun ensureBundledSkills() {
+        val skillsDir = File(workspaceDir(), ".clawseed/skills")
+        skillsDir.mkdirs()
+
+        val assetBase = "skills"
+        val skillNames = try {
+            context.assets.list(assetBase)?.filterNotNull() ?: emptyList()
+        } catch (_: Exception) { emptyList() }
+
+        for (skillName in skillNames) {
+            val targetDir = File(skillsDir, skillName)
+            if (targetDir.exists()) continue // Don't overwrite user-modified skills
+
+            val skillAssetBase = "$assetBase/$skillName"
+            val skillFiles = try {
+                context.assets.list(skillAssetBase)?.filterNotNull() ?: emptyList()
+            } catch (_: Exception) { emptyList() }
+
+            targetDir.mkdirs()
+            for (filename in skillFiles) {
+                val assetPath = "$skillAssetBase/$filename"
+                try {
+                    context.assets.open(assetPath).use { input ->
+                        File(targetDir, filename).outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    Log.i(TAG, "Copied bundled skill file: $assetPath → ${File(targetDir, filename).absolutePath}")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to copy bundled skill file: $assetPath", e)
+                }
+            }
+            Log.i(TAG, "Seeded bundled skill: $skillName")
+        }
+    }
+
+    /** Ensures skills directory exists under the workspace and migrates any skills
+     *  from the legacy location ({configDir}/skills/) to the workspace-level path
+     *  ({workspaceDir}/.clawseed/skills/) so the agent can manage skills via file tools. */
+    fun ensureSkillsDir() {
+        val targetDir = File(workspaceDir(), ".clawseed/skills")
+        if (!targetDir.exists()) {
+            targetDir.mkdirs()
+            Log.i(TAG, "Created workspace skills directory: ${targetDir.absolutePath}")
+        }
+
+        // Migrate skills from legacy location ({configDir}/skills/) if it exists.
+        // Uses copy+delete instead of renameTo() because cross-filesystem renames fail on Android.
+        val legacyDir = File(configDir(), "skills")
+        if (legacyDir.exists() && legacyDir.isDirectory) {
+            val legacySkills = legacyDir.listFiles()?.filter { it.isDirectory } ?: emptyList()
+            for (skillDir in legacySkills) {
+                val dest = File(targetDir, skillDir.name)
+                if (dest.exists()) continue // Don't overwrite workspace-level skills
+                try {
+                    skillDir.copyRecursively(dest)
+                    skillDir.deleteRecursively()
+                    Log.i(TAG, "Migrated skill: ${skillDir.name} → ${dest.absolutePath}")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to migrate skill: ${skillDir.name}", e)
+                }
+            }
+            // Remove empty legacy directory
+            val remaining = legacyDir.listFiles()
+            if (remaining == null || remaining.isEmpty()) {
+                legacyDir.delete()
+                Log.i(TAG, "Removed empty legacy skills directory")
+            }
+        }
+    }
+
     private fun enableSectionIfPresent(content: String, sectionHeader: String, patch: Pair<String, String>): String {
         val sectionIdx = content.indexOf("\n$sectionHeader\n")
         if (sectionIdx == -1) return content

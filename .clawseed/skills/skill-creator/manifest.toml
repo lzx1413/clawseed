@@ -1,0 +1,6 @@
+[skill]
+name = "skill-creator"
+version = "0.1.0"
+description = "创建新技能或从对话中总结技能"
+permissions = ["skill_create", "file_read", "file_write"]
+triggers = ["创建技能", "新建skill", "保存为skill", "总结为skill", "生成skill", "skill创建", "创建一个skill", "帮我创建skill"]

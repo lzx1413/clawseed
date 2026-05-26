@@ -8,3 +8,4 @@ app/src/main/jniLibs/
 app/src/main/assets/
 !app/src/main/assets/models/
 !app/src/main/assets/models/gte-multilingual-base/
+!app/src/main/assets/skills/

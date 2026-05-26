@@ -65,15 +65,15 @@ impl Tool for MemoryRecallTool {
         let since = args.get("since").and_then(|v| v.as_str());
         let until = args.get("until").and_then(|v| v.as_str());
 
-        let search_mode: Option<SearchMode> = args
-            .get("search_mode")
-            .and_then(|v| v.as_str())
-            .map(|s| match s {
-                "bm25" => SearchMode::Bm25,
-                "embedding" => SearchMode::Embedding,
-                "hybrid" => SearchMode::Hybrid,
-                _ => SearchMode::Hybrid,
-            });
+        let search_mode: Option<SearchMode> =
+            args.get("search_mode")
+                .and_then(|v| v.as_str())
+                .map(|s| match s {
+                    "bm25" => SearchMode::Bm25,
+                    "embedding" => SearchMode::Embedding,
+                    "hybrid" => SearchMode::Hybrid,
+                    _ => SearchMode::Hybrid,
+                });
 
         if query.trim().is_empty() && since.is_none() && until.is_none() {
             return Ok(ToolResult {
@@ -128,7 +128,11 @@ impl Tool for MemoryRecallTool {
             .and_then(serde_json::Value::as_u64)
             .map_or(5, |v| v as usize);
 
-        match self.memory.recall(query, limit, None, since, until, search_mode).await {
+        match self
+            .memory
+            .recall(query, limit, None, since, until, search_mode)
+            .await
+        {
             Ok(entries) if entries.is_empty() => {
                 // Keyword search found nothing — fall back to listing all memories
                 // so the LLM can pick relevant ones from the full set.

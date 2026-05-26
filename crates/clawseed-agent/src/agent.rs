@@ -524,6 +524,9 @@ impl Agent {
             Arc::new(reg)
         };
 
+        // Seed built-in skills before loading the index
+        crate::skills::builtin::ensure_builtin_skills(&config.workspace_dir);
+
         // Load skill index
         let extra_roots: Vec<String> = config.skills.extra_roots.clone();
         let skill_index = if config.skills.enabled {
@@ -703,6 +706,21 @@ impl Agent {
         Ok(())
     }
 
+    /// Refresh the skill index from disk and rebuild the system prompt.
+    fn refresh_skills(&mut self) -> Result<()> {
+        if !self.skills_enabled {
+            return Ok(());
+        }
+        self.skill_index = crate::skills::load_skill_index_with_roots(
+            &self.workspace_dir,
+            &self.skills_extra_roots,
+        )
+        .into_iter()
+        .collect();
+        self.rebuild_system_prompt()?;
+        Ok(())
+    }
+
     /// Handle Skill tool calls: activate or deactivate skills.
     ///
     /// Reads action/skill_name from the original tool call arguments (not from
@@ -760,6 +778,64 @@ impl Agent {
             };
 
             result.output = new_output;
+        }
+    }
+
+    /// Handle skill_create tool calls: refresh skill index and optionally activate.
+    fn handle_skill_create_results(
+        &mut self,
+        calls: &[ParsedToolCall],
+        results: &mut [crate::dispatcher::ToolExecutionResult],
+    ) {
+        for (i, call) in calls.iter().enumerate() {
+            if call.name != "skill_create" || i >= results.len() {
+                continue;
+            }
+
+            let result = &mut results[i];
+            if !result.success {
+                continue;
+            }
+
+            let skill_name = match call.arguments.get("name").and_then(|v| v.as_str()) {
+                Some(name) if !name.is_empty() => name,
+                _ => continue,
+            };
+
+            let activate = call
+                .arguments
+                .get("activate")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+
+            // Refresh skill index from disk so the new skill appears
+            if let Err(e) = self.refresh_skills() {
+                result.output = format!(
+                    "Created skill '{}' but failed to refresh skill index: {}",
+                    skill_name, e
+                );
+                continue;
+            }
+
+            if activate {
+                match self.activate_skill(skill_name) {
+                    Ok(msg) => {
+                        result.output =
+                            format!("Created and activated skill '{}'. {}", skill_name, msg);
+                    }
+                    Err(e) => {
+                        result.output = format!(
+                            "Created skill '{}' but activation failed: {}",
+                            skill_name, e
+                        );
+                    }
+                }
+            } else {
+                result.output = format!(
+                    "Created skill '{}'. Use Skill({{\"skill\": \"{}\"}}) to activate it.",
+                    skill_name, skill_name
+                );
+            }
         }
     }
 
@@ -1077,6 +1153,7 @@ impl Agent {
     async fn process_tool_calls(&mut self, calls: &[ParsedToolCall]) -> Vec<ToolExecutionResult> {
         let mut results = self.execute_tools(calls).await;
         self.handle_skill_tool_results(calls, &mut results);
+        self.handle_skill_create_results(calls, &mut results);
         let formatted = self.tool_dispatcher.format_results(&results);
         self.history.push(formatted);
         self.trim_history();
@@ -1467,6 +1544,7 @@ impl Agent {
 
             // Handle skill activations BEFORE emitting events or formatting to history.
             self.handle_skill_tool_results(&calls, &mut results);
+            self.handle_skill_create_results(&calls, &mut results);
 
             for result in &results {
                 let result_id = result.tool_call_id.as_ref().unwrap().clone();

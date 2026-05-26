@@ -4,6 +4,7 @@
 //! visible in the system prompt; full skill content is loaded on demand via
 //! the `Skill` tool and injected into the system prompt.
 
+pub mod builtin;
 pub mod loader;
 pub mod manifest;
 

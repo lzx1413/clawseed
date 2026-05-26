@@ -50,6 +50,8 @@ class EmbeddedGateway(
             val configManager = GatewayConfigManager(context)
             configManager.ensureConfig()
             configManager.ensureBundledModelFiles()
+            configManager.ensureBundledSkills()
+            configManager.ensureSkillsDir()
 
             process = ProcessBuilder(binary.absolutePath, "gateway", "--port", config.port.toString())
                 .redirectErrorStream(true)

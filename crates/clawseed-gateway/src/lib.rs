@@ -484,6 +484,9 @@ pub async fn run_gateway(
     type SkillExcluded = Arc<std::sync::Mutex<Vec<String>>>;
 
     let (skill_index, skills_excluded): (SkillIndex, SkillExcluded) = {
+        // Seed built-in skills before loading the index
+        clawseed_agent::skills::builtin::ensure_builtin_skills(&config.workspace_dir);
+
         let extra_roots: Vec<String> = config.skills.extra_roots.clone();
         let excluded = config.skills.excluded.clone();
         if config.skills.enabled {

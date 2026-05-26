@@ -1283,7 +1283,10 @@ mod tests {
         .await
         .unwrap();
 
-        let results = mem.recall("Rust", 10, None, None, None, None).await.unwrap();
+        let results = mem
+            .recall("Rust", 10, None, None, None, None)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 2);
         assert!(
             results
@@ -1302,7 +1305,10 @@ mod tests {
             .await
             .unwrap();
 
-        let results = mem.recall("fast safe", 10, None, None, None, None).await.unwrap();
+        let results = mem
+            .recall("fast safe", 10, None, None, None, None)
+            .await
+            .unwrap();
         assert!(!results.is_empty());
         // Entry with both keywords should score higher
         assert!(results[0].content.contains("safe") && results[0].content.contains("fast"));
@@ -1460,7 +1466,10 @@ mod tests {
         .await
         .unwrap();
 
-        let results = mem.recall("Rust", 10, None, None, None, None).await.unwrap();
+        let results = mem
+            .recall("Rust", 10, None, None, None, None)
+            .await
+            .unwrap();
         assert!(results.len() >= 2);
         // All results should contain "Rust"
         for r in &results {
@@ -1485,7 +1494,10 @@ mod tests {
             .await
             .unwrap();
 
-        let results = mem.recall("quick dog", 10, None, None, None, None).await.unwrap();
+        let results = mem
+            .recall("quick dog", 10, None, None, None, None)
+            .await
+            .unwrap();
         assert!(!results.is_empty());
         // "The quick dog runs fast" matches both terms
         assert!(results[0].content.contains("quick"));
@@ -1740,7 +1752,10 @@ mod tests {
         assert_eq!(count, 0);
 
         // FTS should still work after rebuild
-        let results = mem.recall("reindex", 10, None, None, None, None).await.unwrap();
+        let results = mem
+            .recall("reindex", 10, None, None, None, None)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 2);
     }
 
@@ -1776,7 +1791,10 @@ mod tests {
             .await
             .unwrap();
 
-        let results = mem.recall("scored", 10, None, None, None, None).await.unwrap();
+        let results = mem
+            .recall("scored", 10, None, None, None, None)
+            .await
+            .unwrap();
         assert!(!results.is_empty());
         for r in &results {
             assert!(r.score.is_some(), "Expected score on result: {:?}", r.key);
@@ -1792,7 +1810,10 @@ mod tests {
             .await
             .unwrap();
         // Quotes in query should not crash FTS5
-        let results = mem.recall("\"hello\"", 10, None, None, None, None).await.unwrap();
+        let results = mem
+            .recall("\"hello\"", 10, None, None, None, None)
+            .await
+            .unwrap();
         // May or may not match depending on FTS5 escaping, but must not error
         assert!(results.len() <= 10);
     }
@@ -1803,7 +1824,10 @@ mod tests {
         mem.store("a1", "wildcard test content", MemoryCategory::Core, None)
             .await
             .unwrap();
-        let results = mem.recall("wild*", 10, None, None, None, None).await.unwrap();
+        let results = mem
+            .recall("wild*", 10, None, None, None, None)
+            .await
+            .unwrap();
         assert!(results.len() <= 10);
     }
 
@@ -1947,7 +1971,10 @@ mod tests {
         .await
         .unwrap();
         // "rust" appears in key but not content — LIKE fallback checks key too
-        let results = mem.recall("rust", 10, None, None, None, None).await.unwrap();
+        let results = mem
+            .recall("rust", 10, None, None, None, None)
+            .await
+            .unwrap();
         assert!(!results.is_empty(), "Should match by key");
     }
 
@@ -1957,7 +1984,10 @@ mod tests {
         mem.store("jp", "日本語のテスト", MemoryCategory::Core, None)
             .await
             .unwrap();
-        let results = mem.recall("日本語", 10, None, None, None, None).await.unwrap();
+        let results = mem
+            .recall("日本語", 10, None, None, None, None)
+            .await
+            .unwrap();
         assert!(!results.is_empty());
     }
 
@@ -2051,7 +2081,10 @@ mod tests {
         let count = mem.reindex().await.unwrap();
         assert_eq!(count, 0); // Noop embedder → nothing to re-embed
         // Data should still be intact
-        let results = mem.recall("reindex", 10, None, None, None, None).await.unwrap();
+        let results = mem
+            .recall("reindex", 10, None, None, None, None)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 1);
     }
 
@@ -2327,7 +2360,10 @@ mod tests {
             .unwrap();
 
         // Recall without session filter returns all matching entries
-        let results = mem.recall("fact", 10, None, None, None, None).await.unwrap();
+        let results = mem
+            .recall("fact", 10, None, None, None, None)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 3);
     }
 
@@ -2778,7 +2814,10 @@ mod tests {
             .await
             .unwrap();
 
-        let results = mem.recall("Rust", 10, None, None, None, None).await.unwrap();
+        let results = mem
+            .recall("Rust", 10, None, None, None, None)
+            .await
+            .unwrap();
         assert!(!results.is_empty(), "BM25 mode should find keyword matches");
         assert!(
             results.iter().any(|e| e.content.contains("Rust")),
@@ -2811,7 +2850,10 @@ mod tests {
 
         // With NoopEmbedding, vector search returns empty, and FTS is skipped.
         // The recall method falls back to LIKE search.
-        let results = mem.recall("Rust", 10, None, None, None, None).await.unwrap();
+        let results = mem
+            .recall("Rust", 10, None, None, None, None)
+            .await
+            .unwrap();
         // LIKE fallback should still find it
         assert!(
             results.iter().any(|e| e.content.contains("Rust")),
@@ -2835,7 +2877,10 @@ mod tests {
         .await
         .unwrap();
 
-        let results = mem.recall("Rust", 10, None, None, None, None).await.unwrap();
+        let results = mem
+            .recall("Rust", 10, None, None, None, None)
+            .await
+            .unwrap();
         assert!(!results.is_empty(), "Hybrid mode should find results");
     }
 }
