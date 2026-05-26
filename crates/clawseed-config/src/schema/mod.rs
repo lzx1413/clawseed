@@ -15,27 +15,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-/// Search mode for memory recall operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub enum SearchMode {
-    /// Combine vector similarity and keyword (BM25) search.
-    #[default]
-    Hybrid,
-    /// Vector embedding similarity only.
-    Embedding,
-    /// BM25 keyword search only.
-    Bm25,
-}
-
-impl std::fmt::Display for SearchMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SearchMode::Hybrid => write!(f, "hybrid"),
-            SearchMode::Embedding => write!(f, "embedding"),
-            SearchMode::Bm25 => write!(f, "bm25"),
-        }
-    }
-}
+pub use clawseed_api::memory_traits::SearchMode;
 
 /// Multimodal (image) configuration for provider requests.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -7,7 +7,7 @@
 //! All store operations redirect to `store_with_metadata()` with the configured
 //! namespace, and all recall operations redirect to `recall_namespaced()`.
 
-use super::traits::{Memory, MemoryCategory, MemoryEntry};
+use super::traits::{Memory, MemoryCategory, MemoryEntry, SearchMode};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -65,9 +65,10 @@ impl Memory for NamespacedMemory {
         session_id: Option<&str>,
         since: Option<&str>,
         until: Option<&str>,
+        search_mode: Option<SearchMode>,
     ) -> anyhow::Result<Vec<MemoryEntry>> {
         self.inner
-            .recall_namespaced(&self.namespace, query, limit, session_id, since, until)
+            .recall_namespaced(&self.namespace, query, limit, session_id, since, until, search_mode)
             .await
     }
 
@@ -120,12 +121,13 @@ impl Memory for NamespacedMemory {
         session_id: Option<&str>,
         since: Option<&str>,
         until: Option<&str>,
+        search_mode: Option<SearchMode>,
     ) -> anyhow::Result<Vec<MemoryEntry>> {
         // If the requested namespace matches our own, delegate to the inner memory.
         // Otherwise, return empty results (namespace isolation).
         if namespace == self.namespace {
             self.inner
-                .recall_namespaced(&self.namespace, query, limit, session_id, since, until)
+                .recall_namespaced(&self.namespace, query, limit, session_id, since, until, search_mode)
                 .await
         } else {
             Ok(Vec::new())
@@ -204,7 +206,7 @@ mod tests {
 
         // Try to recall from a different namespace (no-op for NoneMemory)
         let results = namespaced
-            .recall_namespaced("other_namespace", "query", 10, None, None, None)
+            .recall_namespaced("other_namespace", "query", 10, None, None, None, None)
             .await
             .unwrap();
         assert!(results.is_empty());

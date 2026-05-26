@@ -46,6 +46,7 @@ impl Memory for MockMemory {
         _session_id: Option<&str>,
         _since: Option<&str>,
         _until: Option<&str>,
+        _search_mode: Option<clawseed_api::memory_traits::SearchMode>,
     ) -> anyhow::Result<Vec<clawseed_api::memory_traits::MemoryEntry>> {
         Ok(Vec::new())
     }

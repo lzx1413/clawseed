@@ -1103,7 +1103,7 @@ impl Agent {
             && self.memory.name() != "none"
             && let Ok(entries) = self
                 .memory
-                .recall(user_message, self.auto_recall_limit, None, None, None)
+                .recall(user_message, self.auto_recall_limit, None, None, None, None)
                 .await
         {
             let ctx: String = entries
@@ -1222,7 +1222,7 @@ impl Agent {
             && self.memory.name() != "none"
             && let Ok(entries) = self
                 .memory
-                .recall(user_message, self.auto_recall_limit, None, None, None)
+                .recall(user_message, self.auto_recall_limit, None, None, None, None)
                 .await
         {
             let ctx: String = entries

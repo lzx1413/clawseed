@@ -291,7 +291,7 @@ async fn run_agent_job(
         )
         .await
         {
-            Ok(mem) => match mem.recall(&prompt, 5, None, None, None).await {
+            Ok(mem) => match mem.recall(&prompt, 5, None, None, None, None).await {
                 Ok(entries) if !entries.is_empty() => {
                     let ctx: String = entries
                         .iter()

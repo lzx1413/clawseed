@@ -24,7 +24,7 @@ pub async fn check_and_resolve_conflicts(
         return Ok(Vec::new());
     }
 
-    let candidates = memory.recall(content, 10, None, None, None).await?;
+    let candidates = memory.recall(content, 10, None, None, None, None).await?;
     let conflicts = find_text_conflicts(&candidates, key, content, threshold);
 
     // Supersede conflicting entries by re-storing with a prefix marker

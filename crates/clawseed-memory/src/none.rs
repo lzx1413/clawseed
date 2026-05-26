@@ -1,4 +1,4 @@
-use super::traits::{Memory, MemoryCategory, MemoryEntry};
+use super::traits::{Memory, MemoryCategory, MemoryEntry, SearchMode};
 use async_trait::async_trait;
 
 /// Explicit no-op memory backend.
@@ -37,6 +37,7 @@ impl Memory for NoneMemory {
         _session_id: Option<&str>,
         _since: Option<&str>,
         _until: Option<&str>,
+        _search_mode: Option<SearchMode>,
     ) -> anyhow::Result<Vec<MemoryEntry>> {
         Ok(Vec::new())
     }
@@ -82,7 +83,7 @@ mod tests {
         assert!(memory.get("k").await.unwrap().is_none());
         assert!(
             memory
-                .recall("k", 10, None, None, None)
+                .recall("k", 10, None, None, None, None)
                 .await
                 .unwrap()
                 .is_empty()

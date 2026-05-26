@@ -50,6 +50,28 @@ impl std::fmt::Debug for MemoryEntry {
     }
 }
 
+/// Search mode for memory recall operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum SearchMode {
+    /// Combine vector similarity and keyword (BM25) search.
+    #[default]
+    Hybrid,
+    /// Vector embedding similarity only.
+    Embedding,
+    /// BM25 keyword search only.
+    Bm25,
+}
+
+impl std::fmt::Display for SearchMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SearchMode::Hybrid => write!(f, "hybrid"),
+            SearchMode::Embedding => write!(f, "embedding"),
+            SearchMode::Bm25 => write!(f, "bm25"),
+        }
+    }
+}
+
 /// Memory categories for organization.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MemoryCategory {
@@ -108,6 +130,7 @@ pub trait Memory: Send + Sync {
         session_id: Option<&str>,
         since: Option<&str>,
         until: Option<&str>,
+        search_mode: Option<SearchMode>,
     ) -> anyhow::Result<Vec<MemoryEntry>>;
 
     async fn get(&self, key: &str) -> anyhow::Result<Option<MemoryEntry>>;
@@ -140,9 +163,10 @@ pub trait Memory: Send + Sync {
         session_id: Option<&str>,
         since: Option<&str>,
         until: Option<&str>,
+        search_mode: Option<SearchMode>,
     ) -> anyhow::Result<Vec<MemoryEntry>> {
         let entries = self
-            .recall(query, limit * 2, session_id, since, until)
+            .recall(query, limit * 2, session_id, since, until, search_mode)
             .await?;
         let filtered: Vec<MemoryEntry> = entries
             .into_iter()

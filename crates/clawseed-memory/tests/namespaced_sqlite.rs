@@ -39,7 +39,7 @@ async fn namespaced_sqlite_recall_within_namespace() {
         .await
         .unwrap();
 
-    let results = mem.recall("Rust", 10, None, None, None).await.unwrap();
+    let results = mem.recall("Rust", 10, None, None, None, None).await.unwrap();
     assert!(
         !results.is_empty(),
         "recall should find entries in namespace"
@@ -76,10 +76,10 @@ async fn namespaced_sqlite_isolation_between_namespaces() {
     assert_eq!(b_entry.namespace, "agent-b");
 
     // Recall should be isolated
-    let a_results = ns_a.recall("secret", 10, None, None, None).await.unwrap();
+    let a_results = ns_a.recall("secret", 10, None, None, None, None).await.unwrap();
     assert!(a_results.iter().all(|e| e.namespace == "agent-a"));
 
-    let b_results = ns_b.recall("secret", 10, None, None, None).await.unwrap();
+    let b_results = ns_b.recall("secret", 10, None, None, None, None).await.unwrap();
     assert!(b_results.iter().all(|e| e.namespace == "agent-b"));
 }
 
@@ -178,14 +178,14 @@ async fn namespaced_sqlite_recall_namespaced_own() {
 
     // Recall with matching namespace
     let results = mem
-        .recall_namespaced("agent-1", "data", 10, None, None, None)
+        .recall_namespaced("agent-1", "data", 10, None, None, None, None)
         .await
         .unwrap();
     assert!(!results.is_empty());
 
     // Recall with different namespace should return empty
     let results = mem
-        .recall_namespaced("agent-other", "data", 10, None, None, None)
+        .recall_namespaced("agent-other", "data", 10, None, None, None, None)
         .await
         .unwrap();
     assert!(results.is_empty());

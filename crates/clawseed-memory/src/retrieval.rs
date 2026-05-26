@@ -135,11 +135,11 @@ impl RetrievalPipeline {
                     // which already does hybrid merge. We delegate to it.
                     let results = if let Some(ns) = namespace {
                         self.memory
-                            .recall_namespaced(ns, query, limit, session_id, since, until)
+                            .recall_namespaced(ns, query, limit, session_id, since, until, None)
                             .await?
                     } else {
                         self.memory
-                            .recall(query, limit, session_id, since, until)
+                            .recall(query, limit, session_id, since, until, None)
                             .await?
                     };
 

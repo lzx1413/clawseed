@@ -951,7 +951,7 @@ pub async fn handle_api_memory_list(
         let query = params.query.as_deref().unwrap_or("");
         let since = params.since.as_deref();
         let until = params.until.as_deref();
-        match state.mem.recall(query, 50, None, since, until).await {
+        match state.mem.recall(query, 50, None, since, until, None).await {
             Ok(entries) => Json(serde_json::json!({"entries": entries})).into_response(),
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
