@@ -3,6 +3,7 @@ package dev.clawseed.demo.ui.settings
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.core.client.GatewayClient
 import dev.clawseed.sdk.core.model.GatewayStatus
@@ -13,6 +14,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 data class ProviderPreset(val displayName: String, val id: String, val baseUrl: String)
@@ -66,6 +68,13 @@ data class SettingsUiState(
     val isSavingSoul: Boolean = false,
 )
 
+private data class ProviderDraft(
+    val apiKey: String,
+    val selectedModel: String,
+    val thinkingEnabled: Boolean,
+    val maxTokens: String,
+)
+
 enum class EditMode { FORM, TOML }
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -76,7 +85,21 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
-    private var preservedApiKey: String? = null
+    private val providerDrafts = mutableMapOf<String, ProviderDraft>()
+
+    private fun saveCurrentDraft() {
+        val state = _uiState.value
+        if (state.baseUrl.isBlank()) return
+        providerDrafts[state.baseUrl.trimEnd('/')] = ProviderDraft(
+            apiKey = state.apiKey,
+            selectedModel = state.selectedModel,
+            thinkingEnabled = state.thinkingEnabled,
+            maxTokens = state.maxTokens,
+        )
+    }
+
+    private val localStore = LocalStore(getApplication())
+    private val storedApiKeys = mutableMapOf<String, String>()
 
     init {
         loadAll()
@@ -95,6 +118,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
+            // Read persisted API keys from local storage
+            storedApiKeys.clear()
+            storedApiKeys.putAll(localStore.providerApiKeys.first())
+
             if (!ClawSeedAndroid.isInitialized) {
                 loadFromLocalConfig()
                 return@launch
@@ -112,15 +139,23 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val currentBaseUrl = extractProviderBaseUrl(toml)
             val rawApiKey = extractProviderApiKey(toml)
             val serverHasKey = rawApiKey.contains("***") || rawApiKey.isNotBlank()
+            val currentDraft = providerDrafts[currentBaseUrl]
             val currentApiKey = when {
-                rawApiKey.contains("***") && preservedApiKey != null -> preservedApiKey!!
+                rawApiKey.contains("***") && currentDraft != null && currentDraft.apiKey != MASKED_KEY_PLACEHOLDER && !currentDraft.apiKey.contains("***") -> currentDraft.apiKey
+                rawApiKey.contains("***") && storedApiKeys.containsKey(currentBaseUrl) -> storedApiKeys[currentBaseUrl]!!
                 rawApiKey.contains("***") -> MASKED_KEY_PLACEHOLDER
                 else -> rawApiKey
             }
-            preservedApiKey = null
             val currentModel = extractProviderModel(toml, status)
             val thinking = extractProviderThinking(toml)
             val maxTokens = extractProviderMaxTokens(toml)
+            // Update draft with resolved data (preserving real key over masked)
+            providerDrafts[currentBaseUrl] = ProviderDraft(
+                apiKey = currentApiKey,
+                selectedModel = currentModel,
+                thinkingEnabled = thinking,
+                maxTokens = maxTokens,
+            )
             val autoContinue = extractAutoContinueOnTruncation(toml)
             val searchEngine = extractSearchEngine(toml)
             val tavilyKey = extractTavilyApiKey(toml)
@@ -166,23 +201,35 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun selectProvider(index: Int) {
+        // Save current provider's form state to drafts before switching
+        saveCurrentDraft()
+
         val preset = PROVIDER_PRESETS[index]
         val toml = _uiState.value.configToml
         val saved = findSavedProviderSettings(toml, preset.baseUrl)
-        val rawApiKey = saved?.apiKey ?: ""
-        val serverHasKey = rawApiKey.contains("***") || rawApiKey.isNotBlank()
+        val draft = providerDrafts[preset.baseUrl.trimEnd('/')]
+        val storedKey = storedApiKeys[preset.baseUrl.trimEnd('/')]
+
+        // Determine displayed API key: prefer draft > stored > masked TOML > draft masked > TOML > empty
         val displayApiKey = when {
-            rawApiKey.contains("***") -> MASKED_KEY_PLACEHOLDER
-            else -> rawApiKey
+            draft != null && draft.apiKey != MASKED_KEY_PLACEHOLDER && !draft.apiKey.contains("***") -> draft.apiKey
+            storedKey != null -> storedKey
+            saved != null && saved.apiKey.contains("***") -> MASKED_KEY_PLACEHOLDER
+            draft != null -> draft.apiKey
+            saved != null -> saved.apiKey
+            else -> ""
         }
+
+        val hasServerKey = saved != null && saved.apiKey.isNotBlank()
+
         _uiState.value = _uiState.value.copy(
             selectedPresetIndex = index,
             baseUrl = preset.baseUrl,
             apiKey = displayApiKey,
-            hasServerApiKey = serverHasKey,
-            selectedModel = saved?.model ?: "",
-            thinkingEnabled = saved?.thinking ?: false,
-            maxTokens = saved?.maxTokens ?: "262144",
+            hasServerApiKey = hasServerKey,
+            selectedModel = draft?.selectedModel ?: saved?.model ?: "",
+            thinkingEnabled = draft?.thinkingEnabled ?: saved?.thinking ?: false,
+            maxTokens = draft?.maxTokens ?: saved?.maxTokens ?: "262144",
             autoContinueOnTruncation = true,
             availableModels = emptyList(),
             connectionOk = null,
@@ -300,15 +347,23 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val currentBaseUrl = extractProviderBaseUrl(toml)
         val rawApiKey = extractProviderApiKey(toml)
         val serverHasKey = rawApiKey.contains("***") || rawApiKey.isNotBlank()
+        val currentDraft = providerDrafts[currentBaseUrl]
         val currentApiKey = when {
-            rawApiKey.contains("***") && preservedApiKey != null -> preservedApiKey!!
+            rawApiKey.contains("***") && currentDraft != null && currentDraft.apiKey != MASKED_KEY_PLACEHOLDER && !currentDraft.apiKey.contains("***") -> currentDraft.apiKey
+            rawApiKey.contains("***") && storedApiKeys.containsKey(currentBaseUrl) -> storedApiKeys[currentBaseUrl]!!
             rawApiKey.contains("***") -> MASKED_KEY_PLACEHOLDER
             else -> rawApiKey
         }
-        preservedApiKey = null
         val currentModel = extractProviderModel(toml, null)
         val thinking = extractProviderThinking(toml)
         val maxTokens = extractProviderMaxTokens(toml)
+        // Update draft with resolved data
+        providerDrafts[currentBaseUrl] = ProviderDraft(
+            apiKey = currentApiKey,
+            selectedModel = currentModel,
+            thinkingEnabled = thinking,
+            maxTokens = maxTokens,
+        )
         val autoContinue = extractAutoContinueOnTruncation(toml)
         val searchEngine = extractSearchEngine(toml)
         val tavilyKey = extractTavilyApiKey(toml)
@@ -362,13 +417,27 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     successMessage = "配置已保存到本地文件，请重启应用以生效",
                 )
                 _uiState.value = _uiState.value.copy(configToml = toml)
+                // Persist API key locally
+                val savedBaseUrl = state.baseUrl.trimEnd('/')
+                val isRealKey = state.apiKey.isNotBlank() && state.apiKey != MASKED_KEY_PLACEHOLDER && !state.apiKey.contains("***")
+                if (isRealKey) {
+                    storedApiKeys[savedBaseUrl] = state.apiKey
+                    localStore.setProviderApiKey(savedBaseUrl, state.apiKey)
+                }
                 return@launch
             }
 
             client().updateConfig(toml)
                 .onSuccess {
                     _uiState.value = _uiState.value.copy(isSaving = false, successMessage = "配置已保存，Gateway 正在重启...")
-                    preservedApiKey = state.apiKey.ifBlank { null }
+                    saveCurrentDraft()
+                    // Persist API key to local storage for recovery after gateway masking
+                    val savedBaseUrl = state.baseUrl.trimEnd('/')
+                    val isRealKey = state.apiKey.isNotBlank() && state.apiKey != MASKED_KEY_PLACEHOLDER && !state.apiKey.contains("***")
+                    if (isRealKey) {
+                        storedApiKeys[savedBaseUrl] = state.apiKey
+                        viewModelScope.launch { localStore.setProviderApiKey(savedBaseUrl, state.apiKey) }
+                    }
                     // Restart gateway in background — don't block the save coroutine
                     viewModelScope.launch {
                         ClawSeedAndroid.restartGateway()

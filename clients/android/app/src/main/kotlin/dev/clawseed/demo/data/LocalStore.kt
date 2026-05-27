@@ -77,4 +77,43 @@ class LocalStore(private val context: Context) {
     suspend fun setShowDebugInfo(enabled: Boolean) {
         store.edit { prefs -> prefs[KEY_SHOW_DEBUG] = enabled }
     }
+
+    // --- Provider API keys (persisted locally to survive gateway masking) ---
+    private val KEY_PROVIDER_KEYS = stringPreferencesKey("provider_api_keys")
+
+    val providerApiKeys: Flow<Map<String, String>> = store.data.map { prefs ->
+        val json = prefs[KEY_PROVIDER_KEYS] ?: "{}"
+        parseApiKeyMap(json)
+    }
+
+    suspend fun setProviderApiKey(baseUrl: String, apiKey: String) {
+        store.edit { prefs ->
+            val current = parseApiKeyMap(prefs[KEY_PROVIDER_KEYS] ?: "{}")
+            if (apiKey.isNotBlank()) {
+                current[baseUrl] = apiKey
+            } else {
+                current.remove(baseUrl)
+            }
+            prefs[KEY_PROVIDER_KEYS] = serializeApiKeyMap(current)
+        }
+    }
+
+    private fun parseApiKeyMap(json: String): MutableMap<String, String> {
+        if (json.isBlank() || json == "{}") return mutableMapOf()
+        val obj = org.json.JSONObject(json)
+        val map = mutableMapOf<String, String>()
+        for (key in obj.keys()) {
+            map[key] = obj.getString(key)
+        }
+        return map
+    }
+
+    private fun serializeApiKeyMap(map: Map<String, String>): String {
+        if (map.isEmpty()) return "{}"
+        val obj = org.json.JSONObject()
+        for ((k, v) in map) {
+            obj.put(k, v)
+        }
+        return obj.toString()
+    }
 }

@@ -766,6 +766,9 @@ private fun ProviderFormEditor(
                         }
                     }
                 } else null,
+                supportingText = if (isPlaceholderKey && state.hasServerApiKey) {
+                    { Text("服务器已保存密钥，无需重新输入", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) }
+                } else null,
             )
 
             // Fetch models button + status
