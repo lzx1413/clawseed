@@ -26,6 +26,7 @@ val PROVIDER_PRESETS = listOf(
     ProviderPreset("GLM (智谱)", "glm-cn", "https://open.bigmodel.cn/api/paas/v4"),
     ProviderPreset("Doubao (豆包)", "doubao", "https://ark.cn-beijing.volces.com/api/v3"),
     ProviderPreset("Baidu (千帆)", "qianfan", "https://qianfan.baidubce.com/v2"),
+    ProviderPreset("Mimo", "mimo", "https://api.xiaomimimo.com/v1"),
     ProviderPreset("OpenAI", "openai", "https://api.openai.com/v1"),
     ProviderPreset("Anthropic", "anthropic", "https://api.anthropic.com/v1"),
     ProviderPreset("OpenRouter", "openrouter", "https://openrouter.ai/api/v1"),
@@ -54,6 +55,7 @@ data class SettingsUiState(
     val thinkingEnabled: Boolean = false,
     val maxTokens: String = "262144",
     val autoContinueOnTruncation: Boolean = true,
+    val sessionTtlHours: String = "0",
     val searchEngine: String = "",
     val tavilyApiKey: String = "",
     val tavilyApiKeyVisible: Boolean = false,
@@ -162,6 +164,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val embeddingProv = extractEmbeddingProvider(toml)
             val embeddingMod = extractEmbeddingModel(toml)
             val embeddingDim = extractEmbeddingDims(toml)
+            val sessionTtl = extractSessionTtlHours(toml)
 
             val presetIdx = PROVIDER_PRESETS.indexOfFirst { it.baseUrl.isNotBlank() && currentBaseUrl.contains(it.baseUrl.removeSuffix("/v1").removeSuffix("/")) }
                 .let { if (it == -1) PROVIDER_PRESETS.size - 1 else it }
@@ -187,6 +190,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 embeddingProvider = embeddingProv,
                 embeddingModel = embeddingMod,
                 embeddingDims = embeddingDim,
+                sessionTtlHours = sessionTtl,
                 soulContent = personalityResult.getOrElse { null }?.get("SOUL.md"),
             )
         }
@@ -256,6 +260,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun toggleThinking(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(thinkingEnabled = enabled, successMessage = null)
+    }
+
+    fun updateSessionTtlHours(value: String) {
+        _uiState.value = _uiState.value.copy(sessionTtlHours = value, successMessage = null)
     }
 
     fun updateMaxTokens(value: String) {
@@ -370,6 +378,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val embeddingProv = extractEmbeddingProvider(toml)
         val embeddingMod = extractEmbeddingModel(toml)
         val embeddingDim = extractEmbeddingDims(toml)
+        val sessionTtl = extractSessionTtlHours(toml)
 
         val presetIdx = PROVIDER_PRESETS.indexOfFirst { it.baseUrl.isNotBlank() && currentBaseUrl.contains(it.baseUrl.removeSuffix("/v1").removeSuffix("/")) }
             .let { if (it == -1) PROVIDER_PRESETS.size - 1 else it }
@@ -393,6 +402,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             embeddingProvider = embeddingProv,
             embeddingModel = embeddingMod,
             embeddingDims = embeddingDim,
+            sessionTtlHours = sessionTtl,
         )
     }
 
@@ -525,6 +535,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             toml = replaceInSectionRaw(toml, agentHeader, "auto_continue_on_truncation", if (state.autoContinueOnTruncation) " true" else " false")
         } else {
             toml = toml.trimEnd() + "\n\n[agent]\nauto_continue_on_truncation = ${state.autoContinueOnTruncation}\n"
+        }
+
+        // Update [gateway] session_ttl_hours
+        val gatewayHeader = "[gateway]"
+        if (toml.contains(gatewayHeader)) {
+            toml = replaceInIntSection(toml, gatewayHeader, "session_ttl_hours", state.sessionTtlHours)
+        } else {
+            toml = toml.trimEnd() + "\n\n[gateway]\nsession_ttl_hours = ${state.sessionTtlHours}\n"
         }
 
         // Update [memory] section for embedding
@@ -921,6 +939,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val section = findSection(toml, "[web_search]")
             return extractTomlValueInBlock(section, "tavily_api_key") ?: ""
         }
+
+        private fun extractSessionTtlHours(toml: String): String {
+            val section = findSection(toml, "[gateway]")
+            return extractTomlValueInBlock(section, "session_ttl_hours") ?: "0"
+        }
+
         private const val THINKING_ENABLED_LINE = "provider_extra = { thinking = { type = \"enabled\" } }"
         private const val THINKING_DISABLED_LINE = "provider_extra = { thinking = { type = \"disabled\" } }"
 

@@ -59,7 +59,7 @@ class GatewayConfigManager(private val context: Context) {
                 }
             }
 
-            // Ensure [gateway] has require_pairing = false for embedded use
+            // Ensure [gateway] has embedded defaults
             val gwIdx = content.indexOf("[gateway]")
             if (gwIdx != -1) {
                 val nextGwSection = content.indexOf("\n[", gwIdx + 1).let { if (it == -1) content.length else it }
@@ -68,7 +68,8 @@ class GatewayConfigManager(private val context: Context) {
                 if (!gwSection.contains("require_pairing")) {
                     gwPatch += "\nrequire_pairing = false"
                 }
-                // Disable auto-cleanup: never delete sessions, user deletes manually
+                // Default TTL=0 for embedded use (never auto-delete sessions).
+                // Only add if the key is absent; if the user set a value via Settings UI, leave it.
                 if (!gwSection.contains("session_ttl_hours")) {
                     gwPatch += "\nsession_ttl_hours = 0"
                 }

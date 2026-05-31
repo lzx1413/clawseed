@@ -134,6 +134,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
     var skillsExpanded by remember { mutableStateOf(false) }
     var developerExpanded by remember { mutableStateOf(false) }
     var appearanceExpanded by remember { mutableStateOf(false) }
+    var sessionExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
@@ -201,6 +202,22 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                         ) {
                             AppearanceCard(localStore)
                         }
+                    }
+                }
+
+                // Session settings section
+                item {
+                    val ttlLabel = ttlHoursToLabel(uiState.sessionTtlHours)
+                    ExpandableSection(
+                        title = "会话设置",
+                        expanded = sessionExpanded,
+                        onToggle = { sessionExpanded = !sessionExpanded },
+                        subtitle = if (!sessionExpanded) "自动清理: $ttlLabel" else null,
+                    ) {
+                        SessionSettingsCard(
+                            ttlHours = uiState.sessionTtlHours,
+                            onTtlChange = { viewModel.updateSessionTtlHours(it) },
+                        )
                     }
                 }
 
@@ -1349,6 +1366,87 @@ private fun SearchEngineCard(
                         uriHandler.openUri("https://tavily.com")
                     }
                 }
+            }
+        }
+    }
+}
+
+// ── Session TTL helpers ──────────────────────────────────────────
+
+private val TTL_OPTIONS = listOf(
+    0    to "永不删除",
+    24   to "1天",
+    168  to "7天",
+    720  to "30天",
+)
+
+private fun ttlHoursToLabel(hours: String): String {
+    val h = hours.toIntOrNull() ?: 0
+    return TTL_OPTIONS.firstOrNull { it.first == h }?.second ?: "$h 小时"
+}
+
+@Composable
+private fun SessionSettingsCard(
+    ttlHours: String,
+    onTtlChange: (String) -> Unit,
+) {
+    val selectedHours = ttlHours.toIntOrNull() ?: 0
+    val isCustom = selectedHours !in TTL_OPTIONS.map { it.first }
+    var customValue by remember(selectedHours) {
+        mutableStateOf(if (isCustom) ttlHours else "")
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "会话自动清理",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "超过设定时间未活动的会话会在 gateway 启动时自动删除",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TTL_OPTIONS.forEach { (hours, label) ->
+                    FilterChip(
+                        selected = selectedHours == hours && !isCustom,
+                        onClick = { onTtlChange(hours.toString()) },
+                        label = { Text(label) },
+                    )
+                }
+                FilterChip(
+                    selected = isCustom,
+                    onClick = {
+                        val v = customValue.ifBlank { "0" }
+                        onTtlChange(v)
+                    },
+                    label = { Text("自定义") },
+                )
+            }
+            AnimatedVisibility(
+                visible = isCustom,
+                enter = expandVertically(),
+                exit = shrinkVertically(),
+            ) {
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = customValue,
+                    onValueChange = { v ->
+                        customValue = v
+                        if (v.isNotBlank()) onTtlChange(v)
+                    },
+                    label = { Text("小时数") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
             }
         }
     }
