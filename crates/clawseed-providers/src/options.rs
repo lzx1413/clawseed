@@ -280,6 +280,7 @@ pub fn resolve_provider_credential(
         "opencode-go" => vec!["OPENCODE_GO_API_KEY"],
         "vercel" | "vercel-ai" => vec!["VERCEL_API_KEY"],
         "cloudflare" | "cloudflare-ai" => vec!["CLOUDFLARE_API_KEY"],
+        "mimo" | "xiaomimimo" => vec!["MIMO_API_KEY"],
         "ovhcloud" | "ovh" => vec!["OVH_AI_ENDPOINTS_ACCESS_TOKEN"],
         "astrai" => vec!["ASTRAI_API_KEY"],
         "avian" => vec!["AVIAN_API_KEY"],

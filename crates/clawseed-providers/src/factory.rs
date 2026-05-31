@@ -746,6 +746,11 @@ pub fn default_provider_factory_registry() -> ProviderFactoryRegistry {
         )
         .aliases(&["vercel-ai"]),
     );
+    reg.register(OpenAiCompatFactory::new(
+        "mimo",
+        "Mimo",
+        "https://api.xiaomimimo.com/v1",
+    ));
     reg.register(
         OpenAiCompatFactory::new(
             "cloudflare",

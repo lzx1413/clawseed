@@ -312,6 +312,12 @@ pub fn list_providers() -> Vec<ProviderInfo> {
             aliases: &["lite-llm"],
             local: false,
         },
+        ProviderInfo {
+            name: "mimo",
+            display_name: "Mimo",
+            aliases: &["xiaomimimo"],
+            local: false,
+        },
         // ── Fast inference ────────────────────────────────────
         ProviderInfo {
             name: "cerebras",
