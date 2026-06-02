@@ -57,7 +57,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.text.ClickableText
@@ -207,17 +209,43 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
 
                 // Session settings section
                 item {
-                    val ttlLabel = ttlHoursToLabel(uiState.sessionTtlHours)
+                    val ttlLabel = ttlHoursToDays(uiState.sessionTtlHours).let { d ->
+                        if (d.isEmpty() || d == "0") "永不删除" else "$d 天"
+                    }
+                    val councilLabel = if (uiState.councilEnabled) "${uiState.councilReviewers.size} 个审阅者" else "关闭"
                     ExpandableSection(
                         title = "会话设置",
                         expanded = sessionExpanded,
                         onToggle = { sessionExpanded = !sessionExpanded },
-                        subtitle = if (!sessionExpanded) "自动清理: $ttlLabel" else null,
+                        subtitle = if (!sessionExpanded) "自动清理: $ttlLabel | 议会: $councilLabel" else null,
                     ) {
-                        SessionSettingsCard(
-                            ttlHours = uiState.sessionTtlHours,
-                            onTtlChange = { viewModel.updateSessionTtlHours(it) },
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            SessionSettingsCard(
+                                ttlHours = uiState.sessionTtlHours,
+                                onTtlChange = { viewModel.updateSessionTtlHours(it) },
+                            )
+                            if (uiState.editMode == EditMode.FORM) {
+                                CouncilCard(
+                                    enabled = uiState.councilEnabled,
+                                    reviewers = uiState.councilReviewers,
+                                    onToggleEnabled = viewModel::toggleCouncilEnabled,
+                                    onAddReviewer = viewModel::addCouncilReviewer,
+                                    onRemoveReviewer = viewModel::removeCouncilReviewer,
+                                    onUpdateReviewer = viewModel::updateCouncilReviewer,
+                                )
+                            }
+                            Button(
+                                onClick = { viewModel.saveConfig() },
+                                enabled = !uiState.isSaving,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                if (uiState.isSaving) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                                Text(if (uiState.isSaving) "保存中..." else "保存会话配置")
+                            }
+                        }
                     }
                 }
 
@@ -374,6 +402,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                 }
 
                 // Soul section
+                // Soul section (original)
                 item {
                     val soulLoaded = uiState.soulContent != null
                     val soulPreview = uiState.soulContent?.lineSequence()
@@ -1373,16 +1402,14 @@ private fun SearchEngineCard(
 
 // ── Session TTL helpers ──────────────────────────────────────────
 
-private val TTL_OPTIONS = listOf(
-    0    to "永不删除",
-    24   to "1天",
-    168  to "7天",
-    720  to "30天",
-)
-
-private fun ttlHoursToLabel(hours: String): String {
+private fun ttlHoursToDays(hours: String): String {
     val h = hours.toIntOrNull() ?: 0
-    return TTL_OPTIONS.firstOrNull { it.first == h }?.second ?: "$h 小时"
+    return if (h == 0) "" else (h / 24).toString()
+}
+
+private fun ttlDaysToHours(days: String): String {
+    val d = days.toIntOrNull() ?: 0
+    return if (d == 0) "0" else (d * 24).toString()
 }
 
 @Composable
@@ -1390,10 +1417,8 @@ private fun SessionSettingsCard(
     ttlHours: String,
     onTtlChange: (String) -> Unit,
 ) {
-    val selectedHours = ttlHours.toIntOrNull() ?: 0
-    val isCustom = selectedHours !in TTL_OPTIONS.map { it.first }
-    var customValue by remember(selectedHours) {
-        mutableStateOf(if (isCustom) ttlHours else "")
+    var daysValue by remember(ttlHours) {
+        mutableStateOf(ttlHoursToDays(ttlHours))
     }
 
     Card(
@@ -1409,45 +1434,113 @@ private fun SessionSettingsCard(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "超过设定时间未活动的会话会在 gateway 启动时自动删除",
+                text = "超过设定天数未活动的会话会在 gateway 启动时自动删除，0 表示永不删除",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TTL_OPTIONS.forEach { (hours, label) ->
-                    FilterChip(
-                        selected = selectedHours == hours && !isCustom,
-                        onClick = { onTtlChange(hours.toString()) },
-                        label = { Text(label) },
-                    )
-                }
-                FilterChip(
-                    selected = isCustom,
-                    onClick = {
-                        val v = customValue.ifBlank { "0" }
-                        onTtlChange(v)
-                    },
-                    label = { Text("自定义") },
+            OutlinedTextField(
+                value = daysValue,
+                onValueChange = { v ->
+                    val filtered = v.filter { it.isDigit() }
+                    daysValue = filtered
+                    onTtlChange(ttlDaysToHours(filtered))
+                },
+                label = { Text("天数（0 = 永不删除）") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+        }
+    }
+}
+
+@Composable
+fun CouncilCard(
+    enabled: Boolean,
+    reviewers: List<CouncilReviewerDraft>,
+    onToggleEnabled: (Boolean) -> Unit,
+    onAddReviewer: () -> Unit,
+    onRemoveReviewer: (Int) -> Unit,
+    onUpdateReviewer: (Int, CouncilReviewerDraft) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("启用议会模式", style = MaterialTheme.typography.bodyLarge)
+            Switch(checked = enabled, onCheckedChange = onToggleEnabled)
+        }
+        if (enabled) {
+            Text(
+                "议会模式让多个审阅者对 Leader 的操作提供监督和建议，通过共享内存进行通信。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            for ((index, reviewer) in reviewers.withIndex()) {
+                ReviewerEditor(
+                    index = index,
+                    draft = reviewer,
+                    onUpdate = { onUpdateReviewer(index, it) },
+                    onRemove = { onRemoveReviewer(index) },
                 )
             }
-            AnimatedVisibility(
-                visible = isCustom,
-                enter = expandVertically(),
-                exit = shrinkVertically(),
+            OutlinedButton(onClick = onAddReviewer, modifier = Modifier.fillMaxWidth()) {
+                Text("+ 添加审阅者")
+            }
+        }
+    }
+}
+
+@Composable
+fun ReviewerEditor(
+    index: Int,
+    draft: CouncilReviewerDraft,
+    onUpdate: (CouncilReviewerDraft) -> Unit,
+    onRemove: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = customValue,
-                    onValueChange = { v ->
-                        customValue = v
-                        if (v.isNotBlank()) onTtlChange(v)
-                    },
-                    label = { Text("小时数") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
+                Text("审阅者 ${index + 1}", style = MaterialTheme.typography.labelLarge)
+                IconButton(onClick = onRemove, modifier = Modifier.size(24.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "删除", modifier = Modifier.size(16.dp))
+                }
             }
+            OutlinedTextField(
+                value = draft.role,
+                onValueChange = { onUpdate(draft.copy(role = it)) },
+                label = { Text("角色") },
+                placeholder = { Text("如: security, quality, strategy") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = draft.focusPrompt,
+                onValueChange = { onUpdate(draft.copy(focusPrompt = it)) },
+                label = { Text("关注重点") },
+                placeholder = { Text("审阅者应关注哪些方面") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2,
+                maxLines = 4,
+            )
+            OutlinedTextField(
+                value = draft.model,
+                onValueChange = { onUpdate(draft.copy(model = it)) },
+                label = { Text("模型 (可选)") },
+                placeholder = { Text("留空则使用 Leader 的模型") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
         }
     }
 }
