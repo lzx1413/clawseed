@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.demo.scheduled.ScheduledTaskManager
+import dev.clawseed.demo.scheduled.ScheduledTaskStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -50,6 +51,7 @@ class MainActivity : ComponentActivity() {
 
         CoroutineScope(Dispatchers.IO).launch {
             ScheduledTaskManager.rescheduleAll(this@MainActivity)
+            ScheduledTaskStore(this@MainActivity).ensureDefaultTasks(this@MainActivity)
         }
 
         // Handle session ID from notification tap

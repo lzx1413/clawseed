@@ -326,7 +326,7 @@ fn default_conflict_threshold() -> f64 {
     0.6
 }
 fn default_auto_recall_limit() -> usize {
-    5
+    3
 }
 
 impl Default for MemoryConfig {
@@ -751,6 +751,7 @@ auto_approve = ["file_read", "memory_recall", "web_search", "web_fetch", "calcul
 [memory]
 backend = "sqlite"
 auto_save = true
+auto_recall_limit = 3
 
 [reliability]
 max_retries = 2

@@ -31,6 +31,25 @@ class ScheduledTaskStore(private val context: Context) {
 
     suspend fun tasksAsList(): List<ScheduledTask> = tasks.first()
 
+    /** Ensure built-in default tasks exist (idempotent — skips if already seeded). */
+    suspend fun ensureDefaultTasks(context: android.content.Context) {
+        val current = tasksAsList()
+        val curatorExists = current.any { it.id == "memory_curator" }
+        if (!curatorExists) {
+            val task = ScheduledTask(
+                id = "memory_curator",
+                name = "记忆整理",
+                message = "分析所有记忆，删除不重要的和重复的，合并冲突，每条不超过50字摘要",
+                hour = 21,
+                minute = 0,
+                repeat = TaskRepeat.DAILY,
+                enabled = true,
+            )
+            addTask(task)
+            ScheduledTaskManager.scheduleAlarm(context, task)
+        }
+    }
+
     suspend fun addTask(task: ScheduledTask) = mutex.withLock {
         val current = tasksAsList().toMutableList()
         current.add(task)

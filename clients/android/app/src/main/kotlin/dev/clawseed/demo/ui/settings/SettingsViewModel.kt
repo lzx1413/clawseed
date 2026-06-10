@@ -68,6 +68,8 @@ data class SettingsUiState(
     val soulContent: String? = null,
     val isRefreshingSkills: Boolean = false,
     val isSavingSoul: Boolean = false,
+    val councilEnabled: Boolean = false,
+    val councilReviewers: List<CouncilReviewerDraft> = emptyList(),
 )
 
 private data class ProviderDraft(
@@ -78,6 +80,12 @@ private data class ProviderDraft(
 )
 
 enum class EditMode { FORM, TOML }
+
+data class CouncilReviewerDraft(
+    val role: String = "",
+    val focusPrompt: String = "",
+    val model: String = "",
+)
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -315,6 +323,29 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun toggleEmbeddingApiKeyVisibility() {
         _uiState.value = _uiState.value.copy(embeddingApiKeyVisible = !_uiState.value.embeddingApiKeyVisible)
+    }
+
+    fun toggleCouncilEnabled(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(councilEnabled = enabled, successMessage = null)
+    }
+
+    fun addCouncilReviewer() {
+        val current = _uiState.value.councilReviewers
+        _uiState.value = _uiState.value.copy(councilReviewers = current + CouncilReviewerDraft(), successMessage = null)
+    }
+
+    fun removeCouncilReviewer(index: Int) {
+        val current = _uiState.value.councilReviewers
+        if (index in current.indices) {
+            _uiState.value = _uiState.value.copy(councilReviewers = current.toMutableList().apply { removeAt(index) }, successMessage = null)
+        }
+    }
+
+    fun updateCouncilReviewer(index: Int, draft: CouncilReviewerDraft) {
+        val current = _uiState.value.councilReviewers
+        if (index in current.indices) {
+            _uiState.value = _uiState.value.copy(councilReviewers = current.toMutableList().apply { set(index, draft) }, successMessage = null)
+        }
     }
 
     fun fetchModels() {

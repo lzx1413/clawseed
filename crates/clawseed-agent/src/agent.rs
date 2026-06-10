@@ -326,7 +326,7 @@ impl AgentBuilder {
             identity_config: self.identity_config.unwrap_or_default(),
             auto_save: self.auto_save.unwrap_or(false),
             auto_recall: self.auto_recall.unwrap_or(true),
-            auto_recall_limit: self.auto_recall_limit.unwrap_or(5),
+            auto_recall_limit: self.auto_recall_limit.unwrap_or(3),
             memory_session_id: self.memory_session_id,
             history: Vec::new(),
             hook_runner: self.hook_runner,
@@ -1176,6 +1176,8 @@ impl Agent {
         }
 
         // Auto-recall relevant memories and prepend context to user message.
+        // Only Core memories are recalled — Daily and Conversation are excluded
+        // to keep the context focused on truly important facts.
         if self.auto_recall
             && self.memory.name() != "none"
             && let Ok(entries) = self
@@ -1185,7 +1187,7 @@ impl Agent {
         {
             let ctx: String = entries
                 .iter()
-                .filter(|e| !matches!(e.category, MemoryCategory::Conversation))
+                .filter(|e| matches!(e.category, MemoryCategory::Core))
                 .map(|e| format!("- {}: {}", e.key, e.content))
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -1295,6 +1297,8 @@ impl Agent {
         self.prepare_turn(user_message)?;
 
         // Auto-recall relevant memories and prepend context to user message.
+        // Only Core memories are recalled — Daily and Conversation are excluded
+        // to keep the context focused on truly important facts.
         if self.auto_recall
             && self.memory.name() != "none"
             && let Ok(entries) = self
@@ -1304,7 +1308,7 @@ impl Agent {
         {
             let ctx: String = entries
                 .iter()
-                .filter(|e| !matches!(e.category, MemoryCategory::Conversation))
+                .filter(|e| matches!(e.category, MemoryCategory::Core))
                 .map(|e| format!("- {}: {}", e.key, e.content))
                 .collect::<Vec<_>>()
                 .join("\n");

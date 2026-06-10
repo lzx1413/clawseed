@@ -14,10 +14,10 @@ use super::traits::{Memory, MemoryCategory};
 use clawseed_api::provider::Provider;
 
 /// Importance score threshold above which a turn is promoted to Core memory.
-const CORE_PROMOTION_THRESHOLD: f64 = 0.6;
+const CORE_PROMOTION_THRESHOLD: f64 = 0.8;
 
-/// Maximum character length for history entries.
-const MAX_HISTORY_LENGTH: usize = 200;
+/// Maximum character length for history entries and Core summaries.
+const MAX_SUMMARY_LENGTH: usize = 50;
 
 /// Minimum content length to consider for Core promotion.
 const MIN_CORE_CONTENT_LENGTH: usize = 10;
@@ -39,7 +39,7 @@ pub async fn consolidate_turn(
     // Phase 1: Write history entry to Daily category.
     let date = chrono::Local::now().format("%Y-%m-%d").to_string();
     let history_key = format!("daily_{date}_{}", uuid::Uuid::new_v4());
-    let history_summary = truncate_summary(&turn_text, MAX_HISTORY_LENGTH);
+    let history_summary = truncate_content(&turn_text, MAX_SUMMARY_LENGTH);
     memory
         .store(&history_key, &history_summary, MemoryCategory::Daily, None)
         .await?;
@@ -60,12 +60,13 @@ pub async fn consolidate_turn(
     if best_importance >= CORE_PROMOTION_THRESHOLD && best_content.len() >= MIN_CORE_CONTENT_LENGTH
     {
         let mem_key = format!("core_{}", uuid::Uuid::new_v4());
+        let core_summary = truncate_content(best_content, MAX_SUMMARY_LENGTH);
 
         // Conflict check: find and supersede contradictory Core memories.
         if let Err(e) = conflict::check_and_resolve_conflicts(
             memory,
             &mem_key,
-            best_content,
+            &core_summary,
             &MemoryCategory::Core,
             0.6,
         )
@@ -77,7 +78,7 @@ pub async fn consolidate_turn(
         memory
             .store_with_metadata(
                 &mem_key,
-                best_content,
+                &core_summary,
                 MemoryCategory::Core,
                 None,
                 None,
@@ -89,10 +90,10 @@ pub async fn consolidate_turn(
     Ok(())
 }
 
-/// Truncate text to a summary suitable for history entries.
+/// Truncate text to a concise summary suitable for memory entries.
 ///
 /// Strips common noise patterns and truncates at word boundaries.
-fn truncate_summary(text: &str, max_len: usize) -> String {
+fn truncate_content(text: &str, max_len: usize) -> String {
     let cleaned = text
         .lines()
         .filter(|line| {
@@ -129,14 +130,14 @@ mod tests {
 
     #[test]
     fn truncate_short_text_unchanged() {
-        let result = truncate_summary("Hello world", 200);
+        let result = truncate_content("Hello world", 50);
         assert_eq!(result, "Hello world");
     }
 
     #[test]
     fn truncate_long_text_at_word_boundary() {
         let long = "The quick brown fox jumps over the lazy dog and keeps going";
-        let result = truncate_summary(long, 20);
+        let result = truncate_content(long, 20);
         // Ellipsis `…` is 3 bytes in UTF-8, so byte length can exceed max_len by a few
         assert!(
             result.len() <= 25,
@@ -149,7 +150,7 @@ mod tests {
     #[test]
     fn truncate_strips_noise_lines() {
         let text = "[IMAGE:/local/path]\n# Heading\nReal content here\n[DOCUMENT:file]";
-        let result = truncate_summary(text, 200);
+        let result = truncate_content(text, 50);
         assert!(!result.contains("[IMAGE"));
         assert!(!result.contains("[DOCUMENT"));
         assert!(!result.contains("# Heading"));
@@ -159,7 +160,7 @@ mod tests {
     #[test]
     fn truncate_empty_lines_filtered() {
         let text = "\n\nHello\n\nWorld\n\n";
-        let result = truncate_summary(text, 200);
+        let result = truncate_content(text, 50);
         assert_eq!(result, "Hello World");
     }
 

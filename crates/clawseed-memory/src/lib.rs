@@ -6,6 +6,7 @@ pub mod backend;
 pub mod chunker;
 pub mod conflict;
 pub mod consolidation;
+pub mod curator;
 pub mod decay;
 pub mod embeddings;
 pub mod hygiene;
