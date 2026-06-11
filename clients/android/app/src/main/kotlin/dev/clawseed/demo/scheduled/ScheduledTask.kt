@@ -23,4 +23,4 @@ data class ScheduledTask(
 enum class TaskRepeat { ONCE, DAILY, WEEKDAY }
 
 @Serializable
-enum class TaskStatus { SUCCESS, FAILED }
+enum class TaskStatus { RUNNING, SUCCESS, FAILED }

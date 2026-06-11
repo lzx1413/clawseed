@@ -56,6 +56,8 @@ fun ChatScreen(
     onSessionIdChanged: (String?) -> Unit = {},
     onSessionEstablished: () -> Unit = {},
     sessionVersion: Int = 0,
+    autoSendMessage: String? = null,
+    onAutoMessageSent: () -> Unit = {},
 ) {
     val viewModel: ChatViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsState()
@@ -94,6 +96,18 @@ fun ChatScreen(
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             val totalItems = listState.layoutInfo.totalItemsCount
             totalItems == 0 || lastVisible >= totalItems - 2
+        }
+    }
+
+    // Auto-send pending message from scheduled task "Run Now"
+    LaunchedEffect(autoSendMessage) {
+        if (autoSendMessage != null) {
+            // Wait for connection before sending
+            while (uiState.connState != ConnectionState.CONNECTED) {
+                kotlinx.coroutines.delay(200)
+            }
+            viewModel.sendMessage(autoSendMessage)
+            onAutoMessageSent()
         }
     }
 

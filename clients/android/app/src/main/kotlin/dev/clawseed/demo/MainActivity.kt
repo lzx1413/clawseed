@@ -51,7 +51,9 @@ class MainActivity : ComponentActivity() {
 
         CoroutineScope(Dispatchers.IO).launch {
             ScheduledTaskManager.rescheduleAll(this@MainActivity)
-            ScheduledTaskStore(this@MainActivity).ensureDefaultTasks(this@MainActivity)
+            val store = ScheduledTaskStore(this@MainActivity)
+            store.ensureDefaultTasks(this@MainActivity)
+            store.resetStuckRunningTasks()
         }
 
         // Handle session ID from notification tap

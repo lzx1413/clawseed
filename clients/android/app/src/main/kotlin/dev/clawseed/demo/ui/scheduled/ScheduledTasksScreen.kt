@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -38,6 +39,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -71,6 +73,7 @@ import java.util.Locale
 @Composable
 fun ScheduledTasksScreen(
     onBack: () -> Unit,
+    onRunTask: (ScheduledTask) -> Unit = {},
     viewModel: ScheduledTasksViewModel = viewModel(),
 ) {
     val tasks by viewModel.tasks.collectAsState()
@@ -199,6 +202,7 @@ fun ScheduledTasksScreen(
                             onToggle = { enabled -> viewModel.toggleTask(task.id, enabled) },
                             onEdit = { editingTask = task },
                             onDelete = { viewModel.deleteTask(task.id) },
+                            onRunNow = { onRunTask(task) },
                         )
                     }
                 }
@@ -213,6 +217,7 @@ private fun TaskCard(
     onToggle: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    onRunNow: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -268,6 +273,35 @@ private fun TaskCard(
                 overflow = TextOverflow.Ellipsis,
             )
 
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // "Run Now" button (or "正在执行..." text when alarm-triggered RUNNING)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (task.lastStatus == TaskStatus.RUNNING) {
+                    Text(
+                        "正在执行...",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                } else {
+                    OutlinedButton(
+                        onClick = onRunNow,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = "现在运行",
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("现在运行", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(4.dp))
 
             Row(
@@ -286,16 +320,23 @@ private fun TaskCard(
                     label = { Text(repeatLabel, style = MaterialTheme.typography.labelSmall) },
                 )
 
-                if (task.lastRunAt != null) {
+                if (task.lastRunAt != null && task.lastStatus != TaskStatus.RUNNING) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            if (task.lastStatus == TaskStatus.SUCCESS) Icons.Default.Check else Icons.Default.Close,
+                            when (task.lastStatus) {
+                                TaskStatus.SUCCESS -> Icons.Default.Check
+                                TaskStatus.FAILED -> Icons.Default.Close
+                                TaskStatus.RUNNING -> Icons.Default.Check
+                                null -> Icons.Default.Close
+                            },
                             contentDescription = null,
                             modifier = Modifier.size(14.dp),
-                            tint = if (task.lastStatus == TaskStatus.SUCCESS)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.error,
+                            tint = when (task.lastStatus) {
+                                TaskStatus.SUCCESS -> MaterialTheme.colorScheme.primary
+                                TaskStatus.FAILED -> MaterialTheme.colorScheme.error
+                                TaskStatus.RUNNING -> MaterialTheme.colorScheme.primary
+                                null -> MaterialTheme.colorScheme.error
+                            },
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
@@ -316,7 +357,7 @@ private fun TaskCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-            } else if (task.lastResult != null) {
+            } else if (task.lastResult != null && task.lastStatus != TaskStatus.RUNNING) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     task.lastResult,

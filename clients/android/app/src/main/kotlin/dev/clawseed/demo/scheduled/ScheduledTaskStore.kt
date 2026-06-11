@@ -72,6 +72,20 @@ class ScheduledTaskStore(private val context: Context) {
         saveTasks(updated)
     }
 
+    /** Reset any tasks stuck in RUNNING status (e.g. after app crash during execution). */
+    suspend fun resetStuckRunningTasks() = mutex.withLock {
+        val current = tasksAsList()
+        val updated = current.map { task ->
+            if (task.lastStatus == TaskStatus.RUNNING) {
+                task.copy(
+                    lastStatus = null,
+                    lastError = "执行中断（应用重启）",
+                )
+            } else task
+        }
+        saveTasks(updated)
+    }
+
     private suspend fun saveTasks(tasks: List<ScheduledTask>) {
         store.edit { prefs ->
             prefs[KEY_TASKS] = json.encodeToString(tasks)

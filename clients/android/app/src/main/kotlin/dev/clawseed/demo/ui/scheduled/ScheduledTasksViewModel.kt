@@ -6,20 +6,12 @@ import androidx.lifecycle.viewModelScope
 import dev.clawseed.demo.scheduled.ScheduledTask
 import dev.clawseed.demo.scheduled.ScheduledTaskManager
 import dev.clawseed.demo.scheduled.ScheduledTaskStore
-import dev.clawseed.demo.scheduled.TaskRepeat
-import dev.clawseed.demo.scheduled.TaskStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-
-data class ScheduledTasksUiState(
-    val tasks: List<ScheduledTask> = emptyList(),
-    val isLoading: Boolean = true,
-    val canScheduleExactAlarms: Boolean = true,
-)
 
 class ScheduledTasksViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -28,7 +20,7 @@ class ScheduledTasksViewModel(application: Application) : AndroidViewModel(appli
     val tasks: StateFlow<List<ScheduledTask>> = store.tasks
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _canScheduleExactAlarms = MutableStateFlow(true)
+    private val _canScheduleExactAlarms = kotlinx.coroutines.flow.MutableStateFlow(true)
     val canScheduleExactAlarms: StateFlow<Boolean> = _canScheduleExactAlarms.asStateFlow()
 
     fun checkExactAlarmPermission() {
