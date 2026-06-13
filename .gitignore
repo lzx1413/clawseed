@@ -90,3 +90,6 @@ local.properties
 clients/android/app/src/main/jniLibs/*/libclawseed.so
 work_dirs
 memory
+
+# MkDocs build output
+site/

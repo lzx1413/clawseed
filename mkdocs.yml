@@ -1,0 +1,159 @@
+site_name: ClawSeed Docs
+site_description: A Rust AI agent runtime with remote tool execution
+site_url: https://lzx1413.github.io/clawseed/
+repo_url: https://github.com/lzx1413/clawseed
+repo_name: lzx1413/clawseed
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+
+exclude_docs: |
+  council-mode-plan.md
+  memory-upgrade-plan.md
+
+theme:
+  name: material
+  language: en
+  logo: assets/clawseed.png
+  favicon: assets/clawseed.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+  font:
+    text: Roboto
+    code: Roboto Mono
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - i18n:
+      docs_structure: folder
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          default: true
+          name: English
+          link: /
+          nav_translations:
+            Home: Home
+            Architecture: Architecture
+            Getting Started: Getting Started
+            Modules: Modules
+            Tutorials: Tutorials
+            Protocols: Protocols
+            Optimization: Optimization
+        - locale: zh
+          default: false
+          name: 中文
+          link: /zh/
+          nav_translations:
+            Home: 首页
+            Architecture: 架构
+            Getting Started: 快速开始
+            Modules: 模块
+            Tutorials: 教程
+            Protocols: 协议
+            Optimization: 优化
+  - search:
+      lang: [en, zh]
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: datetime
+      fallback_to_build_date: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - tables
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Getting Started:
+      - Build and Test: build-and-test.md
+      - Skill System: skills.md
+      - Android Demo: android-demo.md
+  - Modules:
+      - modules/index.md
+      - API: modules/api.md
+      - Agent: modules/agent.md
+      - Config: modules/config.md
+      - Gateway: modules/gateway.md
+      - Memory: modules/memory.md
+      - Providers: modules/providers.md
+      - Tools: modules/tools.md
+  - Tutorials:
+      - tutorials/index.md
+      - Extending Skills: tutorials/extending-skills.md
+      - Skill Authoring: tutorials/skill-authoring.md
+      - Hooks: tutorials/hooks.md
+      - Personality & Identity: tutorials/personality-and-identity.md
+      - Testing: tutorials/testing.md
+  - Protocols:
+      - External Tool Protocol: external-tool-protocol.md
+      - Remote Tool Call: remote-tool-call.md
+      - CETP Provider Tutorial: cetp-provider-tutorial.md
+  - Optimization:
+      - Prompt Cache: prompt-cache-optimization.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/lzx1413/clawseed
+      name: GitHub
+
+extra_css:
+  - stylesheets/extra.css
+
+use_directory_urls: true

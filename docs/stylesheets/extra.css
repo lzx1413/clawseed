@@ -1,0 +1,9 @@
+/* Improve ASCII diagram rendering in code blocks */
+.md-typeset code {
+  font-size: 0.85em;
+}
+
+/* Better table rendering for crate overview tables */
+.md-typeset table:not([class]) {
+  font-size: 0.9em;
+}

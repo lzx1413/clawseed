@@ -4,7 +4,7 @@
 
 ClawSeed 是一个用 Rust 编写的 AI Agent 运行时。它连接 LLM 提供商（Anthropic、Gemini、Bedrock、OpenAI 兼容端点等），通过可插拔的工具（Tool）执行操作，并通过 HTTP/WebSocket 为客户端提供服务。
 
-核心设计理念：**是运行时，不是应用**。ClawSeed 提供 crate 供应用组装——它不捆绑渠道、面板或集成。详见下文[运行时 vs 应用](#运行时-vs-应用)。
+核心设计理念：**是运行时，不是应用**。ClawSeed 提供 crate 供应用组装——它不捆绑渠道、面板或集成。详见下文[运行时 vs 应用](#vs)。
 
 ## 运行时 vs 应用
 
