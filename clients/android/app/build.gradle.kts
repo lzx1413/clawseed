@@ -16,10 +16,10 @@ android {
         applicationId = "dev.clawseed.demo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.6"
+        versionCode = 5
+        versionName = "1.7"
         buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
-        buildConfigField("String", "SDK_VERSION", "\"0.2.0\"")
+        buildConfigField("String", "SDK_VERSION", "\"0.3.0\"")
     }
 
     buildTypes {
