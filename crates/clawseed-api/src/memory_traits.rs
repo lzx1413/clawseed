@@ -54,7 +54,15 @@ impl std::fmt::Debug for MemoryEntry {
 }
 
 /// Merge strategy for combining vector and keyword search results.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+///
+/// In TOML config, represented as a simple string:
+/// - `"rrf"` — RRF with default k=60
+/// - `"rrf(k=60)"` — RRF with custom k
+/// - `"weighted(v=0.7,kw=0.3)"` — Weighted with custom weights
+/// - `"weighted"` — Weighted with defaults (v=0.7, kw=0.3)
+///
+/// Custom serde allows simple string representation in TOML.
+#[derive(Debug, Clone, PartialEq)]
 pub enum MergeStrategy {
     /// Reciprocal Rank Fusion — uses rank positions instead of raw scores,
     /// eliminating BM25-vector scale mismatch. `k` is the RRF constant
@@ -85,6 +93,71 @@ impl std::fmt::Display for MergeStrategy {
                 write!(f, "weighted(v={vector_weight},kw={keyword_weight})")
             }
         }
+    }
+}
+
+impl std::str::FromStr for MergeStrategy {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let lower = s.to_ascii_lowercase();
+        if lower == "rrf" {
+            return Ok(Self::Rrf { k: 60 });
+        }
+        if lower == "weighted" {
+            return Ok(Self::Weighted {
+                vector_weight: 0.7,
+                keyword_weight: 0.3,
+            });
+        }
+        // Parse "rrf(k=60)" format
+        if lower.starts_with("rrf(") && lower.ends_with(')') {
+            let inner = &lower["rrf(".len()..lower.len() - 1];
+            for part in inner.split(',') {
+                let part = part.trim();
+                if let Some(val) = part.strip_prefix("k=") {
+                    if let Ok(k) = val.parse::<u32>() {
+                        return Ok(Self::Rrf { k });
+                    }
+                }
+            }
+            return Err(format!("invalid rrf format: '{s}'"));
+        }
+        // Parse "weighted(v=0.7,kw=0.3)" format
+        if lower.starts_with("weighted(") && lower.ends_with(')') {
+            let inner = &lower["weighted(".len()..lower.len() - 1];
+            let mut v = None;
+            let mut kw = None;
+            for part in inner.split(',') {
+                let part = part.trim();
+                if let Some(val) = part.strip_prefix("v=") {
+                    v = val.parse::<f32>().ok();
+                } else if let Some(val) = part.strip_prefix("kw=") {
+                    kw = val.parse::<f32>().ok();
+                }
+            }
+            if v.is_some() && kw.is_some() {
+                return Ok(Self::Weighted {
+                    vector_weight: v.unwrap(),
+                    keyword_weight: kw.unwrap(),
+                });
+            }
+            return Err(format!("invalid weighted format: '{s}'"));
+        }
+        Err(format!("unknown MergeStrategy: '{s}', expected 'rrf', 'weighted', 'rrf(k=...)', or 'weighted(v=...,kw=...)'"))
+    }
+}
+
+impl serde::Serialize for MergeStrategy {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for MergeStrategy {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        s.parse::<Self>().map_err(serde::de::Error::custom)
     }
 }
 
