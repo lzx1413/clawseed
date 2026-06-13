@@ -187,8 +187,7 @@ pub struct PartitionedSystemPrompt {
 /// to the end of the prompt. Tells the model that the time below applies to all
 /// instructions above. Lives inside the stable block so it's part of the
 /// cacheable prefix.
-pub const DYNAMIC_PREAMBLE: &str =
-    "⚠️ THE CURRENT TIME BELOW APPLIES TO ALL ABOVE INSTRUCTIONS.";
+pub const DYNAMIC_PREAMBLE: &str = "⚠️ THE CURRENT TIME BELOW APPLIES TO ALL ABOVE INSTRUCTIONS.";
 
 // ── Prompt sections ────────────────────────────────────────────────
 
@@ -616,7 +615,10 @@ mod tests {
         assert!(!result.dynamic.is_empty());
         // Preamble lives at the END of stable, so full = stable + "\n\n" + dynamic exactly.
         assert!(result.stable.ends_with(DYNAMIC_PREAMBLE));
-        assert_eq!(result.full, format!("{}\n\n{}", result.stable, result.dynamic));
+        assert_eq!(
+            result.full,
+            format!("{}\n\n{}", result.stable, result.dynamic)
+        );
     }
 
     #[test]

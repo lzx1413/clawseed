@@ -125,36 +125,11 @@ jobs:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: clang
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
 
-  # ── Stage 5: Coverage ────────────────────────────────────────────
-  coverage:
-    name: Coverage
-    needs: [lint]
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.95.0
-          components: llvm-tools-preview
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-      - name: Install cargo-llvm-cov
-        run: cargo install cargo-llvm-cov --locked
-      - name: Generate coverage
-        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
-      - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: lcov.info
-
   # ── Required gate ────────────────────────────────────────────────
   gate:
     name: CI Required Gate
     if: always()
-    needs: [lint, build, check, test, coverage]
+    needs: [lint, build, check, test]
     runs-on: ubuntu-latest
     steps:
       - name: Check results

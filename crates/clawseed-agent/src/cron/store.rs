@@ -1111,7 +1111,11 @@ mod tests {
 
         let job = add_job(&config, "* * * * *", "echo due").unwrap();
 
-        let due_now = due_jobs(&config, Utc::now()).unwrap();
+        // next_run is computed from the current minute using the local timezone,
+        // so it may land within the same minute. Use a reference point 1 second
+        // after insertion so that the "next occurrence" is always strictly in the future.
+        let check_from = Utc::now() + ChronoDuration::seconds(1);
+        let due_now = due_jobs(&config, check_from).unwrap();
         assert!(due_now.is_empty(), "new job should not be due immediately");
 
         let far_future = Utc::now() + ChronoDuration::days(365);

@@ -115,10 +115,10 @@ impl std::str::FromStr for MergeStrategy {
             let inner = &lower["rrf(".len()..lower.len() - 1];
             for part in inner.split(',') {
                 let part = part.trim();
-                if let Some(val) = part.strip_prefix("k=") {
-                    if let Ok(k) = val.parse::<u32>() {
-                        return Ok(Self::Rrf { k });
-                    }
+                if let Some(val) = part.strip_prefix("k=")
+                    && let Ok(k) = val.parse::<u32>()
+                {
+                    return Ok(Self::Rrf { k });
                 }
             }
             return Err(format!("invalid rrf format: '{s}'"));
@@ -136,15 +136,17 @@ impl std::str::FromStr for MergeStrategy {
                     kw = val.parse::<f32>().ok();
                 }
             }
-            if v.is_some() && kw.is_some() {
+            if let (Some(vw), Some(kww)) = (v, kw) {
                 return Ok(Self::Weighted {
-                    vector_weight: v.unwrap(),
-                    keyword_weight: kw.unwrap(),
+                    vector_weight: vw,
+                    keyword_weight: kww,
                 });
             }
             return Err(format!("invalid weighted format: '{s}'"));
         }
-        Err(format!("unknown MergeStrategy: '{s}', expected 'rrf', 'weighted', 'rrf(k=...)', or 'weighted(v=...,kw=...)'"))
+        Err(format!(
+            "unknown MergeStrategy: '{s}', expected 'rrf', 'weighted', 'rrf(k=...)', or 'weighted(v=...,kw=...)'"
+        ))
     }
 }
 
@@ -235,16 +237,18 @@ impl std::str::FromStr for ConflictMode {
                     b = val.parse::<f32>().ok();
                 }
             }
-            if j.is_some() && c.is_some() && b.is_some() {
+            if let (Some(jw), Some(cw), Some(bw)) = (j, c, b) {
                 return Ok(Self::Combined {
-                    jaccard_w: j.unwrap(),
-                    cosine_w: c.unwrap(),
-                    bm25_w: b.unwrap(),
+                    jaccard_w: jw,
+                    cosine_w: cw,
+                    bm25_w: bw,
                 });
             }
             return Err(format!("invalid combined weights: '{s}'"));
         }
-        Err(format!("unknown ConflictMode: '{s}', expected 'jaccard', 'combined', or 'combined(j=...,c=...,b=...)'"))
+        Err(format!(
+            "unknown ConflictMode: '{s}', expected 'jaccard', 'combined', or 'combined(j=...,c=...,b=...)'"
+        ))
     }
 }
 

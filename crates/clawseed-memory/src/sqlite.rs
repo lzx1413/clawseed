@@ -275,13 +275,12 @@ impl SqliteMemory {
                 let mut stmt = conn.prepare(
                     "SELECT id, content FROM memories WHERE embedding IS NOT NULL AND embedding_content_hash IS NULL",
                 )?;
-                
-                stmt
-                    .query_map([], |row| {
-                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                    })?
-                    .filter_map(|r| r.ok())
-                    .collect()
+
+                stmt.query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?
+                .filter_map(|r| r.ok())
+                .collect()
             };
             for (id, content) in rows {
                 let hash = Self::content_hash(&content);

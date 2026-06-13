@@ -556,7 +556,7 @@ mod tests {
         );
         // "likes coffee" vs "likes espresso" shares "likes", with cosine boost
         assert!(
-            conflicts_combined.len() >= 1,
+            !conflicts_combined.is_empty(),
             "combined mode should catch at least one conflict"
         );
     }

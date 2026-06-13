@@ -70,7 +70,11 @@ impl ChatMessage {
         Self {
             role: "system".into(),
             content: full,
-            stable_prefix: if !stable.is_empty() { Some(stable) } else { None },
+            stable_prefix: if !stable.is_empty() {
+                Some(stable)
+            } else {
+                None
+            },
         }
     }
 }

@@ -268,7 +268,7 @@ mod tests {
     #[test]
     fn build_curate_prompt_contains_entries() {
         use clawseed_api::memory_traits::MemoryEntry;
-        let entries = vec![MemoryEntry {
+        let entries = [MemoryEntry {
             id: "1".into(),
             key: "core_pref".into(),
             content: "User prefers Rust".into(),

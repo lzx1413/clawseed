@@ -1333,10 +1333,9 @@ impl Agent {
         // Refresh stable Core memories before preparing the turn.
         // This ensures the first system prompt includes stable memories,
         // and subsequent turns rebuild if Core memories changed.
-        if self.refresh_stable_core_memories().await
-            && !self.history.is_empty() {
-                self.rebuild_system_prompt()?;
-            }
+        if self.refresh_stable_core_memories().await && !self.history.is_empty() {
+            self.rebuild_system_prompt()?;
+        }
         self.prepare_turn(user_message)?;
         // Refresh dynamic content (datetime) each turn without rebuilding stable prefix.
         if !self.history.is_empty() {
@@ -1485,10 +1484,9 @@ impl Agent {
         debug: bool,
     ) -> Result<String> {
         // Refresh stable Core memories before preparing the turn.
-        if self.refresh_stable_core_memories().await
-            && !self.history.is_empty() {
-                self.rebuild_system_prompt()?;
-            }
+        if self.refresh_stable_core_memories().await && !self.history.is_empty() {
+            self.rebuild_system_prompt()?;
+        }
         self.prepare_turn(user_message)?;
         // Refresh dynamic content (datetime) each turn without rebuilding stable prefix.
         if !self.history.is_empty() {

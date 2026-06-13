@@ -624,8 +624,9 @@ impl BedrockProvider {
                             let dynamic = msg.content[stable.len()..]
                                 .trim_start_matches('\n')
                                 .to_string();
-                            system_blocks
-                                .push(SystemBlock::Text(TextBlock { text: stable.clone() }));
+                            system_blocks.push(SystemBlock::Text(TextBlock {
+                                text: stable.clone(),
+                            }));
                             system_blocks.push(SystemBlock::CachePoint(CachePointWrapper {
                                 cache_point: CachePoint::default_cache(),
                             }));
@@ -1207,7 +1208,10 @@ impl Provider for BedrockProvider {
         // Apply cachePoint to system if large, but skip if partition already provided one.
         let system = system_blocks.map(|mut blocks| {
             // Skip post-hoc CachePoint if partitioning already inserted one.
-            if blocks.iter().any(|b| matches!(b, SystemBlock::CachePoint(_))) {
+            if blocks
+                .iter()
+                .any(|b| matches!(b, SystemBlock::CachePoint(_)))
+            {
                 return blocks;
             }
             let has_large_system = blocks
