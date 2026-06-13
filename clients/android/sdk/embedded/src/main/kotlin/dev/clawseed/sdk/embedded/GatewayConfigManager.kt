@@ -82,6 +82,40 @@ class GatewayConfigManager(private val context: Context) {
                 }
             }
 
+            // Ensure [memory] has all upgrade fields (Phase A-E).
+            // Only adds keys that are absent — never overwrites user-set values.
+            val memIdx = content.indexOf("[memory]")
+            if (memIdx != -1) {
+                val nextMemSection = content.indexOf("\n[", memIdx + 1).let { if (it == -1) content.length else it }
+                val memSection = content.substring(memIdx, nextMemSection)
+                var memPatch = ""
+                if (!memSection.contains("merge_strategy")) {
+                    memPatch += "\nmerge_strategy = \"rrf\""
+                }
+                if (!memSection.contains("defer_embedding")) {
+                    memPatch += "\ndefer_embedding = true"
+                }
+                if (!memSection.contains("stable_memory_in_system_prompt")) {
+                    memPatch += "\nstable_memory_in_system_prompt = true"
+                }
+                if (!memSection.contains("conflict_mode")) {
+                    memPatch += "\nconflict_mode = \"combined\""
+                }
+                if (!memSection.contains("min_retention_floor")) {
+                    memPatch += "\nmin_retention_floor = 30"
+                }
+                if (!memSection.contains("backfill_on_startup")) {
+                    memPatch += "\nbackfill_on_startup = true"
+                }
+                if (memPatch.isNotEmpty()) {
+                    content = content.substring(0, nextMemSection) +
+                        memPatch +
+                        content.substring(nextMemSection)
+                    changed = true
+                    Log.i(TAG, "Patched [memory] section: $memPatch")
+                }
+            }
+
             if (changed) configFile.writeText(content)
         } else {
             configFile.writeText(INITIAL_CONFIG.replace("{WORKSPACE_DIR}", workspaceDir.absolutePath))
