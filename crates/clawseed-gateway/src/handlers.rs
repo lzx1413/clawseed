@@ -341,6 +341,7 @@ pub async fn handle_webhook(
             &clawseed_api::provider::ChatMessage {
                 role: "user".to_string(),
                 content: message.clone(),
+                stable_prefix: None,
             },
         );
     }
@@ -391,6 +392,7 @@ pub async fn handle_webhook(
                     &clawseed_api::provider::ChatMessage {
                         role: "assistant".to_string(),
                         content: response.clone(),
+                        stable_prefix: None,
                     },
                 );
             }

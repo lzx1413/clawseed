@@ -14,6 +14,12 @@ use crate::tool::ToolSpec;
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
+    /// When `Some`, indicates the prefix portion of `content` that providers
+    /// supporting prompt caching should mark as cacheable. Only meaningful on
+    /// system messages. `content` always contains the full text (stable + dynamic)
+    /// so non-supporting providers ignore this field transparently.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stable_prefix: Option<String>,
 }
 
 impl ChatMessage {
@@ -21,6 +27,7 @@ impl ChatMessage {
         Self {
             role: "system".into(),
             content: content.into(),
+            stable_prefix: None,
         }
     }
 
@@ -28,6 +35,7 @@ impl ChatMessage {
         Self {
             role: "user".into(),
             content: content.into(),
+            stable_prefix: None,
         }
     }
 
@@ -35,6 +43,7 @@ impl ChatMessage {
         Self {
             role: "assistant".into(),
             content: content.into(),
+            stable_prefix: None,
         }
     }
 
@@ -42,6 +51,26 @@ impl ChatMessage {
         Self {
             role: "tool".into(),
             content: content.into(),
+            stable_prefix: None,
+        }
+    }
+
+    /// Create a partitioned system message with a cacheable stable prefix.
+    /// `content` is set to `full` (the complete prompt text), and `stable_prefix`
+    /// is set to `Some(stable)` so providers that support prompt caching can
+    /// split the content into a cacheable prefix + dynamic suffix.
+    ///
+    /// Invariant: `full.starts_with(&stable)` must hold. Providers split the
+    /// content at exactly `stable.len()` to recover the dynamic portion.
+    pub fn system_partitioned(stable: String, full: String) -> Self {
+        debug_assert!(
+            full.starts_with(&stable),
+            "system_partitioned: full must start with stable"
+        );
+        Self {
+            role: "system".into(),
+            content: full,
+            stable_prefix: if !stable.is_empty() { Some(stable) } else { None },
         }
     }
 }

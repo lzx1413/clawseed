@@ -612,9 +612,30 @@ impl BedrockProvider {
             match msg.role.as_str() {
                 "system" => {
                     if system_blocks.is_empty() {
-                        system_blocks.push(SystemBlock::Text(TextBlock {
-                            text: msg.content.clone(),
-                        }));
+                        if let Some(stable) = &msg.stable_prefix
+                            && !stable.is_empty()
+                            && msg.content.starts_with(stable)
+                            && stable.len() < msg.content.len()
+                        {
+                            // Partitioned system: Text(stable) + CachePoint + Text(dynamic).
+                            // The preamble (if any) is already included in `stable`
+                            // (see prompt.rs build_partitioned), so we only need to
+                            // trim the "\n\n" separator between the two halves.
+                            let dynamic = msg.content[stable.len()..]
+                                .trim_start_matches('\n')
+                                .to_string();
+                            system_blocks
+                                .push(SystemBlock::Text(TextBlock { text: stable.clone() }));
+                            system_blocks.push(SystemBlock::CachePoint(CachePointWrapper {
+                                cache_point: CachePoint::default_cache(),
+                            }));
+                            system_blocks.push(SystemBlock::Text(TextBlock { text: dynamic }));
+                        } else {
+                            // Legacy: single Text block
+                            system_blocks.push(SystemBlock::Text(TextBlock {
+                                text: msg.content.clone(),
+                            }));
+                        }
                     }
                 }
                 "assistant" => {
@@ -1183,8 +1204,12 @@ impl Provider for BedrockProvider {
         // Strip empty text ContentBlocks that would cause Bedrock 400 errors.
         Self::sanitize_empty_content_blocks(&mut converse_messages);
 
-        // Apply cachePoint to system if large.
+        // Apply cachePoint to system if large, but skip if partition already provided one.
         let system = system_blocks.map(|mut blocks| {
+            // Skip post-hoc CachePoint if partitioning already inserted one.
+            if blocks.iter().any(|b| matches!(b, SystemBlock::CachePoint(_))) {
+                return blocks;
+            }
             let has_large_system = blocks
                 .iter()
                 .any(|b| matches!(b, SystemBlock::Text(tb) if Self::should_cache_system(&tb.text)));
@@ -1590,6 +1615,7 @@ mod tests {
             messages.push(ChatMessage {
                 role: if i % 2 == 0 { "user" } else { "assistant" }.to_string(),
                 content: format!("Message {i}"),
+                stable_prefix: None,
             });
         }
         assert!(BedrockProvider::should_cache_conversation(&messages));
@@ -1844,6 +1870,7 @@ mod tests {
             ChatMessage {
                 role: "tool".to_string(),
                 content: "not valid json".to_string(),
+                stable_prefix: None,
             },
         ];
         let (_, msgs) = BedrockProvider::convert_messages(&messages);
@@ -1866,6 +1893,7 @@ mod tests {
             ChatMessage {
                 role: "tool".to_string(),
                 content: "raw output with no json".to_string(),
+                stable_prefix: None,
             },
         ];
         let (_, msgs) = BedrockProvider::convert_messages(&messages);
@@ -1972,6 +2000,7 @@ mod tests {
             ChatMessage {
                 role: "assistant".to_string(),
                 content: String::new(),
+                stable_prefix: None,
             },
             ChatMessage::user("Continue"),
         ];

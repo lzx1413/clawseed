@@ -1710,6 +1710,7 @@ mod tests {
         let messages = vec![ChatMessage {
             role: "user".to_string(),
             content: "hello".to_string(),
+            stable_prefix: None,
         }];
         let tools = vec![serde_json::json!({
             "type": "function",

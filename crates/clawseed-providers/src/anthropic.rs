@@ -364,6 +364,7 @@ impl AnthropicProvider {
 
     fn convert_messages(messages: &[ChatMessage]) -> (Option<SystemPrompt>, Vec<NativeMessage>) {
         let mut system_text = None;
+        let mut system_stable_prefix: Option<String> = None;
         let mut native_messages = Vec::new();
 
         for msg in messages {
@@ -371,6 +372,7 @@ impl AnthropicProvider {
                 "system" => {
                     if system_text.is_none() {
                         system_text = Some(msg.content.clone());
+                        system_stable_prefix = msg.stable_prefix.clone();
                     }
                 }
                 "assistant" => {
@@ -503,13 +505,38 @@ impl AnthropicProvider {
             }
         }
 
-        // Always use Blocks format with cache_control for system prompts
+        // Build system prompt from partitioned or legacy format
         let system_prompt = system_text.map(|text| {
-            SystemPrompt::Blocks(vec![SystemBlock {
-                block_type: "text".to_string(),
-                text,
-                cache_control: Some(CacheControl::ephemeral()),
-            }])
+            if let Some(stable) = system_stable_prefix
+                && !stable.is_empty()
+                && text.starts_with(&stable)
+                && stable.len() < text.len()
+            {
+                // Partitioned: split at exactly stable.len(). The preamble (if any)
+                // is already part of the stable prefix (see prompt.rs
+                // build_partitioned), so we only trim the "\n\n" separator
+                // between the two halves.
+                let dynamic = text[stable.len()..].trim_start_matches('\n').to_string();
+                SystemPrompt::Blocks(vec![
+                    SystemBlock {
+                        block_type: "text".to_string(),
+                        text: stable,
+                        cache_control: Some(CacheControl::ephemeral()),
+                    },
+                    SystemBlock {
+                        block_type: "text".to_string(),
+                        text: dynamic,
+                        cache_control: None, // Dynamic block NOT cached
+                    },
+                ])
+            } else {
+                // Legacy: single block with cache_control
+                SystemPrompt::Blocks(vec![SystemBlock {
+                    block_type: "text".to_string(),
+                    text,
+                    cache_control: Some(CacheControl::ephemeral()),
+                }])
+            }
         });
 
         (system_prompt, native_messages)
@@ -1504,10 +1531,12 @@ mod tests {
             ChatMessage {
                 role: "system".to_string(),
                 content: "System prompt".to_string(),
+                stable_prefix: None,
             },
             ChatMessage {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
+                stable_prefix: None,
             },
         ];
         // Only 1 non-system message — should not cache
@@ -1519,12 +1548,14 @@ mod tests {
         let mut messages = vec![ChatMessage {
             role: "system".to_string(),
             content: "System prompt".to_string(),
+            stable_prefix: None,
         }];
         // Add 3 non-system messages
         for i in 0..3 {
             messages.push(ChatMessage {
                 role: if i % 2 == 0 { "user" } else { "assistant" }.to_string(),
                 content: format!("Message {i}"),
+                stable_prefix: None,
             });
         }
         assert!(AnthropicProvider::should_cache_conversation(&messages));
@@ -1535,6 +1566,7 @@ mod tests {
         let messages = vec![ChatMessage {
             role: "user".to_string(),
             content: "Hello".to_string(),
+            stable_prefix: None,
         }];
         // Exactly 1 non-system message — should not cache
         assert!(!AnthropicProvider::should_cache_conversation(&messages));
@@ -1544,10 +1576,12 @@ mod tests {
             ChatMessage {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
+                stable_prefix: None,
             },
             ChatMessage {
                 role: "assistant".to_string(),
                 content: "Hi".to_string(),
+                stable_prefix: None,
             },
         ];
         assert!(AnthropicProvider::should_cache_conversation(&messages));
@@ -1666,6 +1700,7 @@ mod tests {
         let messages = vec![ChatMessage {
             role: "system".to_string(),
             content: "Short system prompt".to_string(),
+            stable_prefix: None,
         }];
 
         let (system_prompt, _) = AnthropicProvider::convert_messages(&messages);
@@ -1691,6 +1726,7 @@ mod tests {
         let messages = vec![ChatMessage {
             role: "system".to_string(),
             content: large_content.clone(),
+            stable_prefix: None,
         }];
 
         let (system_prompt, _) = AnthropicProvider::convert_messages(&messages);
@@ -1750,18 +1786,22 @@ mod tests {
             ChatMessage {
                 role: "system".to_string(),
                 content: "You are helpful.".to_string(),
+                stable_prefix: None,
             },
             ChatMessage {
                 role: "user".to_string(),
                 content: "gen a 2 sum in golang".to_string(),
+                stable_prefix: None,
             },
             ChatMessage {
                 role: "assistant".to_string(),
                 content: "```go\nfunc twoSum(nums []int) {}\n```".to_string(),
+                stable_prefix: None,
             },
             ChatMessage {
                 role: "user".to_string(),
                 content: "what's meaning of make here?".to_string(),
+                stable_prefix: None,
             },
         ];
 
@@ -1948,6 +1988,7 @@ mod tests {
             role: "user".to_string(),
             content: "Check this image: [IMAGE:data:image/jpeg;base64,/9j/4AAQ] What do you see?"
                 .to_string(),
+            stable_prefix: None,
         }];
 
         let (_, native_msgs) = AnthropicProvider::convert_messages(&messages);
@@ -1986,6 +2027,7 @@ mod tests {
         let messages = vec![ChatMessage {
             role: "user".to_string(),
             content: "[IMAGE:data:image/png;base64,iVBORw0KGgo]".to_string(),
+            stable_prefix: None,
         }];
 
         let (_, native_msgs) = AnthropicProvider::convert_messages(&messages);
@@ -2015,6 +2057,7 @@ mod tests {
         let messages = vec![ChatMessage {
             role: "user".to_string(),
             content: "Hello, how are you?".to_string(),
+            stable_prefix: None,
         }];
 
         let (_, native_msgs) = AnthropicProvider::convert_messages(&messages);
@@ -2059,10 +2102,12 @@ mod tests {
             ChatMessage {
                 role: "system".to_string(),
                 content: "You are helpful.".to_string(),
+                stable_prefix: None,
             },
             ChatMessage {
                 role: "user".to_string(),
                 content: "Do two things.".to_string(),
+                stable_prefix: None,
             },
             ChatMessage {
                 role: "assistant".to_string(),
@@ -2074,6 +2119,7 @@ mod tests {
                     ]
                 })
                 .to_string(),
+                stable_prefix: None,
             },
             ChatMessage {
                 role: "tool".to_string(),
@@ -2082,6 +2128,7 @@ mod tests {
                     "content": "file1.txt\nfile2.txt"
                 })
                 .to_string(),
+                stable_prefix: None,
             },
             ChatMessage {
                 role: "tool".to_string(),
@@ -2090,6 +2137,7 @@ mod tests {
                     "content": "/home/user"
                 })
                 .to_string(),
+                stable_prefix: None,
             },
         ];
 
@@ -2124,6 +2172,7 @@ mod tests {
             ChatMessage {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
+                stable_prefix: None,
             },
             ChatMessage {
                 role: "assistant".to_string(),
@@ -2134,6 +2183,7 @@ mod tests {
                     ]
                 })
                 .to_string(),
+                stable_prefix: None,
             },
             ChatMessage {
                 role: "tool".to_string(),
@@ -2142,10 +2192,12 @@ mod tests {
                     "content": "hi"
                 })
                 .to_string(),
+                stable_prefix: None,
             },
             ChatMessage {
                 role: "user".to_string(),
                 content: "Thanks!".to_string(),
+                stable_prefix: None,
             },
         ];
 

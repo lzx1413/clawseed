@@ -117,6 +117,7 @@ impl SessionBackend for SqliteSessionBackend {
             Ok(ChatMessage {
                 role: row.get(0)?,
                 content: row.get(1)?,
+                stable_prefix: None, // Not persisted; rebuilt by seed_history on resume
             })
         }) else {
             return Vec::new();
