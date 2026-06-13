@@ -235,7 +235,14 @@ class GatewayConfigManager(private val context: Context) {
             "[web_fetch]" to "enabled = true\nallowed_domains = [\"*\"]",
             "[http_request]" to "enabled = true\nallowed_domains = [\"*\"]",
             "[web_search]" to "enabled = true\nprovider = \"bing\"",
-            "[memory]" to "embedding_provider = \"local\"\nembedding_model = \"gte-multilingual-base\"",
+            "[memory]" to """embedding_provider = "local"
+embedding_model = "gte-multilingual-base"
+merge_strategy = "rrf"
+defer_embedding = true
+stable_memory_in_system_prompt = true
+conflict_mode = "combined"
+min_retention_floor = 30
+backfill_on_startup = true""",
         )
 
         private val INITIAL_CONFIG = """
@@ -249,6 +256,12 @@ require_pairing = false
 [memory]
 embedding_provider = "local"
 embedding_model = "gte-multilingual-base"
+merge_strategy = "rrf"
+defer_embedding = true
+stable_memory_in_system_prompt = true
+conflict_mode = "combined"
+min_retention_floor = 30
+backfill_on_startup = true
 
 [web_fetch]
 enabled = true

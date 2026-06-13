@@ -613,6 +613,19 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     append("embedding_api_key = \"${state.embeddingApiKey}\"")
                     appendLine()
                 }
+                // Memory system upgrade fields (Phase A-E defaults)
+                append("merge_strategy = \"rrf\"")
+                appendLine()
+                append("defer_embedding = true")
+                appendLine()
+                append("stable_memory_in_system_prompt = true")
+                appendLine()
+                append("conflict_mode = \"combined\"")
+                appendLine()
+                append("min_retention_floor = 30")
+                appendLine()
+                append("backfill_on_startup = true")
+                appendLine()
             }
             if (toml.contains(memoryHeader)) {
                 val idx = toml.indexOf(memoryHeader)
