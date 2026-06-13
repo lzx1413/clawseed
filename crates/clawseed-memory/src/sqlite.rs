@@ -4,12 +4,13 @@ use super::vector;
 use anyhow::Context;
 use async_trait::async_trait;
 use chrono::Local;
-use clawseed_api::memory_traits::SearchMode;
+use clawseed_api::memory_traits::{MergeStrategy, SearchMode};
 use parking_lot::Mutex;
 use rusqlite::{Connection, params};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -34,6 +35,9 @@ pub struct SqliteMemory {
     keyword_weight: f32,
     cache_max: usize,
     search_mode: SearchMode,
+    merge_strategy: MergeStrategy,
+    defer_embedding: bool,
+    pending_embeds: Arc<AtomicUsize>,
 }
 
 impl SqliteMemory {
@@ -51,6 +55,8 @@ impl SqliteMemory {
             10_000,
             None,
             SearchMode::default(),
+            MergeStrategy::default(),
+            false, // NoopEmbedding → no deferral
         )
     }
 
@@ -65,6 +71,8 @@ impl SqliteMemory {
             10_000,
             None,
             SearchMode::default(),
+            MergeStrategy::default(),
+            false, // NoopEmbedding → no deferral
         )
     }
 
@@ -73,6 +81,7 @@ impl SqliteMemory {
     /// If `open_timeout_secs` is `Some(n)`, opening the database is limited to `n` seconds
     /// (capped at 300). Useful when the DB file may be locked or on slow storage.
     /// `None` = wait indefinitely (default).
+    #[allow(clippy::too_many_arguments)]
     pub fn with_embedder(
         workspace_dir: &Path,
         embedder: Arc<dyn EmbeddingProvider>,
@@ -81,6 +90,8 @@ impl SqliteMemory {
         cache_max: usize,
         open_timeout_secs: Option<u64>,
         search_mode: SearchMode,
+        merge_strategy: MergeStrategy,
+        defer_embedding: bool,
     ) -> anyhow::Result<Self> {
         let db_path = workspace_dir.join("memory").join("brain.db");
         Self::with_embedder_path(
@@ -91,10 +102,13 @@ impl SqliteMemory {
             cache_max,
             open_timeout_secs,
             search_mode,
+            merge_strategy,
+            defer_embedding,
         )
     }
 
     /// Build SQLite memory with an explicit database path and embedder.
+    #[allow(clippy::too_many_arguments)]
     fn with_embedder_path(
         db_path: &Path,
         embedder: Arc<dyn EmbeddingProvider>,
@@ -103,6 +117,8 @@ impl SqliteMemory {
         cache_max: usize,
         open_timeout_secs: Option<u64>,
         search_mode: SearchMode,
+        merge_strategy: MergeStrategy,
+        defer_embedding: bool,
     ) -> anyhow::Result<Self> {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -134,6 +150,9 @@ impl SqliteMemory {
             keyword_weight,
             cache_max,
             search_mode,
+            merge_strategy,
+            defer_embedding,
+            pending_embeds: Arc::new(AtomicUsize::new(0)),
         })
     }
 
@@ -245,6 +264,34 @@ impl SqliteMemory {
             conn.execute_batch("ALTER TABLE memories ADD COLUMN superseded_by TEXT;")?;
         }
 
+        // Migration: add embedding_content_hash column (for deferred embedding guard)
+        if !schema_sql.contains("embedding_content_hash") {
+            conn.execute_batch(
+                "ALTER TABLE memories ADD COLUMN embedding_content_hash TEXT DEFAULT NULL;",
+            )?;
+
+            // Backfill: compute content_hash for rows that already have embeddings
+            let rows: Vec<(String, String)> = {
+                let mut stmt = conn.prepare(
+                    "SELECT id, content FROM memories WHERE embedding IS NOT NULL AND embedding_content_hash IS NULL",
+                )?;
+                
+                stmt
+                    .query_map([], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })?
+                    .filter_map(|r| r.ok())
+                    .collect()
+            };
+            for (id, content) in rows {
+                let hash = Self::content_hash(&content);
+                conn.execute(
+                    "UPDATE memories SET embedding_content_hash = ?1 WHERE id = ?2",
+                    params![hash, id],
+                )?;
+            }
+        }
+
         Ok(())
     }
 
@@ -269,7 +316,7 @@ impl SqliteMemory {
     /// Deterministic content hash for embedding cache.
     /// Uses SHA-256 (truncated) instead of DefaultHasher, which is
     /// explicitly documented as unstable across Rust versions.
-    fn content_hash(text: &str) -> String {
+    pub fn content_hash(text: &str) -> String {
         use sha2::{Digest, Sha256};
         let hash = Sha256::digest(text.as_bytes());
         // First 8 bytes → 16 hex chars, matching previous format length
@@ -286,6 +333,90 @@ impl SqliteMemory {
     /// Provide access to the connection for advanced queries (e.g. retrieval pipeline).
     pub fn connection(&self) -> &Arc<Mutex<Connection>> {
         &self.conn
+    }
+
+    /// Number of pending deferred embedding tasks.
+    pub fn pending_embeds_count(&self) -> usize {
+        self.pending_embeds.load(Ordering::Relaxed)
+    }
+
+    /// Wait for all pending deferred embedding tasks to complete (up to `timeout_secs`).
+    pub async fn drain_pending_embeds(&self, timeout_secs: u64) {
+        let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
+        while self.pending_embeds.load(Ordering::Relaxed) > 0 {
+            if tokio::time::Instant::now() >= deadline {
+                tracing::warn!(
+                    "drain_pending_embeds timed out after {timeout_secs}s, {} tasks still pending",
+                    self.pending_embeds.load(Ordering::Relaxed)
+                );
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    }
+
+    /// Spawn a background task to compute and fill a deferred embedding.
+    ///
+    /// The content_hash guards against stale updates: if the content has changed
+    /// by the time the embedding is ready, the UPDATE affects 0 rows and the
+    /// task silently discards the result.
+    fn spawn_deferred_embedding(&self, key: String, content: String, content_hash: String) {
+        self.pending_embeds.fetch_add(1, Ordering::Relaxed);
+        let embedder = self.embedder.clone();
+        let conn = self.conn.clone();
+        let pending = self.pending_embeds.clone();
+
+        tokio::spawn(async move {
+            // Phase 1: async embedding computation
+            let embedding_result = embedder.embed_one(&content).await;
+            let key_for_log = key.clone();
+
+            match embedding_result {
+                Ok(emb) => {
+                    let bytes = vector::vec_to_bytes(&emb);
+                    // Phase 2: blocking DB update
+                    let updated = tokio::task::spawn_blocking(move || -> anyhow::Result<usize> {
+                        let conn = conn.lock();
+                        let affected = conn.execute(
+                            "UPDATE memories SET embedding = ?1 WHERE key = ?2 AND embedding_content_hash = ?3",
+                            params![bytes, key, content_hash],
+                        )?;
+                        Ok(affected)
+                    })
+                    .await;
+
+                    match updated {
+                        Ok(Ok(n)) if n > 0 => {
+                            tracing::debug!("deferred embedding filled for key={key_for_log}");
+                        }
+                        Ok(Ok(_)) => {
+                            // content_hash mismatch — content changed, silently discard
+                            tracing::debug!(
+                                "deferred embedding discarded for key={key_for_log} (content changed)"
+                            );
+                        }
+                        Ok(Err(e)) => {
+                            tracing::warn!(
+                                "deferred embedding DB write failed for key={key_for_log}: {e}"
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "deferred embedding blocking task failed for key={key_for_log}: {e}"
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    // Embedding computation failed — leave NULL, backfill will retry later
+                    tracing::warn!(
+                        "deferred embedding computation failed for key={key_for_log}: {e}"
+                    );
+                }
+            }
+
+            pending.fetch_sub(1, Ordering::Relaxed);
+        });
     }
 
     /// Get embedding from cache, or compute + cache it
@@ -618,6 +749,7 @@ impl SqliteMemory {
                     namespace: row.get::<_, Option<String>>(6)?.unwrap_or_else(|| "default".into()),
                     importance: row.get(7)?,
                     superseded_by: row.get(8)?,
+                    embedding: None,
                 })
             })?;
 
@@ -644,37 +776,212 @@ impl Memory for SqliteMemory {
         category: MemoryCategory,
         session_id: Option<&str>,
     ) -> anyhow::Result<()> {
-        // Compute embedding (async, before blocking work)
-        let embedding_bytes = self
-            .get_or_compute_embedding(content)
+        // Check embedding cache first — if cached, write embedding inline (no delay)
+        let cached_embedding = self.get_or_compute_embedding(content).await?;
+
+        if let Some(emb) = cached_embedding {
+            // Cache hit → write embedding inline
+            let embedding_bytes = vector::vec_to_bytes(&emb);
+            let content_hash = Self::content_hash(content);
+            let conn = self.conn.clone();
+            let key = key.to_string();
+            let content = content.to_string();
+            let sid = session_id.map(String::from);
+
+            tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                let conn = conn.lock();
+                let now = Local::now().to_rfc3339();
+                let cat = Self::category_to_str(&category);
+                let id = Uuid::new_v4().to_string();
+
+                conn.execute(
+                    "INSERT INTO memories (id, key, content, category, embedding, created_at, updated_at, session_id, namespace, importance, embedding_content_hash)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'default', 0.5, ?9)
+                     ON CONFLICT(key) DO UPDATE SET
+                        content = excluded.content,
+                        category = excluded.category,
+                        embedding = excluded.embedding,
+                        updated_at = excluded.updated_at,
+                        session_id = excluded.session_id,
+                        embedding_content_hash = excluded.embedding_content_hash",
+                    params![id, key, content, cat, embedding_bytes, now, now, sid, content_hash],
+                )?;
+                Ok(())
+            })
             .await?
-            .map(|emb| vector::vec_to_bytes(&emb));
+        } else if self.defer_embedding && self.embedder.dimensions() > 0 {
+            // Cache miss + defer enabled → write row without embedding, backfill later
+            let content_hash = Self::content_hash(content);
+            let conn = self.conn.clone();
+            let key_for_db = key.to_string();
+            let content_for_db = content.to_string();
+            let content_hash_for_db = content_hash.clone();
+            let sid = session_id.map(String::from);
 
-        let conn = self.conn.clone();
-        let key = key.to_string();
-        let content = content.to_string();
-        let sid = session_id.map(String::from);
+            let _ = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                let conn = conn.lock();
+                let now = Local::now().to_rfc3339();
+                let cat = Self::category_to_str(&category);
+                let id = Uuid::new_v4().to_string();
 
-        tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-            let conn = conn.lock();
-            let now = Local::now().to_rfc3339();
-            let cat = Self::category_to_str(&category);
-            let id = Uuid::new_v4().to_string();
+                conn.execute(
+                    "INSERT INTO memories (id, key, content, category, embedding, created_at, updated_at, session_id, namespace, importance, embedding_content_hash)
+                     VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?7, 'default', 0.5, ?8)
+                     ON CONFLICT(key) DO UPDATE SET
+                        content = excluded.content,
+                        category = excluded.category,
+                        embedding = NULL,
+                        updated_at = excluded.updated_at,
+                        session_id = excluded.session_id,
+                        embedding_content_hash = excluded.embedding_content_hash",
+                    params![id, key_for_db, content_for_db, cat, now, now, sid, content_hash_for_db],
+                )?;
+                Ok(())
+            })
+            .await;
 
-            conn.execute(
-                "INSERT INTO memories (id, key, content, category, embedding, created_at, updated_at, session_id, namespace, importance)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'default', 0.5)
-                 ON CONFLICT(key) DO UPDATE SET
-                    content = excluded.content,
-                    category = excluded.category,
-                    embedding = excluded.embedding,
-                    updated_at = excluded.updated_at,
-                    session_id = excluded.session_id",
-                params![id, key, content, cat, embedding_bytes, now, now, sid],
-            )?;
+            // Spawn background task to compute and fill embedding
+            self.spawn_deferred_embedding(key.to_string(), content.to_string(), content_hash);
             Ok(())
+        } else {
+            // Cache miss + defer disabled (or NoopEmbedding) → write NULL embedding
+            let conn = self.conn.clone();
+            let key = key.to_string();
+            let content = content.to_string();
+            let sid = session_id.map(String::from);
+            let content_hash = Self::content_hash(&content);
+
+            tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                let conn = conn.lock();
+                let now = Local::now().to_rfc3339();
+                let cat = Self::category_to_str(&category);
+                let id = Uuid::new_v4().to_string();
+
+                conn.execute(
+                    "INSERT INTO memories (id, key, content, category, embedding, created_at, updated_at, session_id, namespace, importance, embedding_content_hash)
+                     VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?7, 'default', 0.5, ?8)
+                     ON CONFLICT(key) DO UPDATE SET
+                        content = excluded.content,
+                        category = excluded.category,
+                        embedding = excluded.embedding,
+                        updated_at = excluded.updated_at,
+                        session_id = excluded.session_id,
+                        embedding_content_hash = excluded.embedding_content_hash",
+                    params![id, key, content, cat, now, now, sid, content_hash],
+                )?;
+                Ok(())
+            })
+            .await?
+        }
+    }
+
+    async fn top_core_memories(&self, limit: usize) -> anyhow::Result<Vec<MemoryEntry>> {
+        let conn = self.conn.clone();
+
+        tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<MemoryEntry>> {
+            let conn = conn.lock();
+
+            let mut stmt = conn.prepare(
+                "SELECT id, key, content, category, created_at, session_id, namespace, importance, superseded_by
+                 FROM memories
+                 WHERE category = 'core' AND superseded_by IS NULL
+                 ORDER BY importance DESC
+                 LIMIT ?1",
+            )?;
+            #[allow(clippy::cast_possible_wrap)]
+            let limit_i64 = limit as i64;
+            let rows = stmt.query_map(params![limit_i64], |row| {
+                Ok(MemoryEntry {
+                    id: row.get(0)?,
+                    key: row.get(1)?,
+                    content: row.get(2)?,
+                    category: Self::str_to_category(&row.get::<_, String>(3)?),
+                    timestamp: row.get(4)?,
+                    session_id: row.get(5)?,
+                    score: None,
+                    namespace: row.get::<_, Option<String>>(6)?.unwrap_or_else(|| "default".into()),
+                    importance: row.get(7)?,
+                    superseded_by: row.get(8)?,
+                    embedding: None,
+                })
+            })?;
+
+            let mut results = Vec::new();
+            for row in rows {
+                results.push(row?);
+            }
+            Ok(results)
         })
         .await?
+    }
+
+    /// Recall memories with embedding vectors included.
+    ///
+    /// Same as `recall()` but populates the `embedding` field on each entry.
+    /// Used by conflict detection (Phase E) which needs embeddings for
+    /// cosine similarity computation.
+    async fn recall_with_embeddings(
+        &self,
+        query: &str,
+        limit: usize,
+        session_id: Option<&str>,
+        since: Option<&str>,
+        until: Option<&str>,
+        search_mode: Option<SearchMode>,
+    ) -> anyhow::Result<Vec<MemoryEntry>> {
+        let entries = self
+            .recall(query, limit, session_id, since, until, search_mode)
+            .await?;
+
+        if entries.is_empty() || self.embedder.dimensions() == 0 {
+            return Ok(entries);
+        }
+
+        let ids: Vec<String> = entries.iter().map(|e| e.id.clone()).collect();
+        let conn = self.conn.clone();
+
+        let embeddings_map: std::collections::HashMap<String, Vec<f32>> =
+            tokio::task::spawn_blocking(move || -> anyhow::Result<std::collections::HashMap<String, Vec<f32>>> {
+                let conn = conn.lock();
+
+                // Build IN clause with placeholders
+                let placeholders: String = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| format!("?{}", i + 1))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let sql = format!(
+                    "SELECT id, embedding FROM memories WHERE id IN ({placeholders}) AND embedding IS NOT NULL"
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                let params: Vec<String> = ids;
+                let params_ref: Vec<&dyn rusqlite::types::ToSql> = params
+                    .iter()
+                    .map(|id| id as &dyn rusqlite::types::ToSql)
+                    .collect();
+
+                let mut map = std::collections::HashMap::new();
+                let rows = stmt.query_map(params_ref.as_slice(), |row| {
+                    let id: String = row.get(0)?;
+                    let blob: Vec<u8> = row.get(1)?;
+                    Ok((id, vector::bytes_to_vec(&blob)))
+                })?;
+                for row in rows {
+                    let (id, emb) = row?;
+                    map.insert(id, emb);
+                }
+                Ok(map)
+            })
+            .await??;
+
+        let mut entries = entries;
+        for entry in &mut entries {
+            if let Some(emb) = embeddings_map.get(&entry.id) {
+                entry.embedding = Some(emb.clone());
+            }
+        }
+        Ok(entries)
     }
 
     async fn recall(
@@ -708,8 +1015,9 @@ impl Memory for SqliteMemory {
         let sid = session_id.map(String::from);
         let since_owned = since.map(String::from);
         let until_owned = until.map(String::from);
-        let vector_weight = self.vector_weight;
-        let keyword_weight = self.keyword_weight;
+        let _vector_weight = self.vector_weight;
+        let _keyword_weight = self.keyword_weight;
+        let merge_strategy = self.merge_strategy.clone();
 
         tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<MemoryEntry>> {
             let conn = conn.lock();
@@ -733,7 +1041,7 @@ impl Memory for SqliteMemory {
                 Vec::new()
             };
 
-            // Merge results based on search mode
+            // Merge results based on search mode and merge strategy
             let merged = if vector_results.is_empty() {
                 keyword_results
                     .iter()
@@ -755,13 +1063,14 @@ impl Memory for SqliteMemory {
                     })
                     .collect::<Vec<_>>()
             } else {
-                vector::hybrid_merge(
-                    &vector_results,
-                    &keyword_results,
-                    vector_weight,
-                    keyword_weight,
-                    limit,
-                )
+                match &merge_strategy {
+                    MergeStrategy::Rrf { k } => {
+                        vector::rrf_merge(&vector_results, &keyword_results, *k, limit)
+                    }
+                    MergeStrategy::Weighted { vector_weight: vw, keyword_weight: kw } => {
+                        vector::hybrid_merge(&vector_results, &keyword_results, *vw, *kw, limit)
+                    }
+                }
             };
 
             // Fetch full entries for merged results in a single query
@@ -824,6 +1133,7 @@ impl Memory for SqliteMemory {
                             namespace: ns.unwrap_or_else(|| "default".into()),
                             importance: imp,
                             superseded_by: sup,
+                            embedding: None,
                         };
                         if let Some(filter_sid) = session_ref
                             && entry.session_id.as_deref() != Some(filter_sid) {
@@ -895,6 +1205,7 @@ impl Memory for SqliteMemory {
                             namespace: row.get::<_, Option<String>>(6)?.unwrap_or_else(|| "default".into()),
                             importance: row.get(7)?,
                             superseded_by: row.get(8)?,
+                    embedding: None,
                         })
                     })?;
                     for row in rows {
@@ -936,6 +1247,7 @@ impl Memory for SqliteMemory {
                     namespace: row.get::<_, Option<String>>(6)?.unwrap_or_else(|| "default".into()),
                     importance: row.get(7)?,
                     superseded_by: row.get(8)?,
+                    embedding: None,
                 })
             })?;
 
@@ -975,6 +1287,7 @@ impl Memory for SqliteMemory {
                     namespace: row.get::<_, Option<String>>(6)?.unwrap_or_else(|| "default".into()),
                     importance: row.get(7)?,
                     superseded_by: row.get(8)?,
+                    embedding: None,
                 })
             };
 
@@ -1133,6 +1446,7 @@ impl Memory for SqliteMemory {
                     namespace: row.get::<_, Option<String>>(6)?.unwrap_or_else(|| "default".into()),
                     importance: row.get(7)?,
                     superseded_by: row.get(8)?,
+                    embedding: None,
                 })
             })?;
 
@@ -1175,40 +1489,110 @@ impl Memory for SqliteMemory {
         namespace: Option<&str>,
         importance: Option<f64>,
     ) -> anyhow::Result<()> {
-        let embedding_bytes = self
-            .get_or_compute_embedding(content)
+        let cached_embedding = self.get_or_compute_embedding(content).await?;
+
+        if let Some(emb) = cached_embedding {
+            let embedding_bytes = vector::vec_to_bytes(&emb);
+            let conn = self.conn.clone();
+            let key = key.to_string();
+            let content = content.to_string();
+            let sid = session_id.map(String::from);
+            let ns = namespace.unwrap_or("default").to_string();
+            let imp = importance.unwrap_or(0.5);
+            let content_hash = Self::content_hash(&content);
+
+            tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                let conn = conn.lock();
+                let now = Local::now().to_rfc3339();
+                let cat = Self::category_to_str(&category);
+                let id = Uuid::new_v4().to_string();
+
+                conn.execute(
+                    "INSERT INTO memories (id, key, content, category, embedding, created_at, updated_at, session_id, namespace, importance, embedding_content_hash)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                     ON CONFLICT(key) DO UPDATE SET
+                        content = excluded.content,
+                        category = excluded.category,
+                        embedding = excluded.embedding,
+                        updated_at = excluded.updated_at,
+                        session_id = excluded.session_id,
+                        namespace = excluded.namespace,
+                        importance = excluded.importance,
+                        embedding_content_hash = excluded.embedding_content_hash",
+                    params![id, key, content, cat, embedding_bytes, now, now, sid, ns, imp, content_hash],
+                )?;
+                Ok(())
+            })
             .await?
-            .map(|emb| vector::vec_to_bytes(&emb));
+        } else if self.defer_embedding && self.embedder.dimensions() > 0 {
+            let content_hash = Self::content_hash(content);
+            let content_hash_for_db = content_hash.clone();
+            let conn = self.conn.clone();
+            let key_for_db = key.to_string();
+            let content_for_db = content.to_string();
+            let sid = session_id.map(String::from);
+            let ns = namespace.unwrap_or("default").to_string();
+            let imp = importance.unwrap_or(0.5);
 
-        let conn = self.conn.clone();
-        let key = key.to_string();
-        let content = content.to_string();
-        let sid = session_id.map(String::from);
-        let ns = namespace.unwrap_or("default").to_string();
-        let imp = importance.unwrap_or(0.5);
+            let _ = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                let conn = conn.lock();
+                let now = Local::now().to_rfc3339();
+                let cat = Self::category_to_str(&category);
+                let id = Uuid::new_v4().to_string();
 
-        tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-            let conn = conn.lock();
-            let now = Local::now().to_rfc3339();
-            let cat = Self::category_to_str(&category);
-            let id = Uuid::new_v4().to_string();
+                conn.execute(
+                    "INSERT INTO memories (id, key, content, category, embedding, created_at, updated_at, session_id, namespace, importance, embedding_content_hash)
+                     VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?7, ?8, ?9, ?10)
+                     ON CONFLICT(key) DO UPDATE SET
+                        content = excluded.content,
+                        category = excluded.category,
+                        embedding = NULL,
+                        updated_at = excluded.updated_at,
+                        session_id = excluded.session_id,
+                        namespace = excluded.namespace,
+                        importance = excluded.importance,
+                        embedding_content_hash = excluded.embedding_content_hash",
+                    params![id, key_for_db, content_for_db, cat, now, now, sid, ns, imp, content_hash_for_db],
+                )?;
+                Ok(())
+            })
+            .await;
 
-            conn.execute(
-                "INSERT INTO memories (id, key, content, category, embedding, created_at, updated_at, session_id, namespace, importance)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-                 ON CONFLICT(key) DO UPDATE SET
-                    content = excluded.content,
-                    category = excluded.category,
-                    embedding = excluded.embedding,
-                    updated_at = excluded.updated_at,
-                    session_id = excluded.session_id,
-                    namespace = excluded.namespace,
-                    importance = excluded.importance",
-                params![id, key, content, cat, embedding_bytes, now, now, sid, ns, imp],
-            )?;
+            self.spawn_deferred_embedding(key.to_string(), content.to_string(), content_hash);
             Ok(())
-        })
-        .await?
+        } else {
+            let conn = self.conn.clone();
+            let key = key.to_string();
+            let content = content.to_string();
+            let sid = session_id.map(String::from);
+            let ns = namespace.unwrap_or("default").to_string();
+            let imp = importance.unwrap_or(0.5);
+            let content_hash = Self::content_hash(&content);
+
+            tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                let conn = conn.lock();
+                let now = Local::now().to_rfc3339();
+                let cat = Self::category_to_str(&category);
+                let id = Uuid::new_v4().to_string();
+
+                conn.execute(
+                    "INSERT INTO memories (id, key, content, category, embedding, created_at, updated_at, session_id, namespace, importance, embedding_content_hash)
+                     VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?7, ?8, ?9, ?10)
+                     ON CONFLICT(key) DO UPDATE SET
+                        content = excluded.content,
+                        category = excluded.category,
+                        embedding = excluded.embedding,
+                        updated_at = excluded.updated_at,
+                        session_id = excluded.session_id,
+                        namespace = excluded.namespace,
+                        importance = excluded.importance,
+                        embedding_content_hash = excluded.embedding_content_hash",
+                    params![id, key, content, cat, now, now, sid, ns, imp, content_hash],
+                )?;
+                Ok(())
+            })
+            .await?
+        }
     }
 }
 
@@ -1683,6 +2067,8 @@ mod tests {
             1000,
             Some(5),
             SearchMode::default(),
+            MergeStrategy::default(),
+            false,
         );
         assert!(
             mem.is_ok(),
@@ -1702,6 +2088,8 @@ mod tests {
             1000,
             Some(2),
             SearchMode::default(),
+            MergeStrategy::default(),
+            false,
         )
         .unwrap();
         mem.store(
@@ -1730,6 +2118,8 @@ mod tests {
             1000,
             None,
             SearchMode::default(),
+            MergeStrategy::default(),
+            false,
         );
         assert!(mem.is_ok());
         assert_eq!(mem.unwrap().name(), "sqlite");
@@ -2800,6 +3190,8 @@ mod tests {
             1000,
             None,
             SearchMode::Bm25,
+            MergeStrategy::default(),
+            false,
         )
         .unwrap();
         mem.store(
@@ -2837,6 +3229,8 @@ mod tests {
             1000,
             None,
             SearchMode::Embedding,
+            MergeStrategy::default(),
+            false,
         )
         .unwrap();
         mem.store(

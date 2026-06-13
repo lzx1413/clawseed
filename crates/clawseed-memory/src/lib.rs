@@ -137,6 +137,7 @@ pub async fn create_memory_with_storage_and_routes(
             let vector_weight = config.effective_vector_weight();
             let keyword_weight = config.effective_keyword_weight();
             let cache_max = config.effective_embedding_cache_max();
+            let defer_embedding = config.effective_defer_embedding();
 
             // Default to SQLite; fall back to NoneMemory on error.
             match sqlite::SqliteMemory::with_embedder(
@@ -147,6 +148,8 @@ pub async fn create_memory_with_storage_and_routes(
                 cache_max,
                 None,
                 search_mode,
+                config.effective_merge_strategy(),
+                defer_embedding,
             ) {
                 Ok(mem) => {
                     // Optional: backfill NULL embeddings at startup.

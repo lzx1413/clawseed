@@ -252,6 +252,7 @@ mod tests {
             namespace: "default".into(),
             importance: None,
             superseded_by: None,
+            embedding: None,
         };
         pipeline.store_in_cache(ck, vec![fake_entry]);
 

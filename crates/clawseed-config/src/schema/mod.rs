@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-pub use clawseed_api::memory_traits::SearchMode;
+pub use clawseed_api::memory_traits::{ConflictMode, MergeStrategy, SearchMode};
 
 /// Multimodal (image) configuration for provider requests.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -264,6 +264,11 @@ pub struct MemoryConfig {
     /// Jaccard similarity threshold for conflict detection (0.0–1.0).
     #[serde(default = "default_conflict_threshold")]
     pub conflict_threshold: f64,
+    /// Conflict detection mode: Jaccard (word overlap only) or
+    /// Combined (weighted Jaccard + cosine + BM25 overlap).
+    /// None defaults to Combined { jaccard_w: 0.4, cosine_w: 0.4, bm25_w: 0.2 }.
+    #[serde(default)]
+    pub conflict_mode: Option<ConflictMode>,
     /// Auto-recall relevant memories at the start of each turn.
     #[serde(default = "default_true_val")]
     pub auto_recall: bool,
@@ -290,12 +295,38 @@ pub struct MemoryConfig {
     /// Weight for BM25 keyword search in hybrid search (0.0–1.0). None defaults to 0.3.
     #[serde(default)]
     pub keyword_weight: Option<f32>,
+    /// Merge strategy for combining vector and keyword search results.
+    /// None defaults to RRF when neither `vector_weight` nor `keyword_weight`
+    /// is explicitly set; otherwise defaults to Weighted (preserving user intent).
+    #[serde(default)]
+    pub merge_strategy: Option<MergeStrategy>,
     /// Maximum entries in the embedding cache. None defaults to 10_000.
     #[serde(default)]
     pub embedding_cache_max: Option<usize>,
     /// Batch-embed all memories with NULL embeddings at startup.
     #[serde(default)]
     pub backfill_on_startup: bool,
+    /// Defer embedding computation to a background task after writing the row.
+    /// None defaults to true when an embedding_provider is configured, false otherwise.
+    #[serde(default)]
+    pub defer_embedding: Option<bool>,
+    /// Inject Core memories into the system prompt (cacheable) instead of
+    /// the user message (dynamic). None defaults to true when auto_recall=true.
+    #[serde(default)]
+    pub stable_memory_in_system_prompt: Option<bool>,
+    /// Global minimum retention floor for hygiene pruning.
+    /// Any category is guaranteed to retain at least this many entries.
+    /// None = no global floor (per-category floors may still apply).
+    #[serde(default)]
+    pub min_retention_floor: Option<usize>,
+    /// Minimum retention floor specifically for Daily memories.
+    /// Overrides `min_retention_floor` if set. None = use global floor.
+    #[serde(default)]
+    pub daily_retention_floor: Option<usize>,
+    /// Minimum retention floor specifically for Conversation memories.
+    /// Overrides `min_retention_floor` if set. None = use global floor.
+    #[serde(default)]
+    pub conversation_retention_floor: Option<usize>,
 }
 
 fn default_memory_backend() -> String {
@@ -346,6 +377,7 @@ impl Default for MemoryConfig {
             snapshot_enabled: false,
             auto_hydrate: default_true_val(),
             conflict_threshold: default_conflict_threshold(),
+            conflict_mode: None,
             auto_recall: default_true_val(),
             auto_recall_limit: default_auto_recall_limit(),
             embedding_provider: None,
@@ -354,8 +386,14 @@ impl Default for MemoryConfig {
             search_mode: None,
             vector_weight: None,
             keyword_weight: None,
+            merge_strategy: None,
             embedding_cache_max: None,
             backfill_on_startup: false,
+            defer_embedding: None,
+            stable_memory_in_system_prompt: None,
+            min_retention_floor: None,
+            daily_retention_floor: None,
+            conversation_retention_floor: None,
         }
     }
 }
@@ -381,9 +419,74 @@ impl MemoryConfig {
         self.embedding_cache_max.unwrap_or(10_000)
     }
 
+    /// Resolve the effective merge strategy for hybrid search.
+    ///
+    /// - If `merge_strategy` is explicitly set → use it directly.
+    /// - If `vector_weight` or `keyword_weight` is explicitly set → `Weighted`
+    ///   (preserving user intent from old config).
+    /// - Otherwise → `Rrf { k: 60 }` (new default, eliminates BM25 scale mismatch).
+    pub fn effective_merge_strategy(&self) -> MergeStrategy {
+        if let Some(ref strategy) = self.merge_strategy {
+            return strategy.clone();
+        }
+        // If user explicitly set any weight → they intended Weighted mode.
+        if self.vector_weight.is_some() || self.keyword_weight.is_some() {
+            return MergeStrategy::Weighted {
+                vector_weight: self.effective_vector_weight(),
+                keyword_weight: self.effective_keyword_weight(),
+            };
+        }
+        MergeStrategy::default() // Rrf { k: 60 }
+    }
+
     /// Whether embedding is enabled (provider is set).
     pub fn embedding_enabled(&self) -> bool {
         self.embedding_provider.is_some()
+    }
+
+    /// Resolve whether embedding should be deferred.
+    ///
+    /// - Explicit `defer_embedding` → use it directly.
+    /// - None → true when an embedding_provider is configured, false otherwise.
+    pub fn effective_defer_embedding(&self) -> bool {
+        self.defer_embedding.unwrap_or(self.embedding_enabled())
+    }
+
+    /// Resolve whether stable Core memories should be injected into
+    /// the system prompt (cacheable) instead of the user message (dynamic).
+    ///
+    /// - Explicit `stable_memory_in_system_prompt` → use it directly.
+    /// - None → true when `auto_recall` is enabled, false otherwise.
+    pub fn effective_stable_memory_in_system_prompt(&self) -> bool {
+        self.stable_memory_in_system_prompt
+            .unwrap_or(self.auto_recall)
+    }
+
+    /// Resolve the effective conflict detection mode.
+    ///
+    /// - Explicit `conflict_mode` → use it directly.
+    /// - None → Combined { jaccard_w: 0.4, cosine_w: 0.4, bm25_w: 0.2 }.
+    pub fn effective_conflict_mode(&self) -> ConflictMode {
+        self.conflict_mode.clone().unwrap_or_default()
+    }
+
+    /// Resolve the effective retention floor for a given category.
+    ///
+    /// - Per-category floor (e.g. `daily_retention_floor`) overrides global if set.
+    /// - `min_retention_floor` serves as the global fallback.
+    /// - None on both = no floor (0 = unlimited pruning).
+    pub fn effective_retention_floor(&self, category: &str) -> usize {
+        match category {
+            "daily" => self
+                .daily_retention_floor
+                .or(self.min_retention_floor)
+                .unwrap_or(0),
+            "conversation" => self
+                .conversation_retention_floor
+                .or(self.min_retention_floor)
+                .unwrap_or(0),
+            _ => self.min_retention_floor.unwrap_or(0),
+        }
     }
 }
 

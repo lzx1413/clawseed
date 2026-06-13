@@ -29,6 +29,9 @@ pub struct MemoryEntry {
     pub importance: Option<f64>,
     #[serde(default)]
     pub superseded_by: Option<String>,
+    /// Embedding vector (if available). Used for conflict detection in Phase E.
+    #[serde(default)]
+    pub embedding: Option<Vec<f32>>,
 }
 
 fn default_namespace() -> String {
@@ -47,6 +50,100 @@ impl std::fmt::Debug for MemoryEntry {
             .field("namespace", &self.namespace)
             .field("importance", &self.importance)
             .finish_non_exhaustive()
+    }
+}
+
+/// Merge strategy for combining vector and keyword search results.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum MergeStrategy {
+    /// Reciprocal Rank Fusion — uses rank positions instead of raw scores,
+    /// eliminating BM25-vector scale mismatch. `k` is the RRF constant
+    /// (paper recommends 60).
+    Rrf { k: u32 },
+    /// Weighted fusion — normalize each score set, then combine with weights.
+    Weighted {
+        vector_weight: f32,
+        keyword_weight: f32,
+    },
+}
+
+impl Default for MergeStrategy {
+    fn default() -> Self {
+        // RRF is the new default — eliminates BM25 scale normalization issues.
+        Self::Rrf { k: 60 }
+    }
+}
+
+impl std::fmt::Display for MergeStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Rrf { k } => write!(f, "rrf(k={k})"),
+            Self::Weighted {
+                vector_weight,
+                keyword_weight,
+            } => {
+                write!(f, "weighted(v={vector_weight},kw={keyword_weight})")
+            }
+        }
+    }
+}
+
+/// Conflict detection mode for memory consolidation.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum ConflictMode {
+    /// Pure Jaccard word-set overlap (legacy behavior).
+    Jaccard,
+    /// Weighted combination of Jaccard + cosine similarity + BM25 overlap.
+    Combined {
+        jaccard_w: f32,
+        cosine_w: f32,
+        bm25_w: f32,
+    },
+}
+
+impl Default for ConflictMode {
+    fn default() -> Self {
+        Self::Combined {
+            jaccard_w: 0.4,
+            cosine_w: 0.4,
+            bm25_w: 0.2,
+        }
+    }
+}
+
+impl std::fmt::Display for ConflictMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Jaccard => write!(f, "jaccard"),
+            Self::Combined {
+                jaccard_w,
+                cosine_w,
+                bm25_w,
+            } => {
+                write!(f, "combined(j={jaccard_w},c={cosine_w},b={bm25_w})")
+            }
+        }
+    }
+}
+
+impl PartialEq for ConflictMode {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Jaccard, Self::Jaccard) => true,
+            (
+                Self::Combined {
+                    jaccard_w,
+                    cosine_w,
+                    bm25_w,
+                },
+                Self::Combined {
+                    jaccard_w: ow,
+                    cosine_w: cw,
+                    bm25_w: bw,
+                },
+            ) => jaccard_w == ow && cosine_w == cw && bm25_w == bw,
+            _ => false,
+        }
     }
 }
 
@@ -112,6 +209,7 @@ impl std::fmt::Display for MemoryCategory {
 
 /// Core memory trait — implement for any persistence backend.
 #[async_trait]
+#[allow(clippy::too_many_arguments)]
 pub trait Memory: Send + Sync {
     fn name(&self) -> &str;
 
@@ -215,6 +313,44 @@ pub trait Memory: Send + Sync {
     ) -> anyhow::Result<()> {
         self.store(key, content, category, session_id).await
     }
+
+    /// Retrieve the top N Core memories by importance.
+    ///
+    /// Default implementation lists all Core memories and sorts by importance.
+    /// SqliteMemory overrides this with a direct SQL query for efficiency
+    /// (avoids the DEFAULT_LIST_LIMIT=1000 cap).
+    async fn top_core_memories(&self, limit: usize) -> anyhow::Result<Vec<MemoryEntry>> {
+        let entries = self.list(Some(&MemoryCategory::Core), None).await?;
+        let mut sorted = entries;
+        sorted.sort_by(|a, b| {
+            b.importance
+                .unwrap_or(0.5)
+                .partial_cmp(&a.importance.unwrap_or(0.5))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        sorted.truncate(limit);
+        Ok(sorted)
+    }
+
+    /// Recall memories with embedding vectors included.
+    ///
+    /// Same as `recall()` but populates the `embedding` field on each entry.
+    /// Used by conflict detection (Phase E) which needs embeddings for
+    /// cosine similarity computation.
+    ///
+    /// Default implementation delegates to `recall()` which sets `embedding: None`.
+    async fn recall_with_embeddings(
+        &self,
+        query: &str,
+        limit: usize,
+        session_id: Option<&str>,
+        since: Option<&str>,
+        until: Option<&str>,
+        search_mode: Option<SearchMode>,
+    ) -> anyhow::Result<Vec<MemoryEntry>> {
+        self.recall(query, limit, session_id, since, until, search_mode)
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -250,6 +386,7 @@ mod tests {
             namespace: "default".into(),
             importance: Some(0.7),
             superseded_by: None,
+            embedding: None,
         };
         let json = serde_json::to_string(&entry).unwrap();
         let parsed: MemoryEntry = serde_json::from_str(&json).unwrap();

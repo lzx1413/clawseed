@@ -279,6 +279,7 @@ mod tests {
             namespace: "default".into(),
             importance: Some(0.8),
             superseded_by: None,
+            embedding: None,
         }];
         let refs: Vec<_> = entries.iter().collect();
         let prompt = build_curate_prompt(&refs);

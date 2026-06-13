@@ -132,6 +132,86 @@ pub fn hybrid_merge(
     results
 }
 
+/// Reciprocal Rank Fusion (RRF) merge: combine vector and keyword results
+/// using rank positions instead of raw scores.
+///
+/// For each result list, items are ranked by score (descending). The RRF score
+/// for an item is `1 / (k + rank + 1)`, where `rank` is the 0-based position.
+/// Items appearing in both lists have their scores summed.
+///
+/// This eliminates the BM25-vector scale mismatch problem — no normalization
+/// is needed because only rank positions are used.
+///
+/// `k` is the RRF constant; the original paper recommends k=60.
+pub fn rrf_merge(
+    vector_results: &[(String, f32)],
+    keyword_results: &[(String, f32)],
+    k: u32,
+    limit: usize,
+) -> Vec<ScoredResult> {
+    use std::collections::HashMap;
+
+    // Sort each list by score descending and assign 0-based ranks.
+    // Items with the same score get consecutive ranks (no tie-breaking beyond id).
+    let mut vec_ranked: Vec<(String, f32)> = vector_results.to_vec();
+    vec_ranked.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
+
+    let mut kw_ranked: Vec<(String, f32)> = keyword_results.to_vec();
+    kw_ranked.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
+
+    // Build a map from id → (rank_in_vec, vec_score, rank_in_kw, kw_score)
+    let mut all_ids: HashMap<String, ScoredResult> = HashMap::new();
+
+    #[allow(clippy::cast_possible_truncation)]
+    for (rank, (id, score)) in vec_ranked.iter().enumerate() {
+        let rrf_score = 1.0_f32 / (k as f32 + rank as f32 + 1.0);
+        all_ids.insert(
+            id.clone(),
+            ScoredResult {
+                id: id.clone(),
+                vector_score: Some(*score),
+                keyword_score: None,
+                final_score: rrf_score,
+            },
+        );
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    for (rank, (id, score)) in kw_ranked.iter().enumerate() {
+        let rrf_score = 1.0_f32 / (k as f32 + rank as f32 + 1.0);
+        all_ids
+            .entry(id.clone())
+            .and_modify(|r| {
+                r.keyword_score = Some(*score);
+                r.final_score += rrf_score;
+            })
+            .or_insert_with(|| ScoredResult {
+                id: id.clone(),
+                vector_score: None,
+                keyword_score: Some(*score),
+                final_score: rrf_score,
+            });
+    }
+
+    let mut results: Vec<ScoredResult> = all_ids.into_values().collect();
+    results.sort_by(|a, b| {
+        b.final_score
+            .partial_cmp(&a.final_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    results.truncate(limit);
+    results
+}
+
 #[cfg(test)]
 #[allow(
     clippy::float_cmp,
@@ -397,6 +477,89 @@ mod tests {
     #[test]
     fn hybrid_merge_single_item() {
         let merged = hybrid_merge(&[("only".into(), 0.8)], &[], 0.7, 0.3, 10);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].id, "only");
+    }
+
+    // ── RRF merge tests ───────────────────────────────────────────
+
+    #[test]
+    fn rrf_merge_basic() {
+        let vec_results = vec![("a".into(), 0.9), ("b".into(), 0.5)];
+        let kw_results = vec![("a".into(), 10.0), ("c".into(), 5.0)];
+        let merged = rrf_merge(&vec_results, &kw_results, 60, 10);
+        assert_eq!(merged.len(), 3);
+        // "a" appears in both lists → highest RRF score
+        assert_eq!(merged[0].id, "a");
+        assert!(merged[0].vector_score.is_some());
+        assert!(merged[0].keyword_score.is_some());
+        // RRF score for "a" = 1/(60+0+1) + 1/(60+0+1) = 2/61
+        let expected_a = 2.0 / 61.0;
+        assert!((merged[0].final_score - expected_a).abs() < 0.001);
+    }
+
+    #[test]
+    fn rrf_merge_vector_only() {
+        let vec_results = vec![("a".into(), 0.9), ("b".into(), 0.5)];
+        let merged = rrf_merge(&vec_results, &[], 60, 10);
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].id, "a");
+        // Rank 0: 1/(60+0+1) = 1/61
+        assert!((merged[0].final_score - 1.0 / 61.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn rrf_merge_keyword_only() {
+        let kw_results = vec![("x".into(), 10.0), ("y".into(), 5.0)];
+        let merged = rrf_merge(&[], &kw_results, 60, 10);
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].id, "x");
+    }
+
+    #[test]
+    fn rrf_merge_empty_inputs() {
+        let merged = rrf_merge(&[], &[], 60, 10);
+        assert!(merged.is_empty());
+    }
+
+    #[test]
+    fn rrf_merge_respects_limit() {
+        let vec_results: Vec<(String, f32)> = (0..20)
+            .map(|i| (format!("item_{i}"), 1.0 - i as f32 * 0.05))
+            .collect();
+        let merged = rrf_merge(&vec_results, &[], 60, 5);
+        assert_eq!(merged.len(), 5);
+    }
+
+    #[test]
+    fn rrf_merge_limit_zero() {
+        let vec_results = vec![("a".into(), 0.9)];
+        let merged = rrf_merge(&vec_results, &[], 60, 0);
+        assert!(merged.is_empty());
+    }
+
+    #[test]
+    fn rrf_merge_deduplicates_in_single_source() {
+        // Same id appearing twice in vector results — after sorting,
+        // the first occurrence gets rank, second is ignored by HashMap.
+        let vec_results = vec![("a".into(), 0.9), ("a".into(), 0.5)];
+        let merged = rrf_merge(&vec_results, &[], 60, 10);
+        assert_eq!(merged.len(), 1);
+    }
+
+    #[test]
+    fn rrf_merge_different_k_values() {
+        let vec_results = vec![("a".into(), 0.9)];
+        let kw_results = vec![("a".into(), 10.0)];
+        let merged_k1 = rrf_merge(&vec_results, &kw_results, 1, 10);
+        let merged_k60 = rrf_merge(&vec_results, &kw_results, 60, 10);
+        // Smaller k → sharper rank differentiation → higher scores
+        assert!(merged_k1[0].final_score > merged_k60[0].final_score);
+    }
+
+    #[test]
+    fn rrf_merge_single_item() {
+        let merged = rrf_merge(&[("only".into(), 0.8)], &[], 60, 10);
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].id, "only");
     }

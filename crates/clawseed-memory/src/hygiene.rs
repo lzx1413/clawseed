@@ -50,11 +50,13 @@ pub fn run_if_due(config: &MemoryConfig, workspace_dir: &Path) -> Result<()> {
             workspace_dir,
             "conversation",
             config.conversation_retention_days,
+            config.effective_retention_floor("conversation"),
         )?,
         pruned_daily_rows: prune_category_rows(
             workspace_dir,
             "daily",
             config.conversation_retention_days,
+            config.effective_retention_floor("daily"),
         )?,
     };
 
@@ -114,11 +116,20 @@ fn state_path(workspace_dir: &Path) -> PathBuf {
     workspace_dir.join("state").join(STATE_FILE)
 }
 
-/// Delete rows of a given category older than the retention period.
+/// Delete rows of a given category older than the retention period,
+/// respecting the minimum retention floor.
 ///
 /// Opens brain.db directly (WAL mode) and runs a DELETE query.
 /// Returns the number of rows deleted.
-fn prune_category_rows(workspace_dir: &Path, category: &str, retention_days: u32) -> Result<u64> {
+///
+/// The floor guarantees that at least `retention_floor` entries remain
+/// in the category after pruning. If floor = 0, no floor is enforced.
+fn prune_category_rows(
+    workspace_dir: &Path,
+    category: &str,
+    retention_days: u32,
+    retention_floor: usize,
+) -> Result<u64> {
     if retention_days == 0 {
         return Ok(0);
     }
@@ -132,10 +143,83 @@ fn prune_category_rows(workspace_dir: &Path, category: &str, retention_days: u32
     conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")?;
     let cutoff = (Local::now() - Duration::days(i64::from(retention_days))).to_rfc3339();
 
-    let affected = conn.execute(
-        "DELETE FROM memories WHERE category = ?1 AND updated_at < ?2",
-        params![category, cutoff],
+    // Count total non-superseded entries in this category
+    let total: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM memories WHERE category = ?1 AND superseded_by IS NULL",
+        params![category],
+        |row| row.get(0),
     )?;
+
+    #[allow(clippy::cast_sign_loss)]
+    let total_usize = total as usize;
+
+    if retention_floor == 0 {
+        // No floor enforced → prune all eligible
+        let affected = conn.execute(
+            "DELETE FROM memories WHERE category = ?1 AND updated_at < ?2",
+            params![category, cutoff],
+        )?;
+        return Ok(u64::try_from(affected).unwrap_or(0));
+    }
+
+    // Floor is active. If total ≤ floor, no pruning allowed at all.
+    if total_usize <= retention_floor {
+        return Ok(0);
+    }
+
+    // Floor is active and total > floor.
+    // Calculate how many we're allowed to delete: max(0, total - floor)
+    let allowed_to_delete = total_usize.saturating_sub(retention_floor);
+
+    // Count eligible (old enough to prune)
+    let eligible: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM memories WHERE category = ?1 AND superseded_by IS NULL AND updated_at < ?2",
+        params![category, cutoff],
+        |row| row.get(0),
+    )?;
+
+    #[allow(clippy::cast_sign_loss)]
+    let eligible_usize = eligible as usize;
+
+    if eligible_usize <= allowed_to_delete {
+        // All eligible items can be deleted without violating floor
+        let affected = conn.execute(
+            "DELETE FROM memories WHERE category = ?1 AND updated_at < ?2",
+            params![category, cutoff],
+        )?;
+        return Ok(u64::try_from(affected).unwrap_or(0));
+    }
+
+    // More eligible than allowed → delete only the oldest `allowed_to_delete` entries
+    // Use bounded rowid subquery (Android-compatible, avoids DELETE ORDER BY LIMIT)
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
+    let limit_i64 = allowed_to_delete as i64;
+    let rowids: Vec<i64> = {
+        let mut stmt = conn.prepare(
+            "SELECT rowid FROM memories WHERE category = ?1 AND superseded_by IS NULL AND updated_at < ?2 ORDER BY updated_at ASC LIMIT ?3",
+        )?;
+        let rows = stmt.query_map(params![category, cutoff, limit_i64], |row| row.get(0))?;
+        rows.filter_map(|r| r.ok()).collect()
+    };
+
+    if rowids.is_empty() {
+        return Ok(0);
+    }
+
+    // Delete by rowid
+    let placeholders: String = rowids
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format!("?{}", i + 1))
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!("DELETE FROM memories WHERE rowid IN ({placeholders})");
+    let mut stmt = conn.prepare(&sql)?;
+    let params_ref: Vec<&dyn rusqlite::types::ToSql> = rowids
+        .iter()
+        .map(|rid| rid as &dyn rusqlite::types::ToSql)
+        .collect();
+    let affected = stmt.execute(params_ref.as_slice())?;
 
     Ok(u64::try_from(affected).unwrap_or(0))
 }
@@ -228,14 +312,134 @@ mod tests {
     #[test]
     fn prune_category_rows_no_db() {
         let tmp = TempDir::new().unwrap();
-        let result = prune_category_rows(tmp.path(), "conversation", 30).unwrap();
+        let result = prune_category_rows(tmp.path(), "conversation", 30, 0).unwrap();
         assert_eq!(result, 0);
     }
 
     #[test]
     fn prune_category_rows_zero_retention() {
         let tmp = TempDir::new().unwrap();
-        let result = prune_category_rows(tmp.path(), "conversation", 0).unwrap();
+        let result = prune_category_rows(tmp.path(), "conversation", 0, 0).unwrap();
         assert_eq!(result, 0);
+    }
+
+    #[tokio::test]
+    async fn retention_floor_preserves_minimum_entries() {
+        let tmp = TempDir::new().unwrap();
+        let workspace = tmp.path();
+
+        let mem = SqliteMemory::new(workspace).unwrap();
+        // Store 100 conversation entries
+        for i in 0..100 {
+            mem.store(
+                &format!("conv_{i}"),
+                &format!("conversation entry {i}"),
+                MemoryCategory::Conversation,
+                None,
+            )
+            .await
+            .unwrap();
+        }
+        drop(mem);
+
+        // Backdate all entries to be older than retention period
+        let db_path = workspace.join("memory").join("brain.db");
+        let conn = Connection::open(&db_path).unwrap();
+        let old_cutoff = (Local::now() - Duration::days(60)).to_rfc3339();
+        conn.execute(
+            "UPDATE memories SET created_at = ?1, updated_at = ?1 WHERE category = 'conversation'",
+            params![old_cutoff],
+        )
+        .unwrap();
+        drop(conn);
+
+        // With floor = 50, at least 50 entries should survive
+        let deleted = prune_category_rows(workspace, "conversation", 30, 50).unwrap();
+        assert_eq!(deleted, 50, "should delete exactly 50 (total - floor)");
+
+        let mem2 = SqliteMemory::new(workspace).unwrap();
+        let count = mem2.count().await.unwrap();
+        assert!(
+            count >= 50,
+            "at least 50 entries should remain after hygiene with floor=50"
+        );
+    }
+
+    #[tokio::test]
+    async fn retention_floor_zero_means_no_floor() {
+        let tmp = TempDir::new().unwrap();
+        let workspace = tmp.path();
+
+        let mem = SqliteMemory::new(workspace).unwrap();
+        for i in 0..5 {
+            mem.store(
+                &format!("conv_{i}"),
+                &format!("entry {i}"),
+                MemoryCategory::Conversation,
+                None,
+            )
+            .await
+            .unwrap();
+        }
+        drop(mem);
+
+        // Backdate all entries
+        let db_path = workspace.join("memory").join("brain.db");
+        let conn = Connection::open(&db_path).unwrap();
+        let old_cutoff = (Local::now() - Duration::days(60)).to_rfc3339();
+        conn.execute(
+            "UPDATE memories SET created_at = ?1, updated_at = ?1 WHERE category = 'conversation'",
+            params![old_cutoff],
+        )
+        .unwrap();
+        drop(conn);
+
+        // floor=0 → all eligible entries should be pruned
+        let deleted = prune_category_rows(workspace, "conversation", 30, 0).unwrap();
+        assert_eq!(deleted, 5, "all entries should be pruned with floor=0");
+    }
+
+    #[tokio::test]
+    async fn retention_floor_exceeds_total_means_no_pruning() {
+        let tmp = TempDir::new().unwrap();
+        let workspace = tmp.path();
+
+        let mem = SqliteMemory::new(workspace).unwrap();
+        for i in 0..10 {
+            mem.store(
+                &format!("conv_{i}"),
+                &format!("entry {i}"),
+                MemoryCategory::Conversation,
+                None,
+            )
+            .await
+            .unwrap();
+        }
+        drop(mem);
+
+        // Backdate all entries
+        let db_path = workspace.join("memory").join("brain.db");
+        let conn = Connection::open(&db_path).unwrap();
+        let old_cutoff = (Local::now() - Duration::days(60)).to_rfc3339();
+        conn.execute(
+            "UPDATE memories SET created_at = ?1, updated_at = ?1 WHERE category = 'conversation'",
+            params![old_cutoff],
+        )
+        .unwrap();
+        drop(conn);
+
+        // floor=100 > total=10 → no entries should be deleted
+        let deleted = prune_category_rows(workspace, "conversation", 30, 100).unwrap();
+        assert_eq!(
+            deleted, 0,
+            "no entries should be deleted when floor exceeds total"
+        );
+
+        let mem2 = SqliteMemory::new(workspace).unwrap();
+        assert_eq!(
+            mem2.count().await.unwrap(),
+            10,
+            "all 10 entries should remain"
+        );
     }
 }

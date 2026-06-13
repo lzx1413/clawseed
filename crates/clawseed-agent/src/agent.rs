@@ -72,6 +72,7 @@ pub struct Agent {
     auto_save: bool,
     auto_recall: bool,
     auto_recall_limit: usize,
+    stable_memory_in_system_prompt: bool,
     memory_session_id: Option<String>,
     history: Vec<ConversationMessage>,
     hook_runner: Option<Arc<HookRunner>>,
@@ -81,6 +82,11 @@ pub struct Agent {
     skills_extra_roots: Vec<String>,
     skills_enabled: bool,
     skills_excluded: Vec<String>,
+    /// Tracks which Core memories are currently rendered in the system prompt.
+    /// Maps key → content_hash for dedup against dynamic auto-recall.
+    injected_core_state: std::collections::HashMap<String, String>,
+    /// Cached Core memory entries for system prompt rendering.
+    stable_core_memories: Vec<clawseed_api::memory_traits::MemoryEntry>,
 }
 
 /// Builder for constructing an Agent.
@@ -100,6 +106,7 @@ pub struct AgentBuilder {
     auto_save: Option<bool>,
     auto_recall: Option<bool>,
     auto_recall_limit: Option<usize>,
+    stable_memory_in_system_prompt: Option<bool>,
     memory_session_id: Option<String>,
     allowed_tools: Option<Vec<String>>,
     denied_tools: Option<Vec<String>>,
@@ -136,6 +143,7 @@ impl AgentBuilder {
             auto_save: None,
             auto_recall: None,
             auto_recall_limit: None,
+            stable_memory_in_system_prompt: None,
             memory_session_id: None,
             allowed_tools: None,
             denied_tools: None,
@@ -227,6 +235,11 @@ impl AgentBuilder {
 
     pub fn auto_recall_limit(mut self, limit: usize) -> Self {
         self.auto_recall_limit = Some(limit);
+        self
+    }
+
+    pub fn stable_memory_in_system_prompt(mut self, enabled: bool) -> Self {
+        self.stable_memory_in_system_prompt = Some(enabled);
         self
     }
 
@@ -327,6 +340,7 @@ impl AgentBuilder {
             auto_save: self.auto_save.unwrap_or(false),
             auto_recall: self.auto_recall.unwrap_or(true),
             auto_recall_limit: self.auto_recall_limit.unwrap_or(3),
+            stable_memory_in_system_prompt: self.stable_memory_in_system_prompt.unwrap_or(true),
             memory_session_id: self.memory_session_id,
             history: Vec::new(),
             hook_runner: self.hook_runner,
@@ -336,6 +350,8 @@ impl AgentBuilder {
             skills_extra_roots: self.skills_extra_roots.unwrap_or_default(),
             skills_enabled: self.skills_enabled.unwrap_or(true),
             skills_excluded: self.skills_excluded.unwrap_or_default(),
+            injected_core_state: std::collections::HashMap::new(),
+            stable_core_memories: Vec::new(),
         })
     }
 }
@@ -552,6 +568,9 @@ impl Agent {
             .auto_save(config.memory.auto_save)
             .auto_recall(config.memory.auto_recall)
             .auto_recall_limit(config.memory.auto_recall_limit)
+            .stable_memory_in_system_prompt(
+                config.memory.effective_stable_memory_in_system_prompt(),
+            )
             .hook_runner(Some(Arc::new(hook_runner)))
             .skill_index(skill_index)
             .max_active_skills(config.skills.max_active)
@@ -683,6 +702,47 @@ impl Agent {
             "Skill '{}' deactivated. Its instructions have been removed from your system prompt.",
             name
         ))
+    }
+
+    /// Refresh stable Core memories from the memory backend.
+    ///
+    /// Returns `true` if the Core memories changed (new keys, removed keys,
+    /// or content hash differences), indicating that the system prompt
+    /// should be rebuilt. Returns `false` if unchanged.
+    async fn refresh_stable_core_memories(&mut self) -> bool {
+        if !self.stable_memory_in_system_prompt || self.memory.name() == "none" {
+            // Feature disabled — clear any existing state
+            self.stable_core_memories.clear();
+            self.injected_core_state.clear();
+            return false;
+        }
+
+        let entries = match self.memory.top_core_memories(self.auto_recall_limit).await {
+            Ok(e) => e,
+            Err(_) => return false, // Silently skip on error
+        };
+
+        // Build new state: key → content_hash
+        let new_state: std::collections::HashMap<String, String> = entries
+            .iter()
+            .map(|e| {
+                (
+                    e.key.clone(),
+                    clawseed_memory::sqlite::SqliteMemory::content_hash(&e.content),
+                )
+            })
+            .collect();
+
+        // Compare against previous state
+        if new_state == self.injected_core_state {
+            // Unchanged — no rebuild needed
+            return false;
+        }
+
+        // Changed — update state and stored memories
+        self.injected_core_state = new_state;
+        self.stable_core_memories = entries;
+        true
     }
 
     /// Rebuild the system prompt and replace the system message in history.
@@ -914,6 +974,7 @@ impl Agent {
             autonomy_level: self.autonomy_level,
             skill_index: &self.skill_index,
             active_skills: &self.active_skills,
+            stable_core_memories: &self.stable_core_memories,
         };
 
         SystemPromptBuilder::with_defaults().build(&ctx)
@@ -1162,6 +1223,13 @@ impl Agent {
 
     /// Execute a single agent turn: send message, dispatch tools, return final text.
     pub async fn turn(&mut self, user_message: &str) -> Result<String> {
+        // Refresh stable Core memories before preparing the turn.
+        // This ensures the first system prompt includes stable memories,
+        // and subsequent turns rebuild if Core memories changed.
+        if self.refresh_stable_core_memories().await
+            && !self.history.is_empty() {
+                self.rebuild_system_prompt()?;
+            }
         self.prepare_turn(user_message)?;
         if self.auto_save {
             let _ = self
@@ -1178,6 +1246,8 @@ impl Agent {
         // Auto-recall relevant memories and prepend context to user message.
         // Only Core memories are recalled — Daily and Conversation are excluded
         // to keep the context focused on truly important facts.
+        // When stable memory injection is enabled, entries already in the system
+        // prompt (tracked by injected_core_state) are deduplicated.
         if self.auto_recall
             && self.memory.name() != "none"
             && let Ok(entries) = self
@@ -1185,9 +1255,18 @@ impl Agent {
                 .recall(user_message, self.auto_recall_limit, None, None, None, None)
                 .await
         {
+            let stable_enabled = self.stable_memory_in_system_prompt;
             let ctx: String = entries
                 .iter()
                 .filter(|e| matches!(e.category, MemoryCategory::Core))
+                .filter(|e| {
+                    // Dedup against stable system prompt entries
+                    if !stable_enabled {
+                        return true;
+                    }
+                    let hash = clawseed_memory::sqlite::SqliteMemory::content_hash(&e.content);
+                    self.injected_core_state.get(&e.key) != Some(&hash)
+                })
                 .map(|e| format!("- {}: {}", e.key, e.content))
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -1294,11 +1373,18 @@ impl Agent {
         cancel_token: Option<tokio_util::sync::CancellationToken>,
         debug: bool,
     ) -> Result<String> {
+        // Refresh stable Core memories before preparing the turn.
+        if self.refresh_stable_core_memories().await
+            && !self.history.is_empty() {
+                self.rebuild_system_prompt()?;
+            }
         self.prepare_turn(user_message)?;
 
         // Auto-recall relevant memories and prepend context to user message.
         // Only Core memories are recalled — Daily and Conversation are excluded
         // to keep the context focused on truly important facts.
+        // When stable memory injection is enabled, entries already in the system
+        // prompt (tracked by injected_core_state) are deduplicated.
         if self.auto_recall
             && self.memory.name() != "none"
             && let Ok(entries) = self
@@ -1306,9 +1392,18 @@ impl Agent {
                 .recall(user_message, self.auto_recall_limit, None, None, None, None)
                 .await
         {
+            let stable_enabled = self.stable_memory_in_system_prompt;
             let ctx: String = entries
                 .iter()
                 .filter(|e| matches!(e.category, MemoryCategory::Core))
+                .filter(|e| {
+                    // Dedup against stable system prompt entries
+                    if !stable_enabled {
+                        return true;
+                    }
+                    let hash = clawseed_memory::sqlite::SqliteMemory::content_hash(&e.content);
+                    self.injected_core_state.get(&e.key) != Some(&hash)
+                })
                 .map(|e| format!("- {}: {}", e.key, e.content))
                 .collect::<Vec<_>>()
                 .join("\n");

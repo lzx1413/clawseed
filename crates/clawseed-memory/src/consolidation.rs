@@ -11,6 +11,7 @@
 use super::conflict;
 use super::importance;
 use super::traits::{Memory, MemoryCategory};
+use clawseed_api::memory_traits::ConflictMode;
 use clawseed_api::provider::Provider;
 
 /// Importance score threshold above which a turn is promoted to Core memory.
@@ -33,6 +34,8 @@ pub async fn consolidate_turn(
     memory: &dyn Memory,
     user_message: &str,
     assistant_response: &str,
+    conflict_mode: &ConflictMode,
+    conflict_threshold: f64,
 ) -> anyhow::Result<()> {
     let turn_text = format!("User: {user_message}\nAssistant: {assistant_response}");
 
@@ -68,7 +71,8 @@ pub async fn consolidate_turn(
             &mem_key,
             &core_summary,
             &MemoryCategory::Core,
-            0.6,
+            conflict_threshold,
+            conflict_mode,
         )
         .await
         {

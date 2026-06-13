@@ -80,6 +80,29 @@ impl Memory for NamespacedMemory {
             .await
     }
 
+    async fn recall_with_embeddings(
+        &self,
+        query: &str,
+        limit: usize,
+        session_id: Option<&str>,
+        since: Option<&str>,
+        until: Option<&str>,
+        search_mode: Option<SearchMode>,
+    ) -> anyhow::Result<Vec<MemoryEntry>> {
+        // Delegate to inner, then filter by namespace
+        // We fetch more entries to account for filtering
+        let entries = self
+            .inner
+            .recall_with_embeddings(query, limit * 2, session_id, since, until, search_mode)
+            .await?;
+        let filtered: Vec<MemoryEntry> = entries
+            .into_iter()
+            .filter(|e| e.namespace == self.namespace)
+            .take(limit)
+            .collect();
+        Ok(filtered)
+    }
+
     async fn get(&self, key: &str) -> anyhow::Result<Option<MemoryEntry>> {
         let entry = self.inner.get(key).await?;
         // Return the entry only if it matches our namespace

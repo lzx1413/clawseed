@@ -22,6 +22,9 @@ pub struct PromptContext<'a> {
     pub autonomy_level: AutonomyLevel,
     pub skill_index: &'a [crate::skills::SkillIndexEntry],
     pub active_skills: &'a [crate::skills::ActiveSkill],
+    /// Stable Core memories injected into system prompt for LLM cache benefit.
+    /// Empty when stable_memory_in_system_prompt is disabled.
+    pub stable_core_memories: &'a [clawseed_api::memory_traits::MemoryEntry],
 }
 
 /// Trait for a prompt section.
@@ -44,6 +47,7 @@ impl SystemPromptBuilder {
                 Box::new(IdentitySection),
                 Box::new(PlatformSection),
                 Box::new(WorkspaceSection),
+                Box::new(StableMemorySection),
                 Box::new(ToolsSection),
                 Box::new(MemorySection),
                 Box::new(SafetySection),
@@ -80,6 +84,7 @@ pub struct IdentitySection;
 pub struct PlatformSection;
 pub struct WorkspaceSection;
 pub struct ToolsSection;
+pub struct StableMemorySection;
 pub struct SafetySection;
 pub struct ToolHonestySection;
 pub struct MemorySection;
@@ -243,6 +248,27 @@ impl PromptSection for ToolHonestySection {
     }
 }
 
+impl PromptSection for StableMemorySection {
+    fn name(&self) -> &str {
+        "stable_memory"
+    }
+
+    fn build(&self, ctx: &PromptContext<'_>) -> Result<String> {
+        if ctx.stable_core_memories.is_empty() {
+            return Ok(String::new());
+        }
+        let mut out = String::from("## Core Memories\n\n");
+        out.push_str(
+            "The following are your most important long-term memories. \
+             These are always available to you.\n\n",
+        );
+        for entry in ctx.stable_core_memories {
+            let _ = writeln!(out, "- **{}**: {}", entry.key, entry.content);
+        }
+        Ok(out)
+    }
+}
+
 impl PromptSection for MemorySection {
     fn name(&self) -> &str {
         "memory"
@@ -297,6 +323,7 @@ mod tests {
             autonomy_level: AutonomyLevel::Full,
             skill_index: &[],
             active_skills: &[],
+            stable_core_memories: &[],
         };
 
         let prompt = builder.build(&ctx).unwrap();
@@ -321,6 +348,7 @@ mod tests {
             autonomy_level: AutonomyLevel::Supervised,
             skill_index: &[],
             active_skills: &[],
+            stable_core_memories: &[],
         };
 
         let text = section.build(&ctx).unwrap();
@@ -340,9 +368,66 @@ mod tests {
             autonomy_level: AutonomyLevel::Full,
             skill_index: &[],
             active_skills: &[],
+            stable_core_memories: &[],
         };
 
         let text = section.build(&ctx).unwrap();
         assert!(!text.contains("Do not run destructive commands without asking"));
+    }
+
+    #[test]
+    fn stable_memory_section_empty_returns_nothing() {
+        let section = StableMemorySection;
+        let identity_config = IdentityConfig::default();
+        let ctx = PromptContext {
+            workspace_dir: Path::new("/tmp"),
+            model_name: "test",
+            tool_specs: &[],
+            dispatcher_instructions: "",
+            identity_config: &identity_config,
+            autonomy_level: AutonomyLevel::Full,
+            skill_index: &[],
+            active_skills: &[],
+            stable_core_memories: &[],
+        };
+
+        let text = section.build(&ctx).unwrap();
+        assert!(text.is_empty());
+    }
+
+    #[test]
+    fn stable_memory_section_with_entries() {
+        use clawseed_api::memory_traits::{MemoryCategory, MemoryEntry};
+        let section = StableMemorySection;
+        let identity_config = IdentityConfig::default();
+        let entries = vec![MemoryEntry {
+            id: "1".into(),
+            key: "user_name".into(),
+            content: "User prefers Rust".into(),
+            category: MemoryCategory::Core,
+            timestamp: "now".into(),
+            session_id: None,
+            score: None,
+            namespace: "default".into(),
+            importance: Some(0.9),
+            superseded_by: None,
+            embedding: None,
+        }];
+        let ctx = PromptContext {
+            workspace_dir: Path::new("/tmp"),
+            model_name: "test",
+            tool_specs: &[],
+            dispatcher_instructions: "",
+            identity_config: &identity_config,
+            autonomy_level: AutonomyLevel::Full,
+            skill_index: &[],
+            active_skills: &[],
+            stable_core_memories: &entries,
+        };
+
+        let text = section.build(&ctx).unwrap();
+        assert!(text.contains("## Core Memories"));
+        assert!(text.contains("user_name"));
+        assert!(text.contains("User prefers Rust"));
     }
 }

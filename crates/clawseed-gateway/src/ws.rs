@@ -1049,6 +1049,8 @@ async fn process_chat_message(
                 let model = state.model.clone();
                 let user_msg = content.to_string();
                 let assistant_resp = response.clone();
+                let conflict_mode = state.config.lock().memory.effective_conflict_mode();
+                let conflict_threshold = state.config.lock().memory.conflict_threshold;
                 tokio::spawn(async move {
                     if let Err(e) = clawseed_memory::consolidation::consolidate_turn(
                         provider.as_ref(),
@@ -1056,6 +1058,8 @@ async fn process_chat_message(
                         mem.as_ref(),
                         &user_msg,
                         &assistant_resp,
+                        &conflict_mode,
+                        conflict_threshold,
                     )
                     .await
                     {
