@@ -72,6 +72,22 @@ class ScheduledTaskStore(private val context: Context) {
         saveTasks(updated)
     }
 
+    /** Import a list of tasks, generating new IDs for any that collide with existing. */
+    suspend fun importTasks(tasks: List<ScheduledTask>) = mutex.withLock {
+        val existing = tasksAsList()
+        val existingIds = existing.map { it.id }.toSet()
+        val merged = existing.toMutableList()
+        for (task in tasks) {
+            if (task.id in existingIds) {
+                // Generate a new ID to avoid collision
+                merged.add(task.copy(id = java.util.UUID.randomUUID().toString()))
+            } else {
+                merged.add(task)
+            }
+        }
+        saveTasks(merged)
+    }
+
     /** Reset any tasks stuck in RUNNING status (e.g. after app crash during execution). */
     suspend fun resetStuckRunningTasks() = mutex.withLock {
         val current = tasksAsList()

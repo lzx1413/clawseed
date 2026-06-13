@@ -5,6 +5,8 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -107,6 +109,48 @@ class LocalStore(private val context: Context) {
         }
         return map
     }
+
+    // --- Export/import all preferences (for data transfer) ---
+    // Keys that contain sensitive data (API keys, tokens).
+    private val SENSITIVE_KEYS = setOf("bearer_token", "provider_api_keys")
+
+    /** Exports all preference keys with type information for round-trip fidelity. */
+    suspend fun exportAllPreferences(): Map<String, Map<String, Any?>> {
+        val prefs = store.data.first()
+        return prefs.asMap().map { (key, value) ->
+            key.name to mapOf(
+                "type" to when (value) {
+                    is String -> "string"
+                    is Boolean -> "boolean"
+                    is Long -> "long"
+                    is Int -> "int"
+                    is Float -> "float"
+                    else -> "string"
+                },
+                "value" to value,
+            )
+        }.associate { it.first to it.second }
+    }
+
+    /** Imports preferences from a typed map. Preserves the type of each value. */
+    suspend fun importPreferences(data: Map<String, Map<String, Any?>>) {
+        store.edit { prefs ->
+            for ((keyName, entry) in data) {
+                val type = entry["type"] as? String ?: "string"
+                val value = entry["value"]
+                when (type) {
+                    "string" -> prefs[stringPreferencesKey(keyName)] = value as? String ?: ""
+                    "boolean" -> prefs[booleanPreferencesKey(keyName)] = value as? Boolean ?: false
+                    "long" -> prefs[longPreferencesKey(keyName)] = (value as? Number)?.toLong() ?: 0L
+                    "int" -> prefs[intPreferencesKey(keyName)] = (value as? Number)?.toInt() ?: 0
+                    "float" -> prefs[floatPreferencesKey(keyName)] = (value as? Number)?.toFloat() ?: 0f
+                }
+            }
+        }
+    }
+
+    /** Returns the set of sensitive preference keys (for stripping during export). */
+    fun sensitiveKeys(): Set<String> = SENSITIVE_KEYS
 
     private fun serializeApiKeyMap(map: Map<String, String>): String {
         if (map.isEmpty()) return "{}"

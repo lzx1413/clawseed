@@ -131,6 +131,41 @@ class GatewayConfigManager(private val context: Context) {
     /** Returns the workspace directory exposed to file tools. */
     fun workspaceDir(): File = File(configDir(), "workspace")
 
+    /** Returns the skills directory. */
+    fun skillsDir(): File = File(workspaceDir(), ".clawseed/skills")
+
+    /** Returns the memory database file. */
+    fun memoryDbFile(): File = File(workspaceDir(), "memory/brain.db")
+
+    /** Returns the sessions database file. */
+    fun sessionsDbFile(): File = File(workspaceDir(), "gateway/sessions.db")
+
+    /** Returns the personality directory containing SOUL.md etc. */
+    fun personalityDir(): File {
+        // Personality files are stored directly in workspace root OR in workspace/personality/
+        // The gateway /api/personality endpoint writes to workspace/personality/
+        val dir = File(workspaceDir(), "personality")
+        return dir
+    }
+
+    /** Returns the config TOML file. */
+    fun configFile(): File = File(configDir(), "clawseed.toml")
+
+    /** Checkpoints the SQLite WAL file so the .db file is self-contained for export. */
+    fun checkpointWal(dbPath: File) {
+        if (!dbPath.exists()) return
+        try {
+            val db = android.database.sqlite.SQLiteDatabase.openDatabase(
+                dbPath.absolutePath, null,
+                android.database.sqlite.SQLiteDatabase.OPEN_READWRITE,
+            )
+            db.execSQL("PRAGMA wal_checkpoint(TRUNCATE)")
+            db.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "WAL checkpoint failed for ${dbPath.name}: ${e.message}")
+        }
+    }
+
     /** Copies bundled embedding model files from APK assets to the workspace model directory.
      *  Only copies if the target files don't already exist, so this is safe to call on every startup.
      *  Copies ALL files found in the assets model directory, not just a hardcoded list. */

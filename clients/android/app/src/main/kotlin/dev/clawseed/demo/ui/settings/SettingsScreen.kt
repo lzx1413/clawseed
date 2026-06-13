@@ -140,6 +140,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
     var appearanceExpanded by remember { mutableStateOf(false) }
     var sessionExpanded by remember { mutableStateOf(false) }
     var aboutExpanded by remember { mutableStateOf(false) }
+    var dataTransferExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
@@ -512,6 +513,18 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                                 }
                             }
                         }
+                    }
+                }
+
+                // Data Transfer section
+                item {
+                    ExpandableSection(
+                        title = "数据管理",
+                        expanded = dataTransferExpanded,
+                        onToggle = { dataTransferExpanded = !dataTransferExpanded },
+                        subtitle = if (!dataTransferExpanded) "导出/导入应用数据" else null,
+                    ) {
+                        DataTransferSection()
                     }
                 }
 
