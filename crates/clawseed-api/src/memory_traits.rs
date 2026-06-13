@@ -89,7 +89,16 @@ impl std::fmt::Display for MergeStrategy {
 }
 
 /// Conflict detection mode for memory consolidation.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+///
+/// In TOML config, represented as a simple string:
+/// - `"jaccard"` — pure Jaccard word-set overlap (legacy behavior)
+/// - `"combined"` — weighted combination with default weights (j=0.4, c=0.4, b=0.2)
+/// - `"combined(j=0.4,c=0.4,b=0.2)"` — weighted combination with custom weights
+///
+/// Internally stored as the full enum for programmatic use.
+/// Custom serde implementation allows simple string representation in TOML
+/// while preserving the full struct form in JSON.
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConflictMode {
     /// Pure Jaccard word-set overlap (legacy behavior).
     Jaccard,
@@ -126,24 +135,56 @@ impl std::fmt::Display for ConflictMode {
     }
 }
 
-impl PartialEq for ConflictMode {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Jaccard, Self::Jaccard) => true,
-            (
-                Self::Combined {
-                    jaccard_w,
-                    cosine_w,
-                    bm25_w,
-                },
-                Self::Combined {
-                    jaccard_w: ow,
-                    cosine_w: cw,
-                    bm25_w: bw,
-                },
-            ) => jaccard_w == ow && cosine_w == cw && bm25_w == bw,
-            _ => false,
+impl std::str::FromStr for ConflictMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let lower = s.to_ascii_lowercase();
+        if lower == "jaccard" {
+            return Ok(Self::Jaccard);
         }
+        if lower == "combined" {
+            return Ok(Self::default());
+        }
+        // Parse "combined(j=0.4,c=0.4,b=0.2)" format
+        if lower.starts_with("combined(") && lower.ends_with(')') {
+            let inner = &lower["combined(".len()..lower.len() - 1];
+            let mut j = None;
+            let mut c = None;
+            let mut b = None;
+            for part in inner.split(',') {
+                let part = part.trim();
+                if let Some(val) = part.strip_prefix("j=") {
+                    j = val.parse::<f32>().ok();
+                } else if let Some(val) = part.strip_prefix("c=") {
+                    c = val.parse::<f32>().ok();
+                } else if let Some(val) = part.strip_prefix("b=") {
+                    b = val.parse::<f32>().ok();
+                }
+            }
+            if j.is_some() && c.is_some() && b.is_some() {
+                return Ok(Self::Combined {
+                    jaccard_w: j.unwrap(),
+                    cosine_w: c.unwrap(),
+                    bm25_w: b.unwrap(),
+                });
+            }
+            return Err(format!("invalid combined weights: '{s}'"));
+        }
+        Err(format!("unknown ConflictMode: '{s}', expected 'jaccard', 'combined', or 'combined(j=...,c=...,b=...)'"))
+    }
+}
+
+impl serde::Serialize for ConflictMode {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ConflictMode {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        s.parse::<Self>().map_err(serde::de::Error::custom)
     }
 }
 
