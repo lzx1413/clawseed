@@ -43,7 +43,6 @@ data class SettingsUiState(
     val isSaving: Boolean = false,
     val error: String? = null,
     val successMessage: String? = null,
-    val editMode: EditMode = EditMode.FORM,
     val selectedPresetIndex: Int = PROVIDER_PRESETS.size - 1,
     val baseUrl: String = "",
     val apiKey: String = "",
@@ -78,8 +77,6 @@ private data class ProviderDraft(
     val thinkingEnabled: Boolean,
     val maxTokens: String,
 )
-
-enum class EditMode { FORM, TOML }
 
 data class CouncilReviewerDraft(
     val role: String = "",
@@ -202,10 +199,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 soulContent = personalityResult.getOrElse { null }?.get("SOUL.md"),
             )
         }
-    }
-
-    fun setEditMode(mode: EditMode) {
-        _uiState.value = _uiState.value.copy(editMode = mode, successMessage = null)
     }
 
     fun updateConfigToml(toml: String) {
@@ -497,9 +490,44 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private fun buildConfigToml(state: SettingsUiState): String {
-        if (state.editMode == EditMode.TOML) return state.configToml
+    fun saveConfigToml() {
+        viewModelScope.launch {
+            val state = _uiState.value
+            _uiState.value = state.copy(isSaving = true, error = null, successMessage = null)
 
+            val toml = state.configToml
+
+            if (!ClawSeedAndroid.isInitialized) {
+                saveToLocalConfig(toml)
+                _uiState.value = _uiState.value.copy(
+                    isSaving = false,
+                    successMessage = "全局配置已保存到本地文件，请重启应用以生效",
+                    configToml = toml,
+                )
+                return@launch
+            }
+
+            client().updateConfig(toml)
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(isSaving = false, successMessage = "全局配置已保存，Gateway 正在重启...")
+                    viewModelScope.launch {
+                        ClawSeedAndroid.restartGateway()
+                        loadAll()
+                    }
+                }
+                .onFailure { e ->
+                    saveToLocalConfig(toml)
+                    _uiState.value = _uiState.value.copy(
+                        isSaving = false,
+                        successMessage = "全局配置已保存到本地文件，请重启应用以生效",
+                        configToml = toml,
+                        error = "保存到 Gateway 失败: ${e.message?.take(100)}",
+                    )
+                }
+        }
+    }
+
+    private fun buildConfigToml(state: SettingsUiState): String {
         val baseUrl = state.baseUrl.trimEnd('/')
         val newProviderId = "custom:$baseUrl"
 

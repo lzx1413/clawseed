@@ -46,6 +46,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,6 +72,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.clawseed.demo.BuildConfig
 import dev.clawseed.demo.data.LocalStore
 import kotlinx.coroutines.launch
 
@@ -129,7 +131,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var llmExpanded by remember { mutableStateOf(false) }
-    var embeddingExpanded by remember { mutableStateOf(false) }
+    var memoryExpanded by remember { mutableStateOf(false) }
     var searchEngineExpanded by remember { mutableStateOf(false) }
     var soulExpanded by remember { mutableStateOf(false) }
     var toolsExpanded by remember { mutableStateOf(false) }
@@ -137,6 +139,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
     var developerExpanded by remember { mutableStateOf(false) }
     var appearanceExpanded by remember { mutableStateOf(false) }
     var sessionExpanded by remember { mutableStateOf(false) }
+    var aboutExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
@@ -224,16 +227,14 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                                 ttlHours = uiState.sessionTtlHours,
                                 onTtlChange = { viewModel.updateSessionTtlHours(it) },
                             )
-                            if (uiState.editMode == EditMode.FORM) {
-                                CouncilCard(
-                                    enabled = uiState.councilEnabled,
-                                    reviewers = uiState.councilReviewers,
-                                    onToggleEnabled = viewModel::toggleCouncilEnabled,
-                                    onAddReviewer = viewModel::addCouncilReviewer,
-                                    onRemoveReviewer = viewModel::removeCouncilReviewer,
-                                    onUpdateReviewer = viewModel::updateCouncilReviewer,
-                                )
-                            }
+                            CouncilCard(
+                                enabled = uiState.councilEnabled,
+                                reviewers = uiState.councilReviewers,
+                                onToggleEnabled = viewModel::toggleCouncilEnabled,
+                                onAddReviewer = viewModel::addCouncilReviewer,
+                                onRemoveReviewer = viewModel::removeCouncilReviewer,
+                                onUpdateReviewer = viewModel::updateCouncilReviewer,
+                            )
                             Button(
                                 onClick = { viewModel.saveConfig() },
                                 enabled = !uiState.isSaving,
@@ -260,36 +261,17 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                         else if (!llmExpanded) "未配置" else null,
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                FilterChip(
-                                    selected = uiState.editMode == EditMode.FORM,
-                                    onClick = { viewModel.setEditMode(EditMode.FORM) },
-                                    label = { Text("表单") },
-                                )
-                                FilterChip(
-                                    selected = uiState.editMode == EditMode.TOML,
-                                    onClick = { viewModel.setEditMode(EditMode.TOML) },
-                                    label = { Text("TOML") },
-                                )
-                            }
-
-                            when (uiState.editMode) {
-                                EditMode.FORM -> ProviderFormEditor(
-                                    state = uiState,
-                                    onSelectProvider = viewModel::selectProvider,
-                                    onBaseUrlChange = viewModel::updateBaseUrl,
-                                    onApiKeyChange = viewModel::updateApiKey,
-                                    onFetchModels = viewModel::fetchModels,
-                                    onSelectModel = viewModel::selectModel,
-                                    onToggleThinking = viewModel::toggleThinking,
-                                    onUpdateMaxTokens = viewModel::updateMaxTokens,
-                                    onToggleAutoContinue = viewModel::toggleAutoContinueOnTruncation,
-                                )
-                                EditMode.TOML -> TomlEditor(
-                                    toml = uiState.configToml,
-                                    onTomlChange = { viewModel.updateConfigToml(it) },
-                                )
-                            }
+                            ProviderFormEditor(
+                                state = uiState,
+                                onSelectProvider = viewModel::selectProvider,
+                                onBaseUrlChange = viewModel::updateBaseUrl,
+                                onApiKeyChange = viewModel::updateApiKey,
+                                onFetchModels = viewModel::fetchModels,
+                                onSelectModel = viewModel::selectModel,
+                                onToggleThinking = viewModel::toggleThinking,
+                                onUpdateMaxTokens = viewModel::updateMaxTokens,
+                                onToggleAutoContinue = viewModel::toggleAutoContinueOnTruncation,
+                            )
 
                             Button(
                                 onClick = { viewModel.saveConfig() },
@@ -307,95 +289,91 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                 }
 
                 // Search Engine section
-                if (uiState.editMode == EditMode.FORM) {
-                    item {
-                        val searchSubtitle = when (uiState.searchEngine) {
-                            "tavily" -> "Tavily"
-                            "bing" -> "Bing"
-                            else -> null
-                        }
-                        ExpandableSection(
-                            title = "搜索引擎",
-                            expanded = searchEngineExpanded,
-                            onToggle = { searchEngineExpanded = !searchEngineExpanded },
-                            subtitle = if (!searchEngineExpanded) searchSubtitle else null,
-                        ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                SearchEngineCard(
-                                    searchEngine = uiState.searchEngine,
-                                    tavilyApiKey = uiState.tavilyApiKey,
-                                    tavilyApiKeyVisible = uiState.tavilyApiKeyVisible,
-                                    onSearchEngineChange = viewModel::updateSearchEngine,
-                                    onTavilyApiKeyChange = viewModel::updateTavilyApiKey,
-                                    onToggleTavilyApiKeyVisibility = viewModel::toggleTavilyApiKeyVisibility,
-                                )
-                                Button(
-                                    onClick = { viewModel.saveConfig() },
-                                    enabled = !uiState.isSaving,
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    if (uiState.isSaving) {
-                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                    }
-                                    Text(if (uiState.isSaving) "保存中..." else "保存搜索配置")
+                item {
+                    val searchSubtitle = when (uiState.searchEngine) {
+                        "tavily" -> "Tavily"
+                        "bing" -> "Bing"
+                        else -> null
+                    }
+                    ExpandableSection(
+                        title = "搜索引擎",
+                        expanded = searchEngineExpanded,
+                        onToggle = { searchEngineExpanded = !searchEngineExpanded },
+                        subtitle = if (!searchEngineExpanded) searchSubtitle else null,
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            SearchEngineCard(
+                                searchEngine = uiState.searchEngine,
+                                tavilyApiKey = uiState.tavilyApiKey,
+                                tavilyApiKeyVisible = uiState.tavilyApiKeyVisible,
+                                onSearchEngineChange = viewModel::updateSearchEngine,
+                                onTavilyApiKeyChange = viewModel::updateTavilyApiKey,
+                                onToggleTavilyApiKeyVisibility = viewModel::toggleTavilyApiKeyVisibility,
+                            )
+                            Button(
+                                onClick = { viewModel.saveConfig() },
+                                enabled = !uiState.isSaving,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                if (uiState.isSaving) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
+                                    Spacer(modifier = Modifier.width(8.dp))
                                 }
+                                Text(if (uiState.isSaving) "保存中..." else "保存搜索配置")
                             }
                         }
                     }
                 }
 
-                // Embedding section
-                if (uiState.editMode == EditMode.FORM) {
-                    item {
-                        val embeddingSubtitle = when (uiState.embeddingProvider) {
-                            "local" -> "本地模型"
-                            "openai" -> "OpenAI"
-                            "openrouter" -> "OpenRouter"
-                            "" -> "关闭"
-                            else -> if (uiState.embeddingProvider.startsWith("custom:")) "自定义" else uiState.embeddingProvider
-                        }
-                        ExpandableSection(
-                            title = "向量搜索",
-                            expanded = embeddingExpanded,
-                            onToggle = { embeddingExpanded = !embeddingExpanded },
-                            subtitle = if (!embeddingExpanded) embeddingSubtitle else null,
-                        ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                EmbeddingCard(
-                                    embeddingProvider = uiState.embeddingProvider,
-                                    embeddingModel = uiState.embeddingModel,
-                                    embeddingDims = uiState.embeddingDims,
-                                    embeddingApiKey = uiState.embeddingApiKey,
-                                    embeddingApiKeyVisible = uiState.embeddingApiKeyVisible,
-                                    onProviderChange = viewModel::updateEmbeddingProvider,
-                                    onModelChange = viewModel::updateEmbeddingModel,
-                                    onDimsChange = viewModel::updateEmbeddingDims,
-                                    onApiKeyChange = viewModel::updateEmbeddingApiKey,
-                                    onToggleApiKeyVisibility = viewModel::toggleEmbeddingApiKeyVisibility,
+                // Memory section (向量搜索/Embedding)
+                item {
+                    val memorySubtitle = when (uiState.embeddingProvider) {
+                        "local" -> "本地模型"
+                        "openai" -> "OpenAI"
+                        "openrouter" -> "OpenRouter"
+                        "" -> "关闭"
+                        else -> if (uiState.embeddingProvider.startsWith("custom:")) "自定义" else uiState.embeddingProvider
+                    }
+                    ExpandableSection(
+                        title = "记忆",
+                        expanded = memoryExpanded,
+                        onToggle = { memoryExpanded = !memoryExpanded },
+                        subtitle = if (!memoryExpanded) memorySubtitle else null,
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            EmbeddingCard(
+                                embeddingProvider = uiState.embeddingProvider,
+                                embeddingModel = uiState.embeddingModel,
+                                embeddingDims = uiState.embeddingDims,
+                                embeddingApiKey = uiState.embeddingApiKey,
+                                embeddingApiKeyVisible = uiState.embeddingApiKeyVisible,
+                                onProviderChange = viewModel::updateEmbeddingProvider,
+                                onModelChange = viewModel::updateEmbeddingModel,
+                                onDimsChange = viewModel::updateEmbeddingDims,
+                                onApiKeyChange = viewModel::updateEmbeddingApiKey,
+                                onToggleApiKeyVisibility = viewModel::toggleEmbeddingApiKeyVisibility,
+                            )
+                            val progress = uiState.downloadProgress
+                            if (uiState.embeddingProvider == "local" && progress != null && !progress.isComplete) {
+                                DownloadProgressIndicator(progress)
+                            }
+                            if (uiState.embeddingProvider == "local" && progress != null && progress.isComplete) {
+                                Text(
+                                    text = "模型下载完成，Gateway 正在启动...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
                                 )
-                                val progress = uiState.downloadProgress
-                                if (uiState.embeddingProvider == "local" && progress != null && !progress.isComplete) {
-                                    DownloadProgressIndicator(progress)
+                            }
+                            Button(
+                                onClick = { viewModel.saveConfig() },
+                                enabled = !uiState.isSaving,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                if (uiState.isSaving) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
+                                    Spacer(modifier = Modifier.width(8.dp))
                                 }
-                                if (uiState.embeddingProvider == "local" && progress != null && progress.isComplete) {
-                                    Text(
-                                        text = "模型下载完成，Gateway 正在启动...",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
-                                Button(
-                                    onClick = { viewModel.saveConfig() },
-                                    enabled = !uiState.isSaving,
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    if (uiState.isSaving) {
-                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                    }
-                                    Text(if (uiState.isSaving) "保存中..." else "保存向量配置")
-                                }
+                                Text(if (uiState.isSaving) "保存中..." else "保存记忆配置")
                             }
                         }
                     }
@@ -494,8 +472,57 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                             expanded = developerExpanded,
                             onToggle = { developerExpanded = !developerExpanded },
                         ) {
-                            DeveloperOptionsCard(localStore)
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                DeveloperOptionsCard(localStore)
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    ),
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                                    ) {
+                                        Text(
+                                            text = "全局配置 (TOML)",
+                                            style = MaterialTheme.typography.titleSmall,
+                                        )
+                                        Text(
+                                            text = "直接编辑 clawseed.toml。未保存的表单修改不会反映在此处。修改后需重启 Gateway 生效。",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        )
+                                        TomlEditor(
+                                            toml = uiState.configToml,
+                                            onTomlChange = { viewModel.updateConfigToml(it) },
+                                        )
+                                        Button(
+                                            onClick = { viewModel.saveConfigToml() },
+                                            enabled = !uiState.isSaving,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            if (uiState.isSaving) {
+                                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                            }
+                                            Text(if (uiState.isSaving) "保存中..." else "保存全局配置")
+                                        }
+                                    }
+                                }
+                            }
                         }
+                    }
+                }
+
+                // About section
+                item {
+                    ExpandableSection(
+                        title = "关于",
+                        expanded = aboutExpanded,
+                        onToggle = { aboutExpanded = !aboutExpanded },
+                    ) {
+                        AboutCard()
                     }
                 }
 
@@ -1540,6 +1567,45 @@ fun ReviewerEditor(
                 placeholder = { Text("留空则使用 Leader 的模型") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AboutCard() {
+    val uriHandler = LocalUriHandler.current
+    val githubUrl = "https://github.com/lzx1413/clawseed"
+    val annotatedLink = buildAnnotatedString {
+        pushStringAnnotation(tag = "URL", annotation = githubUrl)
+        withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) {
+            append(githubUrl)
+        }
+        pop()
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("ClawSeed", style = MaterialTheme.typography.titleLarge)
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("App 版本: ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("编译日期: ${BuildConfig.BUILD_DATE}", style = MaterialTheme.typography.bodyMedium)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Agent SDK: ${BuildConfig.SDK_VERSION}", style = MaterialTheme.typography.bodyMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+            ClickableText(
+                text = annotatedLink,
+                style = MaterialTheme.typography.bodyMedium,
+                onClick = { offset ->
+                    annotatedLink.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                        .firstOrNull()?.let { uriHandler.openUri(it.item) }
+                },
             )
         }
     }

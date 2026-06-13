@@ -19,6 +19,7 @@ android {
         versionCode = 4
         versionName = "1.6"
         buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
+        buildConfigField("String", "SDK_VERSION", "\"0.2.0\"")
     }
 
     buildTypes {
