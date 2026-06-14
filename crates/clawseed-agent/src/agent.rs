@@ -921,6 +921,23 @@ impl Agent {
         }
     }
 
+    /// Return the final enriched content of the last user message in history.
+    /// This is what the LLM actually saw (timestamp prefix + memory context + original text).
+    /// Used by the gateway to persist enriched content so session resume preserves
+    /// prompt cache fidelity — the restored content matches byte-for-byte what the
+    /// LLM originally processed.
+    pub fn last_user_message_content(&self) -> Option<String> {
+        self.history.iter().rev().find_map(|msg| {
+            if let ConversationMessage::Chat(chat) = msg
+                && chat.role == "user"
+            {
+                Some(chat.content.clone())
+            } else {
+                None
+            }
+        })
+    }
+
     /// Hydrate the agent with prior chat messages.
     pub fn seed_history(&mut self, messages: &[ChatMessage]) {
         // Discard any existing system message from input and rebuild from current

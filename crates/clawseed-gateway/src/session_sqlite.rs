@@ -156,6 +156,17 @@ impl SessionBackend for SqliteSessionBackend {
         Ok(())
     }
 
+    fn update_last_user(&self, session_key: &str, message: &ChatMessage) -> anyhow::Result<()> {
+        let conn = self.conn.lock();
+        conn.execute(
+            "UPDATE messages SET content = ?1 WHERE id = (
+                SELECT id FROM messages WHERE session_key = ?2 AND role = 'user' ORDER BY id DESC LIMIT 1
+            )",
+            params![message.content, session_key],
+        )?;
+        Ok(())
+    }
+
     fn list_sessions(&self) -> Vec<String> {
         let conn = self.conn.lock();
         let mut stmt =

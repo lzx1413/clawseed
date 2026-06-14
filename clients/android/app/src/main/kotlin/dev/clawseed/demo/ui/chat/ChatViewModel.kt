@@ -39,6 +39,20 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.util.Locale
 
+/**
+ * Strip enrichment prefixes that the gateway adds for LLM prompt cache fidelity.
+ * These are invisible to the end-user and should not appear in the chat UI:
+ * - Timestamp prefix: [YYYY-MM-DD HH:MM:SS TZ]
+ * - Memory context block: [Memory context]...\n[/Memory context]\n\n
+ */
+fun stripEnrichmentPrefixes(content: String): String {
+    // Strip timestamp prefix: [YYYY-MM-DD HH:MM:SS TZ]
+    var result = content.replace(Regex("^\\[\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} [^\\]]+\\]\\s*"), "")
+    // Strip memory context prefix: [Memory context]...\n[/Memory context]\n\n
+    result = result.replace(Regex("^\\[Memory context\\]\\n.*?\\n\\[/Memory context\\]\\n\\n"), "")
+    return result
+}
+
 data class AuthPrompt(
     val hint: String,
     val authorizeIntent: String?,
@@ -158,7 +172,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 is dev.clawseed.sdk.android.AccumulatedMessage.User -> ChatEntry.UserMessage(
                     id = msg.id,
                     timestamp = msg.timestamp,
-                    content = msg.content,
+                    content = stripEnrichmentPrefixes(msg.content),
                 )
                 is dev.clawseed.sdk.android.AccumulatedMessage.Assistant -> ChatEntry.AssistantMessage(
                     id = msg.id,
@@ -328,7 +342,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         "user" -> ChatEntry.UserMessage(
                             id = "hist-$idx",
                             timestamp = System.currentTimeMillis(),
-                            content = msg.content ?: "",
+                            content = stripEnrichmentPrefixes(msg.content ?: ""),
                         )
                         "assistant" -> ChatEntry.AssistantMessage(
                             id = "hist-$idx",

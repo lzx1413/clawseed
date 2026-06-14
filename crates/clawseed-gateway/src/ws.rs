@@ -1039,6 +1039,15 @@ async fn process_chat_message(
                 } else {
                     let _ = backend.append(session_key, &assistant_msg);
                 }
+
+                // Update the persisted user message with enriched content
+                // (timestamp prefix + memory context). On session resume,
+                // seed_history() must see exactly what the LLM saw so
+                // prompt cache prefixes remain byte-for-byte identical.
+                if let Some(enriched) = agent.last_user_message_content() {
+                    let enriched_msg = clawseed_api::provider::ChatMessage::user(&enriched);
+                    let _ = backend.update_last_user(session_key, &enriched_msg);
+                }
             }
 
             // Fire-and-forget memory consolidation so facts from WS sessions

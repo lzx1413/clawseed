@@ -42,6 +42,11 @@ pub trait SessionBackend: Send + Sync + 'static {
     /// Update the last assistant message in a session (for streaming partial content).
     fn update_last(&self, session_key: &str, message: &ChatMessage) -> anyhow::Result<()>;
 
+    /// Update the last user message in a session (to persist enriched content
+    /// — timestamp prefix + memory context — so session resume preserves prompt
+    /// cache fidelity).
+    fn update_last_user(&self, session_key: &str, message: &ChatMessage) -> anyhow::Result<()>;
+
     /// List all session keys.
     fn list_sessions(&self) -> Vec<String>;
 
