@@ -146,6 +146,8 @@ class ChatAccumulatorTest {
 
         override fun sendMessage(content: String, debug: Boolean) = Unit
 
+        override fun regenerate(debug: Boolean) = Unit
+
         override suspend fun abort() = Unit
 
         suspend fun emit(event: ChatEvent) {

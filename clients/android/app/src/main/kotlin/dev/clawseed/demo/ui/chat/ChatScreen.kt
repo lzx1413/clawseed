@@ -41,6 +41,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.clawseed.sdk.core.model.ConnectionState
 import dev.clawseed.demo.data.ChatEntry
@@ -59,7 +61,7 @@ fun ChatScreen(
     autoSendMessage: String? = null,
     onAutoMessageSent: () -> Unit = {},
 ) {
-    val viewModel: ChatViewModel = viewModel()
+    val viewModel: ChatViewModel = viewModel(LocalContext.current as ComponentActivity)
     val uiState by viewModel.uiState.collectAsState()
     var input by remember { mutableStateOf("") }
     val density = LocalDensity.current

@@ -56,6 +56,16 @@ data class ChatUiState(
     val authPrompt: AuthPrompt? = null,
 )
 
+/**
+ * Per-session state kept alive in the background pool.
+ * When the user switches away, the accumulator keeps collecting
+ * events so that switching back shows the completed response.
+ */
+private data class SessionSlot(
+    val session: ClawSeedSession,
+    val accumulator: ChatAccumulator,
+)
+
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -64,9 +74,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val localStore = LocalStore(application)
     private var debugEnabled = false
     private var historyLoaded = false
+
+    /** Pool of active session slots. Kept alive across session switches. */
+    private val sessionSlots = HashMap<String, SessionSlot>()
     private var registeredSession: ClawSeedSession? = null
-    private var accumulator: ChatAccumulator? = null
+    private var currentSessionId: String? = null
     private var currentSession: ClawSeedSession? = null
+    private var accumulator: ChatAccumulator? = null
     private var connectJob: Job? = null
     private var accumulatorObservationJob: Job? = null
     private var sessionObservationJob: Job? = null
@@ -83,19 +97,30 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun switchToSession(sessionId: String?) {
-        // If already connected to the same session (e.g. after config change), skip reconnection
+        // If already connected to the same session, skip reconnection
         val currentSid = currentSession?.sessionInfo?.value?.sessionId
         if (currentSid != null && currentSid == sessionId
             && currentSession?.connectionState?.value == ConnectionState.CONNECTED
         ) {
             return
         }
-        connectJob?.cancel()
+
+        // ── Save the current slot to the pool (don't disconnect or reset) ──
+        val oldSid = currentSession?.sessionInfo?.value?.sessionId ?: currentSessionId
+        if (oldSid != null && currentSession != null && accumulator != null) {
+            sessionSlots[oldSid] = SessionSlot(currentSession!!, accumulator!!)
+        }
+
+        // ── Cancel UI observation of the old session ──
+        // The accumulator's collection job keeps running — events are still
+        // collected in the background so the response is preserved.
         accumulatorObservationJob?.cancel()
         sessionObservationJob?.cancel()
+        connectJob?.cancel()
         historyLoaded = false
-        accumulator?.reset()
-        currentSession = null
+        currentSessionId = null
+
+        // ── Reset UI state for the new session ──
         _uiState.value = _uiState.value.copy(
             messages = emptyList(),
             streamingContent = "",
@@ -106,7 +131,93 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             currentSessionId = null,
             error = null,
         )
-        doConnect(sessionId)
+
+        // ── Check pool for an existing slot ──
+        if (sessionId != null && sessionSlots.containsKey(sessionId)) {
+            reuseExistingSlot(sessionId)
+        } else {
+            doConnect(sessionId)
+        }
+    }
+
+    /**
+     * Reuse a session slot from the pool.  The accumulator has been running
+     * in the background, so its state reflects any events that occurred
+     * while the user was viewing a different session.
+     */
+    private fun reuseExistingSlot(sessionId: String) {
+        val slot = sessionSlots[sessionId]!!
+        currentSession = slot.session
+        currentSessionId = sessionId
+        accumulator = slot.accumulator
+        historyLoaded = true // accumulator already has accumulated messages
+
+        // Populate UI from the existing accumulator's current state
+        val existingMessages = slot.accumulator.messages.value.map { msg ->
+            when (msg) {
+                is dev.clawseed.sdk.android.AccumulatedMessage.User -> ChatEntry.UserMessage(
+                    id = msg.id,
+                    timestamp = msg.timestamp,
+                    content = msg.content,
+                )
+                is dev.clawseed.sdk.android.AccumulatedMessage.Assistant -> ChatEntry.AssistantMessage(
+                    id = msg.id,
+                    timestamp = msg.timestamp,
+                    content = msg.content,
+                )
+                is dev.clawseed.sdk.android.AccumulatedMessage.ToolCall -> ChatEntry.ToolCall(
+                    id = msg.id,
+                    timestamp = msg.timestamp,
+                    toolCallId = msg.callId,
+                    toolName = msg.name,
+                    toolArgs = msg.args,
+                )
+                is dev.clawseed.sdk.android.AccumulatedMessage.ToolResult -> ChatEntry.ToolResult(
+                    id = msg.id,
+                    timestamp = msg.timestamp,
+                    toolCallId = msg.callId,
+                    toolName = msg.name,
+                    toolResult = msg.output,
+                    toolSuccess = true,
+                )
+                is dev.clawseed.sdk.android.AccumulatedMessage.Thinking -> ChatEntry.Thinking(
+                    id = msg.id,
+                    timestamp = msg.timestamp,
+                    content = msg.content,
+                )
+                is dev.clawseed.sdk.android.AccumulatedMessage.System -> ChatEntry.SystemMessage(
+                    id = msg.id,
+                    timestamp = msg.timestamp,
+                    content = msg.content,
+                )
+                is dev.clawseed.sdk.android.AccumulatedMessage.Debug -> ChatEntry.DebugInfo(
+                    id = msg.id,
+                    timestamp = msg.timestamp,
+                    messagesJson = msg.messagesJson,
+                    estimatedTokens = msg.estimatedTokens,
+                )
+                is dev.clawseed.sdk.android.AccumulatedMessage.Error -> {
+                    _uiState.value = _uiState.value.copy(error = msg.message)
+                    null
+                }
+            }
+        }.filterNotNull()
+
+        val isStreaming = slot.accumulator.streamingContent.value.isNotEmpty()
+        _uiState.value = _uiState.value.copy(
+            messages = existingMessages,
+            streamingContent = slot.accumulator.streamingContent.value,
+            thinkingContent = slot.accumulator.thinkingContent.value,
+            turnState = if (isStreaming) TurnState.STREAMING_TEXT else TurnState.IDLE,
+            connState = slot.session.connectionState.value,
+            sessionName = slot.accumulator.sessionTitle.value ?: slot.session.sessionInfo.value?.name,
+            currentSessionId = sessionId,
+        )
+
+        // Resume observation
+        observeAccumulator(slot.accumulator)
+        observeConnectionState(slot.session)
+        observeAuthEvents()
     }
 
     private fun doConnect(sessionId: String?) {
@@ -117,17 +228,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val session = sessionManager().connect(sessionId)
                 currentSession = session
 
+                val sid = session.sessionInfo.value?.sessionId ?: sessionId
+                currentSessionId = sid
+
                 if (registeredSession !== session) {
                     registerTools(session)
                     registeredSession = session
                 }
 
-                if (sessionId != null) {
-                    loadHistory(session, sessionId)
+                if (sid != null) {
+                    loadHistory(session, sid)
                 }
 
-                // Disconnect previous accumulator
-                accumulator?.reset()
+                // Cancel old observation jobs (don't reset old accumulator)
                 accumulatorObservationJob?.cancel()
                 sessionObservationJob?.cancel()
 
@@ -135,6 +248,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val acc = ChatAccumulator(session)
                 acc.startIn(viewModelScope)
                 accumulator = acc
+
+                // Save to pool immediately so it survives future switches
+                if (sid != null) {
+                    sessionSlots[sid] = SessionSlot(session, acc)
+                }
 
                 // Observe accumulator state
                 observeAccumulator(acc)
@@ -321,6 +439,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         sessionName = info?.name ?: _uiState.value.sessionName,
                         currentSessionId = info?.sessionId,
                     )
+                    // Update pool slot sessionId if the gateway assigned a new one
+                    val sid = info?.sessionId
+                    if (sid != null && currentSessionId != sid) {
+                        currentSessionId = sid
+                        val slot = sessionSlots[currentSessionId]
+                        if (slot != null && slot.session === session) {
+                            // Migrate slot entry from old key to real sessionId
+                            sessionSlots[sid] = slot
+                        } else {
+                            sessionSlots[sid] = SessionSlot(session, accumulator ?: ChatAccumulator(session))
+                        }
+                    }
                 }
             }
         }
@@ -423,14 +553,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     "weekday" -> TaskRepeat.WEEKDAY
                     else -> return ToolResult.Failure("repeat 必须是 once/daily/weekday")
                 }
-                val currentSessionId = currentSession?.sessionInfo?.value?.sessionId
+                val currentSid = currentSession?.sessionInfo?.value?.sessionId
                 val task = ScheduledTask(
                     name = name,
                     message = message,
                     hour = hour,
                     minute = minute,
                     repeat = repeat,
-                    sessionId = currentSessionId,
+                    sessionId = currentSid,
                 )
                 store.addTask(task)
                 ScheduledTaskManager.scheduleAlarm(ctx, task)
