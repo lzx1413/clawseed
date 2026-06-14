@@ -2,6 +2,14 @@ package dev.clawseed.demo.data
 
 enum class TurnState { IDLE, STREAMING_TEXT, EXPECTING_RESULT, ERROR }
 
+data class ToolCallInfo(
+    val toolCallId: String,
+    val toolName: String,
+    val toolArgs: String,
+    val toolResult: String? = null,    // null = 正在调用中
+    val toolSuccess: Boolean? = null,  // null = 正在调用中
+)
+
 sealed class ChatEntry {
     abstract val id: String
     abstract val timestamp: Long
@@ -19,21 +27,10 @@ sealed class ChatEntry {
         val isStreaming: Boolean = false,
     ) : ChatEntry()
 
-    data class ToolCall(
+    data class ToolInvocations(
         override val id: String,
         override val timestamp: Long,
-        val toolCallId: String,
-        val toolName: String,
-        val toolArgs: String,
-    ) : ChatEntry()
-
-    data class ToolResult(
-        override val id: String,
-        override val timestamp: Long,
-        val toolCallId: String,
-        val toolName: String,
-        val toolResult: String,
-        val toolSuccess: Boolean,
+        val invocations: List<ToolCallInfo>,
     ) : ChatEntry()
 
     data class Thinking(

@@ -13,6 +13,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.clawseed.demo.data.ChatEntry
 import dev.clawseed.demo.data.LocalStore
+import dev.clawseed.demo.data.ToolCallInfo
 import dev.clawseed.demo.data.TurnState
 import dev.clawseed.demo.scheduled.ScheduledTask
 import dev.clawseed.demo.scheduled.ScheduledTaskManager
@@ -79,6 +80,110 @@ private data class SessionSlot(
     val session: ClawSeedSession,
     val accumulator: ChatAccumulator,
 )
+
+    /**
+     * Maps accumulated messages to ChatEntry list, merging ToolCall + ToolResult
+     * into grouped ToolInvocations entries. Returns entries and collected error messages.
+     */
+    private fun mapAccumulatedToEntries(
+        accumulated: List<dev.clawseed.sdk.android.AccumulatedMessage>,
+        stripEnrichment: Boolean = false,
+    ): Pair<List<ChatEntry>, List<String>> {
+        val errors = mutableListOf<String>()
+
+        // Build a lookup of callId → ToolResult data for merging
+        val resultMap = accumulated
+            .filterIsInstance<dev.clawseed.sdk.android.AccumulatedMessage.ToolResult>()
+            .associateBy { it.callId }
+
+        // Intermediate list: ToolCallInfo for tool entries, ChatEntry for others
+        val intermediate = accumulated.mapNotNull { msg ->
+            when (msg) {
+                is dev.clawseed.sdk.android.AccumulatedMessage.User -> ChatEntry.UserMessage(
+                    id = msg.id,
+                    timestamp = msg.timestamp,
+                    content = if (stripEnrichment) stripEnrichmentPrefixes(msg.content) else msg.content,
+                )
+                is dev.clawseed.sdk.android.AccumulatedMessage.Assistant -> ChatEntry.AssistantMessage(
+                    id = msg.id,
+                    timestamp = msg.timestamp,
+                    content = msg.content,
+                )
+                is dev.clawseed.sdk.android.AccumulatedMessage.ToolCall -> {
+                    val result = resultMap[msg.callId]
+                    ToolCallInfo(
+                        toolCallId = msg.callId,
+                        toolName = msg.name,
+                        toolArgs = msg.args,
+                        toolResult = result?.output,
+                        toolSuccess = if (result != null) true else null,
+                    )
+                }
+                // ToolResult is merged into ToolCallInfo above; skip standalone entry
+                is dev.clawseed.sdk.android.AccumulatedMessage.ToolResult -> null
+                is dev.clawseed.sdk.android.AccumulatedMessage.Thinking -> ChatEntry.Thinking(
+                    id = msg.id,
+                    timestamp = msg.timestamp,
+                    content = msg.content,
+                )
+                is dev.clawseed.sdk.android.AccumulatedMessage.System -> ChatEntry.SystemMessage(
+                    id = msg.id,
+                    timestamp = msg.timestamp,
+                    content = msg.content,
+                )
+                is dev.clawseed.sdk.android.AccumulatedMessage.Debug -> ChatEntry.DebugInfo(
+                    id = msg.id,
+                    timestamp = msg.timestamp,
+                    messagesJson = msg.messagesJson,
+                    estimatedTokens = msg.estimatedTokens,
+                )
+                is dev.clawseed.sdk.android.AccumulatedMessage.Error -> {
+                    errors.add(msg.message)
+                    null
+                }
+            }
+        }
+
+        // Group consecutive ToolCallInfo items into ChatEntry.ToolInvocations
+        val entries = groupToolCalls(intermediate)
+        return Pair(entries, errors)
+    }
+
+    /**
+     * Scans a mixed list of ChatEntry and ToolCallInfo items, grouping consecutive
+     * ToolCallInfo items into ChatEntry.ToolInvocations entries.
+     */
+    private fun groupToolCalls(items: List<Any>): List<ChatEntry> {
+        val result = mutableListOf<ChatEntry>()
+        var pendingTools = mutableListOf<ToolCallInfo>()
+        var pendingToolIds = mutableListOf<String>()
+
+        for (item in items) {
+            if (item is ToolCallInfo) {
+                pendingTools.add(item)
+            } else {
+                if (pendingTools.isNotEmpty()) {
+                    result.add(ChatEntry.ToolInvocations(
+                        id = "tools-${pendingToolIds.joinToString("-")}",
+                        timestamp = pendingTools.first().let { System.currentTimeMillis() },
+                        invocations = pendingTools.toList(),
+                    ))
+                    pendingTools = mutableListOf()
+                    pendingToolIds = mutableListOf()
+                }
+                result.add(item as ChatEntry)
+            }
+        }
+        // Flush remaining tool group
+        if (pendingTools.isNotEmpty()) {
+            result.add(ChatEntry.ToolInvocations(
+                id = "tools-${pendingToolIds.joinToString("-")}",
+                timestamp = System.currentTimeMillis(),
+                invocations = pendingTools.toList(),
+            ))
+        }
+        return result
+    }
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -167,55 +272,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         historyLoaded = true // accumulator already has accumulated messages
 
         // Populate UI from the existing accumulator's current state
-        val existingMessages = slot.accumulator.messages.value.map { msg ->
-            when (msg) {
-                is dev.clawseed.sdk.android.AccumulatedMessage.User -> ChatEntry.UserMessage(
-                    id = msg.id,
-                    timestamp = msg.timestamp,
-                    content = stripEnrichmentPrefixes(msg.content),
-                )
-                is dev.clawseed.sdk.android.AccumulatedMessage.Assistant -> ChatEntry.AssistantMessage(
-                    id = msg.id,
-                    timestamp = msg.timestamp,
-                    content = msg.content,
-                )
-                is dev.clawseed.sdk.android.AccumulatedMessage.ToolCall -> ChatEntry.ToolCall(
-                    id = msg.id,
-                    timestamp = msg.timestamp,
-                    toolCallId = msg.callId,
-                    toolName = msg.name,
-                    toolArgs = msg.args,
-                )
-                is dev.clawseed.sdk.android.AccumulatedMessage.ToolResult -> ChatEntry.ToolResult(
-                    id = msg.id,
-                    timestamp = msg.timestamp,
-                    toolCallId = msg.callId,
-                    toolName = msg.name,
-                    toolResult = msg.output,
-                    toolSuccess = true,
-                )
-                is dev.clawseed.sdk.android.AccumulatedMessage.Thinking -> ChatEntry.Thinking(
-                    id = msg.id,
-                    timestamp = msg.timestamp,
-                    content = msg.content,
-                )
-                is dev.clawseed.sdk.android.AccumulatedMessage.System -> ChatEntry.SystemMessage(
-                    id = msg.id,
-                    timestamp = msg.timestamp,
-                    content = msg.content,
-                )
-                is dev.clawseed.sdk.android.AccumulatedMessage.Debug -> ChatEntry.DebugInfo(
-                    id = msg.id,
-                    timestamp = msg.timestamp,
-                    messagesJson = msg.messagesJson,
-                    estimatedTokens = msg.estimatedTokens,
-                )
-                is dev.clawseed.sdk.android.AccumulatedMessage.Error -> {
-                    _uiState.value = _uiState.value.copy(error = msg.message)
-                    null
-                }
-            }
-        }.filterNotNull()
+        val (existingMessages, errors) = mapAccumulatedToEntries(
+            slot.accumulator.messages.value,
+            stripEnrichment = true,
+        )
 
         val isStreaming = slot.accumulator.streamingContent.value.isNotEmpty()
         _uiState.value = _uiState.value.copy(
@@ -337,21 +397,104 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         session.gateway.sessionMessages(sessionId)
             .onSuccess { msgs ->
                 historyLoaded = true
-                val historyEntries = msgs.mapIndexed { idx, msg ->
-                    when (msg.role) {
-                        "user" -> ChatEntry.UserMessage(
-                            id = "hist-$idx",
-                            timestamp = System.currentTimeMillis(),
-                            content = stripEnrichmentPrefixes(msg.content ?: ""),
-                        )
-                        "assistant" -> ChatEntry.AssistantMessage(
-                            id = "hist-$idx",
-                            timestamp = System.currentTimeMillis(),
-                            content = msg.content ?: "",
-                        )
-                        else -> null
+
+                // Pass 1: Collect reasoning_content per turn (indexed by user message position)
+                val turnThinkingMap = mutableMapOf<Int, String>()
+                var currentTurnReasoning = mutableListOf<String>()
+                var currentTurnStart = -1
+
+                for ((idx, msg) in msgs.withIndex()) {
+                    if (msg.role == "user" && msg.type == "chat") {
+                        // Save previous turn's accumulated reasoning
+                        if (currentTurnReasoning.isNotEmpty() && currentTurnStart >= 0) {
+                            turnThinkingMap[currentTurnStart] = currentTurnReasoning.joinToString("\n\n")
+                        }
+                        currentTurnStart = idx
+                        currentTurnReasoning = mutableListOf()
                     }
-                }.filterNotNull()
+                    if (msg.type == "assistant_tool_calls") {
+                        val reasoning = msg.data?.jsonObject
+                            ?.get("reasoning_content")?.jsonPrimitive?.content
+                        if (!reasoning.isNullOrEmpty()) {
+                            currentTurnReasoning.add(reasoning)
+                        }
+                    }
+                }
+                // Flush last turn's reasoning
+                if (currentTurnReasoning.isNotEmpty() && currentTurnStart >= 0) {
+                    turnThinkingMap[currentTurnStart] = currentTurnReasoning.joinToString("\n\n")
+                }
+
+                // Pass 2: Build intermediate list, inserting Thinking right after UserMessage
+                val intermediate = mutableListOf<Any>()
+
+                for ((idx, msg) in msgs.withIndex()) {
+                    when (msg.type) {
+                        "chat" -> when (msg.role) {
+                            "user" -> {
+                                intermediate.add(ChatEntry.UserMessage(
+                                    id = "hist-$idx",
+                                    timestamp = System.currentTimeMillis(),
+                                    content = stripEnrichmentPrefixes(msg.content ?: ""),
+                                ))
+                                // Insert consolidated Thinking right after UserMessage
+                                turnThinkingMap[idx]?.let { reasoning ->
+                                    intermediate.add(ChatEntry.Thinking(
+                                        id = "hist-think-$idx",
+                                        timestamp = System.currentTimeMillis(),
+                                        content = reasoning,
+                                    ))
+                                }
+                            }
+                            "assistant" -> intermediate.add(ChatEntry.AssistantMessage(
+                                id = "hist-$idx",
+                                timestamp = System.currentTimeMillis(),
+                                content = msg.content ?: "",
+                            ))
+                            else -> {}
+                        }
+                        "assistant_tool_calls" -> {
+                            val data = msg.data?.jsonObject
+                            val toolCalls = data?.get("tool_calls")?.jsonArray
+                            if (toolCalls != null) {
+                                for (tc in toolCalls) {
+                                    val tcObj = tc.jsonObject
+                                    intermediate.add(ToolCallInfo(
+                                        toolCallId = tcObj["id"]?.jsonPrimitive?.content ?: "",
+                                        toolName = tcObj["name"]?.jsonPrimitive?.content ?: "",
+                                        toolArgs = tcObj["arguments"]?.jsonPrimitive?.content ?: "",
+                                    ))
+                                }
+                            }
+                            val text = data?.get("text")?.jsonPrimitive?.content ?: msg.content ?: ""
+                            if (text.isNotEmpty()) {
+                                intermediate.add(ChatEntry.AssistantMessage(
+                                    id = "hist-assist-$idx",
+                                    timestamp = System.currentTimeMillis(),
+                                    content = text,
+                                ))
+                            }
+                        }
+                        "tool_results" -> {
+                            val results = msg.data?.jsonArray
+                            if (results != null) {
+                                for (result in results) {
+                                    val resultObj = result.jsonObject
+                                    intermediate.add(ToolCallInfo(
+                                        toolCallId = resultObj["tool_call_id"]?.jsonPrimitive?.content ?: "",
+                                        toolName = resultObj["name"]?.jsonPrimitive?.content ?: "",
+                                        toolArgs = "",
+                                        toolResult = resultObj["content"]?.jsonPrimitive?.content ?: "",
+                                        toolSuccess = true,
+                                    ))
+                                }
+                            }
+                        }
+                        else -> {}
+                    }
+                }
+
+                val historyEntries = groupToolCalls(intermediate)
                 _uiState.value = _uiState.value.copy(messages = historyEntries)
             }
     }
@@ -376,58 +519,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             launch {
                 acc.messages.collect { accumulated ->
                     val existing = _uiState.value.messages.filter { it.id.startsWith("hist-") }
-                    val newMessages = accumulated.map { msg ->
-                        when (msg) {
-                            is dev.clawseed.sdk.android.AccumulatedMessage.User -> ChatEntry.UserMessage(
-                                id = msg.id,
-                                timestamp = msg.timestamp,
-                                content = msg.content,
-                            )
-                            is dev.clawseed.sdk.android.AccumulatedMessage.Assistant -> ChatEntry.AssistantMessage(
-                                id = msg.id,
-                                timestamp = msg.timestamp,
-                                content = msg.content,
-                            )
-                            is dev.clawseed.sdk.android.AccumulatedMessage.ToolCall -> ChatEntry.ToolCall(
-                                id = msg.id,
-                                timestamp = msg.timestamp,
-                                toolCallId = msg.callId,
-                                toolName = msg.name,
-                                toolArgs = msg.args,
-                            )
-                            is dev.clawseed.sdk.android.AccumulatedMessage.ToolResult -> ChatEntry.ToolResult(
-                                id = msg.id,
-                                timestamp = msg.timestamp,
-                                toolCallId = msg.callId,
-                                toolName = msg.name,
-                                toolResult = msg.output,
-                                toolSuccess = true,
-                            )
-                            is dev.clawseed.sdk.android.AccumulatedMessage.Thinking -> ChatEntry.Thinking(
-                                id = msg.id,
-                                timestamp = msg.timestamp,
-                                content = msg.content,
-                            )
-                            is dev.clawseed.sdk.android.AccumulatedMessage.System -> ChatEntry.SystemMessage(
-                                id = msg.id,
-                                timestamp = msg.timestamp,
-                                content = msg.content,
-                            )
-                            is dev.clawseed.sdk.android.AccumulatedMessage.Debug -> ChatEntry.DebugInfo(
-                                id = msg.id,
-                                timestamp = msg.timestamp,
-                                messagesJson = msg.messagesJson,
-                                estimatedTokens = msg.estimatedTokens,
-                            )
-                            is dev.clawseed.sdk.android.AccumulatedMessage.Error -> {
-                                _uiState.value = _uiState.value.copy(error = msg.message)
-                                null
-                            }
-                        }
-                    }.filterNotNull()
+                    val (newMessages, errors) = mapAccumulatedToEntries(accumulated)
 
                     val all = if (historyLoaded) existing + newMessages else newMessages
-                    _uiState.value = _uiState.value.copy(messages = all)
+                    _uiState.value = _uiState.value.copy(
+                        messages = all,
+                        error = errors.lastOrNull() ?: _uiState.value.error,
+                    )
                 }
             }
             launch {

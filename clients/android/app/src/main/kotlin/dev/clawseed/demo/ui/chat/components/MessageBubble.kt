@@ -8,13 +8,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.TextSelectionColors
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,6 +42,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.clawseed.demo.data.ChatEntry
+import dev.clawseed.demo.data.ToolCallInfo
 import kotlinx.coroutines.delay
 
 @Composable
@@ -50,8 +54,7 @@ fun MessageBubble(
     when (entry) {
         is ChatEntry.UserMessage -> UserBubble(entry.content, modifier)
         is ChatEntry.AssistantMessage -> AssistantBubble(entry.content, entry.isStreaming, onRegenerate, modifier)
-        is ChatEntry.ToolCall -> ToolCallCard(entry, modifier)
-        is ChatEntry.ToolResult -> ToolResultCard(entry, modifier)
+        is ChatEntry.ToolInvocations -> ToolInvocationsCard(entry, modifier)
         is ChatEntry.Thinking -> ThinkingCard(entry.content, modifier)
         is ChatEntry.SystemMessage -> SystemBubble(entry.content, modifier)
         is ChatEntry.DebugInfo -> DebugInfoCard(entry, modifier)
@@ -262,50 +265,19 @@ private val CopyIcon: ImageVector by lazy {
 }
 
 @Composable
-private fun ToolCallCard(entry: ChatEntry.ToolCall, modifier: Modifier = Modifier) {
+private fun ToolInvocationsCard(entry: ChatEntry.ToolInvocations, modifier: Modifier = Modifier) {
     var expanded by remember { mutableStateOf(false) }
+    val invocations = entry.invocations
+    val callingCount = invocations.count { it.toolResult == null }
+    val completedCount = invocations.count { it.toolResult != null }
+    val anyCalling = callingCount > 0
+    val allSuccess = invocations.all { it.toolSuccess == true }
+    val hasFailure = invocations.any { it.toolSuccess == false }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.tertiaryContainer)
-            .clickable { expanded = !expanded }
-            .padding(12.dp),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                text = if (expanded) "▼" else "▶",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onTertiaryContainer,
-            )
-            Text(
-                text = entry.toolName,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onTertiaryContainer,
-            )
-        }
-        AnimatedVisibility(visible = expanded) {
-            Text(
-                text = formatJson(entry.toolArgs),
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f),
-                modifier = Modifier.padding(top = 8.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun ToolResultCard(entry: ChatEntry.ToolResult, modifier: Modifier = Modifier) {
-    var expanded by remember { mutableStateOf(false) }
-    val bg = if (entry.toolSuccess) MaterialTheme.colorScheme.tertiaryContainer
-             else MaterialTheme.colorScheme.errorContainer
-    val fg = if (entry.toolSuccess) MaterialTheme.colorScheme.onTertiaryContainer
-             else MaterialTheme.colorScheme.onErrorContainer
+    val bg = if (anyCalling) MaterialTheme.colorScheme.tertiaryContainer
+             else if (hasFailure) MaterialTheme.colorScheme.tertiaryContainer
+             else MaterialTheme.colorScheme.tertiaryContainer
+    val fg = MaterialTheme.colorScheme.onTertiaryContainer
 
     Column(
         modifier = modifier
@@ -320,33 +292,138 @@ private fun ToolResultCard(entry: ChatEntry.ToolResult, modifier: Modifier = Mod
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
-                text = if (entry.toolSuccess) "✅" else "❌",
+                text = if (expanded) "▼" else "▶",
                 style = MaterialTheme.typography.labelSmall,
-            )
-            Text(
-                text = entry.toolName,
-                style = MaterialTheme.typography.labelLarge,
                 color = fg,
             )
-            if (!expanded && entry.toolResult.length > 60) {
+            if (anyCalling) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = fg,
+                )
                 Text(
-                    text = entry.toolResult.take(60) + "…",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "工具调用中…",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = fg,
+                )
+                Text(
+                    text = "($completedCount/${invocations.size})",
+                    style = MaterialTheme.typography.labelSmall,
                     color = fg.copy(alpha = 0.6f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                Text(
+                    text = if (allSuccess) "✅" else if (hasFailure) "⚠️" else "✅",
+                    style = MaterialTheme.typography.labelSmall,
+                )
+                Text(
+                    text = "工具调用 (${invocations.size})",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = fg,
                 )
             }
         }
         AnimatedVisibility(visible = expanded) {
-            SelectionContainer {
-                Text(
-                    text = entry.toolResult,
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = fg.copy(alpha = 0.8f),
-                    modifier = Modifier.padding(top = 8.dp),
+            Column(modifier = Modifier.padding(top = 8.dp)) {
+                for (inv in invocations) {
+                    ToolCallRow(inv)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
+    var detailExpanded by remember { mutableStateOf(false) }
+    val isCalling = inv.toolResult == null
+    val isSuccess = inv.toolSuccess == true
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f))
+            .clickable { detailExpanded = !detailExpanded }
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = if (detailExpanded) "▼" else "▶",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.6f),
+            )
+            if (isCalling) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(12.dp),
+                    strokeWidth = 1.5.dp,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
                 )
+                Text(
+                    text = inv.toolName,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                Text(
+                    text = "调用中…",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.5f),
+                )
+            } else {
+                Text(
+                    text = if (isSuccess) "✅" else "❌",
+                    style = MaterialTheme.typography.labelSmall,
+                )
+                Text(
+                    text = inv.toolName,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                if (!detailExpanded && inv.toolResult != null && inv.toolResult.length > 50) {
+                    Text(
+                        text = inv.toolResult.take(50) + "…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.5f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+        AnimatedVisibility(visible = detailExpanded) {
+            Column(modifier = Modifier.padding(top = 6.dp)) {
+                Text(
+                    text = "参数",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.5f),
+                )
+                Text(
+                    text = formatJson(inv.toolArgs),
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+                if (inv.toolResult != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "结果",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.5f),
+                    )
+                    SelectionContainer {
+                        Text(
+                            text = inv.toolResult,
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                }
             }
         }
     }

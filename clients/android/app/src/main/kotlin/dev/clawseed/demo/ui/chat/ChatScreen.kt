@@ -200,7 +200,7 @@ fun ChatScreen(
                     val isLastAssistant = entry is ChatEntry.AssistantMessage
                         && !entry.isStreaming
                         && uiState.messages.lastOrNull()
-                            ?.let { it is ChatEntry.AssistantMessage || it is ChatEntry.ToolResult || it is ChatEntry.ToolCall || it is ChatEntry.Thinking }
+                            ?.let { it is ChatEntry.AssistantMessage || it is ChatEntry.ToolInvocations || it is ChatEntry.Thinking }
                             ?: false
                         && uiState.messages.indexOf(entry) == uiState.messages.indexOfLast { it is ChatEntry.AssistantMessage }
                     MessageBubble(
