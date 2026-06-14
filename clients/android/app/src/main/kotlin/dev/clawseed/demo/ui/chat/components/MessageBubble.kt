@@ -274,10 +274,8 @@ private fun ToolInvocationsCard(entry: ChatEntry.ToolInvocations, modifier: Modi
     val allSuccess = invocations.all { it.toolSuccess == true }
     val hasFailure = invocations.any { it.toolSuccess == false }
 
-    val bg = if (anyCalling) MaterialTheme.colorScheme.tertiaryContainer
-             else if (hasFailure) MaterialTheme.colorScheme.tertiaryContainer
-             else MaterialTheme.colorScheme.tertiaryContainer
-    val fg = MaterialTheme.colorScheme.onTertiaryContainer
+    val bg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    val fg = MaterialTheme.colorScheme.onSurfaceVariant
 
     Column(
         modifier = modifier
@@ -344,7 +342,7 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
             .clickable { detailExpanded = !detailExpanded }
             .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
@@ -355,23 +353,23 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
             Text(
                 text = if (detailExpanded) "▼" else "▶",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
             )
             if (isCalling) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(12.dp),
                     strokeWidth = 1.5.dp,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     text = inv.toolName,
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     text = "调用中…",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.5f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                 )
             } else {
                 Text(
@@ -381,13 +379,13 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
                 Text(
                     text = inv.toolName,
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (!detailExpanded && inv.toolResult != null && inv.toolResult.length > 50) {
                     Text(
                         text = inv.toolResult.take(50) + "…",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.5f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
@@ -400,12 +398,12 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
                 Text(
                     text = "参数",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.5f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                 )
                 Text(
                     text = formatJson(inv.toolArgs),
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     modifier = Modifier.padding(top = 2.dp),
                 )
                 if (inv.toolResult != null) {
@@ -413,13 +411,13 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
                     Text(
                         text = "结果",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.5f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                     )
                     SelectionContainer {
                         Text(
                             text = inv.toolResult,
                             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             modifier = Modifier.padding(top = 2.dp),
                         )
                     }
