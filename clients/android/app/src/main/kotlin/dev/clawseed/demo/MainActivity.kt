@@ -113,6 +113,15 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntentSession(intent)
+        handleAlarmDismiss(intent)
+    }
+
+    private fun handleAlarmDismiss(intent: Intent?) {
+        if (intent?.getStringExtra(EXTRA_ALARM_DISMISS) != null) {
+            serviceRef.value?.dismissAlarm()
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.cancel(intent.getStringExtra(EXTRA_ALARM_DISMISS)!!.hashCode())
+        }
     }
 
     private fun handleIntentSession(intent: Intent?) {
@@ -129,5 +138,6 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_SESSION_ID = "session_id"
+        const val EXTRA_ALARM_DISMISS = "alarm_dismiss"
     }
 }

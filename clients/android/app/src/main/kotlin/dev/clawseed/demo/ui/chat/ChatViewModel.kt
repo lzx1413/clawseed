@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -188,6 +189,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }""",
         ) { args ->
             handleScheduledTask(args)
+        }
+
+        session.tools.register(
+            name = "set_alarm",
+            description = "在设备上设置闹钟，通过系统时钟应用创建真正的闹钟（会响铃和震动唤醒用户）。适用于用户需要被闹钟叫醒或提醒的场景。" +
+                "参数：hour（小时0-23）、minute（分钟0-59）、message（闹钟标签，可选）、repeat_days（重复的星期几1-7对应周一到周日，可选，空表示一次性闹钟）",
+            parameters = """{"type":"object","properties":{"hour":{"type":"integer","description":"闹钟小时（0-23）","minimum":0,"maximum":23},"minute":{"type":"integer","description":"闹钟分钟（0-59）","minimum":0,"maximum":59},"message":{"type":"string","description":"闹钟标签/备注信息"},"repeat_days":{"type":"array","description":"重复的星期几（1=周一，2=周二，...7=周日），空数组或null表示一次性闹钟","items":{"type":"integer","minimum":1,"maximum":7}}},"required":["hour","minute"]}""",
+        ) { args ->
+            handleSetAlarm(args)
         }
     }
 
@@ -444,6 +454,55 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
             else -> return ToolResult.Failure("未知操作: $op，支持 list/add/delete")
         }
+    }
+
+    private suspend fun handleSetAlarm(args: kotlinx.serialization.json.JsonObject): ToolResult {
+        val ctx = getApplication<Application>()
+        val hour = args["hour"]?.jsonPrimitive?.intOrNull
+        val minute = args["minute"]?.jsonPrimitive?.intOrNull
+
+        if (hour == null || minute == null) {
+            return ToolResult.Failure("缺少必需参数：hour 和 minute")
+        }
+        if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+            return ToolResult.Failure("参数范围无效：hour 应为 0-23，minute 应为 0-59")
+        }
+
+        val message = args["message"]?.jsonPrimitive?.content ?: ""
+        val repeatDays = args["repeat_days"]?.jsonArray?.mapNotNull { it.jsonPrimitive.intOrNull }
+
+        val repeat = if (repeatDays == null || repeatDays.isEmpty()) {
+            TaskRepeat.ONCE
+        } else if (repeatDays.size == 5 && repeatDays.containsAll(listOf(1, 2, 3, 4, 5))) {
+            TaskRepeat.WEEKDAY
+        } else {
+            TaskRepeat.DAILY
+        }
+
+        val taskName = if (message.isNotEmpty()) "闹钟: $message" else "闹钟 ${String.format("%02d:%02d", hour, minute)}"
+        val alarmMessage = if (message.isNotEmpty()) message else "闹钟响了"
+
+        val store = ScheduledTaskStore(ctx)
+        val task = ScheduledTask(
+            name = taskName,
+            message = alarmMessage,
+            hour = hour,
+            minute = minute,
+            repeat = repeat,
+            enabled = true,
+            isAlarm = true,
+        )
+        store.addTask(task)
+        ScheduledTaskManager.scheduleAlarm(ctx, task)
+
+        return ToolResult.Success(buildJsonObject {
+            put("id", task.id)
+            put("name", taskName)
+            put("hour", hour)
+            put("minute", minute)
+            put("repeat", repeat.name.lowercase())
+            put("is_alarm", true)
+        }.toString())
     }
 
     @Suppress("MissingPermission")

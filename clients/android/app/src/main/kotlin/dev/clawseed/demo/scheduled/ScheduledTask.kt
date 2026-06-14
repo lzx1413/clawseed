@@ -17,6 +17,7 @@ data class ScheduledTask(
     val lastStatus: TaskStatus? = null,
     val lastResult: String? = null,
     val lastError: String? = null,
+    val isAlarm: Boolean = false,
 )
 
 @Serializable
