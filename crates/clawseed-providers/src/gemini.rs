@@ -1231,7 +1231,7 @@ impl Provider for GeminiProvider {
         clawseed_api::provider::ProviderCapabilities {
             vision: true,
             native_tool_calling: false,
-            prompt_caching: false,
+            cache_strategy: clawseed_api::provider::CacheStrategy::None,
         }
     }
 

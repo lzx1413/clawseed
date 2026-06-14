@@ -14,110 +14,136 @@ Three fatal cache-breaking issues:
 
 ## Implementation
 
-### Phase 0 — Reduce DateTime Precision
+### Phase 0 → Minute Precision (superseded by Phase 2)
 
-**File**: `crates/clawseed-agent/src/prompt.rs`
+Initially reduced `DateTimeSection::build()` from second-precision to minute-precision. This improved cache hits within the same minute, but the system prompt still changed every minute — insufficient for long sessions.
 
-Changed `DateTimeSection::build()` from second-precision to minute-precision:
+### Phase 1 — Stable/Dynamic Partitioning (superseded by Phase 2)
+
+Introduced `CacheClass` (Stable/Dynamic) and `PartitionedSystemPrompt { stable, dynamic, full }` to split the system prompt into a cacheable prefix and a per-turn dynamic suffix. `DateTimeSection` was marked as `Dynamic` and moved to the end, with a preamble bridge (`⚠️ THE CURRENT TIME BELOW APPLIES TO ALL ABOVE INSTRUCTIONS.`) appended to the stable block.
+
+This achieved Anthropic prefix caching, but required per-turn dynamic rebuilds and added complexity (preamble, split logic, `dynamic_system_content` field, `refresh_dynamic_system_content()` method).
+
+### Phase 2 — Full Stability (current implementation)
+
+**Key insight**: If the system prompt is 100% stable across turns (zero per-turn changes), automatic prefix caching works without any message-level transformation. Only Anthropic and Bedrock need explicit `cache_control: ephemeral` markers; all other providers benefit from the stable prefix automatically.
+
+#### 1. Remove DateTimeSection from system prompt (`prompt.rs`)
+
+`DateTimeSection` is no longer included in `SystemPromptBuilder::with_defaults()`. Current time is provided via the **user message timestamp prefix** instead:
+
+```
+[2024-06-14 15:42:00 CST] What is the weather today?
+```
+
+The gateway and CLI both prepend this `[YYYY-MM-DD HH:MM:SS TZ]` prefix to every user message before sending it to the agent. This keeps time context available to the model without injecting it into the system prompt.
+
+**Benefits**:
+- The entire system message is byte-identical across all turns → 100% stable prefix
+- Works for **all** providers with automatic prefix caching (DeepSeek, OpenAI, Groq, etc.)
+- No per-turn rebuild cost — eliminates `refresh_dynamic_system_content()`, `build_dynamic_system_content()`, and `build_dynamic()`
+
+#### 2. Simplify PartitionedSystemPrompt (`prompt.rs`)
+
+With no Dynamic sections, `PartitionedSystemPrompt` simplifies:
 
 ```rust
-// Before:
-"Date: {year:04}-{month:02}-{day:02}\nTime: {hour:02}:{minute:02}:{second:02} ({tz})"
-// After:
-"Date: {year:04}-{month:02}-{day:02}\nTime: {hour:02}:{minute:02} ({tz})"
-```
-
-**Trade-off**: Minute precision means cache hits within the same minute. Multi-turn conversations typically stay within the 5-minute Anthropic cache TTL, so the cache benefit is retained while preserving useful time granularity. The model loses second-level precision but still knows the current time to the minute — sufficient for all practical tasks.
-
-**Benefit**: Broad — improves cache hit rate for all providers including OpenAI/DeepSeek server-side implicit prefix caching, not just Anthropic.
-
-### Phase 1 — Stable/Dynamic Partitioning
-
-#### 1. CacheClass + PartitionedSystemPrompt (`prompt.rs`)
-
-- `CacheClass` enum: `Stable` / `Dynamic`
-- `PromptSection::cache_class()` default method → `Stable`
-- `DateTimeSection::cache_class()` overridden → `Dynamic`
-- `PartitionedSystemPrompt { stable, dynamic, full }` struct
-- `SystemPromptBuilder::build_partitioned()` — routes `Stable` → `stable_buf`, `Dynamic` → `dynamic_buf`
-- `SystemPromptBuilder::build_dynamic()` — rebuilds only `Dynamic` sections (for per-turn refresh)
-
-**Preamble**: When both halves are non-empty, a preamble `⚠️ THE CURRENT TIME BELOW APPLIES TO ALL ABOVE INSTRUCTIONS.` is appended to the END of the stable buffer. This bridges the semantic gap caused by moving datetime from position 0 to the end of the prompt. The preamble lives inside the stable block so it's part of the cacheable prefix and never changes.
-
-**Section order in `full`**:
-```
-// Before partitioning (legacy build()):
-[DateTime] → [Identity] → [Platform] → [Workspace] → ... → [Skills]
-
-// After partitioning (build_partitioned().full):
-[Identity] → [Platform] → [Workspace] → ... → [Skills] → [preamble] → [DateTime]
-```
-
-The preamble makes the model treat the time as applying to all preceding instructions, mitigating the semantic impact of moving datetime to the end.
-
-#### 2. stable_prefix on ChatMessage (`clawseed-api/src/provider.rs`)
-
-```rust
-pub struct ChatMessage {
-    pub role: String,
-    pub content: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stable_prefix: Option<String>,
+pub struct PartitionedSystemPrompt {
+    pub stable: String,   // Full system prompt content (all sections)
+    pub dynamic: String,  // Always empty — no Dynamic sections currently exist
+    pub full: String,     // Equals stable when dynamic is empty
 }
 ```
 
-- `ChatMessage::system_partitioned(stable, dynamic, full)` — sets `content = full`, `stable_prefix = Some(stable)`
-- All other constructors (`system`, `user`, `assistant`, `tool`) set `stable_prefix: None`
-- `stable_prefix` is not persisted in session storage — it's rebuilt by `seed_history` on resume
-- Serde: `#[serde(default)]` for backward compat with JSON lacking the field; `#[serde(skip_serializing_if)]` to omit when `None`
+- `build_partitioned()` no longer appends the preamble — it's removed (`DYNAMIC_PREAMBLE` constant deleted)
+- The `else` branch (stable + dynamic concatenation) is retained for future dynamic sections but currently never executed
+- `build_dynamic()` method removed — no dynamic sections to build separately
 
-#### 3. Agent uses partitioned prompts (`agent.rs`)
+#### 3. Remove dynamic content from Agent (`agent.rs`)
 
-New fields on `Agent`:
-- `stable_system_content: String` — cached stable portion (not rebuilt per-turn)
-- `dynamic_system_content: String` — cached dynamic portion (rebuilt per-turn)
+Removed fields and methods:
+- `dynamic_system_content` field — no longer needed
+- `refresh_dynamic_system_content()` — no dynamic content to refresh per-turn
+- `build_dynamic_system_content()` — no dynamic sections to build
 
-New methods:
-- `build_system_prompt_partitioned()` — full partitioned build, stores both halves on Agent
-- `build_dynamic_system_content()` — only rebuilds Dynamic sections (datetime)
-- `refresh_dynamic_system_content()` — calls `build_dynamic_system_content()`, reconstructs `full` from cached `stable_system_content` + preamble + new dynamic, updates system ChatMessage in history
+`Agent` now only has `stable_system_content` — the full system prompt content, which is rebuilt only when stable content changes (Core memory updates, skill activation/deactivation, tool changes).
 
-Modified methods:
-- `prepare_turn()` — first turn: `build_system_prompt_partitioned()`, push `ChatMessage::system_partitioned(stable, dynamic, full)`
-- `rebuild_system_prompt()` — full rebuild on stable changes (skill/memory/tool), uses partitioned build
-- `seed_history()` — discards old system messages, rebuilds from current context via partitioned build
-- `turn()` / `turn_streamed()` — calls `refresh_dynamic_system_content()` after `prepare_turn()` on subsequent turns
+#### 4. CacheStrategy enum replaces `prompt_caching: bool` (`clawseed-api/src/provider.rs`)
 
-**Per-turn cost**: Only 1 Dynamic section (DateTimeSection) is rebuilt, not the full 11-section pipeline. The `stable_system_content` field is read from the cached value — not rebuilt.
+```rust
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CacheStrategy {
+    /// No explicit caching. Automatic prefix caching works because
+    /// the entire system prompt is stable.
+    #[default]
+    None,
+    /// Anthropic-style explicit `cache_control: ephemeral` markers or
+    /// Bedrock-style `CachePoint` blocks within system messages.
+    ExplicitAnthropic,
+}
 
-#### 4. Anthropic provider (`anthropic.rs`)
+pub struct ProviderCapabilities {
+    pub native_tool_calling: bool,
+    pub vision: bool,
+    pub cache_strategy: CacheStrategy,  // Was: prompt_caching: bool
+}
+```
 
-In `convert_messages()`:
-- Captures `msg.stable_prefix` alongside `msg.content` for system messages
-- When `stable_prefix` is `Some(stable)` and content starts with `stable`:
-  - Emits `SystemPrompt::Blocks([stable_block(cache_control), dynamic_block(no_cache)])`
-  - Strips the preamble from the dynamic portion (preamble is only needed for non-Anthropic providers that read `content` directly)
-- Otherwise: single block with `cache_control` (legacy path)
-- Defense: `text.starts_with(&stable)` and `!stable.is_empty()` guards prevent incorrect slicing if content/stable_prefix become desynchronized
+**Provider assignments**:
 
-#### 5. Bedrock provider (`bedrock.rs`)
+| Provider | CacheStrategy | Reason |
+|----------|--------------|--------|
+| Anthropic | `ExplicitAnthropic` | Requires `cache_control: ephemeral` markers on system message blocks |
+| Bedrock | `ExplicitAnthropic` | Requires `CachePoint` blocks within system messages |
+| OpenAI-compatible (DeepSeek, Groq, Ollama, etc.) | `None` | Automatic server-side prefix caching works with stable prompts |
+| Gemini | `None` | No explicit cache markers needed |
 
-In `convert_messages()`:
-- When `stable_prefix` is `Some(stable)` and content starts with `stable`:
-  - Emits `SystemBlock::Text(stable)` + `SystemBlock::CachePoint` + `SystemBlock::Text(dynamic)`
-  - Strips preamble from dynamic portion
-- Otherwise: single `SystemBlock::Text(content)` (legacy path)
-- Defense: same `starts_with` and `is_empty` guards
-- In `chat()`: skips redundant post-hoc `CachePoint` insertion when partition already provided one
+The `CacheStrategy::None` default means new providers automatically get correct behavior — they benefit from the stable system prompt without needing explicit cache markers.
+
+#### 5. DeepSeek Anthropic-compatible endpoint (`factory.rs`)
+
+New `DeepSeekAnthropicFactory` wraps `AnthropicProvider` with DeepSeek's Anthropic-compatible base URL (`https://api.deepseek.com/anthropic`). This endpoint supports `cache_control: ephemeral` markers, giving DeepSeek users explicit prompt caching the same way Anthropic users get it.
+
+- Provider name: `deepseek-anthropic` (aliases: `deepseek-claude`)
+- Uses `AnthropicProvider::with_base_url()` — same conversion logic, same `stable_prefix` handling, same `cache_control` injection
+- Registered alongside other factories in `default_provider_factory_registry()`
+
+**Why**: DeepSeek's OpenAI-compatible endpoint (`/v1/chat/completions`) only supports automatic prefix caching. The `/anthropic` endpoint supports explicit `cache_control`, giving finer control and guaranteed cache hits for Anthropic-style clients.
+
+#### 6. Cached input tokens parsing (`compatible/parsing.rs`, `provider_impl.rs`)
+
+`TokenUsage.cached_input_tokens` is now populated from provider-specific response fields:
+
+- **DeepSeek** (`/v1/chat/completions`): `prompt_cache_hit_tokens` field
+- **OpenAI**: `prompt_tokens_details.cached_tokens` sub-field
+- Extraction via `UsageInfo::extract_cached_tokens()` helper method (shared between `chat()` and `stream_chat()` paths)
+
+```rust
+impl UsageInfo {
+    pub(super) fn extract_cached_tokens(&self) -> Option<u64> {
+        self.prompt_cache_hit_tokens
+            .or_else(|| self.prompt_tokens_details.as_ref()?.cached_tokens)
+    }
+}
+```
+
+### Anthropic / Bedrock Integration (unchanged from Phase 1)
+
+Anthropic and Bedrock providers still use `stable_prefix` to split system messages into cacheable blocks:
+
+- **Anthropic**: `SystemPrompt::Blocks([stable_block(cache_control: ephemeral), dynamic_block(no_cache)])`
+- **Bedrock**: `SystemBlock::Text(stable)` + `CachePoint` + `SystemBlock::Text(dynamic)`
+
+Since `dynamic` is always empty now, the "dynamic block" is effectively empty or absent. The stable block contains the entire system prompt with a single `cache_control` marker, which Anthropic caches as a whole.
 
 ### Cache Breakpoint Budget
 
-Anthropic caps at 4 breakpoints per request. Phase 1 does not increase the count:
+Anthropic caps at 4 breakpoints per request. Phase 2 does not increase the count:
 
-| Position | Before | After Phase 1 |
+| Position | Before | Phase 2 |
 |---|---|---|
 | OAuth prefix block | 0 or 1 | 0 or 1 |
-| System prompt | 1 (single block) | 1 (on stable block only) |
+| System prompt | 1 (single block) | 1 (entire prompt with `cache_control: ephemeral`) |
 | Last conversation message | 0 or 1 | 0 or 1 |
 | Tool results | 0 or 1 | 0 or 1 |
 | **Max total** | **4** | **4** |
@@ -128,30 +154,32 @@ Anthropic caps at 4 breakpoints per request. Phase 1 does not increase the count
 
 2. **Minimum cacheable prefix is 1024 tokens** (Sonnet/Opus). Compact configurations (minimal personality, no skills, no Core memories) may fall below the threshold and won't be cached.
 
-3. **Provider coverage**: Anthropic + Bedrock wired. Gemini, OpenAI, DeepSeek, Ollama have `prompt_caching: false` and ignore `stable_prefix`. Server-side implicit caching on OpenAI/DeepSeek still benefits from Phase 0 (minute precision).
+3. **Provider coverage**: Anthropic + Bedrock use `CacheStrategy::ExplicitAnthropic` (explicit markers). DeepSeek-anthropic endpoint also supports explicit markers. All other providers use `CacheStrategy::None` (automatic prefix caching via stable prompts). Server-side implicit caching on OpenAI/DeepSeek/Groq benefits from the fully stable system prompt.
 
-4. **Datetime position**: In the partitioned `full` string, datetime appears at the end instead of position 0. The preamble bridges this semantic gap. Non-Anthropic providers see `content` with datetime at the end — the preamble makes this explicit.
+4. **Time context**: No longer in the system prompt. The `[YYYY-MM-DD HH:MM:SS TZ]` prefix on each user message provides time context. This means:
+   - The model knows the current time on each turn from the user message
+   - The time is not cached (changes each turn) but only adds ~30 bytes to the user message, not to the system prompt
+   - Tasks requiring exact timestamps can use tool calls (e.g., `shell_exec date`)
 
-5. **Minute precision trade-off**: The model no longer knows second-level time. Tasks requiring exact timestamps should use tool calls (e.g., `shell_exec date`). This trade-off is acceptable for cache benefit.
-
-6. **Prompt-guided tool injection**: The default Provider `chat()` method appends tool instructions to system `content` when `native_tool_calling: false`. If the system message has `stable_prefix: Some(...)`, appending to `content` breaks the partition invariant. Currently no provider has `native_tool_calling: false` AND `prompt_caching: true`, so this does not arise.
+5. **Prompt-guided tool injection**: The default Provider `chat()` method appends tool instructions to system `content` when `native_tool_calling: false`. If the system message has `stable_prefix: Some(...)`, appending to `content` breaks the partition invariant. Currently no provider has `native_tool_calling: false` AND `CacheStrategy::ExplicitAnthropic`, so this does not arise.
 
 ## Expected Behavior
 
 | Turn | System Prompt Shape | Cache Result |
 |------|---------------------|-------------|
-| Turn 1 | `[stable_block(cache_control)] + [preamble(in stable)] + [dynamic_block]` | Full system processed; stable prefix cached if ≥1024 tokens |
-| Turn 2 | Same stable block, new dynamic (datetime refreshed to current minute) | Stable prefix matches → **cache hit**; only dynamic block reprocessed |
-| Turn N (no stable change) | Same | Stable hits cache every turn within 5-min TTL |
-| Stable change (skill/memory/tool) | New stable block content | Cache miss for that turn; new cache established for subsequent turns |
+| Turn 1 | `[entire_prompt(cache_control: ephemeral)]` (Anthropic/Bedrock) or `[entire_prompt]` (others) | Full system processed; cached if ≥1024 tokens |
+| Turn 2 | Same system prompt (byte-identical), user message with updated timestamp prefix | Stable prefix matches → **cache hit** on all providers |
+| Turn N (no stable change) | Same | Cache hit every turn (Anthropic within 5-min TTL, others via server-side prefix cache) |
+| Stable change (skill/memory/tool) | New system prompt content | Cache miss for that turn; new cache established for subsequent turns |
 
-**Estimated savings**: Stable input tokens billed at ~10% of normal on cache hit. For a typical 3k-token stable prefix with ~50-token dynamic block, steady-state cost reduction on system tokens is ~80–85%. Conversation-level cache also benefits because the system prefix is now stable.
+**Estimated savings**: Stable input tokens billed at ~10% of normal on Anthropic cache hit. For a typical 3k-token stable prefix, steady-state cost reduction on system tokens is ~90% (entire prompt is cached, not just a portion). Other providers benefit from server-side implicit prefix caching at no extra cost.
 
 ## Verification
 
-1. `cargo test -p clawseed-agent` — datetime minute precision, cache class defaults, partitioned build, build_dynamic
+1. `cargo test -p clawseed-agent` — system prompt has no datetime section, all sections are Stable, partitioned build with empty dynamic
 2. `cargo test -p clawseed-api` — ChatMessage serde roundtrip, system_partitioned
-3. `cargo test -p clawseed-providers` — Anthropic/Bedrock partitioned conversion
+3. `cargo test -p clawseed-providers` — Anthropic/Bedrock partitioned conversion, DeepSeekAnthropicFactory
 4. `cargo build` — full workspace compiles
 5. `./tools/ci_local.sh` — fmt/clippy/test pass
-6. Manual: `clawseed chat` against Anthropic, 2 turns within same minute → Turn 2 `cache_read_input_tokens > 0`
+6. Manual: `clawseed chat` against Anthropic, 2 turns → Turn 2 `cache_read_input_tokens > 0`
+7. Manual: `clawseed chat` against DeepSeek-anthropic → `cache_read_input_tokens > 0`

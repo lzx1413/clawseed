@@ -948,7 +948,7 @@ impl Provider for AnthropicProvider {
         ProviderCapabilities {
             native_tool_calling: true,
             vision: true,
-            prompt_caching: true,
+            cache_strategy: clawseed_api::provider::CacheStrategy::ExplicitAnthropic,
         }
     }
 

@@ -88,11 +88,9 @@ pub struct Agent {
     /// Cached Core memory entries for system prompt rendering.
     stable_core_memories: Vec<clawseed_api::memory_traits::MemoryEntry>,
     /// Cached stable portion of the system prompt. Mirrors the `stable_prefix`
-    /// on the system ChatMessage in history so we can rebuild only the dynamic
-    /// portion without re-running the entire section pipeline.
+    /// on the system ChatMessage in history. With DateTimeSection removed,
+    /// this is always equal to the full system prompt content.
     stable_system_content: String,
-    /// Cached dynamic portion of the system prompt (datetime, etc.).
-    dynamic_system_content: String,
 }
 
 /// Builder for constructing an Agent.
@@ -359,7 +357,6 @@ impl AgentBuilder {
             injected_core_state: std::collections::HashMap::new(),
             stable_core_memories: Vec::new(),
             stable_system_content: String::new(),
-            dynamic_system_content: String::new(),
         })
     }
 }
@@ -757,7 +754,6 @@ impl Agent {
     fn rebuild_system_prompt(&mut self) -> Result<()> {
         let partitioned = self.build_system_prompt_partitioned()?;
         self.stable_system_content = partitioned.stable.clone();
-        self.dynamic_system_content = partitioned.dynamic.clone();
 
         for msg in &mut self.history {
             if let ConversationMessage::Chat(chat) = msg
@@ -933,7 +929,6 @@ impl Agent {
         if self.history.is_empty() {
             if let Ok(partitioned) = self.build_system_prompt_partitioned() {
                 self.stable_system_content = partitioned.stable.clone();
-                self.dynamic_system_content = partitioned.dynamic.clone();
                 self.history
                     .push(ConversationMessage::Chat(ChatMessage::system_partitioned(
                         partitioned.stable,
@@ -1023,65 +1018,6 @@ impl Agent {
         };
 
         SystemPromptBuilder::with_defaults().build_partitioned(&ctx)
-    }
-
-    /// Refresh only the dynamic portion of the system prompt (datetime, etc.)
-    /// without rebuilding the stable prefix. Only runs Dynamic-class sections,
-    /// then reconstructs the full content from the cached stable + new dynamic.
-    ///
-    /// The preamble (if needed) is already at the tail of `stable_system_content`,
-    /// inserted by `build_partitioned`. This method just concatenates the two
-    /// halves, so `full = stable + "\n\n" + dynamic` and the byte boundary at
-    /// `stable.len()` stays valid for provider-side splitting.
-    fn refresh_dynamic_system_content(&mut self) -> Result<()> {
-        let new_dynamic = self.build_dynamic_system_content()?;
-        self.dynamic_system_content = new_dynamic;
-
-        let full = if self.stable_system_content.is_empty() {
-            self.dynamic_system_content.clone()
-        } else if self.dynamic_system_content.is_empty() {
-            self.stable_system_content.clone()
-        } else {
-            format!(
-                "{}\n\n{}",
-                self.stable_system_content, self.dynamic_system_content
-            )
-        };
-
-        for msg in &mut self.history {
-            if let ConversationMessage::Chat(chat) = msg
-                && chat.role == "system"
-            {
-                chat.content = full;
-                chat.stable_prefix = if self.stable_system_content.is_empty() {
-                    None
-                } else {
-                    Some(self.stable_system_content.clone())
-                };
-                return Ok(());
-            }
-        }
-        Ok(())
-    }
-
-    /// Build only the dynamic (per-turn) sections, e.g. datetime.
-    fn build_dynamic_system_content(&self) -> Result<String> {
-        let specs = self.tool_registry.tool_specs();
-        let instructions = self.tool_dispatcher.prompt_instructions(&specs);
-
-        let ctx = PromptContext {
-            workspace_dir: &self.workspace_dir,
-            model_name: &self.model_name,
-            tool_specs: &specs,
-            dispatcher_instructions: &instructions,
-            identity_config: &self.identity_config,
-            autonomy_level: self.autonomy_level,
-            skill_index: &self.skill_index,
-            active_skills: &self.active_skills,
-            stable_core_memories: &self.stable_core_memories,
-        };
-
-        SystemPromptBuilder::with_defaults().build_dynamic(&ctx)
     }
 
     /// Build the tool context for a single tool execution.
@@ -1294,7 +1230,6 @@ impl Agent {
         if self.history.is_empty() {
             let partitioned = self.build_system_prompt_partitioned()?;
             self.stable_system_content = partitioned.stable.clone();
-            self.dynamic_system_content = partitioned.dynamic.clone();
             self.history
                 .push(ConversationMessage::Chat(ChatMessage::system_partitioned(
                     partitioned.stable,
@@ -1337,10 +1272,9 @@ impl Agent {
             self.rebuild_system_prompt()?;
         }
         self.prepare_turn(user_message)?;
-        // Refresh dynamic content (datetime) each turn without rebuilding stable prefix.
-        if !self.history.is_empty() {
-            self.refresh_dynamic_system_content()?;
-        }
+        // No dynamic refresh needed — with DateTimeSection removed, the entire
+        // system prompt is stable across turns. Time context comes from the
+        // user message timestamp prefix.
         if self.auto_save {
             let _ = self
                 .memory
@@ -1488,10 +1422,6 @@ impl Agent {
             self.rebuild_system_prompt()?;
         }
         self.prepare_turn(user_message)?;
-        // Refresh dynamic content (datetime) each turn without rebuilding stable prefix.
-        if !self.history.is_empty() {
-            self.refresh_dynamic_system_content()?;
-        }
 
         // Auto-recall relevant memories and prepend context to user message.
         // Only Core memories are recalled — Daily and Conversation are excluded

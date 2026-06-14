@@ -2,7 +2,7 @@
 
 ## Overview
 
-`clawseed-memory` provides SQLite-backed memory storage with hybrid search (BM25 keyword + vector embeddings), Reciprocal Rank Fusion (RRF) ranking, multi-signal conflict detection, deferred embedding, and lifecycle management (consolidation, hygiene, snapshot).
+`clawseed-memory` provides SQLite-backed memory storage with hybrid search (BM25 keyword + vector embeddings), Reciprocal Rank Fusion (RRF) ranking, multi-signal conflict detection, deferred embedding, LLM-driven curator, text chunking, and lifecycle management (consolidation, hygiene, snapshot).
 
 ## Architecture
 
@@ -44,6 +44,10 @@
    │  ┌──────────────┐ ┌─────────────────────────┐   │
    │  │  Snapshot    │ │  Deferred Embedding     │   │
    │  │ (export/hydr)│ │  (async backfill)       │   │
+   │  └──────────────┘ └─────────────────────────┘   │
+   │  ┌──────────────┐ ┌─────────────────────────┐   │
+   │  │  Curator     │ │  Chunker                │   │
+   │  │ (LLM cleanup)│ │  (markdown splitting)   │   │
    │  └──────────────┘ └─────────────────────────┘   │
    └──────────────────────────────────────────────────┘
 ```
@@ -135,6 +139,14 @@ Three embedding provider implementations:
 
 **Deferred Embedding** (`defer_embedding=true`): Store writes metadata + FTS immediately (millisecond-level), embedding computed asynchronously in background. Content hash guard prevents stale updates — if content changes before embedding completes, the update is silently discarded. Pending task tracking with `AtomicUsize` counter, drain with timeout on shutdown.
 
+**Embedding Provider Resolution** (in `resolve_embedding_provider`):
+
+Priority order:
+1. `memory.embedding_provider = "local"` → `LocalOnnxEmbedding` (requires `local-embedding` feature). Model files auto-downloaded from HuggingFace if missing.
+2. `memory.embedding_provider = "openai" | "openrouter" | "custom:URL"` → `OpenAiEmbedding` with remote API. Default model: `text-embedding-3-small`, default dims: 1536.
+3. `providers.embedding_routes` non-empty (legacy path) → `OpenAiEmbedding` from first route.
+4. None of the above → `NoopEmbedding` (keyword-only, backward compat).
+
 ### consolidation.rs — Memory Consolidation
 
 Heuristic two-phase extraction that runs after each agent turn (no LLM call):
@@ -181,6 +193,47 @@ Two conflict detection modes:
 | Temporal contradiction | 0.3 | Absolute terms (`always`, `forever`) vs temporal shift terms (`now`, `recently`, `switched`), with >0.2 Jaccard overlap |
 
 **Resolution**: `total_score = combined_similarity + contradiction_boost × 0.3`. If `total_score > threshold` AND content differs → conflict. Older entry marked `[SUPERSEDED by 'newer_key'] {original_content}` (audit trail preserved).
+
+### curator.rs — LLM-Driven Memory Curator
+
+Scheduled cleanup that uses the configured Provider to intelligently analyze memories:
+
+1. **Collect** — Gathers all Core + Daily memories
+2. **Analyze** — Sends memory list to the LLM, asks it to identify duplicates, conflicts, and low-value entries
+3. **Execute** — Deletes low-value entries, merges duplicates into concise summaries (truncated to 50 chars at word boundaries)
+
+Designed to run as a scheduled cron job (e.g. nightly at 9 PM). Returns a `CurateReport` with deleted keys and merged groups.
+
+**Report structure**:
+
+```rust
+pub struct CurateReport {
+    pub deleted: Vec<String>,       // Keys of deleted entries
+    pub merged: Vec<MergeGroup>,    // Groups merged into summaries
+    pub total_before: usize,
+    pub total_after: usize,
+}
+```
+
+### chunker.rs — Markdown Text Chunker
+
+Line-based markdown chunker that splits documents into semantic chunks for consolidation and embedding preparation:
+
+1. Split on `## ` and `# ` headings (keeps heading with its content)
+2. If a section exceeds `max_tokens` (~4 chars/token), split on blank lines (paragraphs)
+3. If a paragraph still exceeds, split on line boundaries
+
+Each chunk carries its heading context (`Rc<str>` for shared heading strings across sub-chunks).
+
+### model_cache.rs — ONNX Model Download & Cache
+
+Feature-gated (`local-embedding`) module that manages local embedding model files:
+
+- **Model directory**: `{workspace_dir}/models/{model_name}/`
+- **Auto-download**: If model files are missing, downloads from HuggingFace repos
+- **Supported models**: `gte-multilingual-base` (INT8, default), `gte-multilingual-base-full` (FP32)
+- **ONNX Runtime**: On desktop, `libonnxruntime.so` is downloaded to the model directory and preloaded via `ort::util::preload_dylib()`. On Android, the .so is bundled in `jniLibs/` and the gateway sets `ORT_DYLIB_PATH` environment variable.
+- **Idempotent**: Only downloads when files are missing; skips if already present
 
 ### importance.rs — Importance Scoring
 
@@ -270,19 +323,36 @@ pub enum ConflictMode {
 ## Factory Functions
 
 ```rust
-// CLI / simple use
-pub fn create_memory(config: &MemoryConfig) -> Arc<dyn Memory>
-
-// Gateway / full initialization with embedding providers
-pub fn create_memory_with_storage_and_routes(
+// CLI / simple use — no embedding provider (keyword-only search)
+pub fn create_memory(
     config: &MemoryConfig,
     workspace_dir: &Path,
-    embedding_provider: Arc<dyn EmbeddingProvider>,
-) -> Arc<dyn Memory>
+    api_key: Option<&str>,
+) -> anyhow::Result<Arc<dyn Memory>>
+
+// Gateway / full initialization with embedding provider resolution
+pub async fn create_memory_with_storage_and_routes(
+    config: &MemoryConfig,
+    providers_config: &ProvidersConfig,
+    storage_config: Option<&StorageConfig>,
+    workspace_dir: &Path,
+    api_key: Option<&str>,
+) -> anyhow::Result<Arc<dyn Memory>>
 ```
 
 - Defaults to `SqliteMemory`, falls back to `NoneMemory` on failure
 - Initialization order: hygiene pass → snapshot export → auto-hydration → embedding provider resolution → SqliteMemory construction → optional backfill
+- `create_memory` uses `NoopEmbedding` (keyword-only); `create_memory_with_storage_and_routes` resolves the configured provider
+
+### Autosave Content Filter
+
+`should_skip_autosave_content()` filters out noise from automated tasks and system-generated content that would pollute memory:
+
+- Empty content
+- Lines starting with `[cron:` (cron task messages)
+- Lines starting with `[heartbeat` (health check messages)
+- Lines starting with `[distilled_` (consolidation artifacts)
+- Lines starting with `[memory context]` (memory injection markers)
 
 ## Configuration Example
 
@@ -300,9 +370,13 @@ search_mode = "hybrid"                    # "hybrid", "embedding", or "bm25" (de
 merge_strategy = "rrf"                    # "rrf" or "weighted" (default: "rrf")
 defer_embedding = true                    # Async embedding backfill (default: true if provider exists)
 embedding_provider = "local"              # "local", "openai", "openrouter", "custom:<url>", or None
-embedding_model = "gte-multilingual-base" # Model name for embedding
+embedding_model = "gte-multilingual-base" # Model name for embedding (default: gte-multilingual-base for local, text-embedding-3-small for openai)
 embedding_dims = 768                      # Vector dimensions (optional, auto-detected for local)
+embedding_cache_max = 10000               # Embedding cache size (default: 10000)
 backfill_on_startup = false               # Batch backfill NULL embeddings on startup (default: false)
+auto_recall = true                        # Auto-recall relevant memories per turn (default: true)
+auto_recall_limit = 5                     # Max recalled entries per turn (default: 5)
+stable_memory_in_system_prompt = true     # Inject Core memories into system prompt (default: true if auto_recall)
 # Per-category retention floors (default: no floor)
 # min_retention_floor = 50                # Global floor for all categories
 # conversation_retention_floor = 30       # Floor for Conversation category

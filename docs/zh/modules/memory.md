@@ -2,7 +2,7 @@
 
 ## 概述
 
-`clawseed-memory` 提供 SQLite 支持的记忆存储，具备混合搜索（BM25 关键词 + 向量嵌入）、Reciprocal Rank Fusion (RRF) 排序、多信号冲突检测、延迟嵌入和生命周期管理（整合、卫生、快照）。
+`clawseed-memory` 提供 SQLite 支持的记忆存储，具备混合搜索（BM25 关键词 + 向量嵌入）、Reciprocal Rank Fusion (RRF) 排序、多信号冲突检测、延迟嵌入、LLM 驱动的记忆策展人、文本分块和生命周期管理（整合、卫生、快照）。
 
 ## 架构
 
@@ -44,6 +44,10 @@
    │  ┌──────────────┐ ┌─────────────────────────┐   │
    │  │  快照        │ │  延迟嵌入               │   │
    │  │ (导出/水合)  │ │  (异步回填)             │   │
+   │  └──────────────┘ └─────────────────────────┘   │
+   │  ┌──────────────┐ ┌─────────────────────────┐   │
+   │  │  策展人      │ │  分块器                 │   │
+   │  │ (LLM清理)    │ │  (Markdown拆分)         │   │
    │  └──────────────┘ └─────────────────────────┘   │
    └──────────────────────────────────────────────────┘
 ```
@@ -135,6 +139,14 @@ pub trait Memory: Send + Sync {
 
 **延迟嵌入**（`defer_embedding=true`）：存储时立即写入元数据 + FTS（毫秒级），嵌入在后台异步计算。内容哈希守卫防止过期更新——若内容在嵌入完成前变更，更新静默丢弃。用 `AtomicUsize` 计数器追踪待处理任务，关闭时超时等待排空。
 
+**嵌入提供者解析**（`resolve_embedding_provider`）：
+
+优先级顺序：
+1. `memory.embedding_provider = "local"` → `LocalOnnxEmbedding`（需 `local-embedding` feature）。模型文件缺失时自动从 HuggingFace 下载。
+2. `memory.embedding_provider = "openai" | "openrouter" | "custom:URL"` → `OpenAiEmbedding` 远程 API。默认模型：`text-embedding-3-small`，默认维度：1536。
+3. `providers.embedding_routes` 非空（旧版路径） → 从第一条路由创建 `OpenAiEmbedding`。
+4. 以上均无 → `NoopEmbedding`（纯关键词模式，向后兼容）。
+
 ### consolidation.rs — 记忆整合
 
 启发式两阶段提取，在每次 agent turn 后运行（不调用 LLM）：
@@ -181,6 +193,47 @@ pub trait Memory: Send + Sync {
 | 时间矛盾 | 0.3 | 绝对词（`always`、`forever`）对时间转变词（`now`、`recently`、`switched`），且 Jaccard 重叠 >0.2 |
 
 **解决机制**：`total_score = combined_similarity + contradiction_boost × 0.3`。若 `total_score > threshold` 且内容不同 → 冲突。旧条目标记为 `[SUPERSEDED by 'newer_key'] {original_content}`（保留审计轨迹）。
+
+### curator.rs — LLM 驱动的记忆策展人
+
+使用配置的 Provider 智能分析记忆的定期清理：
+
+1. **收集** — 收集所有 Core + Daily 记忆
+2. **分析** — 将记忆列表发送给 LLM，要求识别重复、冲突和低价值条目
+3. **执行** — 删除低价值条目，将重复条目合并为简洁摘要（在词边界截断至 50 字符）
+
+设计为定时任务运行（如每晚 9 点）。返回 `CurateReport`，包含删除的键和合并的分组。
+
+**报告结构**：
+
+```rust
+pub struct CurateReport {
+    pub deleted: Vec<String>,       // 已删除条目的键
+    pub merged: Vec<MergeGroup>,    // 合并为摘要的分组
+    pub total_before: usize,
+    pub total_after: usize,
+}
+```
+
+### chunker.rs — Markdown 文本分块器
+
+基于行的 Markdown 分块器，将文档拆分为语义块，用于整合和嵌入准备：
+
+1. 按 `## ` 和 `# ` 标题拆分（标题与内容保持在一起）
+2. 若章节超过 `max_tokens`（约 4 字符/token），按空行（段落）拆分
+3. 若段落仍超限，按行边界拆分
+
+每个块保留标题上下文（`Rc<str>` 用于子块间共享标题字符串）。
+
+### model_cache.rs — ONNX 模型下载与缓存
+
+Feature 门控模块（`local-embedding`），管理本地嵌入模型文件：
+
+- **模型目录**：`{workspace_dir}/models/{model_name}/`
+- **自动下载**：模型文件缺失时，从 HuggingFace 仓库下载
+- **支持的模型**：`gte-multilingual-base`（INT8 量化，默认）、`gte-multilingual-base-full`（FP32）
+- **ONNX Runtime**：桌面端将 `libonnxruntime.so` 下载到模型目录并通过 `ort::util::preload_dylib()` 预加载。Android 端将 .so 打包在 `jniLibs/` 中，gateway 设置 `ORT_DYLIB_PATH` 环境变量。
+- **幂等性**：仅在文件缺失时下载；已存在时跳过
 
 ### importance.rs — 重要性评分
 
@@ -270,19 +323,36 @@ pub enum ConflictMode {
 ## 工厂函数
 
 ```rust
-// CLI / 简单使用
-pub fn create_memory(config: &MemoryConfig) -> Arc<dyn Memory>
-
-// Gateway / 带嵌入提供者的完整初始化
-pub fn create_memory_with_storage_and_routes(
+// CLI / 简单使用 — 无嵌入提供者（纯关键词搜索）
+pub fn create_memory(
     config: &MemoryConfig,
     workspace_dir: &Path,
-    embedding_provider: Arc<dyn EmbeddingProvider>,
-) -> Arc<dyn Memory>
+    api_key: Option<&str>,
+) -> anyhow::Result<Arc<dyn Memory>>
+
+// Gateway / 带嵌入提供者解析的完整初始化
+pub async fn create_memory_with_storage_and_routes(
+    config: &MemoryConfig,
+    providers_config: &ProvidersConfig,
+    storage_config: Option<&StorageConfig>,
+    workspace_dir: &Path,
+    api_key: Option<&str>,
+) -> anyhow::Result<Arc<dyn Memory>>
 ```
 
 - 默认创建 `SqliteMemory`，失败时降级为 `NoneMemory`
 - 初始化顺序：卫生清理 → 快照导出 → 自动水合 → 嵌入提供者解析 → SqliteMemory 构建 → 可选回填
+- `create_memory` 使用 `NoopEmbedding`（纯关键词）；`create_memory_with_storage_and_routes` 解析配置的提供者
+
+### 自动保存内容过滤
+
+`should_skip_autosave_content()` 过滤来自自动化任务和系统生成内容的噪音，防止污染记忆：
+
+- 空内容
+- 以 `[cron:` 开头的行（定时任务消息）
+- 以 `[heartbeat` 开头的行（健康检查消息）
+- 以 `[distilled_` 开头的行（整合产物）
+- 以 `[memory context]` 开头的行（记忆注入标记）
 
 ## 配置示例
 
@@ -300,9 +370,13 @@ search_mode = "hybrid"                    # "hybrid"、"embedding" 或 "bm25"（
 merge_strategy = "rrf"                    # "rrf" 或 "weighted"（默认："rrf")
 defer_embedding = true                    # 异步嵌入回填（默认：有提供者时 true）
 embedding_provider = "local"              # "local"、"openai"、"openrouter"、"custom:<url>" 或 None
-embedding_model = "gte-multilingual-base" # 嵌入模型名称
+embedding_model = "gte-multilingual-base" # 嵌入模型名称（默认：local 用 gte-multilingual-base，openai 用 text-embedding-3-small）
 embedding_dims = 768                      # 向量维度（可选，local 自动检测）
+embedding_cache_max = 10000               # 嵌入缓存大小（默认：10000）
 backfill_on_startup = false               # 启动时批量回填 NULL 嵌入（默认：false）
+auto_recall = true                        # 每轮自动召回相关记忆（默认：true）
+auto_recall_limit = 5                     # 每轮最大召回条目数（默认：5）
+stable_memory_in_system_prompt = true     # 将 Core 记忆注入系统提示（默认：auto_recall 时 true）
 # 分类保留量守卫（默认：无守卫）
 # min_retention_floor = 50                # 全分类 floor
 # conversation_retention_floor = 30       # Conversation 分类 floor

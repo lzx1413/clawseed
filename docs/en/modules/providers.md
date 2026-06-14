@@ -8,23 +8,24 @@
 
 ### Native Protocol
 
-| Provider | File | Native Tool Calling |
-|----------|------|:-------------------:|
-| Anthropic | `anthropic.rs` | yes |
-| Google Gemini | `gemini.rs` | yes |
-| AWS Bedrock | `bedrock.rs` | yes |
+| Provider | File | Native Tool Calling | Cache Strategy |
+|----------|------|:-------------------:|:--------------:|
+| Anthropic | `anthropic.rs` | yes | ExplicitAnthropic |
+| Google Gemini | `gemini.rs` | yes | None (auto prefix cache) |
+| AWS Bedrock | `bedrock.rs` | yes | ExplicitAnthropic |
+| DeepSeek (Anthropic API) | `factory.rs` → `anthropic.rs` | yes | ExplicitAnthropic |
 
 ### OpenAI-Compatible Protocol
 
-| Provider | File | Auth Style |
-|----------|------|------------|
-| OpenAI | `compatible.rs` | Bearer Token |
-| OpenRouter | `compatible.rs` | Bearer Token |
-| Ollama | `compatible.rs` | None |
-| DeepSeek | `compatible.rs` | Bearer Token |
-| Groq | `compatible.rs` | Bearer Token |
-| Mistral | `compatible.rs` | Bearer Token |
-| xAI / Grok | `compatible.rs` | Bearer Token |
+| Provider | File | Auth Style | Cache Strategy |
+|----------|------|------------|:--------------:|
+| OpenAI | `compatible.rs` | Bearer Token | None (auto prefix cache) |
+| OpenRouter | `compatible.rs` | Bearer Token | None |
+| Ollama | `compatible.rs` | None | None |
+| DeepSeek | `compatible.rs` | Bearer Token | None (auto prefix cache) |
+| Groq | `compatible.rs` | Bearer Token | None (auto prefix cache) |
+| Mistral | `compatible.rs` | Bearer Token | None |
+| xAI / Grok | `compatible.rs` | Bearer Token | None |
 
 ### China-Region Providers
 
@@ -119,9 +120,10 @@ pub struct ProviderFactoryRegistry {
 ```
 
 **Built-in factories**:
-- `AnthropicFactory` — Native Anthropic protocol
+- `AnthropicFactory` — Native Anthropic protocol with `cache_control: ephemeral` support
 - `GeminiFactory` — Native Gemini protocol
-- `BedrockFactory` — Native Bedrock protocol
+- `BedrockFactory` — Native Bedrock protocol with `CachePoint` support
+- `DeepSeekAnthropicFactory` — DeepSeek's Anthropic-compatible endpoint (`deepseek-anthropic` / `deepseek-claude`). Wraps `AnthropicProvider::with_base_url()` with DeepSeek's `/anthropic` URL, giving full `cache_control: ephemeral` support
 - `OpenAiCompatFactory` — Parameterized OpenAI-compatible factory; most providers only need name, default URL, and auth style
 - Individual China-region factories (GLM, MiniMax, Moonshot, Qwen, Bailian, Z.AI, Qianfan, Doubao)
 - `GenericCompatFactory` — Generic compatible endpoints (requires `base_url`)
@@ -157,7 +159,12 @@ pub fn create_resilient_provider_with_registry(
 
 ## Token Estimation
 
-Providers estimate token usage from response metadata, used for cost tracking.
+Providers estimate token usage from response metadata, used for cost tracking. `TokenUsage.cached_input_tokens` is populated from provider-specific fields:
+
+- **DeepSeek** (`/v1/chat/completions`): `prompt_cache_hit_tokens` — reports prefix-cached input tokens
+- **OpenAI**: `prompt_tokens_details.cached_tokens` — nested cached token count
+- **Anthropic / Bedrock**: `cache_read_input_tokens` from the Anthropic response format
+- Extraction logic in `UsageInfo::extract_cached_tokens()` tries DeepSeek's field first, then falls back to OpenAI's nested field
 
 ## Configuration Example
 

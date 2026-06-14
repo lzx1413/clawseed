@@ -93,6 +93,38 @@ impl ProviderFactory for AnthropicFactory {
     }
 }
 
+/// Factory for DeepSeek's Anthropic-compatible endpoint.
+/// Uses the existing `AnthropicProvider` with the DeepSeek Anthropic base URL,
+/// which gives full `cache_control: ephemeral` support for prompt caching.
+struct DeepSeekAnthropicFactory;
+
+const DEEPSEEK_ANTHROPIC_BASE_URL: &str = "https://api.deepseek.com/anthropic";
+
+impl ProviderFactory for DeepSeekAnthropicFactory {
+    fn name(&self) -> &str {
+        "deepseek-anthropic"
+    }
+
+    fn aliases(&self) -> &[&str] {
+        &["deepseek-claude"]
+    }
+
+    fn create(
+        &self,
+        _provider_name: &str,
+        api_key: Option<&str>,
+        base_url: Option<&str>,
+        options: &crate::options::ProviderRuntimeOptions,
+    ) -> anyhow::Result<Box<dyn clawseed_api::provider::Provider>> {
+        let url = base_url.unwrap_or(DEEPSEEK_ANTHROPIC_BASE_URL);
+        let mut provider = crate::anthropic::AnthropicProvider::with_base_url(api_key, Some(url));
+        if let Some(max_tokens) = options.provider_max_tokens {
+            provider = provider.with_max_tokens(max_tokens);
+        }
+        Ok(Box::new(provider))
+    }
+}
+
 struct GeminiFactory;
 
 impl ProviderFactory for GeminiFactory {
@@ -665,6 +697,7 @@ pub fn default_provider_factory_registry() -> ProviderFactoryRegistry {
     reg.register(AnthropicFactory);
     reg.register(GeminiFactory);
     reg.register(BedrockFactory);
+    reg.register(DeepSeekAnthropicFactory);
 
     // ── OpenAI-compatible providers with known URLs ──
     reg.register(OpenAiCompatFactory::new(

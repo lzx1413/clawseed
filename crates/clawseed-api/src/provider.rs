@@ -277,12 +277,29 @@ pub enum StreamError {
     Io(#[from] std::io::Error),
 }
 
+/// How a provider handles prompt caching for partitioned system prompts.
+///
+/// With `DateTimeSection` removed from the system prompt, the entire system
+/// message is 100% stable across turns — automatic prefix caching (DeepSeek,
+/// OpenAI, Groq, etc.) works without any message-level transformation. Only
+/// Anthropic and Bedrock need explicit cache markers.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CacheStrategy {
+    /// No caching optimization. System messages are sent as-is.
+    /// Automatic prefix caching works because the entire system prompt is stable.
+    #[default]
+    None,
+    /// Anthropic-style explicit `cache_control: ephemeral` markers or
+    /// Bedrock-style `CachePoint` blocks within a single system message.
+    ExplicitAnthropic,
+}
+
 /// Provider capabilities declaration.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProviderCapabilities {
     pub native_tool_calling: bool,
     pub vision: bool,
-    pub prompt_caching: bool,
+    pub cache_strategy: CacheStrategy,
 }
 
 /// Provider-specific tool payload formats.

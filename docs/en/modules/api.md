@@ -17,6 +17,7 @@ pub trait Provider: Send + Sync {
     async fn chat(&self, request: ChatRequest<'_>, model: &str, temperature: Option<f64>) -> Result<ChatResponse>;
     fn supports_native_tools(&self) -> bool;
     fn stream_chat(&self, request: ChatRequest<'_>, model: &str, temperature: Option<f64>, options: StreamOptions) -> BoxStream<'static, StreamResult<StreamEvent>>;
+    fn capabilities(&self) -> ProviderCapabilities;
     // ... more methods with defaults
 }
 ```
@@ -25,7 +26,27 @@ pub trait Provider: Send + Sync {
 - `chat()` — Full chat with tool specs; returns `ChatResponse` with optional tool calls
 - `supports_native_tools()` — Whether the provider supports native tool calling protocol (e.g., Anthropic's tool_use)
 - `stream_chat()` — Streaming variant returning `BoxStream<StreamEvent>`
+- `capabilities()` — Returns `ProviderCapabilities` including `CacheStrategy`
 - Providers without native tool support use `XmlToolDispatcher` (◁▷ markers)
+
+**CacheStrategy** — How a provider handles prompt caching:
+
+```rust
+pub enum CacheStrategy {
+    #[default]
+    None,                // No explicit markers; automatic prefix caching with stable prompts
+    ExplicitAnthropic,   // Anthropic-style cache_control:ephemeral or Bedrock CachePoint
+}
+
+pub struct ProviderCapabilities {
+    pub native_tool_calling: bool,
+    pub vision: bool,
+    pub cache_strategy: CacheStrategy,
+}
+```
+
+- `None` — Default. The system prompt is 100% stable across turns, so providers with automatic prefix caching (DeepSeek, OpenAI, Groq) work without any message-level transformation.
+- `ExplicitAnthropic` — Anthropic and Bedrock inject `cache_control: ephemeral` markers or `CachePoint` blocks within system messages. Used by Anthropic, Bedrock, and DeepSeek-anthropic providers.
 
 ### Tool — Agent-Callable Capability
 

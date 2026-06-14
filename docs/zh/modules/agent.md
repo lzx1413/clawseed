@@ -187,15 +187,19 @@ pub trait HookFactory: Send + Sync {
 
 ```
 SystemPromptBuilder::with_defaults()
-  ├── DateTimeSection       — 当前日期和时间
   ├── IdentitySection       — AIEOS 身份 + 人格 Markdown 文件
+  ├── PlatformSection       — 平台和环境信息
   ├── WorkspaceSection      — 工作目录路径
+  ├── StableMemorySection   — 注入系统提示的 Core 记忆
   ├── ToolsSection          — 可用工具描述
+  ├── MemorySection         — 记忆系统指令
   ├── SafetySection         — 安全规则（感知自主等级）
-  └── ToolHonestySection    — 工具诚实性约束
+  ├── ToolHonestySection    — 工具诚实性约束
+  ├── SkillsIndexSection    — 可用技能定义
+  └── ActiveSkillsSection   — 当前激活的技能
 ```
 
-可通过 `SystemPromptBuilder::add_section()` 添加自定义分节。
+**注意**：`DateTimeSection` 已从系统提示中移除。当前时间现在通过每条用户消息的 `[YYYY-MM-DD HH:MM:SS TZ]` 前缀提供，使系统提示在所有轮次中 100% 稳定，从而优化前缀缓存（详见 [Prompt 缓存优化](../prompt-cache-optimization.md)）。
 
 ### personality.rs — 人格文件加载器
 

@@ -368,7 +368,7 @@ impl Provider for OpenAiCompatibleProvider {
         clawseed_api::provider::ProviderCapabilities {
             native_tool_calling: self.native_tool_calling,
             vision: self.supports_vision,
-            prompt_caching: false,
+            cache_strategy: clawseed_api::provider::CacheStrategy::None,
         }
     }
 
@@ -685,7 +685,7 @@ impl Provider for OpenAiCompatibleProvider {
         let usage = chat_response.usage.map(|u| TokenUsage {
             input_tokens: u.prompt_tokens,
             output_tokens: u.completion_tokens,
-            cached_input_tokens: None,
+            cached_input_tokens: u.extract_cached_tokens(),
         });
         let choice = chat_response
             .choices
@@ -830,7 +830,7 @@ impl Provider for OpenAiCompatibleProvider {
         let usage = native_response.usage.map(|u| TokenUsage {
             input_tokens: u.prompt_tokens,
             output_tokens: u.completion_tokens,
-            cached_input_tokens: None,
+            cached_input_tokens: u.extract_cached_tokens(),
         });
         let choice = native_response
             .choices

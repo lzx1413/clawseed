@@ -8,23 +8,24 @@
 
 ### 原生协议
 
-| 提供商 | 文件 | 原生工具调用 |
-|--------|------|:----------:|
-| Anthropic | `anthropic.rs` | yes |
-| Google Gemini | `gemini.rs` | yes |
-| AWS Bedrock | `bedrock.rs` | yes |
+| 提供商 | 文件 | 原生工具调用 | 缓存策略 |
+|--------|------|:----------:|:--------:|
+| Anthropic | `anthropic.rs` | yes | ExplicitAnthropic |
+| Google Gemini | `gemini.rs` | yes | None (自动前缀缓存) |
+| AWS Bedrock | `bedrock.rs` | yes | ExplicitAnthropic |
+| DeepSeek (Anthropic API) | `factory.rs` → `anthropic.rs` | yes | ExplicitAnthropic |
 
 ### OpenAI 兼容协议
 
-| 提供商 | 文件 | 认证方式 |
-|--------|------|---------|
-| OpenAI | `compatible.rs` | Bearer Token |
-| OpenRouter | `compatible.rs` | Bearer Token |
-| Ollama | `compatible.rs` | 无认证 |
-| DeepSeek | `compatible.rs` | Bearer Token |
-| Groq | `compatible.rs` | Bearer Token |
-| Mistral | `compatible.rs`` | Bearer Token |
-| xAI / Grok | `compatible.rs` | Bearer Token |
+| 提供商 | 文件 | 认证方式 | 缓存策略 |
+|--------|------|---------|:--------:|
+| OpenAI | `compatible.rs` | Bearer Token | None (自动前缀缓存) |
+| OpenRouter | `compatible.rs` | Bearer Token | None |
+| Ollama | `compatible.rs` | 无认证 | None |
+| DeepSeek | `compatible.rs` | Bearer Token | None (自动前缀缓存) |
+| Groq | `compatible.rs` | Bearer Token | None (自动前缀缓存) |
+| Mistral | `compatible.rs` | Bearer Token | None |
+| xAI / Grok | `compatible.rs` | Bearer Token | None |
 
 ### 中国区提供商
 
@@ -119,9 +120,10 @@ pub struct ProviderFactoryRegistry {
 ```
 
 **内置工厂**：
-- `AnthropicFactory` — 原生 Anthropic 协议
+- `AnthropicFactory` — 原生 Anthropic 协议，支持 `cache_control: ephemeral`
 - `GeminiFactory` — 原生 Gemini 协议
-- `BedrockFactory` — 原生 Bedrock 协议
+- `BedrockFactory` — 原生 Bedrock 协议，支持 `CachePoint`
+- `DeepSeekAnthropicFactory` — DeepSeek Anthropic 兼容端点 (`deepseek-anthropic` / `deepseek-claude`)。使用 `AnthropicProvider::with_base_url()` 包装 DeepSeek `/anthropic` URL，提供完整的 `cache_control: ephemeral` 支持
 - `OpenAiCompatFactory` — 参数化的 OpenAI 兼容工厂，大多数提供商仅需提供名称、默认 URL 和认证方式
 - 中国区各厂商独立工厂（GLM、MiniMax、Moonshot、Qwen、Bailian、Z.AI、Qianfan、Doubao）
 - `GenericCompatFactory` — 通用兼容端点（需要 `base_url`）
@@ -157,7 +159,12 @@ pub fn create_resilient_provider_with_registry(
 
 ## 令牌估算
 
-提供者根据响应元数据估算令牌使用量，用于成本追踪。
+提供者根据响应元数据估算令牌使用量，用于成本追踪。`TokenUsage.cached_input_tokens` 从提供商特定字段填充：
+
+- **DeepSeek** (`/v1/chat/completions`)：`prompt_cache_hit_tokens` — 报告前缀缓存的输入 tokens
+- **OpenAI**：`prompt_tokens_details.cached_tokens` — 嵌套的缓存 token 计数
+- **Anthropic / Bedrock**：`cache_read_input_tokens` 来自 Anthropic 响应格式
+- 提取逻辑在 `UsageInfo::extract_cached_tokens()` 中，先尝试 DeepSeek 字段，然后回退到 OpenAI 嵌套字段
 
 ## 配置示例
 

@@ -196,13 +196,19 @@ The system prompt is assembled from pluggable `PromptSection` implementations vi
 
 ```
 SystemPromptBuilder::with_defaults()
-  ├── DateTimeSection       — Current date and time
   ├── IdentitySection       — AIEOS identity + personality markdown files
+  ├── PlatformSection       — Platform and environment info
   ├── WorkspaceSection      — Working directory path
+  ├── StableMemorySection   — Core memories injected into system prompt
   ├── ToolsSection          — Available tool descriptions
+  ├── MemorySection         — Memory system instructions
   ├── SafetySection         — Safety rules (autonomy-level-aware)
-  └── ToolHonestySection    — Tool honesty constraints
+  ├── ToolHonestySection    — Tool honesty constraints
+  ├── SkillsIndexSection    — Available skill definitions
+  └── ActiveSkillsSection   — Currently active skills
 ```
+
+**Note**: `DateTimeSection` was removed from the system prompt. Current time is now provided via the `[YYYY-MM-DD HH:MM:SS TZ]` prefix on each user message, keeping the system prompt 100% stable across turns for prefix caching optimization (see [Prompt Cache Optimization](../prompt-cache-optimization.md)).
 
 Custom sections can be added via `SystemPromptBuilder::add_section()`.
 

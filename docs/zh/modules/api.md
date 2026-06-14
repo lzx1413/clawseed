@@ -17,6 +17,7 @@ pub trait Provider: Send + Sync {
     async fn chat(&self, request: ChatRequest<'_>, model: &str, temperature: Option<f64>) -> Result<ChatResponse>;
     fn supports_native_tools(&self) -> bool;
     fn stream_chat(&self, request: ChatRequest<'_>, model: &str, temperature: Option<f64>, options: StreamOptions) -> BoxStream<'static, StreamResult<StreamEvent>>;
+    fn capabilities(&self) -> ProviderCapabilities;
     // ... 更多带默认实现的方法
 }
 ```
@@ -25,7 +26,27 @@ pub trait Provider: Send + Sync {
 - `chat()` — 完整对话，支持工具规格，返回 `ChatResponse`（可能包含工具调用）
 - `supports_native_tools()` — 是否支持原生工具调用协议（如 Anthropic 的 tool_use）
 - `stream_chat()` — 流式变体，返回 `BoxStream<StreamEvent>`
+- `capabilities()` — 返回 `ProviderCapabilities`，包含 `CacheStrategy`
 - 不支持原生工具的提供商使用 `XmlToolDispatcher`（◁▷ 标记）
+
+**CacheStrategy** — 提供商处理提示词缓存的方式：
+
+```rust
+pub enum CacheStrategy {
+    #[default]
+    None,                // 无显式标记；稳定提示词下的自动前缀缓存
+    ExplicitAnthropic,   // Anthropic 风格 cache_control:ephemeral 或 Bedrock CachePoint
+}
+
+pub struct ProviderCapabilities {
+    pub native_tool_calling: bool,
+    pub vision: bool,
+    pub cache_strategy: CacheStrategy,
+}
+```
+
+- `None` — 默认。系统提示词在所有轮次中 100% 稳定，具备自动前缀缓存的提供商（DeepSeek、OpenAI、Groq）无需任何消息级变换即可工作。
+- `ExplicitAnthropic` — Anthropic 和 Bedrock 在系统消息内注入 `cache_control: ephemeral` 标记或 `CachePoint` 块。用于 Anthropic、Bedrock 和 DeepSeek-anthropic 提供商。
 
 ### Tool — Agent 可调用的能力
 

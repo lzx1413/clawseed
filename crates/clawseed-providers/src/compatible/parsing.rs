@@ -61,6 +61,34 @@ pub(super) struct UsageInfo {
     pub(super) prompt_tokens: Option<u64>,
     #[serde(default)]
     pub(super) completion_tokens: Option<u64>,
+    /// DeepSeek reports `prompt_cache_hit_tokens` for prefix-cached input.
+    #[serde(default, rename = "prompt_cache_hit_tokens")]
+    pub(super) prompt_cache_hit_tokens: Option<u64>,
+    /// DeepSeek reports `prompt_cache_miss_tokens`. Retained for deserialization
+    /// but not yet exposed via `TokenUsage` — will be wired to metrics when
+    /// observability is added.
+    #[serde(default, rename = "prompt_cache_miss_tokens")]
+    #[expect(dead_code, reason = "reserved for future metrics wiring")]
+    pub(super) prompt_cache_miss_tokens: Option<u64>,
+    /// OpenAI reports `prompt_tokens_details` with a `cached_tokens` sub-field.
+    #[serde(default)]
+    pub(super) prompt_tokens_details: Option<PromptTokensDetails>,
+}
+
+impl UsageInfo {
+    /// Extract cached input tokens from whichever format the provider reports.
+    /// DeepSeek uses `prompt_cache_hit_tokens`; OpenAI uses nested `prompt_tokens_details.cached_tokens`.
+    pub(super) fn extract_cached_tokens(&self) -> Option<u64> {
+        self.prompt_cache_hit_tokens
+            .or_else(|| self.prompt_tokens_details.as_ref()?.cached_tokens)
+    }
+}
+
+/// OpenAI `prompt_tokens_details` sub-object, containing `cached_tokens`.
+#[derive(Debug, Deserialize)]
+pub(super) struct PromptTokensDetails {
+    #[serde(default)]
+    pub(super) cached_tokens: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]

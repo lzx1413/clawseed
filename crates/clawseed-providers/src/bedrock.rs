@@ -1118,7 +1118,7 @@ impl Provider for BedrockProvider {
         ProviderCapabilities {
             native_tool_calling: true,
             vision: true,
-            prompt_caching: false,
+            cache_strategy: clawseed_api::provider::CacheStrategy::ExplicitAnthropic,
         }
     }
 

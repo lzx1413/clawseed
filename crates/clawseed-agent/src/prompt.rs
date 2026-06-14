@@ -4,7 +4,6 @@
 //! etc.) via the `PromptSection` trait and `SystemPromptBuilder`.
 
 use anyhow::Result;
-use chrono::{Datelike, Timelike};
 use std::fmt::Write;
 use std::path::Path;
 
@@ -57,7 +56,9 @@ impl SystemPromptBuilder {
     pub fn with_defaults() -> Self {
         Self {
             sections: vec![
-                Box::new(DateTimeSection),
+                // DateTimeSection removed: time comes from the [YYYY-MM-DD HH:MM:SS TZ]
+                // prefix on each user message, keeping the system prompt 100% stable
+                // for automatic prefix caching (DeepSeek, OpenAI, Groq, etc.).
                 Box::new(IdentitySection),
                 Box::new(PlatformSection),
                 Box::new(WorkspaceSection),
@@ -127,16 +128,9 @@ impl SystemPromptBuilder {
                 }
             }
         }
-        // Append the preamble to the END of the stable buffer when both halves
-        // are non-empty. This keeps the preamble inside the cached prefix and
-        // makes `full = stable + "\n\n" + dynamic` byte-exact.
-        if !stable_buf.is_empty() && !dynamic_buf.is_empty() {
-            stable_buf.push_str("\n\n");
-            stable_buf.push_str(DYNAMIC_PREAMBLE);
-        }
-        let full = if stable_buf.is_empty() {
-            dynamic_buf.clone()
-        } else if dynamic_buf.is_empty() {
+        // With DateTimeSection removed, dynamic_buf is always empty.
+        // The preamble and split logic are kept for future dynamic sections.
+        let full = if dynamic_buf.is_empty() {
             stable_buf.clone()
         } else {
             format!("{}\n\n{}", stable_buf, dynamic_buf)
@@ -147,51 +141,22 @@ impl SystemPromptBuilder {
             full,
         })
     }
-
-    /// Build only the dynamic (per-turn) sections. Used by
-    /// `refresh_dynamic_system_content` to avoid rebuilding stable sections.
-    pub fn build_dynamic(&self, ctx: &PromptContext<'_>) -> Result<String> {
-        let mut output = String::new();
-        for section in &self.sections {
-            if section.cache_class() != CacheClass::Dynamic {
-                continue;
-            }
-            let part = section.build(ctx)?;
-            if part.trim().is_empty() {
-                continue;
-            }
-            if !output.is_empty() {
-                output.push_str("\n\n");
-            }
-            output.push_str(part.trim_end());
-        }
-        Ok(output)
-    }
 }
 
 /// A system prompt split into cacheable stable prefix and per-turn dynamic suffix.
+/// With DateTimeSection removed, `dynamic` is always empty and `full == stable`.
 pub struct PartitionedSystemPrompt {
     /// Sections that rarely change — should be cached as a prefix by providers.
-    /// When both halves are non-empty, this includes a trailing preamble that
-    /// bridges the semantic gap caused by moving datetime to the end.
+    /// Currently always equal to `full` since no dynamic sections exist.
     pub stable: String,
-    /// Sections that change per-turn — not cached, rebuilt each turn.
+    /// Sections that change per-turn — currently always empty.
     pub dynamic: String,
-    /// Full concatenated prompt: `stable + "\n\n" + dynamic` exactly. The
-    /// preamble (if any) is already inside `stable`. Providers that support
-    /// partitioning split this at `stable.len()` to recover the two halves.
+    /// Full concatenated prompt. When dynamic is empty, `full == stable`.
     pub full: String,
 }
 
-/// Preamble appended to the stable buffer when dynamic sections (datetime) move
-/// to the end of the prompt. Tells the model that the time below applies to all
-/// instructions above. Lives inside the stable block so it's part of the
-/// cacheable prefix.
-pub const DYNAMIC_PREAMBLE: &str = "⚠️ THE CURRENT TIME BELOW APPLIES TO ALL ABOVE INSTRUCTIONS.";
-
 // ── Prompt sections ────────────────────────────────────────────────
 
-pub struct DateTimeSection;
 pub struct IdentitySection;
 pub struct PlatformSection;
 pub struct WorkspaceSection;
@@ -202,31 +167,6 @@ pub struct ToolHonestySection;
 pub struct MemorySection;
 pub struct SkillsIndexSection;
 pub struct ActiveSkillsSection;
-
-impl PromptSection for DateTimeSection {
-    fn name(&self) -> &str {
-        "datetime"
-    }
-
-    fn cache_class(&self) -> CacheClass {
-        CacheClass::Dynamic
-    }
-
-    fn build(&self, _ctx: &PromptContext<'_>) -> Result<String> {
-        let now = chrono::Local::now();
-        let (year, month, day) = (now.year(), now.month(), now.day());
-        let (hour, minute) = (now.hour(), now.minute());
-        let tz = now.format("%Z");
-
-        Ok(format!(
-            "## CRITICAL CONTEXT: CURRENT DATE & TIME\n\n\
-             The following is the ABSOLUTE TRUTH regarding the current date and time. \
-             Use this for all relative time calculations.\n\n\
-             Date: {year:04}-{month:02}-{day:02}\n\
-             Time: {hour:02}:{minute:02} ({tz})"
-        ))
-    }
-}
 
 impl PromptSection for PlatformSection {
     fn name(&self) -> &str {
@@ -443,8 +383,10 @@ mod tests {
         };
 
         let prompt = builder.build(&ctx).unwrap();
-        assert!(prompt.contains("## CRITICAL CONTEXT"));
-        assert!(prompt.contains("Time:"));
+        // DateTimeSection is no longer in the system prompt — time comes from
+        // the user message timestamp prefix instead.
+        assert!(!prompt.contains("## CRITICAL CONTEXT"));
+        assert!(!prompt.contains("Time:"));
         assert!(prompt.contains("## Platform Environment"));
         assert!(prompt.contains("## Workspace"));
         assert!(prompt.contains("## Tools"));
@@ -549,28 +491,8 @@ mod tests {
     }
 
     #[test]
-    fn datetime_section_minute_precision() {
-        let section = DateTimeSection;
-        let ctx = make_ctx();
-        let text = section.build(&ctx).unwrap();
-        // Should contain "Time:" with HH:MM format (minute precision, no seconds)
-        assert!(text.contains("Time:"));
-        // Should NOT contain seconds ":SS" pattern after the minute part
-        // (the line should be "Time: HH:MM (TZ)" not "Time: HH:MM:SS (TZ)")
-        let time_line = text.lines().find(|l| l.starts_with("Time:")).unwrap();
-        // After "Time:", expect " HH:MM" then space + timezone, no second colon for seconds
-        let after_label = &time_line["Time:".len()..];
-        // There should be exactly one ":" in the time portion (HH:MM), not two (HH:MM:SS)
-        // But timezone may contain colons like "UTC+08:00", so count colons before the timezone
-        let time_part = after_label.split('(').next().unwrap().trim();
-        assert_eq!(time_part.matches(':').count(), 1); // HH:MM only
-        // Should contain "Date:" with YYYY-MM-DD format
-        assert!(text.contains("Date:"));
-    }
-
-    #[test]
-    fn cache_class_default_is_stable() {
-        // All sections except DateTimeSection should default to Stable
+    fn cache_class_all_sections_are_stable() {
+        // All current sections default to Stable
         assert_eq!(IdentitySection.cache_class(), CacheClass::Stable);
         assert_eq!(PlatformSection.cache_class(), CacheClass::Stable);
         assert_eq!(WorkspaceSection.cache_class(), CacheClass::Stable);
@@ -581,11 +503,6 @@ mod tests {
         assert_eq!(ToolHonestySection.cache_class(), CacheClass::Stable);
         assert_eq!(SkillsIndexSection.cache_class(), CacheClass::Stable);
         assert_eq!(ActiveSkillsSection.cache_class(), CacheClass::Stable);
-    }
-
-    #[test]
-    fn datetime_cache_class_is_dynamic() {
-        assert_eq!(DateTimeSection.cache_class(), CacheClass::Dynamic);
     }
 
     fn make_ctx() -> PromptContext<'static> {
@@ -606,37 +523,32 @@ mod tests {
     }
 
     #[test]
-    fn build_partitioned_nonempty() {
+    fn build_partitioned_all_stable_no_dynamic() {
+        // With DateTimeSection removed, the entire prompt is stable (no dynamic).
         let builder = SystemPromptBuilder::with_defaults();
         let ctx = make_ctx();
         let result = builder.build_partitioned(&ctx).unwrap();
-        // Both stable and dynamic should be non-empty (datetime is dynamic, rest is stable)
+        // stable should be non-empty, dynamic should be empty
         assert!(!result.stable.is_empty());
-        assert!(!result.dynamic.is_empty());
-        // Preamble lives at the END of stable, so full = stable + "\n\n" + dynamic exactly.
-        assert!(result.stable.ends_with(DYNAMIC_PREAMBLE));
-        assert_eq!(
-            result.full,
-            format!("{}\n\n{}", result.stable, result.dynamic)
-        );
+        assert!(result.dynamic.is_empty());
+        // When dynamic is empty, full == stable (no preamble appended)
+        assert_eq!(result.full, result.stable);
     }
 
     #[test]
-    fn build_partitioned_stable_before_dynamic() {
-        // build_partitioned() places stable sections before dynamic sections
-        // so Anthropic's prefix caching can cache the stable block.
+    fn build_partitioned_stable_contains_all_sections() {
+        // With no dynamic sections, the entire prompt is stable.
         let builder = SystemPromptBuilder::with_defaults();
         let ctx = make_ctx();
         let partitioned = builder.build_partitioned(&ctx).unwrap();
-        // Stable content should contain identity/platform/workspace (not datetime)
+        // All sections should be in stable (no datetime section anymore)
         assert!(partitioned.stable.contains("## Platform Environment"));
         assert!(partitioned.stable.contains("## Workspace"));
-        // Stable ends with the preamble that bridges to the dynamic section.
-        assert!(partitioned.stable.contains(DYNAMIC_PREAMBLE));
-        // Dynamic content should contain datetime
-        assert!(partitioned.dynamic.contains("## CRITICAL CONTEXT"));
-        // Providers can split full at exactly stable.len() to recover the two halves.
+        // No dynamic content
+        assert!(partitioned.dynamic.is_empty());
+        // full == stable exactly
         assert!(partitioned.full.starts_with(&partitioned.stable));
+        assert_eq!(partitioned.full.len(), partitioned.stable.len());
     }
 
     #[test]
@@ -657,17 +569,5 @@ mod tests {
         assert_eq!(p.stable, "STABLE CONTENT");
         assert_eq!(p.dynamic, "");
         assert_eq!(p.full, "STABLE CONTENT");
-        assert!(!p.stable.contains(DYNAMIC_PREAMBLE));
-    }
-
-    #[test]
-    fn build_dynamic_only_dynamic_sections() {
-        let builder = SystemPromptBuilder::with_defaults();
-        let ctx = make_ctx();
-        let dynamic = builder.build_dynamic(&ctx).unwrap();
-        // Only DateTimeSection is Dynamic, so dynamic should contain datetime only
-        assert!(dynamic.contains("## CRITICAL CONTEXT"));
-        assert!(!dynamic.contains("## Platform Environment"));
-        assert!(!dynamic.contains("## Workspace"));
     }
 }
