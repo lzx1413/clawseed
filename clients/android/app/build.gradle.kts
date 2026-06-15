@@ -71,8 +71,6 @@ dependencies {
     // Material Icons (core only to control APK size)
     implementation("androidx.compose.material:material-icons-core")
 
-    // Markdown rendering (M3 themed variant)
-    implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.30.0")
 
     // Coroutines for ClawseedService background work
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

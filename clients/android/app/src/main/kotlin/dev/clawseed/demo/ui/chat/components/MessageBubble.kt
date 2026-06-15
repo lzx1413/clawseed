@@ -100,45 +100,33 @@ private fun AssistantBubble(content: String, isStreaming: Boolean, onRegenerate:
     val context = LocalContext.current
     val copiedText = stringResource(R.string.common_copied)
 
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Start,
-    ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-            ) {
-                SelectionContainer {
-                    Column {
-                        MarkdownContent(content = content)
-                        if (isStreaming) {
-                            Text(
-                                text = "█",
-                                color = MaterialTheme.colorScheme.primary,
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                        }
-                    }
+    Column(modifier = modifier.fillMaxWidth()) {
+        SelectionContainer {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                MarkdownContent(content = content)
+                if (isStreaming) {
+                    Text(
+                        text = "█",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
                 }
             }
-            if (!isStreaming && content.isNotBlank()) {
-                Row(
-                    modifier = Modifier.padding(start = 4.dp, top = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CopyButton(
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString(content))
-                            Toast.makeText(context, copiedText, Toast.LENGTH_SHORT).show()
-                        },
-                    )
-                    if (onRegenerate != null) {
-                        RegenerateButton(onClick = onRegenerate)
-                    }
+        }
+        if (!isStreaming && content.isNotBlank()) {
+            Row(
+                modifier = Modifier.padding(start = 16.dp, top = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CopyButton(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(content))
+                        Toast.makeText(context, copiedText, Toast.LENGTH_SHORT).show()
+                    },
+                )
+                if (onRegenerate != null) {
+                    RegenerateButton(onClick = onRegenerate)
                 }
             }
         }

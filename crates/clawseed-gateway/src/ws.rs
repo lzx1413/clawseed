@@ -1030,10 +1030,23 @@ async fn process_chat_message(
 
     match result {
         Ok(response) => {
+            // Use accumulated_text (which contains ALL text deltas from ALL
+            // iterations of the agent loop) instead of the raw `response`
+            // string which only contains the final iteration's text.  Without
+            // this, multi-iteration turns (tool-call → tool-result → final
+            // text) would lose the text produced before tool calls, leaving
+            // only the last iteration's fragment (often just a punctuation
+            // mark).
+            let final_response = if accumulated_text.is_empty() {
+                response
+            } else {
+                accumulated_text
+            };
+
             // Persist final assistant response. If we saved partial content
             // during streaming, update it in-place; otherwise append fresh.
             if let Some(ref backend) = state.session_backend {
-                let assistant_msg = clawseed_api::provider::ChatMessage::assistant(&response);
+                let assistant_msg = clawseed_api::provider::ChatMessage::assistant(&final_response);
                 if partial_saved {
                     let _ = backend.update_last(session_key, &assistant_msg);
                 } else {
@@ -1057,7 +1070,7 @@ async fn process_chat_message(
                 let provider = state.provider.clone();
                 let model = state.model.clone();
                 let user_msg = content.to_string();
-                let assistant_resp = response.clone();
+                let assistant_resp = final_response.clone();
                 let conflict_mode = state.config.lock().memory.effective_conflict_mode();
                 let conflict_threshold = state.config.lock().memory.conflict_threshold;
                 tokio::spawn(async move {
@@ -1088,7 +1101,7 @@ async fn process_chat_message(
                     let provider = state.provider.clone();
                     let model = state.model.clone();
                     let user_msg = content.to_string();
-                    let assistant_resp = response.clone();
+                    let assistant_resp = final_response.clone();
                     let backend_clone: Arc<dyn SessionBackend> = Arc::clone(backend);
                     let session_key_owned = session_key.to_string();
                     let (tx, rx) = tokio::sync::oneshot::channel::<String>();
@@ -1146,7 +1159,7 @@ async fn process_chat_message(
 
             let done = serde_json::json!({
                 "type": "done",
-                "full_response": response,
+                "full_response": final_response,
             });
             let _ = sender.send(Message::Text(done.to_string().into())).await;
 
