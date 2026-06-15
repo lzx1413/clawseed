@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ========== Common ========== -->
+    <string name="app_name">爪籽</string>
+    <string name="common_confirm">确定</string>
+    <string name="common_cancel">取消</string>
+    <string name="common_delete">删除</string>
+    <string name="common_close">关闭</string>
+    <string name="common_retry">重试</string>
+    <string name="common_loading">加载中…</string>
+    <string name="common_back">返回</string>
+    <string name="common_refresh">刷新</string>
+    <string name="common_collapse">收起</string>
+    <string name="common_expand">展开</string>
+    <string name="common_saving">保存中…</string>
+    <string name="common_copied">已复制</string>
+    <string name="common_copy">复制</string>
+    <string name="common_show">显示</string>
+    <string name="common_hide">隐藏</string>
+
+    <!-- ========== Chat ========== -->
+    <string name="chat_new_conversation">新对话</string>
+    <string name="chat_menu">菜单</string>
+    <string name="chat_new_session">新建对话</string>
+    <string name="chat_input_placeholder">输入消息…</string>
+    <string name="chat_stop_generating">停止生成</string>
+    <string name="chat_send">发送</string>
+
+    <!-- ========== Message / Bubbles ========== -->
+    <string name="msg_copy">复制</string>
+    <string name="msg_copied">已复制</string>
+    <string name="msg_regenerate">重新生成</string>
+    <string name="msg_tool_calling">工具调用中…</string>
+    <string name="msg_tool_calls">工具调用 (%1$d)</string>
+    <string name="msg_calling">调用中…</string>
+    <string name="msg_parameters">参数</string>
+    <string name="msg_result">结果</string>
+    <string name="msg_thinking_process">​思考过程</string>
+
+    <!-- ========== Drawer ========== -->
+    <string name="drawer_chat_history">对话历史</string>
+    <string name="drawer_no_conversations">暂无对话</string>
+    <string name="drawer_scheduled_tasks">定时任务</string>
+    <string name="drawer_settings">设置</string>
+    <string name="drawer_about">关于</string>
+    <string name="drawer_rename">重命名</string>
+    <string name="drawer_rename_dialog_title">重命名对话</string>
+    <string name="drawer_about_title">关于</string>
+    <string name="drawer_version">版本: %1$s</string>
+    <string name="drawer_build_date">编译日期: %1$s</string>
+
+    <!-- ========== Scheduled Tasks ========== -->
+    <string name="task_title">定时任务</string>
+    <string name="task_add">添加任务</string>
+    <string name="task_alarm_warning">未授权精确闹钟，任务可能延迟执行</string>
+    <string name="task_go_settings">去设置</string>
+    <string name="task_empty">暂无定时任务</string>
+    <string name="task_edit">编辑</string>
+    <string name="task_executing">正在执行…</string>
+    <string name="task_run_now">现在运行</string>
+    <string name="task_edit_dialog_title">编辑定时任务</string>
+    <string name="task_add_dialog_title">添加定时任务</string>
+    <string name="task_name_label">任务名称</string>
+    <string name="task_message_label">执行消息</string>
+    <string name="task_time_label">执行时间</string>
+    <string name="task_repeat_label">重复模式</string>
+    <string name="task_default_curator_name">记忆整理</string>
+    <string name="task_default_curator_message">分析所有记忆，删除不重要的和重复的，合并冲突，每条不超过50字摘要</string>
+    <string name="task_error_interrupted">执行中断（应用重启）</string>
+
+    <!-- TaskRepeat enum -->
+    <string name="enum_task_repeat_once">单次</string>
+    <string name="enum_task_repeat_daily">每天</string>
+    <string name="enum_task_repeat_weekday">工作日</string>
+
+    <!-- ========== Data Transfer ========== -->
+    <string name="data_export">导出数据</string>
+    <string name="data_import">导入数据</string>
+    <string name="data_exclude_sensitive">排除敏感数据</string>
+    <string name="data_exclude_sensitive_desc">不导出 API 密钥和认证令牌</string>
+    <string name="data_exporting">导出中…</string>
+    <string name="data_export_btn">导出</string>
+    <string name="data_importing">导入中…</string>
+    <string name="data_import_btn">选择文件并导入</string>
+    <string name="data_export_success">导出成功！已导出 %1$s</string>
+    <string name="data_export_failed">导出失败: %1$s</string>
+    <string name="data_import_failed">导入失败: %1$s</string>
+    <string name="data_cannot_read_file">无法读取文件</string>
+    <string name="data_import_warning">导入将修改应用数据。建议先导出备份。</string>
+    <string name="data_import_complete">导入完成</string>
+    <string name="data_import_issues">导入出现问题</string>
+    <string name="data_warning_label">警告:</string>
+    <string name="data_error_label">错误:</string>
+    <string name="data_import_summary_config">配置已恢复</string>
+    <string name="data_import_summary_tasks">%1$d 个定时任务</string>
+    <string name="data_import_summary_memories">%1$d 条记忆</string>
+    <string name="data_import_summary_sessions">%1$d 个会话</string>
+    <string name="data_import_summary_messages">%1$d 条消息</string>
+    <string name="data_import_summary_skills">%1$d 个技能</string>
+    <string name="data_import_summary_personality">%1$d 个人格文件</string>
+    <string name="data_export_missing_manifest">导出文件缺少 manifest.json</string>
+    <string name="data_export_version_incompatible">导出文件格式版本不兼容 (v%1$d > v%2$d)</string>
+    <string name="data_export_missing_category">导出文件中不包含 %1$s 数据</string>
+    <string name="data_category_import_failed">%1$s 导入失败: %2$s</string>
+    <string name="data_gateway_restart_failed">Gateway 重启失败，请手动重启应用</string>
+
+    <!-- DataCategory enum -->
+    <string name="enum_data_category_config">配置</string>
+    <string name="enum_data_category_config_desc">导出 clawseed.toml、应用偏好、定时任务</string>
+    <string name="enum_data_category_memory">记忆</string>
+    <string name="enum_data_category_memory_desc">导出记忆数据库 (brain.db)</string>
+    <string name="enum_data_category_sessions">会话</string>
+    <string name="enum_data_category_sessions_desc">导出会话历史记录</string>
+    <string name="enum_data_category_skills">技能</string>
+    <string name="enum_data_category_skills_desc">导出所有技能文件和配置</string>
+    <string name="enum_data_category_personality">人格</string>
+    <string name="enum_data_category_personality_desc">导出 SOUL.md 等人格文件</string>
+
+    <!-- ImportStrategy enum -->
+    <string name="enum_import_strategy_replace">替换</string>
+    <string name="enum_import_strategy_merge">合并</string>
+    <string name="enum_import_strategy_append">追加</string>
+
+    <!-- ========== Settings ========== -->
+    <string name="settings_title">设置</string>
+    <string name="settings_appearance">外观</string>
+    <string name="settings_theme_light">浅色</string>
+    <string name="settings_theme_dark">深色</string>
+    <string name="settings_theme_system">跟随系统</string>
+    <string name="settings_oled_mode">OLED 纯黑背景</string>
+    <string name="settings_oled_mode_desc">使用纯黑背景以节省 OLED 屏幕电量</string>
+    <string name="settings_language">语言</string>
+    <string name="settings_language_system">跟随系统</string>
+    <string name="settings_language_english">English</string>
+    <string name="settings_language_chinese">中文</string>
+
+    <string name="settings_session_title">会话设置</string>
+    <string name="settings_session_subtitle">自动清理: %1$s | 议会: %2$s</string>
+    <string name="settings_session_ttl_never_delete">永不删除</string>
+    <string name="settings_session_ttl_days">%1$d 天</string>
+    <string name="settings_council_reviewers">%1$d 个审阅者</string>
+    <string name="settings_council_off">关闭</string>
+    <string name="settings_save_session_config">保存会话配置</string>
+
+    <string name="settings_llm_config">LLM 配置</string>
+    <string name="settings_not_configured">未配置</string>
+    <string name="settings_save_config">保存配置</string>
+    <string name="settings_save_config_local">配置已保存到本地文件，请重启应用以生效</string>
+    <string name="settings_save_config_gateway">配置已保存，Gateway 正在重启…</string>
+    <string name="settings_save_failed_gateway">保存到 Gateway 失败: %1$s</string>
+    <string name="settings_fetch_models_failed">获取模型失败: %1$s</string>
+    <string name="settings_fetch_models">获取模型列表</string>
+    <string name="settings_model_count">%1$d 个模型</string>
+    <string name="settings_connection_failed">连接失败</string>
+    <string name="settings_model_placeholder">点击上方按钮获取可用模型</string>
+    <string name="settings_server_has_key">服务器已保存密钥，无需重新输入</string>
+    <string name="settings_thinking_mode">Thinking Mode</string>
+    <string name="settings_thinking_desc">启用后模型会先推理思考再回答，适用于复杂任务</string>
+    <string name="settings_max_tokens_desc">最大输出 Token 数（思考+回复共享），建议 262144 (256K)。过小可能导致长回复被截断</string>
+    <string name="settings_auto_continue">自动续接</string>
+    <string name="settings_auto_continue_desc">当回复因 Token 限制被截断时自动续接输出</string>
+
+    <string name="settings_search_engine">搜索引擎</string>
+    <string name="settings_save_search_config">保存搜索配置</string>
+    <string name="settings_search_free_api_key">免费获取 API Key: </string>
+
+    <string name="settings_memory">记忆</string>
+    <string name="settings_memory_local_model">本地模型</string>
+    <string name="settings_memory_openai">OpenAI</string>
+    <string name="settings_memory_openrouter">OpenRouter</string>
+    <string name="settings_memory_off">关闭</string>
+    <string name="settings_memory_custom">自定义</string>
+    <string name="settings_memory_embedding">向量搜索 / Embedding</string>
+    <string name="settings_memory_model_downloaded">模型下载完成，Gateway 正在启动…</string>
+    <string name="settings_save_memory_config">保存记忆配置</string>
+    <string name="settings_embedding_local_hint">首次使用将下载约 80MB 模型文件，之后缓存到本地</string>
+
+    <string name="settings_soul_load_failed">Soul 内容加载失败，请刷新重试</string>
+    <string name="settings_soul_not_customized">未自定义</string>
+    <string name="settings_soul_load_error">加载失败</string>
+    <string name="settings_soul_placeholder">定义 AI 助手的人格和行为准则…</string>
+    <string name="settings_save_soul">保存 Soul</string>
+    <string name="settings_soul_saved">Soul 已保存</string>
+    <string name="settings_save_soul_failed">保存 Soul 失败: %1$s</string>
+    <string name="settings_soul_desc">修改后需要新会话才能生效。Soul 定义了 AI 助手的核心行为和人格。</string>
+
+    <string name="settings_registered_tools">已注册工具 (%1$d)</string>
+    <string name="settings_available_skills">可用技能 (%1$d)</string>
+    <string name="settings_refresh_skills">刷新技能</string>
+    <string name="settings_skills_refreshed">技能已刷新</string>
+    <string name="settings_refresh_skills_failed">刷新技能失败: %1$s</string>
+    <string name="settings_save_failed">保存失败: %1$s</string>
+
+    <string name="settings_developer_options">开发者选项</string>
+    <string name="settings_debug_query">Debug Query Message</string>
+    <string name="settings_debug_desc">开启后，每次发送消息时会在聊天界面显示实际发送给 LLM 的完整内容，并估计 Token 数量</string>
+    <string name="settings_global_config">全局配置 (TOML)</string>
+    <string name="settings_global_config_desc">直接编辑 clawseed.toml。未保存的表单修改不会反映在此处。修改后需重启 Gateway 生效。</string>
+    <string name="settings_save_global_config">保存全局配置</string>
+    <string name="settings_global_config_saved_local">全局配置已保存到本地文件，请重启应用以生效</string>
+    <string name="settings_global_config_saved_gateway">全局配置已保存，Gateway 正在重启…</string>
+
+    <string name="settings_data_management">数据管理</string>
+    <string name="settings_data_management_subtitle">导出/导入应用数据</string>
+
+    <string name="settings_about">关于</string>
+    <string name="settings_about_app_version">App 版本: %1$s</string>
+    <string name="settings_about_build_date">编译日期: %1$s</string>
+
+    <string name="settings_session_auto_cleanup">会话自动清理</string>
+    <string name="settings_session_cleanup_desc">超过设定天数未活动的会话会在 gateway 启动时自动删除，0 表示永不删除</string>
+    <string name="settings_session_ttl_days_label">天数（0 = 永不删除）</string>
+
+    <string name="settings_council_enable">启用议会模式</string>
+    <string name="settings_council_desc">议会模式让多个审阅者对 Leader 的操作提供监督和建议，通过共享内存进行通信。</string>
+    <string name="settings_add_reviewer">+ 添加审阅者</string>
+    <string name="settings_reviewer_label">审阅者 %1$d</string>
+    <string name="settings_reviewer_role">角色</string>
+    <string name="settings_reviewer_role_placeholder">如: security, quality, strategy</string>
+    <string name="settings_reviewer_focus">关注重点</string>
+    <string name="settings_reviewer_focus_placeholder">审阅者应关注哪些方面</string>
+    <string name="settings_reviewer_model">模型 (可选)</string>
+    <string name="settings_reviewer_model_placeholder">留空则使用 Leader 的模型</string>
+
+    <string name="settings_gateway_status">Gateway 状态</string>
+    <string name="settings_gateway_unknown">未知</string>
+    <string name="settings_gateway_starting_download">Gateway 正在启动，正在下载嵌入模型…</string>
+    <string name="settings_gateway_unreachable">无法连接 Gateway（正在启动或启动失败）</string>
+    <string name="settings_downloading">正在下载: %1$s</string>
+    <string name="settings_downloaded">已下载: %1$s</string>
+
+    <!-- ========== Service Notifications ========== -->
+    <string name="svc_notification_starting">启动 clawseed gateway…</string>
+    <string name="svc_notification_running">Gateway 运行中 :%1$d</string>
+    <string name="svc_notification_start_failed">启动失败</string>
+    <string name="svc_gateway_start_failed">Gateway 启动失败</string>
+    <string name="svc_notification_executing">正在执行: %1$s</string>
+    <string name="svc_alarm_fired">闹钟已响</string>
+    <string name="svc_connection_timeout">连接超时</string>
+    <string name="svc_no_response">超时无响应</string>
+    <string name="svc_execution_failed">执行失败</string>
+    <string name="svc_alarm_name_with_message">闹钟: %1$s</string>
+    <string name="svc_alarm_name_with_time">闹钟 %1$s</string>
+    <string name="svc_alarm_message">闹钟响了</string>
+    <string name="svc_dismiss_alarm">关闭闹钟</string>
+    <string name="svc_channel_gateway">ClawSeed Gateway</string>
+    <string name="svc_channel_gateway_desc">ClawSeed gateway 服务</string>
+    <string name="svc_channel_tasks">定时任务</string>
+    <string name="svc_channel_tasks_desc">定时任务执行结果</string>
+    <string name="svc_channel_reminder">任务提醒</string>
+    <string name="svc_channel_reminder_desc">定时任务提醒</string>
+    <string name="svc_channel_alarm">闹钟</string>
+    <string name="svc_channel_alarm_desc">闹钟提醒</string>
+
+    <!-- ========== Provider Presets ========== -->
+    <string name="provider_deepseek">DeepSeek</string>
+    <string name="provider_qwen">Qwen (阿里通义)</string>
+    <string name="provider_moonshot">Moonshot (Kimi)</string>
+    <string name="provider_glm">GLM (智谱)</string>
+    <string name="provider_doubao">Doubao (豆包)</string>
+    <string name="provider_qianfan">Baidu (千帆)</string>
+    <string name="provider_mimo">Mimo</string>
+    <string name="provider_openai">OpenAI</string>
+    <string name="provider_anthropic">Anthropic</string>
+    <string name="provider_openrouter">OpenRouter</string>
+    <string name="provider_ollama">Ollama (本地)</string>
+    <string name="provider_custom">自定义</string>
+
+    <!-- ========== ChatViewModel (user-visible strings only, NOT tool descriptions) ========== -->
+    <string name="chat_tool_location_no_permission">位置权限未授予</string>
+    <string name="chat_tool_location_unavailable">无法获取位置信息，请确保GPS或网络定位已开启</string>
+    <string name="chat_tool_alarm_missing_params">缺少必需参数：hour 和 minute</string>
+    <string name="chat_tool_alarm_invalid_range">参数范围无效：hour 应为 0-23，minute 应为 0-59</string>
+    <string name="chat_auth_hint">请在 %1$s App 中完成授权</string>
+</resources>

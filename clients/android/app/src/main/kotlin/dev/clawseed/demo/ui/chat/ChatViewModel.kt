@@ -11,6 +11,7 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dev.clawseed.demo.R
 import dev.clawseed.demo.data.ChatEntry
 import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.demo.data.ToolCallInfo
@@ -612,7 +613,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             ClawSeedAndroid.externalToolBridge().authEvents.collect { event ->
                 _uiState.value = _uiState.value.copy(
                     authPrompt = AuthPrompt(
-                        hint = event.resolutionHint ?: "请在 ${event.providerLabel} App 中完成授权",
+                        hint = event.resolutionHint ?: getApplication<Application>().getString(R.string.chat_auth_hint, event.providerLabel),
                         authorizeIntent = event.authorizeIntent,
                     ),
                 )
@@ -621,7 +622,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun handleScheduledTask(args: kotlinx.serialization.json.JsonObject): ToolResult {
-        val op = args["operation"]?.jsonPrimitive?.content ?: return ToolResult.Failure("缺少 operation 参数")
+        val op = args["operation"]?.jsonPrimitive?.content ?: return ToolResult.Failure("Missing operation parameter")
         val ctx = getApplication<Application>()
         val store = ScheduledTaskStore(ctx)
 
@@ -649,21 +650,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
             "add" -> {
                 val name = args["name"]?.jsonPrimitive?.content
-                    ?: return ToolResult.Failure("缺少 name 参数")
+                    ?: return ToolResult.Failure("Missing name parameter")
                 val message = args["message"]?.jsonPrimitive?.content
-                    ?: return ToolResult.Failure("缺少 message 参数")
+                    ?: return ToolResult.Failure("Missing message parameter")
                 val hour = args["hour"]?.jsonPrimitive?.int
-                    ?: return ToolResult.Failure("缺少 hour 参数")
+                    ?: return ToolResult.Failure("Missing hour parameter")
                 val minute = args["minute"]?.jsonPrimitive?.int
-                    ?: return ToolResult.Failure("缺少 minute 参数")
-                if (hour !in 0..23) return ToolResult.Failure("hour 必须在 0-23 之间")
-                if (minute !in 0..59) return ToolResult.Failure("minute 必须在 0-59 之间")
+                    ?: return ToolResult.Failure("Missing minute parameter")
+                if (hour !in 0..23) return ToolResult.Failure("hour must be between 0-23")
+                if (minute !in 0..59) return ToolResult.Failure("minute must be between 0-59")
                 val repeatStr = args["repeat"]?.jsonPrimitive?.content ?: "daily"
                 val repeat = when (repeatStr) {
                     "once" -> TaskRepeat.ONCE
                     "daily" -> TaskRepeat.DAILY
                     "weekday" -> TaskRepeat.WEEKDAY
-                    else -> return ToolResult.Failure("repeat 必须是 once/daily/weekday")
+                    else -> return ToolResult.Failure("repeat must be once/daily/weekday")
                 }
                 val currentSid = currentSession?.sessionInfo?.value?.sessionId
                 val task = ScheduledTask(
@@ -684,9 +685,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
             "delete" -> {
                 val taskId = args["task_id"]?.jsonPrimitive?.content
-                    ?: return ToolResult.Failure("缺少 task_id 参数")
+                    ?: return ToolResult.Failure("Missing task_id parameter")
                 val existing = store.tasksAsList().find { it.id == taskId }
-                    ?: return ToolResult.Failure("任务 $taskId 不存在")
+                    ?: return ToolResult.Failure("Task $taskId not found")
                 ScheduledTaskManager.cancelAlarm(ctx, taskId)
                 store.deleteTask(taskId)
                 return ToolResult.Success(buildJsonObject {
@@ -694,7 +695,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     put("name", existing.name)
                 }.toString())
             }
-            else -> return ToolResult.Failure("未知操作: $op，支持 list/add/delete")
+            else -> return ToolResult.Failure("Unknown operation: $op, supported: list/add/delete")
         }
     }
 
@@ -704,10 +705,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val minute = args["minute"]?.jsonPrimitive?.intOrNull
 
         if (hour == null || minute == null) {
-            return ToolResult.Failure("缺少必需参数：hour 和 minute")
+            return ToolResult.Failure("Missing required parameters: hour and minute")
         }
         if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-            return ToolResult.Failure("参数范围无效：hour 应为 0-23，minute 应为 0-59")
+            return ToolResult.Failure("Invalid parameter range: hour should be 0-23, minute should be 0-59")
         }
 
         val message = args["message"]?.jsonPrimitive?.content ?: ""
@@ -721,8 +722,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             TaskRepeat.DAILY
         }
 
-        val taskName = if (message.isNotEmpty()) "闹钟: $message" else "闹钟 ${String.format("%02d:%02d", hour, minute)}"
-        val alarmMessage = if (message.isNotEmpty()) message else "闹钟响了"
+        val taskName = if (message.isNotEmpty()) "Alarm: $message" else "Alarm ${String.format("%02d:%02d", hour, minute)}"
+        val alarmMessage = if (message.isNotEmpty()) message else "Alarm fired"
 
         val store = ScheduledTaskStore(ctx)
         val task = ScheduledTask(
@@ -758,7 +759,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         ) == PackageManager.PERMISSION_GRANTED
 
         if (!hasPermission) {
-            return ToolResult.Failure("位置权限未授予，请在系统设置中允许ClawSeed访问位置信息")
+            return ToolResult.Failure("Location permission not granted, please allow ClawSeed access in system settings")
         }
 
         val locationManager = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -779,7 +780,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         if (bestLocation == null) {
-            return ToolResult.Failure("无法获取位置信息，请确保GPS或网络定位已开启")
+            return ToolResult.Failure("Unable to get location, please ensure GPS or network location is enabled")
         }
 
         val gcj02 = dev.clawseed.demo.CoordinateConverter.wgs84ToGcj02(bestLocation.latitude, bestLocation.longitude)

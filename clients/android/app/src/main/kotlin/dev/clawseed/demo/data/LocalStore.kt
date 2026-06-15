@@ -110,6 +110,18 @@ class LocalStore(private val context: Context) {
         return map
     }
 
+    // --- App language mode (system / en / zh) ---
+    private val KEY_LANGUAGE_MODE = stringPreferencesKey("language_mode")
+
+    val languageMode: Flow<String> = store.data.map { it[KEY_LANGUAGE_MODE] ?: "system" }
+
+    suspend fun setLanguageMode(mode: String) {
+        store.edit { prefs -> prefs[KEY_LANGUAGE_MODE] = mode }
+        // Mirror to SharedPreferences for synchronous LocaleHelper reads
+        context.getSharedPreferences("clawseed_locale", Context.MODE_PRIVATE)
+            .edit().putString("language_mode", mode).apply()
+    }
+
     // --- Export/import all preferences (for data transfer) ---
     // Keys that contain sensitive data (API keys, tokens).
     private val SENSITIVE_KEYS = setOf("bearer_token", "provider_api_keys")

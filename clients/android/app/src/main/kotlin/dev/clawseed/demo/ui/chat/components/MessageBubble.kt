@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -21,6 +22,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -37,10 +39,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.clawseed.demo.R
 import dev.clawseed.demo.data.ChatEntry
 import dev.clawseed.demo.data.ToolCallInfo
 import kotlinx.coroutines.delay
@@ -94,6 +98,7 @@ private fun UserBubble(content: String, modifier: Modifier = Modifier) {
 private fun AssistantBubble(content: String, isStreaming: Boolean, onRegenerate: (() -> Unit)?, modifier: Modifier = Modifier) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+    val copiedText = stringResource(R.string.common_copied)
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -128,7 +133,7 @@ private fun AssistantBubble(content: String, isStreaming: Boolean, onRegenerate:
                     CopyButton(
                         onClick = {
                             clipboardManager.setText(AnnotatedString(content))
-                            Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, copiedText, Toast.LENGTH_SHORT).show()
                         },
                     )
                     if (onRegenerate != null) {
@@ -166,14 +171,14 @@ private fun CopyButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     ) {
         Icon(
             imageVector = CopyIcon,
-            contentDescription = "复制",
+            contentDescription = stringResource(R.string.msg_copy),
             modifier = Modifier.size(14.dp),
             tint = if (copied) MaterialTheme.colorScheme.primary
                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
         )
         if (copied) {
             Text(
-                text = "已复制",
+                text = stringResource(R.string.msg_copied),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -193,7 +198,7 @@ private fun RegenerateButton(onClick: () -> Unit, modifier: Modifier = Modifier)
     ) {
         Icon(
             imageVector = RefreshIcon,
-            contentDescription = "重新生成",
+            contentDescription = stringResource(R.string.msg_regenerate),
             modifier = Modifier.size(14.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
         )
@@ -301,7 +306,7 @@ private fun ToolInvocationsCard(entry: ChatEntry.ToolInvocations, modifier: Modi
                     color = fg,
                 )
                 Text(
-                    text = "工具调用中…",
+                    text = stringResource(R.string.msg_tool_calling),
                     style = MaterialTheme.typography.labelLarge,
                     color = fg,
                 )
@@ -316,7 +321,7 @@ private fun ToolInvocationsCard(entry: ChatEntry.ToolInvocations, modifier: Modi
                     style = MaterialTheme.typography.labelSmall,
                 )
                 Text(
-                    text = "工具调用 (${invocations.size})",
+                    text = stringResource(R.string.msg_tool_calls, invocations.size),
                     style = MaterialTheme.typography.labelLarge,
                     color = fg,
                 )
@@ -367,7 +372,7 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = "调用中…",
+                    text = stringResource(R.string.msg_calling),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                 )
@@ -396,7 +401,7 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
         AnimatedVisibility(visible = detailExpanded) {
             Column(modifier = Modifier.padding(top = 6.dp)) {
                 Text(
-                    text = "参数",
+                    text = stringResource(R.string.msg_parameters),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                 )
@@ -409,7 +414,7 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
                 if (inv.toolResult != null) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "结果",
+                        text = stringResource(R.string.msg_result),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                     )
@@ -449,7 +454,7 @@ private fun ThinkingCard(content: String, modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = "​思考过程",
+                text = stringResource(R.string.msg_thinking_process),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -15,7 +15,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import dev.clawseed.demo.R
 
 @Composable
 fun ChatBottomBar(
@@ -35,7 +37,7 @@ fun ChatBottomBar(
         OutlinedTextField(
             value = input,
             onValueChange = onInputChange,
-            placeholder = { Text("输入消息...") },
+            placeholder = { Text(stringResource(R.string.chat_input_placeholder)) },
             modifier = Modifier
                 .weight(1f)
                 .padding(end = 8.dp),
@@ -47,14 +49,14 @@ fun ChatBottomBar(
                 onClick = onStop,
                 colors = IconButtonDefaults.iconButtonColors(),
             ) {
-                Icon(Icons.Default.Close, contentDescription = "停止生成")
+                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.chat_stop_generating))
             }
         } else {
             IconButton(
                 onClick = onSend,
                 enabled = canSend && input.isNotBlank(),
             ) {
-                Icon(Icons.Default.Send, contentDescription = "发送")
+                Icon(Icons.Default.Send, contentDescription = stringResource(R.string.chat_send))
             }
         }
     }

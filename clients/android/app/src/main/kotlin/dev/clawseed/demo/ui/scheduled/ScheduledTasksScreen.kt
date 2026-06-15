@@ -58,10 +58,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.clawseed.demo.R
+import dev.clawseed.demo.i18n.label
 import dev.clawseed.demo.scheduled.ScheduledTask
 import dev.clawseed.demo.scheduled.TaskRepeat
 import dev.clawseed.demo.scheduled.TaskStatus
@@ -122,17 +125,17 @@ fun ScheduledTasksScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("定时任务") },
+                title = { Text(stringResource(R.string.task_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
             )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = { showAddDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = "添加任务")
+                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.task_add))
             }
         },
     ) { padding ->
@@ -162,7 +165,7 @@ fun ScheduledTasksScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            "未授权精确闹钟，任务可能延迟执行",
+                            stringResource(R.string.task_alarm_warning),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.weight(1f),
@@ -173,7 +176,7 @@ fun ScheduledTasksScreen(
                             }
                             context.startActivity(intent)
                         }) {
-                            Text("去设置")
+                            Text(stringResource(R.string.task_go_settings))
                         }
                     }
                 }
@@ -185,7 +188,7 @@ fun ScheduledTasksScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        "暂无定时任务",
+                        stringResource(R.string.task_empty),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -252,14 +255,14 @@ private fun TaskCard(
                 IconButton(onClick = onEdit) {
                     Icon(
                         Icons.Default.Edit,
-                        contentDescription = "编辑",
+                        contentDescription = stringResource(R.string.task_edit),
                         tint = MaterialTheme.colorScheme.primary,
                     )
                 }
                 IconButton(onClick = onDelete) {
                     Icon(
                         Icons.Default.Delete,
-                        contentDescription = "删除",
+                        contentDescription = stringResource(R.string.common_delete),
                         tint = MaterialTheme.colorScheme.error,
                     )
                 }
@@ -282,7 +285,7 @@ private fun TaskCard(
             ) {
                 if (task.lastStatus == TaskStatus.RUNNING) {
                     Text(
-                        "正在执行...",
+                        stringResource(R.string.task_executing),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -293,11 +296,11 @@ private fun TaskCard(
                     ) {
                         Icon(
                             Icons.Default.PlayArrow,
-                            contentDescription = "现在运行",
+                            contentDescription = stringResource(R.string.task_run_now),
                             modifier = Modifier.size(16.dp),
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("现在运行", style = MaterialTheme.typography.labelSmall)
+                        Text(stringResource(R.string.task_run_now), style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
@@ -309,11 +312,7 @@ private fun TaskCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                val repeatLabel = when (task.repeat) {
-                    TaskRepeat.ONCE -> "单次"
-                    TaskRepeat.DAILY -> "每天"
-                    TaskRepeat.WEEKDAY -> "工作日"
-                }
+                val repeatLabel = task.repeat.label()
                 FilterChip(
                     selected = false,
                     onClick = {},
@@ -394,38 +393,33 @@ private fun TaskDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initialTask != null) "编辑定时任务" else "添加定时任务") },
+        title = { Text(if (initialTask != null) stringResource(R.string.task_edit_dialog_title) else stringResource(R.string.task_add_dialog_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("任务名称") },
+                    label = { Text(stringResource(R.string.task_name_label)) },
                     singleLine = true,
                 )
                 OutlinedTextField(
                     value = message,
                     onValueChange = { message = it },
-                    label = { Text("执行消息") },
+                    label = { Text(stringResource(R.string.task_message_label)) },
                     minLines = 2,
                     maxLines = 4,
                 )
 
-                Text("执行时间", style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(R.string.task_time_label), style = MaterialTheme.typography.labelMedium)
                 TimePicker(state = timePickerState)
 
-                Text("重复模式", style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(R.string.task_repeat_label), style = MaterialTheme.typography.labelMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TaskRepeat.entries.forEach { mode ->
-                        val label = when (mode) {
-                            TaskRepeat.ONCE -> "单次"
-                            TaskRepeat.DAILY -> "每天"
-                            TaskRepeat.WEEKDAY -> "工作日"
-                        }
                         FilterChip(
                             selected = repeat == mode,
                             onClick = { repeat = mode },
-                            label = { Text(label) },
+                            label = { Text(mode.label()) },
                         )
                     }
                 }
@@ -448,11 +442,11 @@ private fun TaskDialog(
                 },
                 enabled = name.isNotBlank() && message.isNotBlank(),
             ) {
-                Text("确定")
+                Text(stringResource(R.string.common_confirm))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }

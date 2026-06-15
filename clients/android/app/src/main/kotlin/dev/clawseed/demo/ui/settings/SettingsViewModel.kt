@@ -1,8 +1,10 @@
 package dev.clawseed.demo.ui.settings
 
 import android.app.Application
+import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dev.clawseed.demo.R
 import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.core.client.GatewayClient
@@ -17,21 +19,21 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-data class ProviderPreset(val displayName: String, val id: String, val baseUrl: String)
+data class ProviderPreset(@StringRes val displayNameRes: Int, val id: String, val baseUrl: String)
 
 val PROVIDER_PRESETS = listOf(
-    ProviderPreset("DeepSeek", "deepseek", "https://api.deepseek.com/v1"),
-    ProviderPreset("Qwen (阿里通义)", "qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
-    ProviderPreset("Moonshot (Kimi)", "moonshot", "https://api.moonshot.cn/v1"),
-    ProviderPreset("GLM (智谱)", "glm-cn", "https://open.bigmodel.cn/api/paas/v4"),
-    ProviderPreset("Doubao (豆包)", "doubao", "https://ark.cn-beijing.volces.com/api/v3"),
-    ProviderPreset("Baidu (千帆)", "qianfan", "https://qianfan.baidubce.com/v2"),
-    ProviderPreset("Mimo", "mimo", "https://api.xiaomimimo.com/v1"),
-    ProviderPreset("OpenAI", "openai", "https://api.openai.com/v1"),
-    ProviderPreset("Anthropic", "anthropic", "https://api.anthropic.com/v1"),
-    ProviderPreset("OpenRouter", "openrouter", "https://openrouter.ai/api/v1"),
-    ProviderPreset("Ollama (本地)", "ollama", "http://localhost:11434/v1"),
-    ProviderPreset("自定义", "custom", ""),
+    ProviderPreset(R.string.provider_deepseek, "deepseek", "https://api.deepseek.com/v1"),
+    ProviderPreset(R.string.provider_qwen, "qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+    ProviderPreset(R.string.provider_moonshot, "moonshot", "https://api.moonshot.cn/v1"),
+    ProviderPreset(R.string.provider_glm, "glm-cn", "https://open.bigmodel.cn/api/paas/v4"),
+    ProviderPreset(R.string.provider_doubao, "doubao", "https://ark.cn-beijing.volces.com/api/v3"),
+    ProviderPreset(R.string.provider_qianfan, "qianfan", "https://qianfan.baidubce.com/v2"),
+    ProviderPreset(R.string.provider_mimo, "mimo", "https://api.xiaomimimo.com/v1"),
+    ProviderPreset(R.string.provider_openai, "openai", "https://api.openai.com/v1"),
+    ProviderPreset(R.string.provider_anthropic, "anthropic", "https://api.anthropic.com/v1"),
+    ProviderPreset(R.string.provider_openrouter, "openrouter", "https://openrouter.ai/api/v1"),
+    ProviderPreset(R.string.provider_ollama, "ollama", "http://localhost:11434/v1"),
+    ProviderPreset(R.string.provider_custom, "custom", ""),
 )
 
 data class SettingsUiState(
@@ -365,7 +367,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     _uiState.value = _uiState.value.copy(
                         isFetchingModels = false,
                         connectionOk = false,
-                        error = "获取模型失败: ${e.message?.take(100)}",
+                        error = getApplication<Application>().getString(R.string.settings_fetch_models_failed, e.message?.take(100) ?: ""),
                     )
                 }
         }
@@ -448,7 +450,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 saveToLocalConfig(toml)
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
-                    successMessage = "配置已保存到本地文件，请重启应用以生效",
+                    successMessage = getApplication<Application>().getString(R.string.settings_save_config_local),
                 )
                 _uiState.value = _uiState.value.copy(configToml = toml)
                 // Persist API key locally
@@ -463,7 +465,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
             client().updateConfig(toml)
                 .onSuccess {
-                    _uiState.value = _uiState.value.copy(isSaving = false, successMessage = "配置已保存，Gateway 正在重启...")
+                    _uiState.value = _uiState.value.copy(isSaving = false, successMessage = getApplication<Application>().getString(R.string.settings_save_config_gateway))
                     saveCurrentDraft()
                     // Persist API key to local storage for recovery after gateway masking
                     val savedBaseUrl = state.baseUrl.trimEnd('/')
@@ -483,7 +485,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     saveToLocalConfig(toml)
                     _uiState.value = _uiState.value.copy(
                         isSaving = false,
-                        successMessage = "配置已保存到本地文件，请重启应用以生效",
+                        successMessage = getApplication<Application>().getString(R.string.settings_save_config_local),
                         configToml = toml,
                     )
                 }
@@ -501,7 +503,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 saveToLocalConfig(toml)
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
-                    successMessage = "全局配置已保存到本地文件，请重启应用以生效",
+                    successMessage = getApplication<Application>().getString(R.string.settings_global_config_saved_local),
                     configToml = toml,
                 )
                 return@launch
@@ -509,7 +511,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
             client().updateConfig(toml)
                 .onSuccess {
-                    _uiState.value = _uiState.value.copy(isSaving = false, successMessage = "全局配置已保存，Gateway 正在重启...")
+                    _uiState.value = _uiState.value.copy(isSaving = false, successMessage = getApplication<Application>().getString(R.string.settings_global_config_saved_gateway))
                     viewModelScope.launch {
                         ClawSeedAndroid.restartGateway()
                         loadAll()
@@ -519,9 +521,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     saveToLocalConfig(toml)
                     _uiState.value = _uiState.value.copy(
                         isSaving = false,
-                        successMessage = "全局配置已保存到本地文件，请重启应用以生效",
+                        successMessage = getApplication<Application>().getString(R.string.settings_global_config_saved_local),
                         configToml = toml,
-                        error = "保存到 Gateway 失败: ${e.message?.take(100)}",
+                        error = getApplication<Application>().getString(R.string.settings_save_failed_gateway, e.message?.take(100) ?: ""),
                     )
                 }
         }
@@ -686,12 +688,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
             client().updatePersonality(mapOf("SOUL.md" to content))
                 .onSuccess {
-                    _uiState.value = _uiState.value.copy(isSavingSoul = false, successMessage = "Soul 已保存")
+                    _uiState.value = _uiState.value.copy(isSavingSoul = false, successMessage = getApplication<Application>().getString(R.string.settings_soul_saved))
                 }
                 .onFailure { e ->
                     _uiState.value = _uiState.value.copy(
                         isSavingSoul = false,
-                        error = "保存 Soul 失败: ${e.message?.take(100)}",
+                        error = getApplication<Application>().getString(R.string.settings_save_soul_failed, e.message?.take(100) ?: ""),
                     )
                 }
         }
@@ -716,7 +718,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     // Revert on failure
                     _uiState.value = state.copy(
                         tools = state.tools,
-                        error = "保存失败: ${e.message?.take(100)}",
+                        error = getApplication<Application>().getString(R.string.settings_save_failed, e.message?.take(100) ?: ""),
                     )
                 }
         }
@@ -739,7 +741,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 .onFailure { e ->
                     _uiState.value = state.copy(
                         skills = state.skills,
-                        error = "保存失败: ${e.message?.take(100)}",
+                        error = getApplication<Application>().getString(R.string.settings_save_failed, e.message?.take(100) ?: ""),
                     )
                 }
         }
@@ -754,13 +756,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     _uiState.value = _uiState.value.copy(
                         isRefreshingSkills = false,
                         skills = skillsResult.getOrElse { emptyList() },
-                        successMessage = "技能已刷新",
+                        successMessage = getApplication<Application>().getString(R.string.settings_skills_refreshed),
                     )
                 }
                 .onFailure { e ->
                     _uiState.value = _uiState.value.copy(
                         isRefreshingSkills = false,
-                        error = "刷新技能失败: ${e.message?.take(100)}",
+                        error = getApplication<Application>().getString(R.string.settings_refresh_skills_failed, e.message?.take(100) ?: ""),
                     )
                 }
         }

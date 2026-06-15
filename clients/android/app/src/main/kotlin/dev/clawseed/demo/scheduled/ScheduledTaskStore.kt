@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
+import dev.clawseed.demo.R
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 private val Context.taskDataStore: DataStore<Preferences> by preferencesDataStore(name = "scheduled_tasks_prefs")
@@ -38,8 +40,8 @@ class ScheduledTaskStore(private val context: Context) {
         if (!curatorExists) {
             val task = ScheduledTask(
                 id = "memory_curator",
-                name = "记忆整理",
-                message = "分析所有记忆，删除不重要的和重复的，合并冲突，每条不超过50字摘要",
+                name = context.getString(R.string.task_default_curator_name),
+                message = context.getString(R.string.task_default_curator_message),
                 hour = 21,
                 minute = 0,
                 repeat = TaskRepeat.DAILY,
@@ -95,7 +97,7 @@ class ScheduledTaskStore(private val context: Context) {
             if (task.lastStatus == TaskStatus.RUNNING) {
                 task.copy(
                     lastStatus = null,
-                    lastError = "执行中断（应用重启）",
+                    lastError = context.getString(R.string.task_error_interrupted),
                 )
             } else task
         }

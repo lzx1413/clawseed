@@ -42,6 +42,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.res.stringResource
+import dev.clawseed.demo.R
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.clawseed.sdk.core.model.ConnectionState
@@ -154,13 +156,13 @@ fun ChatScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(uiState.sessionName ?: "新对话") },
+                title = { Text(uiState.sessionName ?: stringResource(R.string.chat_new_conversation)) },
                 navigationIcon = {
                     IconButton(onClick = {
                         dismissInput()
                         onToggleDrawer()
                     }) {
-                        Icon(Icons.Default.Menu, contentDescription = "菜单")
+                        Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.chat_menu))
                     }
                 },
                 actions = {
@@ -168,7 +170,7 @@ fun ChatScreen(
                         dismissInput()
                         onNewSession()
                     }) {
-                        Icon(Icons.Default.Add, contentDescription = "新建对话")
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.chat_new_session))
                     }
                 },
             )
@@ -239,12 +241,12 @@ fun ChatScreen(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     action = {
                         TextButton(onClick = { viewModel.switchToSession(sessionId) }) {
-                            Text("重试")
+                            Text(stringResource(R.string.common_retry))
                         }
                     },
                     dismissAction = {
                         TextButton(onClick = { viewModel.clearError() }) {
-                            Text("关闭")
+                            Text(stringResource(R.string.common_close))
                         }
                     },
                 ) {

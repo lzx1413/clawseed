@@ -1,4 +1,275 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- ========== Common ========== -->
     <string name="app_name">ClawSeed</string>
+    <string name="common_confirm">Confirm</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_delete">Delete</string>
+    <string name="common_close">Close</string>
+    <string name="common_retry">Retry</string>
+    <string name="common_loading">Loading…</string>
+    <string name="common_back">Back</string>
+    <string name="common_refresh">Refresh</string>
+    <string name="common_collapse">Collapse</string>
+    <string name="common_expand">Expand</string>
+    <string name="common_saving">Saving…</string>
+    <string name="common_copied">Copied</string>
+    <string name="common_copy">Copy</string>
+    <string name="common_show">Show</string>
+    <string name="common_hide">Hide</string>
+
+    <!-- ========== Chat ========== -->
+    <string name="chat_new_conversation">New Conversation</string>
+    <string name="chat_menu">Menu</string>
+    <string name="chat_new_session">New Session</string>
+    <string name="chat_input_placeholder">Enter message…</string>
+    <string name="chat_stop_generating">Stop generating</string>
+    <string name="chat_send">Send</string>
+
+    <!-- ========== Message / Bubbles ========== -->
+    <string name="msg_copy">Copy</string>
+    <string name="msg_copied">Copied</string>
+    <string name="msg_regenerate">Regenerate</string>
+    <string name="msg_tool_calling">Tool calling…</string>
+    <string name="msg_tool_calls">Tool calls (%1$d)</string>
+    <string name="msg_calling">Calling…</string>
+    <string name="msg_parameters">Parameters</string>
+    <string name="msg_result">Result</string>
+    <string name="msg_thinking_process">Thinking Process</string>
+
+    <!-- ========== Drawer ========== -->
+    <string name="drawer_chat_history">Chat History</string>
+    <string name="drawer_no_conversations">No conversations</string>
+    <string name="drawer_scheduled_tasks">Scheduled Tasks</string>
+    <string name="drawer_settings">Settings</string>
+    <string name="drawer_about">About</string>
+    <string name="drawer_rename">Rename</string>
+    <string name="drawer_rename_dialog_title">Rename Conversation</string>
+    <string name="drawer_about_title">About</string>
+    <string name="drawer_version">Version: %1$s</string>
+    <string name="drawer_build_date">Build date: %1$s</string>
+
+    <!-- ========== Scheduled Tasks ========== -->
+    <string name="task_title">Scheduled Tasks</string>
+    <string name="task_add">Add Task</string>
+    <string name="task_alarm_warning">Exact alarm not authorized, tasks may execute late</string>
+    <string name="task_go_settings">Go to Settings</string>
+    <string name="task_empty">No scheduled tasks</string>
+    <string name="task_edit">Edit</string>
+    <string name="task_executing">Executing…</string>
+    <string name="task_run_now">Run now</string>
+    <string name="task_edit_dialog_title">Edit Scheduled Task</string>
+    <string name="task_add_dialog_title">Add Scheduled Task</string>
+    <string name="task_name_label">Task name</string>
+    <string name="task_message_label">Execution message</string>
+    <string name="task_time_label">Execution time</string>
+    <string name="task_repeat_label">Repeat mode</string>
+    <string name="task_default_curator_name">Memory Curator</string>
+    <string name="task_default_curator_message">Analyze all memories, delete unimportant and duplicate ones, merge conflicts, summarize each to no more than 50 characters</string>
+    <string name="task_error_interrupted">Execution interrupted (app restarted)</string>
+
+    <!-- TaskRepeat enum -->
+    <string name="enum_task_repeat_once">Once</string>
+    <string name="enum_task_repeat_daily">Daily</string>
+    <string name="enum_task_repeat_weekday">Weekday</string>
+
+    <!-- ========== Data Transfer ========== -->
+    <string name="data_export">Export Data</string>
+    <string name="data_import">Import Data</string>
+    <string name="data_exclude_sensitive">Exclude sensitive data</string>
+    <string name="data_exclude_sensitive_desc">Don\'t export API keys and auth tokens</string>
+    <string name="data_exporting">Exporting…</string>
+    <string name="data_export_btn">Export</string>
+    <string name="data_importing">Importing…</string>
+    <string name="data_import_btn">Select file and import</string>
+    <string name="data_export_success">Exported: %1$s</string>
+    <string name="data_export_failed">Export failed: %1$s</string>
+    <string name="data_import_failed">Import failed: %1$s</string>
+    <string name="data_cannot_read_file">Cannot read file</string>
+    <string name="data_import_warning">Import will modify app data. Recommend exporting a backup first.</string>
+    <string name="data_import_complete">Import Complete</string>
+    <string name="data_import_issues">Import Issues</string>
+    <string name="data_warning_label">Warning:</string>
+    <string name="data_error_label">Error:</string>
+    <string name="data_import_summary_config">Config restored</string>
+    <string name="data_import_summary_tasks">%1$d scheduled tasks</string>
+    <string name="data_import_summary_memories">%1$d memories</string>
+    <string name="data_import_summary_sessions">%1$d sessions</string>
+    <string name="data_import_summary_messages">%1$d messages</string>
+    <string name="data_import_summary_skills">%1$d skills</string>
+    <string name="data_import_summary_personality">%1$d personality files</string>
+    <string name="data_export_missing_manifest">Export file missing manifest.json</string>
+    <string name="data_export_version_incompatible">Export file format version incompatible (v%1$d > v%2$d)</string>
+    <string name="data_export_missing_category">Export file does not contain %1$s data</string>
+    <string name="data_category_import_failed">%1$s import failed: %2$s</string>
+    <string name="data_gateway_restart_failed">Gateway restart failed, please restart the app manually</string>
+
+    <!-- DataCategory enum -->
+    <string name="enum_data_category_config">Config</string>
+    <string name="enum_data_category_config_desc">Export clawseed.toml, app preferences, scheduled tasks</string>
+    <string name="enum_data_category_memory">Memory</string>
+    <string name="enum_data_category_memory_desc">Export memory database (brain.db)</string>
+    <string name="enum_data_category_sessions">Sessions</string>
+    <string name="enum_data_category_sessions_desc">Export session history</string>
+    <string name="enum_data_category_skills">Skills</string>
+    <string name="enum_data_category_skills_desc">Export all skill files and config</string>
+    <string name="enum_data_category_personality">Personality</string>
+    <string name="enum_data_category_personality_desc">Export SOUL.md and other personality files</string>
+
+    <!-- ImportStrategy enum -->
+    <string name="enum_import_strategy_replace">Replace</string>
+    <string name="enum_import_strategy_merge">Merge</string>
+    <string name="enum_import_strategy_append">Append</string>
+
+    <!-- ========== Settings ========== -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_system">Follow System</string>
+    <string name="settings_oled_mode">OLED Pure Black</string>
+    <string name="settings_oled_mode_desc">Use pure black background to save OLED screen power</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_system">Follow System</string>
+    <string name="settings_language_english">English</string>
+    <string name="settings_language_chinese">中文</string>
+
+    <string name="settings_session_title">Session Settings</string>
+    <string name="settings_session_subtitle">Auto cleanup: %1$s | Council: %2$s</string>
+    <string name="settings_session_ttl_never_delete">Never delete</string>
+    <string name="settings_session_ttl_days">%1$d days</string>
+    <string name="settings_council_reviewers">%1$d reviewers</string>
+    <string name="settings_council_off">Off</string>
+    <string name="settings_save_session_config">Save Session Config</string>
+
+    <string name="settings_llm_config">LLM Config</string>
+    <string name="settings_not_configured">Not configured</string>
+    <string name="settings_save_config">Save Config</string>
+    <string name="settings_save_config_local">Config saved to local file, please restart the app</string>
+    <string name="settings_save_config_gateway">Config saved, Gateway is restarting…</string>
+    <string name="settings_save_failed_gateway">Save to Gateway failed: %1$s</string>
+    <string name="settings_fetch_models_failed">Failed to fetch models: %1$s</string>
+    <string name="settings_fetch_models">Fetch Models</string>
+    <string name="settings_model_count">%1$d models</string>
+    <string name="settings_connection_failed">Connection failed</string>
+    <string name="settings_model_placeholder">Click the button above to fetch available models</string>
+    <string name="settings_server_has_key">Server already has the key saved, no need to re-enter</string>
+    <string name="settings_thinking_mode">Thinking Mode</string>
+    <string name="settings_thinking_desc">When enabled, the model will think before answering. Suitable for complex tasks</string>
+    <string name="settings_max_tokens_desc">Max output tokens (thinking + reply shared). Recommended 262144 (256K). Too small may truncate long responses</string>
+    <string name="settings_auto_continue">Auto Continue</string>
+    <string name="settings_auto_continue_desc">Automatically continue output when response is truncated by token limit</string>
+
+    <string name="settings_search_engine">Search Engine</string>
+    <string name="settings_save_search_config">Save Search Config</string>
+    <string name="settings_search_free_api_key">Free API Key: </string>
+
+    <string name="settings_memory">Memory</string>
+    <string name="settings_memory_local_model">Local Model</string>
+    <string name="settings_memory_openai">OpenAI</string>
+    <string name="settings_memory_openrouter">OpenRouter</string>
+    <string name="settings_memory_off">Off</string>
+    <string name="settings_memory_custom">Custom</string>
+    <string name="settings_memory_embedding">Vector Search / Embedding</string>
+    <string name="settings_memory_model_downloaded">Model download complete, Gateway is starting…</string>
+    <string name="settings_save_memory_config">Save Memory Config</string>
+    <string name="settings_embedding_local_hint">First use will download ~80MB model file, then cached locally</string>
+
+    <string name="settings_soul_load_failed">Soul content load failed, please refresh</string>
+    <string name="settings_soul_not_customized">Not customized</string>
+    <string name="settings_soul_load_error">Load failed</string>
+    <string name="settings_soul_placeholder">Define the AI assistant\'s personality and behavior guidelines…</string>
+    <string name="settings_save_soul">Save Soul</string>
+    <string name="settings_soul_saved">Soul saved</string>
+    <string name="settings_save_soul_failed">Save Soul failed: %1$s</string>
+    <string name="settings_soul_desc">Changes take effect in new sessions. Soul defines the AI assistant\'s core behavior and personality.</string>
+
+    <string name="settings_registered_tools">Registered Tools (%1$d)</string>
+    <string name="settings_available_skills">Available Skills (%1$d)</string>
+    <string name="settings_refresh_skills">Refresh Skills</string>
+    <string name="settings_skills_refreshed">Skills refreshed</string>
+    <string name="settings_refresh_skills_failed">Refresh skills failed: %1$s</string>
+    <string name="settings_save_failed">Save failed: %1$s</string>
+
+    <string name="settings_developer_options">Developer Options</string>
+    <string name="settings_debug_query">Debug Query Message</string>
+    <string name="settings_debug_desc">When enabled, the chat screen will show the actual content sent to the LLM each time, with estimated token count</string>
+    <string name="settings_global_config">Global Config (TOML)</string>
+    <string name="settings_global_config_desc">Edit clawseed.toml directly. Unsaved form changes are not reflected here. Restart Gateway after changes.</string>
+    <string name="settings_save_global_config">Save Global Config</string>
+    <string name="settings_global_config_saved_local">Global config saved to local file, please restart the app</string>
+    <string name="settings_global_config_saved_gateway">Global config saved, Gateway is restarting…</string>
+
+    <string name="settings_data_management">Data Management</string>
+    <string name="settings_data_management_subtitle">Export/Import app data</string>
+
+    <string name="settings_about">About</string>
+    <string name="settings_about_app_version">App version: %1$s</string>
+    <string name="settings_about_build_date">Build date: %1$s</string>
+
+    <string name="settings_session_auto_cleanup">Session Auto Cleanup</string>
+    <string name="settings_session_cleanup_desc">Sessions inactive for more than the set days will be auto-deleted on gateway startup. 0 means never delete</string>
+    <string name="settings_session_ttl_days_label">Days (0 = never delete)</string>
+
+    <string name="settings_council_enable">Enable Council Mode</string>
+    <string name="settings_council_desc">Council mode allows multiple reviewers to supervise and advise the Leader\'s operations via shared memory.</string>
+    <string name="settings_add_reviewer">+ Add Reviewer</string>
+    <string name="settings_reviewer_label">Reviewer %1$d</string>
+    <string name="settings_reviewer_role">Role</string>
+    <string name="settings_reviewer_role_placeholder">e.g. security, quality, strategy</string>
+    <string name="settings_reviewer_focus">Focus</string>
+    <string name="settings_reviewer_focus_placeholder">What aspects the reviewer should focus on</string>
+    <string name="settings_reviewer_model">Model (optional)</string>
+    <string name="settings_reviewer_model_placeholder">Leave empty to use Leader\'s model</string>
+
+    <string name="settings_gateway_status">Gateway Status</string>
+    <string name="settings_gateway_unknown">Unknown</string>
+    <string name="settings_gateway_starting_download">Gateway is starting, downloading embedding model…</string>
+    <string name="settings_gateway_unreachable">Cannot connect to Gateway (starting or failed)</string>
+    <string name="settings_downloading">Downloading: %1$s</string>
+    <string name="settings_downloaded">Downloaded: %1$s</string>
+
+    <!-- ========== Service Notifications ========== -->
+    <string name="svc_notification_starting">Starting clawseed gateway…</string>
+    <string name="svc_notification_running">Gateway running :%1$d</string>
+    <string name="svc_notification_start_failed">Startup failed</string>
+    <string name="svc_gateway_start_failed">Gateway startup failed</string>
+    <string name="svc_notification_executing">Executing: %1$s</string>
+    <string name="svc_alarm_fired">Alarm fired</string>
+    <string name="svc_connection_timeout">Connection timeout</string>
+    <string name="svc_no_response">No response (timeout)</string>
+    <string name="svc_execution_failed">Execution failed</string>
+    <string name="svc_alarm_name_with_message">Alarm: %1$s</string>
+    <string name="svc_alarm_name_with_time">Alarm %1$s</string>
+    <string name="svc_alarm_message">Alarm fired</string>
+    <string name="svc_dismiss_alarm">Dismiss alarm</string>
+    <string name="svc_channel_gateway">ClawSeed Gateway</string>
+    <string name="svc_channel_gateway_desc">ClawSeed gateway service</string>
+    <string name="svc_channel_tasks">Scheduled Tasks</string>
+    <string name="svc_channel_tasks_desc">Scheduled task execution results</string>
+    <string name="svc_channel_reminder">Task Reminders</string>
+    <string name="svc_channel_reminder_desc">Scheduled task reminders</string>
+    <string name="svc_channel_alarm">Alarm</string>
+    <string name="svc_channel_alarm_desc">Alarm reminders</string>
+
+    <!-- ========== Provider Presets ========== -->
+    <string name="provider_deepseek">DeepSeek</string>
+    <string name="provider_qwen">Qwen (Tongyi)</string>
+    <string name="provider_moonshot">Moonshot (Kimi)</string>
+    <string name="provider_glm">GLM (Zhipu)</string>
+    <string name="provider_doubao">Doubao</string>
+    <string name="provider_qianfan">Baidu (Qianfan)</string>
+    <string name="provider_mimo">Mimo</string>
+    <string name="provider_openai">OpenAI</string>
+    <string name="provider_anthropic">Anthropic</string>
+    <string name="provider_openrouter">OpenRouter</string>
+    <string name="provider_ollama">Ollama (Local)</string>
+    <string name="provider_custom">Custom</string>
+
+    <!-- ========== ChatViewModel (user-visible strings only, NOT tool descriptions) ========== -->
+    <string name="chat_tool_location_no_permission">Location permission not granted</string>
+    <string name="chat_tool_location_unavailable">Unable to get location, please ensure GPS or network location is enabled</string>
+    <string name="chat_tool_alarm_missing_params">Missing required params: hour and minute</string>
+    <string name="chat_tool_alarm_invalid_range">Invalid parameter range: hour should be 0-23, minute should be 0-59</string>
+    <string name="chat_auth_hint">Please authorize in %1$s App</string>
 </resources>

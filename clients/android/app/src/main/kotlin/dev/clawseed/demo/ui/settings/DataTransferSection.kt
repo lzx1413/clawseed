@@ -20,7 +20,6 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,11 +31,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import dev.clawseed.demo.R
 import dev.clawseed.demo.datatransfer.DataCategory
 import dev.clawseed.demo.datatransfer.DataTransferManager
 import dev.clawseed.demo.datatransfer.ImportResult
 import dev.clawseed.demo.datatransfer.ImportStrategy
+import dev.clawseed.demo.i18n.desc
+import dev.clawseed.demo.i18n.label
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -64,6 +67,12 @@ fun DataTransferSection() {
     var importResult by remember { mutableStateOf<ImportResult?>(null) }
     var importError by remember { mutableStateOf<String?>(null) }
 
+    // Pre-resolve format strings for use inside coroutines (non-Composable context)
+    val exportSuccessFormat = stringResource(R.string.data_export_success)
+    val exportFailedFormat = stringResource(R.string.data_export_failed)
+    val importFailedFormat = stringResource(R.string.data_import_failed)
+    val cannotReadFile = stringResource(R.string.data_cannot_read_file)
+
     // SAF launchers
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip"),
@@ -80,9 +89,10 @@ fun DataTransferSection() {
                             .getOrElse { throw it }
                     }
                 }
-                exportSuccess = "导出成功！已导出 ${selectedExportCategories.map { it.label }.joinToString(", ")}"
+                val categoryNames = selectedExportCategories.map { it.label(context) }.joinToString(", ")
+                exportSuccess = exportSuccessFormat.format(categoryNames)
             } catch (e: Exception) {
-                exportError = "导出失败: ${e.message}"
+                exportError = exportFailedFormat.format(e.message ?: "")
             } finally {
                 isExporting = false
             }
@@ -102,11 +112,11 @@ fun DataTransferSection() {
                     context.contentResolver.openInputStream(uri)?.use { inputStream ->
                         manager.importData(inputStream, selectedImportCategories, importStrategies)
                             .getOrElse { throw it }
-                    } ?: throw IllegalStateException("无法读取文件")
+                    } ?: throw IllegalStateException(cannotReadFile)
                 }
                 importResult = result
             } catch (e: Exception) {
-                importError = "导入失败: ${e.message}"
+                importError = importFailedFormat.format(e.message ?: "")
             } finally {
                 isImporting = false
             }
@@ -120,7 +130,7 @@ fun DataTransferSection() {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("导出数据", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.data_export), style = MaterialTheme.typography.titleMedium)
 
                 // Category checkboxes
                 for (category in DataCategory.entries) {
@@ -140,9 +150,9 @@ fun DataTransferSection() {
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Column {
-                            Text(category.label, style = MaterialTheme.typography.bodyMedium)
+                            Text(category.label(), style = MaterialTheme.typography.bodyMedium)
                             Text(
-                                category.description,
+                                category.desc(),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                             )
@@ -161,9 +171,9 @@ fun DataTransferSection() {
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Column {
-                        Text("排除敏感数据", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.data_exclude_sensitive), style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            "不导出 API 密钥和认证令牌",
+                            stringResource(R.string.data_exclude_sensitive_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                         )
@@ -183,9 +193,9 @@ fun DataTransferSection() {
                     if (isExporting) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("导出中...")
+                        Text(stringResource(R.string.data_exporting))
                     } else {
-                        Text("导出")
+                        Text(stringResource(R.string.data_export_btn))
                     }
                 }
 
@@ -205,7 +215,7 @@ fun DataTransferSection() {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("导入数据", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.data_import), style = MaterialTheme.typography.titleMedium)
 
                 // Category checkboxes
                 for (category in DataCategory.entries) {
@@ -225,9 +235,9 @@ fun DataTransferSection() {
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Column {
-                            Text(category.label, style = MaterialTheme.typography.bodyMedium)
+                            Text(category.label(), style = MaterialTheme.typography.bodyMedium)
                             Text(
-                                category.description,
+                                category.desc(),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                             )
@@ -248,7 +258,7 @@ fun DataTransferSection() {
                                             this[category] = strategy
                                         }
                                     },
-                                    label = { Text(strategy.label) },
+                                    label = { Text(strategy.label()) },
                                 )
                             }
                         }
@@ -257,7 +267,7 @@ fun DataTransferSection() {
 
                 // Warning text
                 Text(
-                    "导入将修改应用数据。建议先导出备份。",
+                    stringResource(R.string.data_import_warning),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                 )
@@ -273,9 +283,9 @@ fun DataTransferSection() {
                     if (isImporting) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("导入中...")
+                        Text(stringResource(R.string.data_importing))
                     } else {
-                        Text("选择文件并导入")
+                        Text(stringResource(R.string.data_import_btn))
                     }
                 }
 
@@ -291,20 +301,25 @@ fun DataTransferSection() {
     importResult?.let { result ->
         AlertDialog(
             onDismissRequest = { importResult = null },
-            title = { Text(if (result.isSuccess) "导入完成" else "导入出现问题") },
+            title = {
+                Text(
+                    if (result.isSuccess) stringResource(R.string.data_import_complete)
+                    else stringResource(R.string.data_import_issues),
+                )
+            },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(result.summary, style = MaterialTheme.typography.bodyMedium)
+                    Text(result.summaryString(), style = MaterialTheme.typography.bodyMedium)
                     if (result.warnings.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("警告:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.data_warning_label), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         for (w in result.warnings) {
                             Text(w, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                     if (result.errors.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("错误:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        Text(stringResource(R.string.data_error_label), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                         for (e in result.errors) {
                             Text(e, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                         }
@@ -312,7 +327,7 @@ fun DataTransferSection() {
                 }
             },
             confirmButton = {
-                Button(onClick = { importResult = null }) { Text("确定") }
+                Button(onClick = { importResult = null }) { Text(stringResource(R.string.common_confirm)) }
             },
         )
     }
@@ -337,3 +352,31 @@ private val DataCategory.defaultStrategies: List<ImportStrategy>
         DataCategory.SKILLS -> listOf(ImportStrategy.MERGE, ImportStrategy.REPLACE)
         else -> listOf(ImportStrategy.REPLACE)
     }
+
+/** Build a summary string for the import result using localized resources. */
+@Composable
+private fun ImportResult.summaryString(): String {
+    val parts = mutableListOf<String>()
+    if (importedConfig) {
+        parts.add(stringResource(R.string.data_import_summary_config))
+    }
+    if (importedTasks > 0) {
+        parts.add(stringResource(R.string.data_import_summary_tasks, importedTasks))
+    }
+    if (importedMemories > 0) {
+        parts.add(stringResource(R.string.data_import_summary_memories, importedMemories))
+    }
+    if (importedSessions > 0) {
+        parts.add(stringResource(R.string.data_import_summary_sessions, importedSessions))
+    }
+    if (importedMessages > 0) {
+        parts.add(stringResource(R.string.data_import_summary_messages, importedMessages))
+    }
+    if (importedSkills > 0) {
+        parts.add(stringResource(R.string.data_import_summary_skills, importedSkills))
+    }
+    if (importedPersonalityFiles > 0) {
+        parts.add(stringResource(R.string.data_import_summary_personality, importedPersonalityFiles))
+    }
+    return parts.joinToString(", ")
+}

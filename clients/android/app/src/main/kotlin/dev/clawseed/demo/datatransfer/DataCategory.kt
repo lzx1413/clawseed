@@ -1,34 +1,37 @@
 package dev.clawseed.demo.datatransfer
 
+import androidx.annotation.StringRes
+import dev.clawseed.demo.R
+
 /** Categories of data that can be exported/imported. */
 enum class DataCategory(
-    val label: String,
-    val description: String,
+    @StringRes val labelRes: Int,
+    @StringRes val descriptionRes: Int,
     val isSensitive: Boolean,
 ) {
     CONFIG(
-        label = "配置",
-        description = "导出 clawseed.toml、应用偏好、定时任务",
+        labelRes = R.string.enum_data_category_config,
+        descriptionRes = R.string.enum_data_category_config_desc,
         isSensitive = true,
     ),
     MEMORY(
-        label = "记忆",
-        description = "导出记忆数据库 (brain.db)",
+        labelRes = R.string.enum_data_category_memory,
+        descriptionRes = R.string.enum_data_category_memory_desc,
         isSensitive = false,
     ),
     SESSIONS(
-        label = "会话",
-        description = "导出会话历史记录",
+        labelRes = R.string.enum_data_category_sessions,
+        descriptionRes = R.string.enum_data_category_sessions_desc,
         isSensitive = false,
     ),
     SKILLS(
-        label = "技能",
-        description = "导出所有技能文件和配置",
+        labelRes = R.string.enum_data_category_skills,
+        descriptionRes = R.string.enum_data_category_skills_desc,
         isSensitive = false,
     ),
     PERSONALITY(
-        label = "人格",
-        description = "导出 SOUL.md 等人格文件",
+        labelRes = R.string.enum_data_category_personality,
+        descriptionRes = R.string.enum_data_category_personality_desc,
         isSensitive = false,
     ),
 }

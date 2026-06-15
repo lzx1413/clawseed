@@ -59,6 +59,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -73,6 +75,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.clawseed.demo.BuildConfig
+import dev.clawseed.demo.R
 import dev.clawseed.demo.data.LocalStore
 import kotlinx.coroutines.launch
 
@@ -111,7 +114,7 @@ private fun ExpandableSection(
             Icon(
                 if (expanded) Icons.Default.KeyboardArrowDown
                 else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = if (expanded) "收起" else "展开",
+                contentDescription = if (expanded) stringResource(R.string.common_collapse) else stringResource(R.string.common_expand),
             )
         }
         AnimatedVisibility(
@@ -159,15 +162,15 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("设置") },
+                title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.loadAll() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "刷新")
+                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.common_refresh))
                     }
                 },
             )
@@ -197,13 +200,13 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                     item {
                         val themeMode by localStore.themeMode.collectAsState(initial = "system")
                         ExpandableSection(
-                            title = "外观",
+                            title = stringResource(R.string.settings_appearance),
                             expanded = appearanceExpanded,
                             onToggle = { appearanceExpanded = !appearanceExpanded },
                             subtitle = if (!appearanceExpanded) when (themeMode) {
-                                "light" -> "浅色"
-                                "dark" -> "深色"
-                                else -> "跟随系统"
+                                "light" -> stringResource(R.string.settings_theme_light)
+                                "dark" -> stringResource(R.string.settings_theme_dark)
+                                else -> stringResource(R.string.settings_theme_system)
                             } else null,
                         ) {
                             AppearanceCard(localStore)
@@ -213,15 +216,16 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
 
                 // Session settings section
                 item {
-                    val ttlLabel = ttlHoursToDays(uiState.sessionTtlHours).let { d ->
-                        if (d.isEmpty() || d == "0") "永不删除" else "$d 天"
-                    }
-                    val councilLabel = if (uiState.councilEnabled) "${uiState.councilReviewers.size} 个审阅者" else "关闭"
                     ExpandableSection(
-                        title = "会话设置",
+                        title = stringResource(R.string.settings_session_title),
                         expanded = sessionExpanded,
                         onToggle = { sessionExpanded = !sessionExpanded },
-                        subtitle = if (!sessionExpanded) "自动清理: $ttlLabel | 议会: $councilLabel" else null,
+                        subtitle = if (!sessionExpanded) {
+                            val d = ttlHoursToDays(uiState.sessionTtlHours)
+                            val ttlStr = if (d.isEmpty() || d == "0") stringResource(R.string.settings_session_ttl_never_delete) else stringResource(R.string.settings_session_ttl_days, d.toInt())
+                            val councilStr = if (uiState.councilEnabled) stringResource(R.string.settings_council_reviewers, uiState.councilReviewers.size) else stringResource(R.string.settings_council_off)
+                            stringResource(R.string.settings_session_subtitle, ttlStr, councilStr)
+                        } else null,
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             SessionSettingsCard(
@@ -245,7 +249,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                                     CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
                                     Spacer(modifier = Modifier.width(8.dp))
                                 }
-                                Text(if (uiState.isSaving) "保存中..." else "保存会话配置")
+                                Text(if (uiState.isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_session_config))
                             }
                         }
                     }
@@ -254,12 +258,12 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                 // LLM Config section
                 item {
                     ExpandableSection(
-                        title = "LLM 配置",
+                        title = stringResource(R.string.settings_llm_config),
                         expanded = llmExpanded,
                         onToggle = { llmExpanded = !llmExpanded },
                         subtitle = if (!llmExpanded && uiState.selectedModel.isNotBlank())
-                            "${PROVIDER_PRESETS[uiState.selectedPresetIndex].displayName} / ${uiState.selectedModel}"
-                        else if (!llmExpanded) "未配置" else null,
+                            "${stringResource(PROVIDER_PRESETS[uiState.selectedPresetIndex].displayNameRes)} / ${uiState.selectedModel}"
+                        else if (!llmExpanded) stringResource(R.string.settings_not_configured) else null,
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             ProviderFormEditor(
@@ -283,7 +287,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                                     CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
                                     Spacer(modifier = Modifier.width(8.dp))
                                 }
-                                Text(if (uiState.isSaving) "保存中..." else "保存配置")
+                                Text(if (uiState.isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_config))
                             }
                         }
                     }
@@ -297,7 +301,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                         else -> null
                     }
                     ExpandableSection(
-                        title = "搜索引擎",
+                        title = stringResource(R.string.settings_search_engine),
                         expanded = searchEngineExpanded,
                         onToggle = { searchEngineExpanded = !searchEngineExpanded },
                         subtitle = if (!searchEngineExpanded) searchSubtitle else null,
@@ -320,7 +324,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                                     CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
                                     Spacer(modifier = Modifier.width(8.dp))
                                 }
-                                Text(if (uiState.isSaving) "保存中..." else "保存搜索配置")
+                                Text(if (uiState.isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_search_config))
                             }
                         }
                     }
@@ -329,14 +333,14 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                 // Memory section (向量搜索/Embedding)
                 item {
                     val memorySubtitle = when (uiState.embeddingProvider) {
-                        "local" -> "本地模型"
-                        "openai" -> "OpenAI"
-                        "openrouter" -> "OpenRouter"
-                        "" -> "关闭"
-                        else -> if (uiState.embeddingProvider.startsWith("custom:")) "自定义" else uiState.embeddingProvider
+                        "local" -> stringResource(R.string.settings_memory_local_model)
+                        "openai" -> stringResource(R.string.settings_memory_openai)
+                        "openrouter" -> stringResource(R.string.settings_memory_openrouter)
+                        "" -> stringResource(R.string.settings_memory_off)
+                        else -> if (uiState.embeddingProvider.startsWith("custom:")) stringResource(R.string.settings_memory_custom) else uiState.embeddingProvider
                     }
                     ExpandableSection(
-                        title = "记忆",
+                        title = stringResource(R.string.settings_memory),
                         expanded = memoryExpanded,
                         onToggle = { memoryExpanded = !memoryExpanded },
                         subtitle = if (!memoryExpanded) memorySubtitle else null,
@@ -360,7 +364,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                             }
                             if (uiState.embeddingProvider == "local" && progress != null && progress.isComplete) {
                                 Text(
-                                    text = "模型下载完成，Gateway 正在启动...",
+                                    text = stringResource(R.string.settings_memory_model_downloaded),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary,
                                 )
@@ -374,14 +378,13 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                                     CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
                                     Spacer(modifier = Modifier.width(8.dp))
                                 }
-                                Text(if (uiState.isSaving) "保存中..." else "保存记忆配置")
+                                Text(if (uiState.isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_memory_config))
                             }
                         }
                     }
                 }
 
                 // Soul section
-                // Soul section (original)
                 item {
                     val soulLoaded = uiState.soulContent != null
                     val soulPreview = uiState.soulContent?.lineSequence()
@@ -390,8 +393,8 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                         title = "Soul",
                         expanded = soulExpanded,
                         onToggle = { soulExpanded = !soulExpanded },
-                        subtitle = if (!soulExpanded && !soulLoaded) "加载失败"
-                        else if (!soulExpanded && soulPreview.isNullOrBlank()) "未自定义"
+                        subtitle = if (!soulExpanded && !soulLoaded) stringResource(R.string.settings_soul_load_error)
+                        else if (!soulExpanded && soulPreview.isNullOrBlank()) stringResource(R.string.settings_soul_not_customized)
                         else if (!soulExpanded) soulPreview
                         else null,
                     ) {
@@ -404,7 +407,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                             )
                         } else {
                             Text(
-                                text = "Soul 内容加载失败，请刷新重试",
+                                text = stringResource(R.string.settings_soul_load_failed),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error,
                             )
@@ -415,7 +418,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                 // Tools section
                 item {
                     ExpandableSection(
-                        title = "已注册工具 (${uiState.tools.size})",
+                        title = stringResource(R.string.settings_registered_tools, uiState.tools.size),
                         expanded = toolsExpanded,
                         onToggle = { toolsExpanded = !toolsExpanded },
                     ) {
@@ -433,7 +436,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                 // Skills section
                 item {
                     ExpandableSection(
-                        title = "可用技能 (${uiState.skills.size})",
+                        title = stringResource(R.string.settings_available_skills, uiState.skills.size),
                         expanded = skillsExpanded,
                         onToggle = { skillsExpanded = !skillsExpanded },
                     ) {
@@ -453,7 +456,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                                     modifier = Modifier.size(18.dp),
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(if (uiState.isRefreshingSkills) "刷新中..." else "刷新技能")
+                                Text(if (uiState.isRefreshingSkills) stringResource(R.string.common_saving) else stringResource(R.string.settings_refresh_skills))
                             }
                             uiState.skills.forEach { skill ->
                                 SkillCard(
@@ -469,7 +472,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                 if (localStore != null) {
                     item {
                         ExpandableSection(
-                            title = "开发者选项",
+                            title = stringResource(R.string.settings_developer_options),
                             expanded = developerExpanded,
                             onToggle = { developerExpanded = !developerExpanded },
                         ) {
@@ -486,11 +489,11 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                                         verticalArrangement = Arrangement.spacedBy(12.dp),
                                     ) {
                                         Text(
-                                            text = "全局配置 (TOML)",
+                                            text = stringResource(R.string.settings_global_config),
                                             style = MaterialTheme.typography.titleSmall,
                                         )
                                         Text(
-                                            text = "直接编辑 clawseed.toml。未保存的表单修改不会反映在此处。修改后需重启 Gateway 生效。",
+                                            text = stringResource(R.string.settings_global_config_desc),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                         )
@@ -507,7 +510,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                                                 CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
                                                 Spacer(modifier = Modifier.width(8.dp))
                                             }
-                                            Text(if (uiState.isSaving) "保存中..." else "保存全局配置")
+                                            Text(if (uiState.isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_global_config))
                                         }
                                     }
                                 }
@@ -519,10 +522,10 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                 // Data Transfer section
                 item {
                     ExpandableSection(
-                        title = "数据管理",
+                        title = stringResource(R.string.settings_data_management),
                         expanded = dataTransferExpanded,
                         onToggle = { dataTransferExpanded = !dataTransferExpanded },
-                        subtitle = if (!dataTransferExpanded) "导出/导入应用数据" else null,
+                        subtitle = if (!dataTransferExpanded) stringResource(R.string.settings_data_management_subtitle) else null,
                     ) {
                         DataTransferSection()
                     }
@@ -531,7 +534,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                 // About section
                 item {
                     ExpandableSection(
-                        title = "关于",
+                        title = stringResource(R.string.settings_about),
                         expanded = aboutExpanded,
                         onToggle = { aboutExpanded = !aboutExpanded },
                     ) {
@@ -549,7 +552,9 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
 private fun AppearanceCard(localStore: LocalStore) {
     val themeMode by localStore.themeMode.collectAsState(initial = "system")
     val oledMode by localStore.oledMode.collectAsState(initial = false)
+    val languageMode by localStore.languageMode.collectAsState(initial = "system")
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val useDarkTheme = when (themeMode) {
         "light" -> false
         "dark" -> true
@@ -567,17 +572,36 @@ private fun AppearanceCard(localStore: LocalStore) {
                 FilterChip(
                     selected = themeMode == "light",
                     onClick = { scope.launch { localStore.setThemeMode("light") } },
-                    label = { Text("浅色") },
+                    label = { Text(stringResource(R.string.settings_theme_light)) },
                 )
                 FilterChip(
                     selected = themeMode == "dark",
                     onClick = { scope.launch { localStore.setThemeMode("dark") } },
-                    label = { Text("深色") },
+                    label = { Text(stringResource(R.string.settings_theme_dark)) },
                 )
                 FilterChip(
                     selected = themeMode == "system",
                     onClick = { scope.launch { localStore.setThemeMode("system") } },
-                    label = { Text("跟随系统") },
+                    label = { Text(stringResource(R.string.settings_theme_system)) },
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(stringResource(R.string.settings_language), style = MaterialTheme.typography.bodyMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = languageMode == "system",
+                    onClick = { scope.launch { localStore.setLanguageMode("system"); (context as? android.app.Activity)?.recreate() } },
+                    label = { Text(stringResource(R.string.settings_language_system)) },
+                )
+                FilterChip(
+                    selected = languageMode == "en",
+                    onClick = { scope.launch { localStore.setLanguageMode("en"); (context as? android.app.Activity)?.recreate() } },
+                    label = { Text(stringResource(R.string.settings_language_english)) },
+                )
+                FilterChip(
+                    selected = languageMode == "zh",
+                    onClick = { scope.launch { localStore.setLanguageMode("zh"); (context as? android.app.Activity)?.recreate() } },
+                    label = { Text(stringResource(R.string.settings_language_chinese)) },
                 )
             }
             if (useDarkTheme) {
@@ -588,9 +612,9 @@ private fun AppearanceCard(localStore: LocalStore) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("OLED 纯黑背景", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.settings_oled_mode), style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            "使用纯黑背景以节省 OLED 屏幕电量",
+                            stringResource(R.string.settings_oled_mode_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                         )
@@ -623,7 +647,7 @@ private fun DeveloperOptionsCard(localStore: LocalStore) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Debug Query Message",
+                    text = stringResource(R.string.settings_debug_query),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Switch(
@@ -633,7 +657,7 @@ private fun DeveloperOptionsCard(localStore: LocalStore) {
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "开启后，每次发送消息时会在聊天界面显示实际发送给 LLM 的完整内容，并估计 Token 数量",
+                text = stringResource(R.string.settings_debug_desc),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             )
@@ -666,7 +690,7 @@ private fun SoulEditor(
                     .height(300.dp),
                 textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                 label = { Text("SOUL.md") },
-                placeholder = { Text("定义 AI 助手的人格和行为准则...") },
+                placeholder = { Text(stringResource(R.string.settings_soul_placeholder)) },
             )
 
             Row(
@@ -681,12 +705,12 @@ private fun SoulEditor(
                         CircularProgressIndicator(modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                     }
-                    Text(if (isSaving) "保存中..." else "保存 Soul")
+                    Text(if (isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_soul))
                 }
             }
 
             Text(
-                text = "修改后需要新会话才能生效。Soul 定义了 AI 助手的核心行为和人格。",
+                text = stringResource(R.string.settings_soul_desc),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
             )
@@ -706,10 +730,10 @@ private fun StatusCard(
         ),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Gateway 状态", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.settings_gateway_status), style = MaterialTheme.typography.titleSmall)
             Spacer(modifier = Modifier.height(8.dp))
             if (status != null) {
-                StatusRow("Provider", status.provider ?: "未知")
+                StatusRow("Provider", status.provider ?: stringResource(R.string.settings_gateway_unknown))
                 StatusRow("Model", status.model)
                 val mem = status.memory
                 if (mem != null) {
@@ -725,14 +749,14 @@ private fun StatusCard(
                 }
             } else if (downloadProgress != null && !downloadProgress.isComplete) {
                 Text(
-                    "Gateway 正在启动，正在下载嵌入模型...",
+                    stringResource(R.string.settings_gateway_starting_download),
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 DownloadProgressIndicator(downloadProgress)
             } else {
-                Text("无法连接 Gateway（正在启动或启动失败）", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.settings_gateway_unreachable), color = MaterialTheme.colorScheme.error)
             }
         }
     }
@@ -793,7 +817,7 @@ private fun ProviderFormEditor(
                 onExpandedChange = { providerExpanded = it },
             ) {
                 OutlinedTextField(
-                    value = PROVIDER_PRESETS[state.selectedPresetIndex].displayName,
+                    value = stringResource(PROVIDER_PRESETS[state.selectedPresetIndex].displayNameRes),
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("Provider") },
@@ -806,7 +830,7 @@ private fun ProviderFormEditor(
                 ) {
                     PROVIDER_PRESETS.forEachIndexed { index, preset ->
                         DropdownMenuItem(
-                            text = { Text(preset.displayName) },
+                            text = { Text(stringResource(preset.displayNameRes)) },
                             onClick = {
                                 onSelectProvider(index)
                                 providerExpanded = false
@@ -846,14 +870,14 @@ private fun ProviderFormEditor(
                     {
                         IconButton(onClick = { showApiKey = !showApiKey }) {
                             Text(
-                                if (showApiKey) "隐藏" else "显示",
+                                if (showApiKey) stringResource(R.string.common_hide) else stringResource(R.string.common_show),
                                 style = MaterialTheme.typography.labelSmall,
                             )
                         }
                     }
                 } else null,
                 supportingText = if (isPlaceholderKey && state.hasServerApiKey) {
-                    { Text("服务器已保存密钥，无需重新输入", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) }
+                    { Text(stringResource(R.string.settings_server_has_key), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) }
                 } else null,
             )
 
@@ -870,7 +894,7 @@ private fun ProviderFormEditor(
                         CircularProgressIndicator(modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                     }
-                    Text("获取模型列表")
+                    Text(stringResource(R.string.settings_fetch_models))
                 }
 
                 when (state.connectionOk) {
@@ -882,7 +906,7 @@ private fun ProviderFormEditor(
                             modifier = Modifier.size(20.dp),
                         )
                         Text(
-                            "${state.availableModels.size} 个模型",
+                            stringResource(R.string.settings_model_count, state.availableModels.size),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -895,7 +919,7 @@ private fun ProviderFormEditor(
                             modifier = Modifier.size(20.dp),
                         )
                         Text(
-                            "连接失败",
+                            stringResource(R.string.settings_connection_failed),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                         )
@@ -940,7 +964,7 @@ private fun ProviderFormEditor(
                     label = { Text("Model") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    placeholder = { Text("点击上方按钮获取可用模型") },
+                    placeholder = { Text(stringResource(R.string.settings_model_placeholder)) },
                 )
             }
 
@@ -952,9 +976,9 @@ private fun ProviderFormEditor(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Thinking Mode", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.settings_thinking_mode), style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        "启用后模型会先推理思考再回答，适用于复杂任务",
+                        stringResource(R.string.settings_thinking_desc),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     )
@@ -978,7 +1002,7 @@ private fun ProviderFormEditor(
                 placeholder = { Text("262144") },
                 supportingText = {
                     Text(
-                        "最大输出 Token 数（思考+回复共享），建议 262144 (256K)。过小可能导致长回复被截断",
+                        stringResource(R.string.settings_max_tokens_desc),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 },
@@ -992,9 +1016,9 @@ private fun ProviderFormEditor(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("自动续接", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.settings_auto_continue), style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        "当回复因 Token 限制被截断时自动续接输出",
+                        stringResource(R.string.settings_auto_continue_desc),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     )
@@ -1179,7 +1203,7 @@ private fun DownloadProgressIndicator(progress: dev.clawseed.sdk.core.model.Embe
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = "正在下载: ${progress.filename}",
+                text = stringResource(R.string.settings_downloading, progress.filename),
                 style = MaterialTheme.typography.titleSmall,
             )
 
@@ -1209,7 +1233,7 @@ private fun DownloadProgressIndicator(progress: dev.clawseed.sdk.core.model.Embe
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    text = "已下载: ${formatBytes(progress.downloadedBytes)}",
+                    text = stringResource(R.string.settings_downloaded, formatBytes(progress.downloadedBytes)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1249,28 +1273,28 @@ private fun EmbeddingCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("向量搜索 / Embedding", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.settings_memory_embedding), style = MaterialTheme.typography.titleSmall)
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = embeddingProvider.isBlank(),
                     onClick = { onProviderChange("") },
-                    label = { Text("关闭") },
+                    label = { Text(stringResource(R.string.settings_memory_off)) },
                 )
                 FilterChip(
                     selected = embeddingProvider == "local",
                     onClick = { onProviderChange("local") },
-                    label = { Text("本地模型") },
+                    label = { Text(stringResource(R.string.settings_memory_local_model)) },
                 )
                 FilterChip(
                     selected = embeddingProvider == "openai",
                     onClick = { onProviderChange("openai") },
-                    label = { Text("OpenAI") },
+                    label = { Text(stringResource(R.string.settings_memory_openai)) },
                 )
                 FilterChip(
                     selected = embeddingProvider == "openrouter",
                     onClick = { onProviderChange("openrouter") },
-                    label = { Text("OpenRouter") },
+                    label = { Text(stringResource(R.string.settings_memory_openrouter)) },
                 )
             }
 
@@ -1309,7 +1333,7 @@ private fun EmbeddingCard(
 
                 if (isLocal) {
                     Text(
-                        text = "首次使用将下载约 80MB 模型文件，之后缓存到本地",
+                        text = stringResource(R.string.settings_embedding_local_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     )
@@ -1326,7 +1350,7 @@ private fun EmbeddingCard(
                             {
                                 IconButton(onClick = onToggleApiKeyVisibility) {
                                     Text(
-                                        if (embeddingApiKeyVisible) "隐藏" else "显示",
+                                        if (embeddingApiKeyVisible) stringResource(R.string.common_hide) else stringResource(R.string.common_show),
                                         style = MaterialTheme.typography.labelSmall,
                                     )
                                 }
@@ -1355,6 +1379,8 @@ private fun SearchEngineCard(
     val searchEngines = listOf("bing" to "Bing", "tavily" to "Tavily")
     val selectedDisplayName = searchEngines.find { it.first == searchEngine }?.second ?: "Bing"
 
+    val freeApiKeyPrefix = stringResource(R.string.settings_search_free_api_key)
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -1365,7 +1391,7 @@ private fun SearchEngineCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("搜索引擎", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.settings_search_engine), style = MaterialTheme.typography.titleSmall)
 
             ExposedDropdownMenuBox(
                 expanded = expanded,
@@ -1408,7 +1434,7 @@ private fun SearchEngineCard(
                         {
                             IconButton(onClick = onToggleTavilyApiKeyVisibility) {
                                 Text(
-                                    if (tavilyApiKeyVisible) "隐藏" else "显示",
+                                    if (tavilyApiKeyVisible) stringResource(R.string.common_hide) else stringResource(R.string.common_show),
                                     style = MaterialTheme.typography.labelSmall,
                                 )
                             }
@@ -1418,7 +1444,7 @@ private fun SearchEngineCard(
 
                 ClickableText(
                     text = buildAnnotatedString {
-                        append("免费获取 API Key: ")
+                        append(freeApiKeyPrefix)
                         withStyle(SpanStyle(
                             color = MaterialTheme.colorScheme.primary,
                             textDecoration = TextDecoration.Underline,
@@ -1430,7 +1456,7 @@ private fun SearchEngineCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     ),
                 ) { offset ->
-                    val urlStart = "免费获取 API Key: ".length
+                    val urlStart = freeApiKeyPrefix.length
                     if (offset >= urlStart) {
                         uriHandler.openUri("https://tavily.com")
                     }
@@ -1469,12 +1495,12 @@ private fun SessionSettingsCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "会话自动清理",
+                text = stringResource(R.string.settings_session_auto_cleanup),
                 style = MaterialTheme.typography.titleSmall,
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "超过设定天数未活动的会话会在 gateway 启动时自动删除，0 表示永不删除",
+                text = stringResource(R.string.settings_session_cleanup_desc),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1486,7 +1512,7 @@ private fun SessionSettingsCard(
                     daysValue = filtered
                     onTtlChange(ttlDaysToHours(filtered))
                 },
-                label = { Text("天数（0 = 永不删除）") },
+                label = { Text(stringResource(R.string.settings_session_ttl_days_label)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -1510,12 +1536,12 @@ fun CouncilCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("启用议会模式", style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.settings_council_enable), style = MaterialTheme.typography.bodyLarge)
             Switch(checked = enabled, onCheckedChange = onToggleEnabled)
         }
         if (enabled) {
             Text(
-                "议会模式让多个审阅者对 Leader 的操作提供监督和建议，通过共享内存进行通信。",
+                stringResource(R.string.settings_council_desc),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1528,7 +1554,7 @@ fun CouncilCard(
                 )
             }
             OutlinedButton(onClick = onAddReviewer, modifier = Modifier.fillMaxWidth()) {
-                Text("+ 添加审阅者")
+                Text(stringResource(R.string.settings_add_reviewer))
             }
         }
     }
@@ -1551,24 +1577,24 @@ fun ReviewerEditor(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("审阅者 ${index + 1}", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.settings_reviewer_label, index + 1), style = MaterialTheme.typography.labelLarge)
                 IconButton(onClick = onRemove, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Default.Close, contentDescription = "删除", modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_delete), modifier = Modifier.size(16.dp))
                 }
             }
             OutlinedTextField(
                 value = draft.role,
                 onValueChange = { onUpdate(draft.copy(role = it)) },
-                label = { Text("角色") },
-                placeholder = { Text("如: security, quality, strategy") },
+                label = { Text(stringResource(R.string.settings_reviewer_role)) },
+                placeholder = { Text(stringResource(R.string.settings_reviewer_role_placeholder)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
             OutlinedTextField(
                 value = draft.focusPrompt,
                 onValueChange = { onUpdate(draft.copy(focusPrompt = it)) },
-                label = { Text("关注重点") },
-                placeholder = { Text("审阅者应关注哪些方面") },
+                label = { Text(stringResource(R.string.settings_reviewer_focus)) },
+                placeholder = { Text(stringResource(R.string.settings_reviewer_focus_placeholder)) },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2,
                 maxLines = 4,
@@ -1576,8 +1602,8 @@ fun ReviewerEditor(
             OutlinedTextField(
                 value = draft.model,
                 onValueChange = { onUpdate(draft.copy(model = it)) },
-                label = { Text("模型 (可选)") },
-                placeholder = { Text("留空则使用 Leader 的模型") },
+                label = { Text(stringResource(R.string.settings_reviewer_model)) },
+                placeholder = { Text(stringResource(R.string.settings_reviewer_model_placeholder)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
@@ -1606,9 +1632,9 @@ private fun AboutCard() {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("ClawSeed", style = MaterialTheme.typography.titleLarge)
             Spacer(modifier = Modifier.height(12.dp))
-            Text("App 版本: ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.settings_about_app_version, BuildConfig.VERSION_NAME), style = MaterialTheme.typography.bodyMedium)
             Spacer(modifier = Modifier.height(4.dp))
-            Text("编译日期: ${BuildConfig.BUILD_DATE}", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.settings_about_build_date, BuildConfig.BUILD_DATE), style = MaterialTheme.typography.bodyMedium)
             Spacer(modifier = Modifier.height(4.dp))
             Text("Agent SDK: ${BuildConfig.SDK_VERSION}", style = MaterialTheme.typography.bodyMedium)
             Spacer(modifier = Modifier.height(8.dp))

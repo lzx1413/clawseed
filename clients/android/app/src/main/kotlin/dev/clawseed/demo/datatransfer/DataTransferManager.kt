@@ -3,7 +3,9 @@ package dev.clawseed.demo.datatransfer
 import android.content.Context
 import android.util.Log
 import dev.clawseed.demo.BuildConfig
+import dev.clawseed.demo.R
 import dev.clawseed.demo.data.LocalStore
+import dev.clawseed.demo.i18n.label
 import dev.clawseed.demo.scheduled.ScheduledTask
 import dev.clawseed.demo.scheduled.ScheduledTaskStore
 import dev.clawseed.sdk.android.ClawSeedAndroid
@@ -189,11 +191,11 @@ class DataTransferManager(private val context: Context) {
 
             if (manifest == null) {
                 tempDir.deleteRecursively()
-                throw IllegalArgumentException("导出文件缺少 manifest.json")
+                throw IllegalArgumentException(context.getString(R.string.data_export_missing_manifest))
             }
             if (manifest.version > ExportManifest.CURRENT_VERSION) {
                 tempDir.deleteRecursively()
-                throw IllegalArgumentException("导出文件格式版本不兼容 (v${manifest.version} > v${ExportManifest.CURRENT_VERSION})")
+                throw IllegalArgumentException(context.getString(R.string.data_export_version_incompatible, manifest.version, ExportManifest.CURRENT_VERSION))
             }
 
             // Check which categories are available in the ZIP
@@ -213,7 +215,7 @@ class DataTransferManager(private val context: Context) {
 
             for (category in categories) {
                 if (category !in availableInZip) {
-                    warnings.add("导出文件中不包含 ${category.label} 数据")
+                    warnings.add(context.getString(R.string.data_export_missing_category, category.label(context)))
                     continue
                 }
                 try {
@@ -241,7 +243,7 @@ class DataTransferManager(private val context: Context) {
                         }
                     }
                 } catch (e: Exception) {
-                    errors.add("${category.label} 导入失败: ${e.message}")
+                    errors.add(context.getString(R.string.data_category_import_failed, category.label(context), e.message ?: ""))
                     Log.e(TAG, "Import failed for ${category.name}", e)
                 }
             }
@@ -251,7 +253,7 @@ class DataTransferManager(private val context: Context) {
                 try {
                     ClawSeedAndroid.restartGateway()
                 } catch (e: Exception) {
-                    warnings.add("Gateway 重启失败，请手动重启应用")
+                    warnings.add(context.getString(R.string.data_gateway_restart_failed))
                 }
             }
 

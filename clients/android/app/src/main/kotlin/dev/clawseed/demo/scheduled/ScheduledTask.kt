@@ -1,5 +1,7 @@
 package dev.clawseed.demo.scheduled
 
+import androidx.annotation.StringRes
+import dev.clawseed.demo.R
 import kotlinx.serialization.Serializable
 import java.util.UUID
 
@@ -21,7 +23,11 @@ data class ScheduledTask(
 )
 
 @Serializable
-enum class TaskRepeat { ONCE, DAILY, WEEKDAY }
+enum class TaskRepeat(@StringRes val labelRes: Int) {
+    ONCE(R.string.enum_task_repeat_once),
+    DAILY(R.string.enum_task_repeat_daily),
+    WEEKDAY(R.string.enum_task_repeat_weekday),
+}
 
 @Serializable
 enum class TaskStatus { RUNNING, SUCCESS, FAILED }

@@ -36,6 +36,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.res.stringResource
+import dev.clawseed.demo.R
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -135,7 +137,7 @@ fun CodeBlock(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(),
             ) {
                 Text(
-                    text = if (copied) "已复制" else "复制",
+                    text = if (copied) stringResource(R.string.common_copied) else stringResource(R.string.common_copy),
                     style = MaterialTheme.typography.labelSmall,
                 )
             }

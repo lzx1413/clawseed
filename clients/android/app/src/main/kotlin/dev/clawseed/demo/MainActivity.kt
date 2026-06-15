@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import dev.clawseed.demo.data.LocalStore
+import dev.clawseed.demo.i18n.LocaleHelper
 import dev.clawseed.demo.scheduled.ScheduledTaskManager
 import dev.clawseed.demo.scheduled.ScheduledTaskStore
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +40,10 @@ class MainActivity : ComponentActivity() {
         override fun onServiceDisconnected(name: ComponentName) {
             serviceRef.value = null
         }
+    }
+
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(LocaleHelper.wrapContext(newBase))
     }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {

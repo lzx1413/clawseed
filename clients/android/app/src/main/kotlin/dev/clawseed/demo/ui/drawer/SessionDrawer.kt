@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.SpanStyle
@@ -40,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.clawseed.demo.BuildConfig
+import dev.clawseed.demo.R
 import dev.clawseed.sdk.core.model.SessionSummary
 
 @Composable
@@ -68,7 +70,7 @@ fun SessionDrawer(
     ModalDrawerSheet {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
-                text = "对话历史",
+                text = stringResource(R.string.drawer_chat_history),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 8.dp),
             )
@@ -77,13 +79,13 @@ fun SessionDrawer(
 
             if (uiState.isLoading) {
                 Text(
-                    "加载中...",
+                    stringResource(R.string.common_loading),
                     modifier = Modifier.padding(16.dp),
                     style = MaterialTheme.typography.bodySmall,
                 )
             } else if (uiState.sessions.isEmpty()) {
                 Text(
-                    "暂无对话",
+                    stringResource(R.string.drawer_no_conversations),
                     modifier = Modifier.padding(16.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -113,21 +115,21 @@ fun SessionDrawer(
             HorizontalDivider()
 
             NavigationDrawerItem(
-                label = { Text("定时任务") },
+                label = { Text(stringResource(R.string.drawer_scheduled_tasks)) },
                 selected = false,
                 onClick = onScheduledTasks,
                 icon = { Icon(Icons.Default.Info, contentDescription = null) },
             )
 
             NavigationDrawerItem(
-                label = { Text("设置") },
+                label = { Text(stringResource(R.string.drawer_settings)) },
                 selected = false,
                 onClick = onSettings,
                 icon = { Icon(Icons.Default.Settings, contentDescription = null) },
             )
 
             NavigationDrawerItem(
-                label = { Text("关于") },
+                label = { Text(stringResource(R.string.drawer_about)) },
                 selected = false,
                 onClick = { showAbout = true },
                 icon = { Icon(Icons.Default.Info, contentDescription = null) },
@@ -171,7 +173,7 @@ private fun SessionItem(
             ) {
                 Icon(
                     Icons.Default.Edit,
-                    contentDescription = "重命名",
+                    contentDescription = stringResource(R.string.drawer_rename),
                     modifier = Modifier.size(14.dp),
                 )
             }
@@ -181,7 +183,7 @@ private fun SessionItem(
             ) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "删除",
+                    contentDescription = stringResource(R.string.common_delete),
                     modifier = Modifier.size(14.dp),
                 )
             }
@@ -199,7 +201,7 @@ private fun RenameDialog(
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("重命名对话") },
+        title = { Text(stringResource(R.string.drawer_rename_dialog_title)) },
         text = {
             OutlinedTextField(
                 value = name,
@@ -208,10 +210,10 @@ private fun RenameDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(name) }) { Text("确定") }
+            TextButton(onClick = { onConfirm(name) }) { Text(stringResource(R.string.common_confirm)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }
@@ -230,14 +232,14 @@ private fun AboutDialog(onDismiss: () -> Unit) {
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("关于") },
+        title = { Text(stringResource(R.string.drawer_about_title)) },
         text = {
             Column {
                 Text("ClawSeed", style = MaterialTheme.typography.titleLarge)
                 Spacer(modifier = Modifier.height(12.dp))
-                Text("版本: ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.drawer_version, BuildConfig.VERSION_NAME), style = MaterialTheme.typography.bodyMedium)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("编译日期: ${BuildConfig.BUILD_DATE}", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.drawer_build_date, BuildConfig.BUILD_DATE), style = MaterialTheme.typography.bodyMedium)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("Agent SDK: ${BuildConfig.SDK_VERSION}", style = MaterialTheme.typography.bodyMedium)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -252,7 +254,7 @@ private fun AboutDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("确定") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_confirm)) }
         },
     )
 }

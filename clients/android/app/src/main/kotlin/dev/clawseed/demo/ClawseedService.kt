@@ -25,6 +25,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import dev.clawseed.demo.scheduled.ScheduledTask
 import dev.clawseed.demo.scheduled.ScheduledTaskManager
+import dev.clawseed.demo.R
 import dev.clawseed.demo.scheduled.ScheduledTaskStore
 import dev.clawseed.demo.scheduled.TaskRepeat
 import dev.clawseed.demo.scheduled.TaskStatus
@@ -87,7 +88,7 @@ class ClawseedService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("启动 clawseed gateway..."))
+        startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.svc_notification_starting)))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -104,11 +105,11 @@ class ClawseedService : Service() {
 
         if (taskId != null) {
             if (gatewayFailed) {
-                scope.launch { failAndNotify(taskId, "Gateway 启动失败") }
+                scope.launch { failAndNotify(taskId, getString(R.string.svc_gateway_start_failed)) }
             } else {
                 val result = taskChannel.trySend(taskId)
                 if (result.isClosed) {
-                    scope.launch { failAndNotify(taskId, "Gateway 启动失败") }
+                    scope.launch { failAndNotify(taskId, getString(R.string.svc_gateway_start_failed)) }
                 } else {
                     // Wake consumer loop in case it's suspended after calling stopSelf()
                     unbindSignal.trySend(Unit)
@@ -137,10 +138,10 @@ class ClawseedService : Service() {
                             readyCallbacks.forEach { it() }
                             readyCallbacks.clear()
                         }
-                        updateNotification("Gateway 运行中 :${gwState.port}")
+                        updateNotification(getString(R.string.svc_notification_running, gwState.port))
                         taskConsumerLoop()
                     } else {
-                        updateNotification("启动失败")
+                        updateNotification(getString(R.string.svc_notification_start_failed))
                         gatewayFailed = true
                         val failedChannel = taskChannel
                         taskChannel = Channel(Channel.UNLIMITED)
@@ -209,13 +210,13 @@ class ClawseedService : Service() {
             store.updateTaskById(taskId) { it.copy(
                 lastRunAt = System.currentTimeMillis(),
                 lastStatus = TaskStatus.SUCCESS,
-                lastResult = "闹钟已响",
+                lastResult = getString(R.string.svc_alarm_fired),
             ) }
             ScheduledTaskManager.onTaskFired(this, taskId)
             return
         }
 
-        updateNotification("正在执行: ${task.name}")
+        updateNotification(getString(R.string.svc_notification_executing, task.name))
 
         // Ensure session ID exists — generate one if not set
         var sessionId = task.sessionId
@@ -248,12 +249,12 @@ class ClawseedService : Service() {
             } ?: false
 
             if (!connected) {
-                showTaskErrorNotification(task, "连接超时", finalSessionId)
+                showTaskErrorNotification(task, getString(R.string.svc_connection_timeout), finalSessionId)
                 store.updateTaskById(taskId) { current ->
                     current.copy(
                         lastRunAt = System.currentTimeMillis(),
                         lastStatus = TaskStatus.FAILED,
-                        lastError = "连接超时",
+                        lastError = getString(R.string.svc_connection_timeout),
                     )
                 }
                 ScheduledTaskManager.onTaskFired(this, taskId)
@@ -314,18 +315,18 @@ class ClawseedService : Service() {
                     )
                 }
             } else {
-                showTaskErrorNotification(task, response.ifBlank { "超时无响应" }, finalSessionId)
+                showTaskErrorNotification(task, response.ifBlank { getString(R.string.svc_no_response) }, finalSessionId)
                 store.updateTaskById(taskId) { current ->
                     current.copy(
                         lastRunAt = System.currentTimeMillis(),
                         lastStatus = TaskStatus.FAILED,
                         lastResult = null,
-                        lastError = response.ifBlank { "超时无响应" }.take(200),
+                        lastError = response.ifBlank { getString(R.string.svc_no_response) }.take(200),
                     )
                 }
             }
         } catch (e: Exception) {
-            showTaskErrorNotification(task, e.message ?: "执行失败", finalSessionId)
+            showTaskErrorNotification(task, e.message ?: getString(R.string.svc_execution_failed), finalSessionId)
             store.updateTaskById(taskId) { current ->
                 current.copy(
                     lastRunAt = System.currentTimeMillis(),
@@ -382,7 +383,7 @@ class ClawseedService : Service() {
         ) == PackageManager.PERMISSION_GRANTED
 
         if (!hasPermission) {
-            return dev.clawseed.sdk.core.tool.ToolResult.Failure("位置权限未授予")
+            return dev.clawseed.sdk.core.tool.ToolResult.Failure(getString(R.string.chat_tool_location_no_permission))
         }
 
         val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -402,7 +403,7 @@ class ClawseedService : Service() {
         }
 
         if (bestLocation == null) {
-            return dev.clawseed.sdk.core.tool.ToolResult.Failure("无法获取位置信息，请确保GPS或网络定位已开启")
+            return dev.clawseed.sdk.core.tool.ToolResult.Failure(getString(R.string.chat_tool_location_unavailable))
         }
 
         val gcj02 = CoordinateConverter.wgs84ToGcj02(bestLocation.latitude, bestLocation.longitude)
@@ -438,10 +439,10 @@ class ClawseedService : Service() {
         val minute = args["minute"]?.jsonPrimitive?.intOrNull
 
         if (hour == null || minute == null) {
-            return dev.clawseed.sdk.core.tool.ToolResult.Failure("缺少必需参数：hour 和 minute")
+            return dev.clawseed.sdk.core.tool.ToolResult.Failure(getString(R.string.chat_tool_alarm_missing_params))
         }
         if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-            return dev.clawseed.sdk.core.tool.ToolResult.Failure("参数范围无效：hour 应为 0-23，minute 应为 0-59")
+            return dev.clawseed.sdk.core.tool.ToolResult.Failure(getString(R.string.chat_tool_alarm_invalid_range))
         }
 
         val message = args["message"]?.jsonPrimitive?.content ?: ""
@@ -455,8 +456,8 @@ class ClawseedService : Service() {
             TaskRepeat.DAILY
         }
 
-        val taskName = if (message.isNotEmpty()) "闹钟: $message" else "闹钟 ${String.format("%02d:%02d", hour, minute)}"
-        val alarmMessage = if (message.isNotEmpty()) message else "闹钟响了"
+        val taskName = if (message.isNotEmpty()) getString(R.string.svc_alarm_name_with_message, message) else getString(R.string.svc_alarm_name_with_time, String.format("%02d:%02d", hour, minute))
+        val alarmMessage = if (message.isNotEmpty()) message else getString(R.string.svc_alarm_message)
 
         val store = ScheduledTaskStore(this)
         val task = ScheduledTask(
@@ -484,7 +485,7 @@ class ClawseedService : Service() {
 
     private suspend fun drainClosedChannel(channel: Channel<String>) {
         for (taskId in channel) {
-            failAndNotify(taskId, "Gateway 启动失败")
+            failAndNotify(taskId, getString(R.string.svc_gateway_start_failed))
         }
     }
 
@@ -493,10 +494,10 @@ class ClawseedService : Service() {
 
         // Create a dedicated high-importance channel for alarm notifications
         val alarmChannel = NotificationChannel(
-            CHANNEL_ID_ALARM, "闹钟",
+            CHANNEL_ID_ALARM, getString(R.string.svc_channel_alarm),
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "闹钟提醒"
+            description = getString(R.string.svc_channel_alarm_desc)
             enableVibration(true)
             setSound(
                 RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
@@ -534,7 +535,7 @@ class ClawseedService : Service() {
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setFullScreenIntent(contentPendingIntent, true)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "关闭闹钟", dismissPendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.svc_dismiss_alarm), dismissPendingIntent)
             .setContentIntent(contentPendingIntent)
             .build()
 
@@ -690,15 +691,15 @@ class ClawseedService : Service() {
         ).apply { description = "ClawSeed gateway service" }
 
         val taskNotificationChannel = NotificationChannel(
-            CHANNEL_ID_TASKS, "定时任务",
+            CHANNEL_ID_TASKS, getString(R.string.svc_channel_tasks),
             NotificationManager.IMPORTANCE_LOW,
-        ).apply { description = "定时任务执行结果" }
+        ).apply { description = getString(R.string.svc_channel_tasks_desc) }
 
         val reminderChannel = NotificationChannel(
-            CHANNEL_ID_TASKS_REMINDER, "任务提醒",
+            CHANNEL_ID_TASKS_REMINDER, getString(R.string.svc_channel_reminder),
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "定时任务提醒"
+            description = getString(R.string.svc_channel_reminder_desc)
             enableVibration(true)
         }
 
