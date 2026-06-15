@@ -22,7 +22,7 @@ object LocaleHelper {
         return when (langCode) {
             "en" -> Locale("en")
             "zh" -> Locale("zh", "CN")
-            null -> null // system default
+            "system", null -> null // follow system default
             else -> Locale(langCode)
         }
     }
