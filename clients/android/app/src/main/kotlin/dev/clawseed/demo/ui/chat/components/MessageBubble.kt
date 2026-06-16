@@ -68,7 +68,9 @@ fun MessageBubble(
 @Composable
 private fun UserBubble(content: String, modifier: Modifier = Modifier) {
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.End,
     ) {
         Box(
@@ -267,16 +269,13 @@ private fun ToolInvocationsCard(entry: ChatEntry.ToolInvocations, modifier: Modi
     val allSuccess = invocations.all { it.toolSuccess == true }
     val hasFailure = invocations.any { it.toolSuccess == false }
 
-    val bg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     val fg = MaterialTheme.colorScheme.onSurfaceVariant
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(bg)
             .clickable { expanded = !expanded }
-            .padding(12.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -337,7 +336,7 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
             .clickable { detailExpanded = !detailExpanded }
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -427,10 +426,8 @@ private fun ThinkingCard(content: String, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             .clickable { expanded = !expanded }
-            .padding(12.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

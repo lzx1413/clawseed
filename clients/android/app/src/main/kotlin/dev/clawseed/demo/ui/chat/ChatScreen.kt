@@ -91,6 +91,12 @@ fun ChatScreen(
 
     val listState = rememberLazyListState()
     val isStreaming = uiState.streamingContent.isNotEmpty() || uiState.thinkingContent.isNotEmpty()
+    // Track whether user just sent a message — isStreaming arrives asynchronously
+    // (one composition frame late), causing a blank gap between send→stop button.
+    // This local flag bridges that gap and clears itself once isStreaming arrives.
+    var justSent by remember { mutableStateOf(false) }
+    if (isStreaming) justSent = false
+    val isLoading = isStreaming || justSent
     val imeBottom = WindowInsets.ime.getBottom(density)
     val bottomContentPadding = with(density) { bottomBarHeightPx.toDp() + 8.dp }
 
@@ -188,9 +194,7 @@ fun ChatScreen(
                     .weight(1f)
                     .fillMaxWidth(),
                 contentPadding = PaddingValues(
-                    start = 12.dp,
                     top = 8.dp,
-                    end = 12.dp,
                     bottom = bottomContentPadding,
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -258,11 +262,14 @@ fun ChatScreen(
                 input = input,
                 onInputChange = { input = it },
                 onSend = {
-                    viewModel.sendMessage(input)
-                    input = ""
+                    val text = input
                     dismissInput()
+                    justSent = true
+                    input = ""
+                    viewModel.sendMessage(text)
                 },
-                onStop = if (isStreaming) ({ viewModel.abortGeneration() }) else null,
+                onStop = { viewModel.abortGeneration() },
+                isLoading = isLoading,
                 canSend = uiState.connState == ConnectionState.CONNECTED,
                 modifier = Modifier.onSizeChanged { bottomBarHeightPx = it.height },
             )
