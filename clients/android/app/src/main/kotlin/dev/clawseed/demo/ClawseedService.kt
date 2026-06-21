@@ -162,8 +162,18 @@ class ClawseedService : Service() {
         super.onDestroy()
         stopAlarmSound()
         serviceJob?.cancel()
+        // IMPORTANT: stop gateway BEFORE cancelling the coroutine scope.
+        // The old code did supervisorJob.cancel() first, then scope.launch { gateway.stop() }
+        // on a cancelled scope — so gateway.stop() never ran, leaving a zombie process
+        // holding the port. Next launch would see "port occupied by stale process" and fail.
+        scope.launch {
+            try {
+                gateway.stop()
+            } catch (_: Exception) {
+                // Best-effort cleanup — scope cancellation may interrupt waitFor
+            }
+        }
         supervisorJob.cancel()
-        scope.launch { gateway.stop() }
         isReady = false
     }
 

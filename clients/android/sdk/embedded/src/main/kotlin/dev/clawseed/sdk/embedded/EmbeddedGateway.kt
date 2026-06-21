@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -33,6 +34,7 @@ class EmbeddedGateway(
     val downloadProgress: StateFlow<EmbeddingDownloadProgress?> = _downloadProgress.asStateFlow()
 
     private var process: Process? = null
+    private var stdoutReaderJob: Job? = null
 
     /** Starts the embedded gateway and waits until health checks succeed. */
     suspend fun start() {
@@ -75,7 +77,7 @@ class EmbeddedGateway(
                 }
                 .start()
 
-            scope.launch {
+            stdoutReaderJob = scope.launch {
                 try {
                     process?.inputStream?.bufferedReader()?.forEachLine { line ->
                         Log.d(TAG, "clawseed: $line")
@@ -90,6 +92,22 @@ class EmbeddedGateway(
                 }
             }
 
+            // Monitor for unexpected process exit (crash, OOM, etc.)
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    try {
+                        val exitCode = process?.waitFor() ?: return@withContext
+                        if (_state.value is GatewayState.Running) {
+                            Log.e(TAG, "Gateway process exited unexpectedly with code $exitCode")
+                            _state.value = GatewayState.Failed("Gateway process exited unexpectedly (code $exitCode)")
+                            _downloadProgress.value = null
+                        }
+                    } catch (_: InterruptedException) {
+                        // Expected during stop() — waitFor is interrupted by destroy()
+                    }
+                }
+            }
+
             waitUntilReady()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start clawseed gateway", e)
@@ -99,17 +117,28 @@ class EmbeddedGateway(
     }
 
     /** Stops the embedded gateway process if it is running.
-     *  Waits for the process to fully exit and the port to be released before returning. */
+     *  Closes process streams first, then destroys the process.
+     *  Waits for the process to fully exit before returning. */
     suspend fun stop() {
         val proc = process
         if (proc != null) {
-            proc.destroy()
+            // Cancel stdout reader before closing streams to avoid IOException races
+            stdoutReaderJob?.cancel()
+            stdoutReaderJob = null
+
+            // Close streams explicitly — on some Android versions, open streams
+            // prevent destroy() from actually terminating the process
             withContext(Dispatchers.IO) {
-                // Wait up to 3s for clean exit, then force-kill
+                try { proc.outputStream.close() } catch (_: Exception) {}
+                try { proc.inputStream.close() } catch (_: Exception) {}
+                try { proc.errorStream.close() } catch (_: Exception) {}
+
+                proc.destroy()
                 val exited = proc.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
                 if (!exited) {
+                    Log.w(TAG, "Gateway did not exit after SIGTERM — force-killing")
                     proc.destroyForcibly()
-                    proc.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
+                    proc.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
                 }
             }
         }
@@ -125,7 +154,8 @@ class EmbeddedGateway(
         start()
     }
 
-    /** Checks that no stale process is serving on our port. If found, waits for it to stop. */
+    /** Checks that no stale process is serving on our port. If found,
+     *  attempts to kill it, then waits for the port to become free. */
     private suspend fun ensurePortIsFree() {
         val healthUrl = "http://127.0.0.1:${config.port}/health"
         // Check if a stale process is still responding on our port
@@ -147,12 +177,51 @@ class EmbeddedGateway(
                 if (staleDetected) Log.i(TAG, "Stale gateway on port ${config.port} has stopped")
                 return
             }
-            staleDetected = true
+            if (!staleDetected) {
+                staleDetected = true
+                Log.w(TAG, "Stale gateway detected on port ${config.port} — attempting to kill it")
+                // Try to kill our own leftover process first
+                killStaleGatewayProcess()
+            }
             Log.w(TAG, "Stale gateway still on port ${config.port}, waiting... (attempts left: $attempts)")
             delay(500)
             attempts--
         }
         Log.e(TAG, "Could not free port ${config.port} — stale process persists")
+    }
+
+    /** Kill a leftover clawseed gateway process by finding its PID via /proc. */
+    private fun killStaleGatewayProcess() {
+        // Remember our own PID so we don't accidentally kill it
+        val ourPidStr = if (process != null) {
+            // Process.pid() requires Java 9+, not available on Android.
+            // Instead, read our process's /proc/self link to get our PID.
+            try {
+                val selfLink = java.io.File("/proc/self").canonicalPath
+                selfLink.substringAfterLast('/')
+            } catch (_: Exception) { null }
+        } else null
+
+        try {
+            val procDir = java.io.File("/proc")
+            procDir.listFiles()?.forEach { procEntry ->
+                val pid = procEntry.name.toIntOrNull() ?: return
+                // Don't kill our own just-started process
+                if (ourPidStr != null && pid == ourPidStr.toIntOrNull()) return
+                // Read cmdline to identify our gateway binary
+                val cmdlineFile = java.io.File(procEntry, "cmdline")
+                if (cmdlineFile.exists()) {
+                    val cmdline = cmdlineFile.readText()
+                    if (cmdline.contains("clawseed") && cmdline.contains("gateway")) {
+                        Log.w(TAG, "Killing stale clawseed gateway process (PID $pid)")
+                        val killProc = ProcessBuilder("kill", pid.toString()).start()
+                        killProc.waitFor()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to scan /proc for stale gateway: ${e.message}")
+        }
     }
 
     /** Returns a local [ClawSeedConfig] targeting the embedded gateway port. */
