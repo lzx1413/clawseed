@@ -53,15 +53,14 @@ class ChatAccumulator(private val session: ClawSeedSession) {
         ))
     }
 
-    /** Prepares the accumulator for a regenerate: clears the last assistant turn and keeps the user message. */
+    /** Prepares the accumulator for a regenerate: clears the last assistant turn but keeps the user message. */
     fun prepareRegenerate() {
         val messages = _messages.value
         val lastUserIndex = messages.indexOfLast { it is AccumulatedMessage.User }
         if (lastUserIndex < 0) return
-        // Remove everything after the last user message
-        val kept = messages.subList(0, lastUserIndex + 1).toList()
-        // Remove the last user message too (server will re-add it)
-        _messages.value = kept.subList(0, lastUserIndex).toList()
+        // Remove everything after the last user message (assistant responses, tool calls, etc.)
+        // but keep the user message itself — the server does NOT re-emit it as a ChatEvent.
+        _messages.value = messages.subList(0, lastUserIndex + 1).toList()
         regenerating = true
         currentTurnFlushed = false
     }
