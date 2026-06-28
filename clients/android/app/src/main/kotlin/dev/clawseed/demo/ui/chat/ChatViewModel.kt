@@ -17,6 +17,7 @@ import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.demo.data.ToolCallInfo
 import dev.clawseed.demo.data.TurnState
 import dev.clawseed.demo.scheduled.ScheduledTask
+import dev.clawseed.demo.ui.chat.markdown.toSpeakableText
 import dev.clawseed.demo.scheduled.ScheduledTaskManager
 import dev.clawseed.demo.scheduled.ScheduledTaskStore
 import dev.clawseed.demo.scheduled.TaskRepeat
@@ -70,6 +71,9 @@ data class ChatUiState(
     val currentSessionId: String? = null,
     val error: String? = null,
     val authPrompt: AuthPrompt? = null,
+    val speechOutputEnabled: Boolean = false,
+    val isSpeaking: Boolean = false,
+    val speakingMessageId: String? = null,
 )
 
 /**
@@ -195,6 +199,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var debugEnabled = false
     private var historyLoaded = false
 
+    /** Speech output engine. Lives for the ViewModel lifetime; released in onCleared. */
+    val tts = TtsController(application)
+
+    // ── Speech playback state ──
+    // We speak the AUTHORITATIVE finalized assistant message (not the provisional streaming
+    // draft, which the gateway discards during tool-use turns). ttsLastSpokenMsgId dedupes so a
+    // message is spoken once even if the messages flow re-emits; it's also used as a baseline
+    // when switching into a session so pre-existing messages aren't spoken on arrival.
+    private var ttsLastSpokenMsgId: String? = null
+
     /** Pool of active session slots. Kept alive across session switches. */
     private val sessionSlots = HashMap<String, SessionSlot>()
     private var registeredSession: ClawSeedSession? = null
@@ -210,6 +224,65 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             localStore.showDebugInfo.collect { debugEnabled = it }
         }
+        viewModelScope.launch {
+            localStore.speechOutputEnabled.collect { enabled ->
+                // Flipping speech off should immediately stop any in-progress playback.
+                if (!enabled) {
+                    tts.stop()
+                    ttsLastSpokenMsgId = null
+                }
+                _uiState.value = _uiState.value.copy(speechOutputEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            tts.isSpeaking.collect { speaking ->
+                _uiState.value = _uiState.value.copy(isSpeaking = speaking)
+            }
+        }
+        viewModelScope.launch {
+            tts.speakingMessageId.collect { id ->
+                _uiState.value = _uiState.value.copy(speakingMessageId = id)
+            }
+        }
+    }
+
+    override fun onCleared() {
+        tts.shutdown()
+        super.onCleared()
+    }
+
+    /**
+     * Speak a finalized assistant message in full once it lands. Called from the messages
+     * collector when a new authoritative AssistantMessage arrives. We wait for the finalized
+     * message (not the provisional streaming draft) so playback always matches what's rendered —
+     * tool-use turns discard the draft via ChunkReset and only the authoritative text is spoken.
+     */
+    private fun speakAssistantMessage(msg: dev.clawseed.sdk.android.AccumulatedMessage.Assistant) {
+        ttsLastSpokenMsgId = msg.id
+        if (!_uiState.value.speechOutputEnabled) return
+        val chunk = cleanForSpeech(msg.content)
+        if (chunk.isNotEmpty()) tts.speak(chunk, msg.id)
+    }
+
+    /** Light markdown cleanup so symbols like `**`, `#`, backticks aren't read aloud. */
+    private fun cleanForSpeech(s: String): String =
+        s.replace(Regex("[*_#>~]"), "")
+            .replace("`", "")
+            .replace(Regex("\\[([^]]+)]\\([^)]+\\)"), "$1")  // links -> label
+            .trim()
+
+    fun toggleSpeechOutput() {
+        viewModelScope.launch {
+            localStore.setSpeechOutputEnabled(!_uiState.value.speechOutputEnabled)
+        }
+    }
+
+    fun speakMessage(content: String, messageId: String) {
+        tts.speak(content.toSpeakableText(), messageId)
+    }
+
+    fun stopSpeech() {
+        tts.stop()
     }
 
     private fun sessionManager(): dev.clawseed.sdk.android.SessionManager {
@@ -502,6 +575,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun observeAccumulator(acc: ChatAccumulator) {
         accumulatorObservationJob?.cancel()
+        // Fresh accumulator for a (possibly different) session — stop any playback and seed the
+        // dedupe baseline with the last already-known assistant message so switching into a
+        // session doesn't immediately speak its pre-existing history.
+        tts.stop()
+        ttsLastSpokenMsgId = acc.messages.value.lastOrNull()
+            ?.let { (it as? dev.clawseed.sdk.android.AccumulatedMessage.Assistant)?.id }
         accumulatorObservationJob = viewModelScope.launch {
             launch {
                 acc.streamingContent.collect { content ->
@@ -527,6 +606,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         messages = all,
                         error = errors.lastOrNull() ?: _uiState.value.error,
                     )
+                    // Speak the authoritative finalized assistant message once it lands.
+                    val lastAcc = accumulated.lastOrNull()
+                    if (lastAcc is dev.clawseed.sdk.android.AccumulatedMessage.Assistant &&
+                        lastAcc.id != ttsLastSpokenMsgId
+                    ) {
+                        speakAssistantMessage(lastAcc)
+                    }
                 }
             }
             launch {
@@ -577,11 +663,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun regenerateLastResponse() {
+        // Stop any in-progress playback of the old reply before it's replaced.
+        tts.stop()
         accumulator?.prepareRegenerate()
         currentSession?.regenerate(debugEnabled)
     }
 
     fun abortGeneration() {
+        tts.stop()
         viewModelScope.launch {
             currentSession?.abort()
         }

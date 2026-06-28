@@ -122,6 +122,15 @@ class LocalStore(private val context: Context) {
             .edit().putString("language_mode", mode).apply()
     }
 
+    // --- Speech output (auto-play AI replies aloud) ---
+    private val KEY_SPEECH_OUTPUT = booleanPreferencesKey("speech_output_enabled")
+
+    val speechOutputEnabled: Flow<Boolean> = store.data.map { it[KEY_SPEECH_OUTPUT] ?: false }
+
+    suspend fun setSpeechOutputEnabled(enabled: Boolean) {
+        store.edit { prefs -> prefs[KEY_SPEECH_OUTPUT] = enabled }
+    }
+
     // --- Export/import all preferences (for data transfer) ---
     // Keys that contain sensitive data (API keys, tokens).
     private val SENSITIVE_KEYS = setOf("bearer_token", "provider_api_keys")

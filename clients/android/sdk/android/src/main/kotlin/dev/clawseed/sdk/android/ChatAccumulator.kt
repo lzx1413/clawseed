@@ -43,8 +43,12 @@ class ChatAccumulator(private val session: ClawSeedSession) {
         }
     }
 
-    /** Records a local user message so UI state stays aligned with sent input. */
+    /** Records a local user message so UI state stays aligned with sent input.
+     *  Clears streaming buffers defensively — a new user turn always starts fresh,
+     *  preventing any residual content from a previous turn leaking into the next. */
     fun addUserMessage(content: String) {
+        _streamingContent.value = ""
+        _thinkingContent.value = ""
         currentTurnFlushed = false
         append(AccumulatedMessage.User(
             id = nextId(),
@@ -53,7 +57,8 @@ class ChatAccumulator(private val session: ClawSeedSession) {
         ))
     }
 
-    /** Prepares the accumulator for a regenerate: clears the last assistant turn but keeps the user message. */
+    /** Prepares the accumulator for a regenerate: clears the last assistant turn but keeps the user message.
+     *  Also clears streaming buffers so the regenerated response starts fresh. */
     fun prepareRegenerate() {
         val messages = _messages.value
         val lastUserIndex = messages.indexOfLast { it is AccumulatedMessage.User }
@@ -61,6 +66,8 @@ class ChatAccumulator(private val session: ClawSeedSession) {
         // Remove everything after the last user message (assistant responses, tool calls, etc.)
         // but keep the user message itself — the server does NOT re-emit it as a ChatEvent.
         _messages.value = messages.subList(0, lastUserIndex + 1).toList()
+        _streamingContent.value = ""
+        _thinkingContent.value = ""
         regenerating = true
         currentTurnFlushed = false
     }

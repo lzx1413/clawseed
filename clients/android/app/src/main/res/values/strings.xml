@@ -22,6 +22,7 @@
     <string name="chat_new_conversation">New Conversation</string>
     <string name="chat_menu">Menu</string>
     <string name="chat_new_session">New Session</string>
+    <string name="chat_speech_output">Toggle speech output</string>
     <string name="chat_input_placeholder">Enter message…</string>
     <string name="chat_stop_generating">Stop generating</string>
     <string name="chat_send">Send</string>
@@ -30,6 +31,8 @@
     <string name="msg_copy">Copy</string>
     <string name="msg_copied">Copied</string>
     <string name="msg_regenerate">Regenerate</string>
+    <string name="msg_speak">Speak</string>
+    <string name="msg_stop_speaking">Stop speaking</string>
     <string name="msg_tool_calling">Tool calling…</string>
     <string name="msg_tool_calls">Tool calls (%1$d)</string>
     <string name="msg_calling">Calling…</string>
@@ -124,6 +127,8 @@
     <!-- ========== Settings ========== -->
     <string name="settings_title">Settings</string>
     <string name="settings_appearance">Appearance</string>
+    <string name="settings_speech_output">Read Replies Aloud</string>
+    <string name="settings_speech_output_desc">Automatically speak AI replies aloud when streaming finishes</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_theme_system">Follow System</string>

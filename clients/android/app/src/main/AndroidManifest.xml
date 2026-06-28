@@ -24,6 +24,11 @@
         <intent>
             <action android:name="android.intent.action.SET_ALARM" />
         </intent>
+        <!-- Discover installed TTS engines so we can bind explicitly when the system default
+             fails (some OEM ROMs resolve no default engine even with engines installed). -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
     </queries>
 
     <application

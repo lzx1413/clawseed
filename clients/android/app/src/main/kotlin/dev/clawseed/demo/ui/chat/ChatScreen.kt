@@ -50,6 +50,9 @@ import dev.clawseed.sdk.core.model.ConnectionState
 import dev.clawseed.demo.data.ChatEntry
 import dev.clawseed.demo.ui.chat.components.ChatBottomBar
 import dev.clawseed.demo.ui.chat.components.MessageBubble
+import dev.clawseed.demo.ui.chat.components.SpeakerOffIcon
+import dev.clawseed.demo.ui.chat.components.SpeakerStopIcon
+import dev.clawseed.demo.ui.chat.components.SpeakerPlayIcon
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -173,6 +176,22 @@ fun ChatScreen(
                 },
                 actions = {
                     IconButton(onClick = {
+                        if (uiState.speechOutputEnabled && uiState.isSpeaking) {
+                            viewModel.stopSpeech()
+                        } else {
+                            viewModel.toggleSpeechOutput()
+                        }
+                    }) {
+                        Icon(
+                            imageVector = when {
+                                uiState.speechOutputEnabled && uiState.isSpeaking -> SpeakerStopIcon
+                                uiState.speechOutputEnabled -> SpeakerPlayIcon
+                                else -> SpeakerOffIcon
+                            },
+                            contentDescription = stringResource(R.string.chat_speech_output),
+                        )
+                    }
+                    IconButton(onClick = {
                         dismissInput()
                         onNewSession()
                     }) {
@@ -209,9 +228,13 @@ fun ChatScreen(
                             ?.let { it is ChatEntry.AssistantMessage || it is ChatEntry.ToolInvocations || it is ChatEntry.Thinking }
                             ?: false
                         && uiState.messages.indexOf(entry) == uiState.messages.indexOfLast { it is ChatEntry.AssistantMessage }
+                    val canSpeak = entry is ChatEntry.AssistantMessage && !entry.isStreaming
                     MessageBubble(
                         entry = entry,
                         onRegenerate = if (isLastAssistant) ({ viewModel.regenerateLastResponse() }) else null,
+                        onSpeak = if (canSpeak) ({ viewModel.speakMessage(entry.content, entry.id) }) else null,
+                        onStop = if (canSpeak) ({ viewModel.stopSpeech() }) else null,
+                        isSpeakingThis = canSpeak && uiState.speakingMessageId == entry.id,
                     )
                 }
                 if (uiState.thinkingContent.isNotEmpty()) {

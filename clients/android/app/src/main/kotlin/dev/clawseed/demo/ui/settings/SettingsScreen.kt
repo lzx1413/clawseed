@@ -553,6 +553,7 @@ private fun AppearanceCard(localStore: LocalStore) {
     val themeMode by localStore.themeMode.collectAsState(initial = "system")
     val oledMode by localStore.oledMode.collectAsState(initial = false)
     val languageMode by localStore.languageMode.collectAsState(initial = "system")
+    val speechOutput by localStore.speechOutputEnabled.collectAsState(initial = false)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val useDarkTheme = when (themeMode) {
@@ -602,6 +603,25 @@ private fun AppearanceCard(localStore: LocalStore) {
                     selected = languageMode == "zh",
                     onClick = { scope.launch { localStore.setLanguageMode("zh"); (context as? android.app.Activity)?.recreate() } },
                     label = { Text(stringResource(R.string.settings_language_chinese)) },
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.settings_speech_output), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        stringResource(R.string.settings_speech_output_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    )
+                }
+                Switch(
+                    checked = speechOutput,
+                    onCheckedChange = { scope.launch { localStore.setSpeechOutputEnabled(it) } },
                 )
             }
             if (useDarkTheme) {

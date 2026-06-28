@@ -129,6 +129,91 @@ class ChatAccumulatorTest {
         assertEquals("Generation aborted.", systemMessages.single().content)
     }
 
+    @Test
+    fun secondTurnStartsWithFreshBuffersAfterDone() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+
+        // First turn: user question → streaming → done
+        accumulator.addUserMessage("first question")
+        session.emit(ChatEvent.TextChunk("first answer"))
+        session.emit(ChatEvent.ChunkReset)
+        session.emit(ChatEvent.Done("first answer"))
+        runCurrent()
+
+        val firstAssistant = accumulator.messages.value.filterIsInstance<AccumulatedMessage.Assistant>()
+        assertEquals(1, firstAssistant.size)
+        assertEquals("first answer", firstAssistant.single().content)
+        assertEquals("", accumulator.streamingContent.value)
+
+        // Second turn: buffers should be cleared by addUserMessage()
+        accumulator.addUserMessage("second question")
+        assertEquals("", accumulator.streamingContent.value)
+        assertEquals("", accumulator.thinkingContent.value)
+
+        session.emit(ChatEvent.TextChunk("second answer"))
+        session.emit(ChatEvent.ChunkReset)
+        session.emit(ChatEvent.Done("second answer"))
+        runCurrent()
+
+        val allAssistant = accumulator.messages.value.filterIsInstance<AccumulatedMessage.Assistant>()
+        assertEquals(2, allAssistant.size)
+        assertEquals("second answer", allAssistant.last().content)
+        assertEquals("", accumulator.streamingContent.value)
+    }
+
+    @Test
+    fun secondTurnWithoutChunkResetStillWorks() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+
+        // First turn: normal completion with ChunkReset + Done
+        accumulator.addUserMessage("first question")
+        session.emit(ChatEvent.TextChunk("first"))
+        session.emit(ChatEvent.ChunkReset)
+        session.emit(ChatEvent.Done("first answer"))
+        runCurrent()
+
+        // Second turn: streaming without ChunkReset (edge case — gateway always sends ChunkReset,
+        // but verify the accumulator handles it defensively)
+        accumulator.addUserMessage("second question")
+        session.emit(ChatEvent.TextChunk("second answer"))
+        session.emit(ChatEvent.Done("second answer"))
+        runCurrent()
+
+        val allAssistant = accumulator.messages.value.filterIsInstance<AccumulatedMessage.Assistant>()
+        assertEquals(2, allAssistant.size)
+        assertEquals("second answer", allAssistant.last().content)
+    }
+
+    @Test
+    fun prepareRegenerateClearsStreamingBuffers() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+
+        accumulator.addUserMessage("question")
+        session.emit(ChatEvent.TextChunk("draft text still streaming"))
+        runCurrent()
+
+        // Before regenerate, streaming content has partial text
+        assertEquals("draft text still streaming", accumulator.streamingContent.value)
+
+        // Prepare regenerate should clear streaming buffers
+        accumulator.prepareRegenerate()
+        assertEquals("", accumulator.streamingContent.value)
+        assertEquals("", accumulator.thinkingContent.value)
+
+        // Only the user message should remain
+        val users = accumulator.messages.value.filterIsInstance<AccumulatedMessage.User>()
+        assertEquals(1, users.size)
+    }
+
     private class FakeSession : ClawSeedSession {
         private val mutableEvents = MutableSharedFlow<ChatEvent>(extraBufferCapacity = 16)
         private val mutableConnectionState = MutableStateFlow(ConnectionState.CONNECTED)

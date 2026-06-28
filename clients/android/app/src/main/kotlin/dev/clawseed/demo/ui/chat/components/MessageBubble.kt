@@ -54,10 +54,21 @@ fun MessageBubble(
     entry: ChatEntry,
     modifier: Modifier = Modifier,
     onRegenerate: (() -> Unit)? = null,
+    onSpeak: ((String) -> Unit)? = null,
+    onStop: (() -> Unit)? = null,
+    isSpeakingThis: Boolean = false,
 ) {
     when (entry) {
         is ChatEntry.UserMessage -> UserBubble(entry.content, modifier)
-        is ChatEntry.AssistantMessage -> AssistantBubble(entry.content, entry.isStreaming, onRegenerate, modifier)
+        is ChatEntry.AssistantMessage -> AssistantBubble(
+            content = entry.content,
+            isStreaming = entry.isStreaming,
+            onRegenerate = onRegenerate,
+            onSpeak = onSpeak,
+            onStop = onStop,
+            isSpeakingThis = isSpeakingThis,
+            modifier = modifier,
+        )
         is ChatEntry.ToolInvocations -> ToolInvocationsCard(entry, modifier)
         is ChatEntry.Thinking -> ThinkingCard(entry.content, modifier)
         is ChatEntry.SystemMessage -> SystemBubble(entry.content, modifier)
@@ -97,7 +108,15 @@ private fun UserBubble(content: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun AssistantBubble(content: String, isStreaming: Boolean, onRegenerate: (() -> Unit)?, modifier: Modifier = Modifier) {
+private fun AssistantBubble(
+    content: String,
+    isStreaming: Boolean,
+    onRegenerate: (() -> Unit)?,
+    onSpeak: ((String) -> Unit)?,
+    onStop: (() -> Unit)?,
+    isSpeakingThis: Boolean,
+    modifier: Modifier = Modifier,
+) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     val copiedText = stringResource(R.string.common_copied)
@@ -121,6 +140,14 @@ private fun AssistantBubble(content: String, isStreaming: Boolean, onRegenerate:
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                if (onSpeak != null && onStop != null) {
+                    SpeakButton(
+                        content = content,
+                        isSpeaking = isSpeakingThis,
+                        onSpeak = onSpeak,
+                        onStop = onStop,
+                    )
+                }
                 CopyButton(
                     onClick = {
                         clipboardManager.setText(AnnotatedString(content))
@@ -132,6 +159,33 @@ private fun AssistantBubble(content: String, isStreaming: Boolean, onRegenerate:
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SpeakButton(
+    content: String,
+    isSpeaking: Boolean,
+    onSpeak: (String) -> Unit,
+    onStop: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(4.dp))
+            .clickable {
+                if (isSpeaking) onStop() else onSpeak(content)
+            }
+            .padding(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = if (isSpeaking) SpeakerStopIcon else SpeakerPlayIcon,
+            contentDescription = stringResource(if (isSpeaking) R.string.msg_stop_speaking else R.string.msg_speak),
+            modifier = Modifier.size(14.dp),
+            tint = if (isSpeaking) MaterialTheme.colorScheme.primary
+                   else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+        )
     }
 }
 
@@ -254,6 +308,94 @@ private val CopyIcon: ImageVector by lazy {
             verticalLineTo(7f)
             horizontalLineTo(19f)
             verticalLineTo(21f)
+            close()
+        }
+    }.build()
+}
+
+val SpeakerPlayIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "SpeakerPlay",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            // Speaker cone + three sound waves
+            moveTo(3f, 9f)
+            verticalLineTo(15f)
+            horizontalLineTo(7f)
+            lineTo(12f, 20f)
+            verticalLineTo(4f)
+            lineTo(7f, 9f)
+            close()
+            moveTo(16f, 3f)
+            curveTo(18.3f, 4.7f, 19.5f, 7.3f, 19.5f, 12f)
+            curveTo(19.5f, 16.7f, 18.3f, 19.3f, 16f, 21f)
+            lineTo(15f, 20f)
+            curveTo(17f, 18.5f, 17.8f, 16.2f, 17.8f, 12f)
+            curveTo(17.8f, 7.8f, 17f, 5.5f, 15f, 4f)
+            close()
+            moveTo(20f, 1f)
+            curveTo(22.5f, 3.5f, 24f, 7.3f, 24f, 12f)
+            curveTo(24f, 16.7f, 22.5f, 20.5f, 20f, 23f)
+            lineTo(19f, 22f)
+            curveTo(21.2f, 19.8f, 22.5f, 16.3f, 22.5f, 12f)
+            curveTo(22.5f, 7.7f, 21.2f, 4.2f, 19f, 2f)
+            close()
+        }
+    }.build()
+}
+
+val SpeakerStopIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "SpeakerStop",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            // Speaker cone (no waves) + a square "stop" mark
+            moveTo(3f, 9f)
+            verticalLineTo(15f)
+            horizontalLineTo(7f)
+            lineTo(12f, 20f)
+            verticalLineTo(4f)
+            lineTo(7f, 9f)
+            close()
+            moveTo(16f, 10f)
+            horizontalLineTo(22f)
+            verticalLineTo(14f)
+            horizontalLineTo(16f)
+            close()
+        }
+    }.build()
+}
+
+/** Speaker with a slash — speech output disabled. */
+val SpeakerOffIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "SpeakerOff",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(3f, 9f)
+            verticalLineTo(15f)
+            horizontalLineTo(7f)
+            lineTo(12f, 20f)
+            verticalLineTo(4f)
+            lineTo(7f, 9f)
+            close()
+            // Slash through the speaker
+            moveTo(14f, 9.2f)
+            lineTo(15.5f, 8f)
+            lineTo(21f, 16.8f)
+            lineTo(19.5f, 18f)
             close()
         }
     }.build()
