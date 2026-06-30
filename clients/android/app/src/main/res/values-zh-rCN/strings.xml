@@ -212,6 +212,21 @@
     <string name="settings_about_app_version">App 版本: %1$s</string>
     <string name="settings_about_build_date">编译日期: %1$s</string>
 
+    <!-- ========== App Update ========== -->
+    <string name="update_check">检查更新</string>
+    <string name="update_checking">检查中…</string>
+    <string name="update_up_to_date">已是最新版本</string>
+    <string name="update_available">发现新版本: v%1$s</string>
+    <string name="update_download">下载更新</string>
+    <string name="update_downloading">下载中…</string>
+    <string name="update_download_progress">%1$d%% · %2$s / %3$s</string>
+    <string name="update_install">安装更新</string>
+    <string name="update_install_permission">允许安装未知来源应用</string>
+    <string name="update_install_permission_desc">安装更新需要允许从此来源安装应用</string>
+    <string name="update_check_failed">检查更新失败: %1$s</string>
+    <string name="update_download_failed">下载失败: %1$s</string>
+    <string name="update_release_notes">更新日志</string>
+
     <string name="settings_session_auto_cleanup">会话自动清理</string>
     <string name="settings_session_cleanup_desc">超过设定天数未活动的会话会在 gateway 启动时自动删除，0 表示永不删除</string>
     <string name="settings_session_ttl_days_label">天数（0 = 永不删除）</string>

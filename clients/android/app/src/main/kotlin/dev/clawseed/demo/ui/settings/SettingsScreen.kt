@@ -142,7 +142,6 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
     var developerExpanded by remember { mutableStateOf(false) }
     var appearanceExpanded by remember { mutableStateOf(false) }
     var sessionExpanded by remember { mutableStateOf(false) }
-    var aboutExpanded by remember { mutableStateOf(false) }
     var dataTransferExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.error) {
@@ -528,17 +527,6 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                         subtitle = if (!dataTransferExpanded) stringResource(R.string.settings_data_management_subtitle) else null,
                     ) {
                         DataTransferSection()
-                    }
-                }
-
-                // About section
-                item {
-                    ExpandableSection(
-                        title = stringResource(R.string.settings_about),
-                        expanded = aboutExpanded,
-                        onToggle = { aboutExpanded = !aboutExpanded },
-                    ) {
-                        AboutCard()
                     }
                 }
 
@@ -1626,45 +1614,6 @@ fun ReviewerEditor(
                 placeholder = { Text(stringResource(R.string.settings_reviewer_model_placeholder)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-            )
-        }
-    }
-}
-
-@Composable
-private fun AboutCard() {
-    val uriHandler = LocalUriHandler.current
-    val githubUrl = "https://github.com/lzx1413/clawseed"
-    val annotatedLink = buildAnnotatedString {
-        pushStringAnnotation(tag = "URL", annotation = githubUrl)
-        withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) {
-            append(githubUrl)
-        }
-        pop()
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("ClawSeed", style = MaterialTheme.typography.titleLarge)
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(stringResource(R.string.settings_about_app_version, BuildConfig.VERSION_NAME), style = MaterialTheme.typography.bodyMedium)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(stringResource(R.string.settings_about_build_date, BuildConfig.BUILD_DATE), style = MaterialTheme.typography.bodyMedium)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text("Agent SDK: ${BuildConfig.SDK_VERSION}", style = MaterialTheme.typography.bodyMedium)
-            Spacer(modifier = Modifier.height(8.dp))
-            ClickableText(
-                text = annotatedLink,
-                style = MaterialTheme.typography.bodyMedium,
-                onClick = { offset ->
-                    annotatedLink.getStringAnnotations(tag = "URL", start = offset, end = offset)
-                        .firstOrNull()?.let { uriHandler.openUri(it.item) }
-                },
             )
         }
     }

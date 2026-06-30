@@ -212,6 +212,21 @@
     <string name="settings_about_app_version">App version: %1$s</string>
     <string name="settings_about_build_date">Build date: %1$s</string>
 
+    <!-- ========== App Update ========== -->
+    <string name="update_check">Check for Updates</string>
+    <string name="update_checking">Checking…</string>
+    <string name="update_up_to_date">Already up to date</string>
+    <string name="update_available">New version available: v%1$s</string>
+    <string name="update_download">Download Update</string>
+    <string name="update_downloading">Downloading…</string>
+    <string name="update_download_progress">%1$d%% · %2$s / %3$s</string>
+    <string name="update_install">Install Update</string>
+    <string name="update_install_permission">Allow installation from unknown sources</string>
+    <string name="update_install_permission_desc">To install the update, you need to allow installing apps from unknown sources</string>
+    <string name="update_check_failed">Update check failed: %1$s</string>
+    <string name="update_download_failed">Download failed: %1$s</string>
+    <string name="update_release_notes">Release Notes</string>
+
     <string name="settings_session_auto_cleanup">Session Auto Cleanup</string>
     <string name="settings_session_cleanup_desc">Sessions inactive for more than the set days will be auto-deleted on gateway startup. 0 means never delete</string>
     <string name="settings_session_ttl_days_label">Days (0 = never delete)</string>

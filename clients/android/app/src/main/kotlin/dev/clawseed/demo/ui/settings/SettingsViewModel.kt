@@ -1,11 +1,16 @@
 package dev.clawseed.demo.ui.settings
 
 import android.app.Application
+import android.content.Intent
 import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.clawseed.demo.R
 import dev.clawseed.demo.data.LocalStore
+import dev.clawseed.demo.updater.ApkDownloader
+import dev.clawseed.demo.updater.ApkInstaller
+import dev.clawseed.demo.updater.AppUpdateChecker
+import dev.clawseed.demo.updater.UpdateInfo
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.core.client.GatewayClient
 import dev.clawseed.sdk.core.model.GatewayStatus
@@ -71,7 +76,20 @@ data class SettingsUiState(
     val isSavingSoul: Boolean = false,
     val councilEnabled: Boolean = false,
     val councilReviewers: List<CouncilReviewerDraft> = emptyList(),
+    // App update state
+    val updateInfo: UpdateInfo? = null,
+    val isCheckingUpdate: Boolean = false,
+    val isDownloadingUpdate: Boolean = false,
+    val updateDownloadProgress: dev.clawseed.demo.updater.ApkDownloadProgress? = null,
+    val updateApkReady: Boolean = false,
+    val updateCheckResult: UpdateCheckResult? = null,
 )
+
+/** Result of an update check — used to show "up to date" or error messages. */
+sealed class UpdateCheckResult {
+    data object UpToDate : UpdateCheckResult()
+    data class Error(val message: String) : UpdateCheckResult()
+}
 
 private data class ProviderDraft(
     val apiKey: String,
@@ -767,6 +785,82 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 }
         }
     }
+
+    // ── App Update ──────────────────────────────────────────────────
+
+    private val updateChecker = AppUpdateChecker(getApplication())
+    private val apkDownloader = ApkDownloader(getApplication())
+
+    fun checkForUpdate() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                isCheckingUpdate = true,
+                updateInfo = null,
+                updateCheckResult = null,
+                error = null,
+            )
+            try {
+                val info = updateChecker.checkUpdate()
+                if (info != null) {
+                    _uiState.value = _uiState.value.copy(
+                        isCheckingUpdate = false,
+                        updateInfo = info,
+                        updateApkReady = apkDownloader.getDownloadedApk() != null,
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        isCheckingUpdate = false,
+                        updateCheckResult = UpdateCheckResult.UpToDate,
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isCheckingUpdate = false,
+                    updateCheckResult = UpdateCheckResult.Error(e.message ?: "Unknown error"),
+                )
+            }
+        }
+    }
+
+    fun downloadUpdate() {
+        val info = _uiState.value.updateInfo ?: return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                isDownloadingUpdate = true,
+                updateDownloadProgress = null,
+                error = null,
+            )
+            try {
+                apkDownloader.download(info.downloadUrl, info.downloadSize).collect { progress ->
+                    _uiState.value = _uiState.value.copy(updateDownloadProgress = progress)
+                }
+                _uiState.value = _uiState.value.copy(
+                    isDownloadingUpdate = false,
+                    updateApkReady = apkDownloader.getDownloadedApk() != null,
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isDownloadingUpdate = false,
+                    error = getApplication<Application>().getString(R.string.update_download_failed, e.message?.take(100) ?: ""),
+                )
+            }
+        }
+    }
+
+    fun installUpdate() {
+        val apkFile = apkDownloader.getDownloadedApk() ?: return
+        val context = getApplication<Application>()
+        if (!ApkInstaller.canInstallPackages(context)) {
+            // Request permission — the UI layer handles showing the settings intent
+            _uiState.value = _uiState.value.copy(
+                error = getApplication<Application>().getString(R.string.update_install_permission_desc),
+            )
+            return
+        }
+        ApkInstaller.install(context, apkFile)
+    }
+
+    fun getInstallPermissionIntent(): Intent = ApkInstaller.installPermissionIntent()
 
     companion object {
         private fun extractProviderBaseUrl(toml: String): String {

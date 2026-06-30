@@ -1,25 +1,34 @@
 package dev.clawseed.demo.ui.drawer
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -30,7 +39,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.buildAnnotatedString
@@ -42,6 +53,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.clawseed.demo.BuildConfig
 import dev.clawseed.demo.R
+import dev.clawseed.demo.ui.settings.UpdateCheckResult
+import dev.clawseed.demo.ui.settings.SettingsViewModel
 import dev.clawseed.sdk.core.model.SessionSummary
 
 @Composable
@@ -220,7 +233,10 @@ private fun RenameDialog(
 
 @Composable
 private fun AboutDialog(onDismiss: () -> Unit) {
+    val viewModel: SettingsViewModel = viewModel()
+    val uiState by viewModel.uiState.collectAsState()
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
     val githubUrl = "https://github.com/lzx1413/clawseed"
     val annotatedLink = buildAnnotatedString {
         pushStringAnnotation(tag = "URL", annotation = githubUrl)
@@ -251,10 +267,154 @@ private fun AboutDialog(onDismiss: () -> Unit) {
                             .firstOrNull()?.let { uriHandler.openUri(it.item) }
                     },
                 )
+
+                // ── Update section ──
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(stringResource(R.string.update_check), style = MaterialTheme.typography.titleSmall)
+                    if (uiState.isCheckingUpdate) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        OutlinedButton(onClick = { viewModel.checkForUpdate() }) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(stringResource(R.string.update_check))
+                        }
+                    }
+                }
+
+                // Update check result
+                when (val result = uiState.updateCheckResult) {
+                    is UpdateCheckResult.UpToDate -> {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                stringResource(R.string.update_up_to_date),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                    is UpdateCheckResult.Error -> {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            stringResource(R.string.update_check_failed, result.message),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    null -> {}
+                }
+
+                // Update available
+                val updateInfo = uiState.updateInfo
+                if (updateInfo != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        stringResource(R.string.update_available, updateInfo.versionName),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+
+                    // Release notes (collapsible)
+                    if (updateInfo.releaseNotes.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        var notesExpanded by remember { mutableStateOf(false) }
+                        Column {
+                            Text(
+                                text = stringResource(R.string.update_release_notes),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.clickable { notesExpanded = !notesExpanded },
+                            )
+                            androidx.compose.animation.AnimatedVisibility(visible = notesExpanded) {
+                                Text(
+                                    text = updateInfo.releaseNotes,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 4.dp),
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Download progress
+                    val progress = uiState.updateDownloadProgress
+                    if (uiState.isDownloadingUpdate && progress != null) {
+                        LinearProgressIndicator(
+                            progress = { progress.percent.toFloat() / 100f },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(
+                                R.string.update_download_progress,
+                                progress.percent,
+                                formatBytes(progress.downloadedBytes),
+                                formatBytes(progress.totalBytes),
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else if (uiState.updateApkReady) {
+                        // APK downloaded and ready to install
+                        Button(
+                            onClick = {
+                                if (dev.clawseed.demo.updater.ApkInstaller.canInstallPackages(context)) {
+                                    viewModel.installUpdate()
+                                } else {
+                                    context.startActivity(viewModel.getInstallPermissionIntent())
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(stringResource(R.string.update_install))
+                        }
+                    } else if (!uiState.isDownloadingUpdate) {
+                        // Download button
+                        Button(
+                            onClick = { viewModel.downloadUpdate() },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(stringResource(R.string.update_download))
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_confirm)) }
         },
     )
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1_000_000_000 -> "${bytes / 1_000_000_000} GB"
+    bytes >= 1_000_000 -> "%.1f MB".format(bytes / 1_000_000.0)
+    bytes >= 1_000 -> "${bytes / 1_000} KB"
+    else -> "$bytes B"
 }
