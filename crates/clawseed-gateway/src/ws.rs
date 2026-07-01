@@ -109,6 +109,11 @@ pub struct WsQuery {
     pub session_id: Option<String>,
     /// Optional human-readable name for the session.
     pub name: Option<String>,
+    /// Optional persona name to route this connection to a named persona in
+    /// `config.agents`. When set, soul/memory/tool overrides are applied to
+    /// this connection's agent. Resolved at HTTP-upgrade time (before the
+    /// agent is built), so persona cannot be changed mid-connection.
+    pub persona: Option<String>,
 }
 
 /// Extract a bearer token from WebSocket-compatible sources.
@@ -188,7 +193,8 @@ pub async fn handle_ws_chat(
 
     let session_id = params.session_id;
     let session_name = params.name;
-    ws.on_upgrade(move |socket| handle_socket(socket, state, session_id, session_name))
+    let persona = params.persona;
+    ws.on_upgrade(move |socket| handle_socket(socket, state, session_id, session_name, persona))
         .into_response()
 }
 
@@ -200,6 +206,7 @@ async fn handle_socket(
     state: AppState,
     session_id: Option<String>,
     session_name: Option<String>,
+    persona: Option<String>,
 ) {
     let (mut sender, mut receiver) = socket.split();
 
@@ -209,10 +216,47 @@ async fn handle_socket(
 
     // Build a persistent Agent for this connection so history is maintained across turns.
     let config = state.config.lock().clone();
-    let mut agent = match clawseed_agent::agent::Agent::from_config_with_shared_components(
+
+    // ── Persona↔session binding (write-once, immutable on resume) ──────────────
+    //
+    // The stored binding is authoritative: if a session already has a persona
+    // bound (resume), it is used and the `?persona=` query param is IGNORED —
+    // a persona cannot be changed mid-session. Only on first connect (no stored
+    // binding) does the query param take effect, and it is then persisted.
+    let stored_persona = state
+        .session_backend
+        .as_ref()
+        .and_then(|b| b.get_session_persona(&session_key).ok().flatten());
+    let is_first_binding = stored_persona.is_none();
+    // Stored binding is authoritative on resume (ignores ?persona=); only on
+    // first connect does the query param take effect.
+    let effective_persona = stored_persona.or(persona);
+    if is_first_binding && let Some(ref backend) = state.session_backend {
+        // Persist the binding on first connect. Only non-None personas are
+        // recorded to keep the table sparse (None == no row == default global).
+        if effective_persona.is_some() {
+            let _ = backend.set_session_persona(&session_key, effective_persona.as_deref());
+        }
+    }
+
+    // Resolve a named persona into config + memory overrides, if requested.
+    // Falls back to the global config + shared memory when persona is unset or
+    // names an entry with no persona-specific overrides. Done before building
+    // the agent because soul/tools/memory-namespace are construction-time
+    // properties (no post-build setter, unlike session_id).
+    let (agent_config, shared_memory) = match clawseed_agent::persona::resolve_persona(
         &config,
-        state.provider.clone(),
+        effective_persona.as_deref(),
         state.mem.clone(),
+    ) {
+        Some(ov) => (ov.config, ov.memory.unwrap_or_else(|| state.mem.clone())),
+        None => (config, state.mem.clone()),
+    };
+
+    let mut agent = match clawseed_agent::agent::Agent::from_config_with_shared_components(
+        &agent_config,
+        state.provider.clone(),
+        shared_memory,
         state.observer.clone(),
         state.model.clone(),
         state.temperature,
@@ -291,6 +335,11 @@ async fn handle_socket(
     });
     if let Some(ref name) = effective_name {
         session_start["name"] = serde_json::Value::String(name.clone());
+    }
+    // Echo the effective persona so the client knows which persona this
+    // session is bound to (write-once; resume always reflects the stored value).
+    if let Some(ref p) = effective_persona {
+        session_start["persona"] = serde_json::Value::String(p.clone());
     }
     let _ = sender
         .send(Message::Text(session_start.to_string().into()))

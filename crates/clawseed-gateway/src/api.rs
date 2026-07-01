@@ -362,6 +362,132 @@ pub async fn handle_api_personality_put(
     Json(serde_json::json!({"status": "ok"})).into_response()
 }
 
+// ── /api/personas — named persona (分身) management ─────────────────────────
+//
+// Personas live in `config.agents` as `AgentEntryConfig` entries. An entry is
+// a "persona" (vs a plain named API key) when `has_persona_overrides()` is
+// true — i.e. it sets identity / system_prompt / memory_namespace /
+// allowed_tools / denied_tools. These endpoints manage only the persona fields
+// and preserve any existing `api_key`. Persistence goes through the standard
+// `Config::save()` path (no second source of truth).
+
+/// GET /api/personas — list personas with their configured overrides.
+///
+/// Never exposes `api_key`. Returns each entry's name, which override fields
+/// are set, and the memory namespace (if any).
+pub async fn handle_api_personas_list(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+
+    let config = state.config.lock().clone();
+    let personas: Vec<serde_json::Value> = config
+        .agents
+        .iter()
+        .map(|(name, entry)| {
+            serde_json::json!({
+                "name": name,
+                "is_persona": entry.has_persona_overrides(),
+                "has_identity": entry.identity.is_some(),
+                "has_system_prompt": entry.system_prompt.is_some(),
+                "memory_namespace": entry.memory_namespace,
+                "allowed_tools": entry.allowed_tools,
+                "denied_tools": entry.denied_tools,
+            })
+        })
+        .collect();
+
+    Json(serde_json::json!({"personas": personas})).into_response()
+}
+
+/// PUT /api/personas/:name — upsert a persona's override fields.
+///
+/// Body fields are optional; only provided fields are overwritten. The entry's
+/// `api_key` is preserved if it already exists. Setting all override fields to
+/// null/empty effectively demotes the entry back to a plain named API key.
+#[derive(Deserialize)]
+pub struct PersonaPutBody {
+    #[serde(default)]
+    pub identity: Option<clawseed_config::schema::IdentityConfig>,
+    #[serde(default)]
+    pub system_prompt: Option<String>,
+    #[serde(default)]
+    pub memory_namespace: Option<String>,
+    #[serde(default)]
+    pub allowed_tools: Vec<String>,
+    #[serde(default)]
+    pub denied_tools: Vec<String>,
+}
+
+pub async fn handle_api_persona_put(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+    Json(body): Json<PersonaPutBody>,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+
+    let mut config = state.config.lock().clone();
+
+    // Upsert, preserving any existing api_key.
+    let existing = config.agents.get(&name).cloned();
+    let entry = clawseed_config::schema::AgentEntryConfig {
+        api_key: existing.and_then(|e| e.api_key),
+        identity: body.identity,
+        system_prompt: body.system_prompt,
+        memory_namespace: body.memory_namespace,
+        allowed_tools: body.allowed_tools,
+        denied_tools: body.denied_tools,
+    };
+    config.agents.insert(name.clone(), entry);
+
+    if let Err(e) = config.save() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Failed to save config: {e}")})),
+        )
+            .into_response();
+    }
+    *state.config.lock() = config;
+
+    Json(serde_json::json!({"status": "ok", "name": name})).into_response()
+}
+
+/// DELETE /api/personas/:name — remove a persona entry entirely.
+pub async fn handle_api_persona_delete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+
+    let mut config = state.config.lock().clone();
+    if config.agents.remove(&name).is_none() {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("Persona '{name}' not found")})),
+        )
+            .into_response();
+    }
+    if let Err(e) = config.save() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Failed to save config: {e}")})),
+        )
+            .into_response();
+    }
+    *state.config.lock() = config;
+
+    Json(serde_json::json!({"status": "ok", "deleted": name})).into_response()
+}
+
 /// GET /api/provider/models — proxy model list fetch using configured API key
 pub async fn handle_api_provider_models(
     State(state): State<AppState>,

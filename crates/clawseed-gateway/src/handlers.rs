@@ -201,13 +201,14 @@ pub(crate) async fn run_gateway_chat_with_tools(
     _state: &AppState,
     message: &str,
     session_id: Option<&str>,
+    persona: Option<&str>,
 ) -> anyhow::Result<String> {
     // Tests exercise webhook infrastructure (idempotency, auth, autosave)
     // through handle_webhook, so dispatch to the mock provider directly
     // instead of bootstrapping the full agent runtime.
     #[cfg(test)]
     {
-        let _ = session_id;
+        let _ = (session_id, persona);
         return _state
             .provider
             .chat_with_system(None, message, &_state.model, Some(_state.temperature))
@@ -217,10 +218,20 @@ pub(crate) async fn run_gateway_chat_with_tools(
     #[cfg(not(test))]
     {
         let config = _state.config.lock().clone();
+
+        // Resolve a named persona into config + memory overrides, if requested.
+        // Falls back to the global config + shared memory when persona is unset
+        // or names an entry with no persona-specific overrides.
+        let (config, shared_memory) =
+            match clawseed_agent::persona::resolve_persona(&config, persona, _state.mem.clone()) {
+                Some(ov) => (ov.config, ov.memory.unwrap_or_else(|| _state.mem.clone())),
+                None => (config, _state.mem.clone()),
+            };
+
         let mut agent = clawseed_agent::agent::Agent::from_config_with_shared_components(
             &config,
             _state.provider.clone(),
-            _state.mem.clone(),
+            shared_memory,
             _state.observer.clone(),
             _state.model.clone(),
             _state.temperature,
@@ -235,9 +246,13 @@ pub(crate) async fn run_gateway_chat_with_tools(
 }
 
 /// Webhook request body
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Default)]
 pub struct WebhookBody {
     pub message: String,
+    /// Optional persona name to route this request to a named persona in
+    /// `config.agents`. When set, soul/memory/tool overrides are applied.
+    #[serde(default)]
+    pub persona: Option<String>,
 }
 
 /// POST /webhook -- main webhook endpoint
@@ -333,6 +348,15 @@ pub async fn handle_webhook(
     let message = &webhook_body.message;
     let session_id = webhook_session_id(&headers);
 
+    // Persona selection: X-Persona header takes precedence over the body field.
+    let persona = headers
+        .get("X-Persona")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_owned)
+        .or(webhook_body.persona.clone());
+
     // Persist user message to session store if session_id is provided
     let session_key = session_id.as_ref().map(|sid| format!("gw_{sid}"));
     if let (Some(skey), Some(backend)) = (&session_key, &state.session_backend) {
@@ -383,7 +407,9 @@ pub async fn handle_webhook(
             messages_count: 1,
         });
 
-    match run_gateway_chat_with_tools(&state, message, session_id.as_deref()).await {
+    match run_gateway_chat_with_tools(&state, message, session_id.as_deref(), persona.as_deref())
+        .await
+    {
         Ok(response) => {
             // Persist assistant response to session store
             if let (Some(skey), Some(backend)) = (&session_key, &state.session_backend) {
@@ -1010,6 +1036,7 @@ mod tests {
 
         let body = Ok(Json(WebhookBody {
             message: "hello".into(),
+            ..Default::default()
         }));
         let first = handle_webhook(
             State(state.clone()),
@@ -1023,6 +1050,7 @@ mod tests {
 
         let body = Ok(Json(WebhookBody {
             message: "hello".into(),
+            ..Default::default()
         }));
         let second = handle_webhook(State(state), test_connect_info(), headers, body)
             .await
@@ -1079,6 +1107,7 @@ mod tests {
 
         let body1 = Ok(Json(WebhookBody {
             message: "hello one".into(),
+            ..Default::default()
         }));
         let first = handle_webhook(
             State(state.clone()),
@@ -1092,6 +1121,7 @@ mod tests {
 
         let body2 = Ok(Json(WebhookBody {
             message: "hello two".into(),
+            ..Default::default()
         }));
         let second = handle_webhook(State(state), test_connect_info(), headers, body2)
             .await
@@ -1163,6 +1193,7 @@ mod tests {
             HeaderMap::new(),
             Ok(Json(WebhookBody {
                 message: "hello".into(),
+                ..Default::default()
             })),
         )
         .await
@@ -1223,6 +1254,7 @@ mod tests {
             headers,
             Ok(Json(WebhookBody {
                 message: "hello".into(),
+                ..Default::default()
             })),
         )
         .await
@@ -1279,6 +1311,7 @@ mod tests {
             headers,
             Ok(Json(WebhookBody {
                 message: "hello".into(),
+                ..Default::default()
             })),
         )
         .await
@@ -1315,5 +1348,19 @@ mod tests {
         ));
         let err = require_localhost(&peer).unwrap_err();
         assert_eq!(err.0, StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn webhook_body_deserializes_persona_field() {
+        // Persona is optional; absence must still parse (backward compatible).
+        let without: WebhookBody = serde_json::from_str(r#"{"message":"hi"}"#).unwrap();
+        assert_eq!(without.message, "hi");
+        assert!(without.persona.is_none());
+
+        // Presence parses the persona name.
+        let with: WebhookBody =
+            serde_json::from_str(r#"{"message":"hi","persona":"analyst"}"#).unwrap();
+        assert_eq!(with.message, "hi");
+        assert_eq!(with.persona.as_deref(), Some("analyst"));
     }
 }

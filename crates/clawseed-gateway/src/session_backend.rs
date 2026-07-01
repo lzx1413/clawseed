@@ -82,4 +82,15 @@ pub trait SessionBackend: Send + Sync + 'static {
     /// Remove all messages after the last user message (inclusive).
     /// Returns the content of that last user message, or None if no user message exists.
     fn remove_last_assistant_turn(&self, session_key: &str) -> Option<String>;
+
+    /// Bind a persona to a session (persona↔session binding persistence).
+    ///
+    /// `persona = None` clears the binding. The binding is write-once from the
+    /// client's perspective: once set, `get_session_persona` is authoritative
+    /// on resume and the client cannot change it by passing a different
+    /// `?persona=` query param (see `ws::handle_socket`).
+    fn set_session_persona(&self, session_key: &str, persona: Option<&str>) -> anyhow::Result<()>;
+
+    /// Read the persona bound to a session, if any.
+    fn get_session_persona(&self, session_key: &str) -> anyhow::Result<Option<String>>;
 }

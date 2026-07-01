@@ -1503,10 +1503,57 @@ pub struct WebSearchConfig {
 }
 
 /// Agent entry configuration (for named agents in the config).
+///
+/// Historically this only carried a named `api_key`. It now also serves as a
+/// **persona** definition: a named bundle of soul (identity / system prompt),
+/// memory namespace, and tool-filter overrides that can be selected per
+/// connection. Fields default to empty/None, so legacy configs that only set
+/// `api_key` keep working unchanged.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentEntryConfig {
     #[serde(default)]
     pub api_key: Option<String>,
+
+    /// Soul override: an `IdentityConfig` (openclaw directory or AIEOS
+    /// inline/path). When set, this persona uses its own identity instead of
+    /// the global `[identity]` block.
+    #[serde(default)]
+    pub identity: Option<IdentityConfig>,
+
+    /// Memory isolation namespace. When set, the persona's memory operations
+    /// are scoped to this namespace within the shared memory backend (see
+    /// `NamespacedMemory`). `None` = share the global memory space.
+    #[serde(default)]
+    pub memory_namespace: Option<String>,
+
+    /// Glob patterns for tool names this persona is allowed to use. Overrides
+    /// the global `[agent].allowed_tools` when non-empty.
+    #[serde(default)]
+    pub allowed_tools: Vec<String>,
+
+    /// Glob patterns for tool names this persona is denied (takes precedence
+    /// over allowed). Overrides the global `[agent].denied_tools` when non-empty.
+    #[serde(default)]
+    pub denied_tools: Vec<String>,
+
+    /// Direct system-prompt override — the simplest soul form, bypassing both
+    /// AIEOS and workspace personality files. When set, takes precedence over
+    /// the global `[identity]` for this persona.
+    #[serde(default)]
+    pub system_prompt: Option<String>,
+}
+
+impl AgentEntryConfig {
+    /// True if any persona-specific override is set (i.e. this entry is more
+    /// than just a named API key). Used to decide whether resolving a persona
+    /// should produce overrides at all.
+    pub fn has_persona_overrides(&self) -> bool {
+        self.identity.is_some()
+            || self.memory_namespace.is_some()
+            || !self.allowed_tools.is_empty()
+            || !self.denied_tools.is_empty()
+            || self.system_prompt.is_some()
+    }
 }
 
 /// Skill system configuration.
@@ -1561,6 +1608,11 @@ pub struct IdentityConfig {
     /// Inline AIEOS JSON (alternative to file path).
     #[serde(default)]
     pub aieos_inline: Option<String>,
+    /// Directory (relative to workspace_dir) from which to load openclaw
+    /// personality files (SOUL.md, IDENTITY.md, ...). `None` = load from the
+    /// workspace root. Only consulted when `format == "openclaw"`.
+    #[serde(default)]
+    pub personality_dir: Option<String>,
 }
 
 fn default_identity_format() -> String {
@@ -1573,6 +1625,7 @@ impl Default for IdentityConfig {
             format: default_identity_format(),
             aieos_path: None,
             aieos_inline: None,
+            personality_dir: None,
         }
     }
 }

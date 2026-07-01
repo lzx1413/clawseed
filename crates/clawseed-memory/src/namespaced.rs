@@ -225,6 +225,7 @@ impl Memory for NamespacedMemory {
 mod tests {
     use super::*;
     use crate::none::NoneMemory;
+    use crate::sqlite::SqliteMemory;
 
     #[tokio::test]
     async fn namespaced_memory_enforces_namespace_on_store() {
@@ -259,5 +260,56 @@ mod tests {
         assert_eq!(namespaced.name(), "none");
         assert!(namespaced.health_check().await);
         assert_eq!(namespaced.count().await.unwrap(), 0);
+    }
+
+    // Real-backend isolation test: NoneMemory is a no-op (store does nothing,
+    // recall always returns empty), so cross-namespace assertions would pass
+    // regardless of whether NamespacedMemory is correct. This test uses a
+    // temporary SQLite backend so store/recall actually persist, exercising the
+    // real store_with_metadata / recall_namespaced path used by personas.
+    #[tokio::test]
+    async fn sqlite_two_namespaces_are_isolated() {
+        let tmp = tempfile::tempdir().unwrap();
+        let inner: Arc<dyn Memory> = Arc::new(SqliteMemory::new(tmp.path()).unwrap());
+
+        let persona_a = NamespacedMemory::new(inner.clone(), "persona_a".into());
+        let persona_b = NamespacedMemory::new(inner.clone(), "persona_b".into());
+
+        // Persona A stores a memory.
+        persona_a
+            .store(
+                "k_a",
+                "Nova remembers the user likes Rust",
+                MemoryCategory::Core,
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Persona A recalls its own memory — must find it.
+        let a_hits = persona_a
+            .recall("Rust", 10, None, None, None, None)
+            .await
+            .unwrap();
+        assert!(
+            a_hits.iter().any(|e| e.key == "k_a"),
+            "persona A should see its own memory, got: {a_hits:?}"
+        );
+
+        // Persona B recalls the same query — must NOT see persona A's memory.
+        let b_hits = persona_b
+            .recall("Rust", 10, None, None, None, None)
+            .await
+            .unwrap();
+        assert!(
+            b_hits.iter().all(|e| e.key != "k_a"),
+            "persona B must not see persona A's memory, got: {b_hits:?}"
+        );
+
+        // The underlying backend still holds the row (shared storage, namespaced view).
+        let total = inner.count().await.unwrap();
+        assert_eq!(total, 1, "shared backend should hold 1 row");
+        assert_eq!(persona_a.count().await.unwrap(), 1);
+        assert_eq!(persona_b.count().await.unwrap(), 0);
     }
 }

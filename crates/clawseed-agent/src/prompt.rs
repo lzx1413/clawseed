@@ -24,6 +24,10 @@ pub struct PromptContext<'a> {
     /// Stable Core memories injected into system prompt for LLM cache benefit.
     /// Empty when stable_memory_in_system_prompt is disabled.
     pub stable_core_memories: &'a [clawseed_api::memory_traits::MemoryEntry],
+    /// Direct system-prompt override from `AgentConfig.system_prompt`. When set
+    /// (and no AIEOS/personality_dir identity is configured), this string is
+    /// used as the soul instead of workspace personality files.
+    pub system_prompt_override: Option<&'a str>,
 }
 
 /// Classification of a prompt section for caching purposes.
@@ -204,35 +208,55 @@ impl PromptSection for IdentitySection {
     }
 
     fn build(&self, ctx: &PromptContext<'_>) -> Result<String> {
-        let mut prompt = String::from("## Project Context\n\n");
-        let mut has_aieos = false;
+        // Soul source priority (mutually exclusive — pick one, do not stack):
+        //   1. AIEOS identity configured         → render AIEOS JSON only
+        //   2. identity.personality_dir set      → load openclaw files from that subdir
+        //   3. agent.system_prompt override set  → render that string as soul
+        //   4. none of the above (global default)→ load openclaw files from workspace root
 
+        // Priority 1: AIEOS
         if crate::identity::is_aieos_configured(ctx.identity_config)
             && let Ok(Some(aieos)) =
                 crate::identity::load_aieos_identity(ctx.identity_config, ctx.workspace_dir)
         {
             let rendered = crate::identity::aieos_to_system_prompt(&aieos);
             if !rendered.is_empty() {
-                prompt.push_str(&rendered);
-                prompt.push_str("\n\n");
-                has_aieos = true;
+                // AIEOS is the soul — do NOT fall through to workspace personality files.
+                return Ok(format!("## Project Context\n\n{rendered}\n"));
             }
         }
 
-        if !has_aieos {
-            prompt.push_str(
-                "The following workspace files define your identity, behavior, and context.\n\n",
-            );
+        // Priority 2: explicit personality_dir (openclaw files from a subdir)
+        if let Some(dir) = ctx.identity_config.personality_dir.as_deref() {
+            let personality_dir = ctx.workspace_dir.join(dir);
+            let profile = crate::personality::load_personality(&personality_dir);
+            let rendered = profile.render();
+            if !rendered.trim().is_empty() {
+                return Ok(format!(
+                    "## Project Context\n\nThe following files define your identity, behavior, and context.\n\n{rendered}"
+                ));
+            }
+            // dir configured but empty → fall through to priorities 3/4
         }
 
+        // Priority 3: direct system_prompt override
+        if let Some(sys) = ctx.system_prompt_override
+            && !sys.trim().is_empty()
+        {
+            return Ok(sys.to_string());
+        }
+
+        // Priority 4: global default — workspace root personality files
+        let mut prompt = String::from("## Project Context\n\n");
+        prompt.push_str(
+            "The following workspace files define your identity, behavior, and context.\n\n",
+        );
         let profile = crate::personality::load_personality(ctx.workspace_dir);
         let rendered = profile.render();
-        if !rendered.trim().is_empty() {
-            prompt.push_str(&rendered);
-        } else if !has_aieos {
+        if rendered.trim().is_empty() {
             return Ok(String::new());
         }
-
+        prompt.push_str(&rendered);
         Ok(prompt)
     }
 }
@@ -380,6 +404,7 @@ mod tests {
             skill_index: &[],
             active_skills: &[],
             stable_core_memories: &[],
+            system_prompt_override: None,
         };
 
         let prompt = builder.build(&ctx).unwrap();
@@ -408,6 +433,7 @@ mod tests {
             skill_index: &[],
             active_skills: &[],
             stable_core_memories: &[],
+            system_prompt_override: None,
         };
 
         let text = section.build(&ctx).unwrap();
@@ -428,6 +454,7 @@ mod tests {
             skill_index: &[],
             active_skills: &[],
             stable_core_memories: &[],
+            system_prompt_override: None,
         };
 
         let text = section.build(&ctx).unwrap();
@@ -448,6 +475,7 @@ mod tests {
             skill_index: &[],
             active_skills: &[],
             stable_core_memories: &[],
+            system_prompt_override: None,
         };
 
         let text = section.build(&ctx).unwrap();
@@ -482,6 +510,7 @@ mod tests {
             skill_index: &[],
             active_skills: &[],
             stable_core_memories: &entries,
+            system_prompt_override: None,
         };
 
         let text = section.build(&ctx).unwrap();
@@ -519,6 +548,7 @@ mod tests {
             skill_index: &[],
             active_skills: &[],
             stable_core_memories: &[],
+            system_prompt_override: None,
         }
     }
 
@@ -569,5 +599,106 @@ mod tests {
         assert_eq!(p.stable, "STABLE CONTENT");
         assert_eq!(p.dynamic, "");
         assert_eq!(p.full, "STABLE CONTENT");
+    }
+
+    // ── IdentitySection soul-priority tests (persona feature) ──────────────
+    //
+    // The soul source is mutually exclusive: AIEOS > personality_dir >
+    // system_prompt_override > workspace-root personality. These tests pin the
+    // priority so a persona's soul is never polluted by the wrong source.
+
+    fn ws_with_files(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        for (name, content) in files {
+            std::fs::write(dir.path().join(name), content).unwrap();
+        }
+        dir
+    }
+
+    fn identity_section_build(
+        workspace: &Path,
+        identity: &IdentityConfig,
+        system_prompt_override: Option<&str>,
+    ) -> String {
+        let ctx = PromptContext {
+            workspace_dir: workspace,
+            model_name: "test",
+            tool_specs: &[],
+            dispatcher_instructions: "",
+            identity_config: identity,
+            autonomy_level: AutonomyLevel::Full,
+            skill_index: &[],
+            active_skills: &[],
+            stable_core_memories: &[],
+            system_prompt_override,
+        };
+        IdentitySection.build(&ctx).unwrap()
+    }
+
+    #[test]
+    fn identity_aieos_does_not_load_workspace_personality() {
+        // Workspace has SOUL.md, but an AIEOS identity is configured → AIEOS
+        // must win and the workspace SOUL.md must NOT appear.
+        let ws = ws_with_files(&[("SOUL.md", "WORKSPACE SOUL MUST NOT APPEAR")]);
+        let identity = IdentityConfig {
+            format: "aieos".into(),
+            aieos_inline: Some(r#"{"identity":{"names":{"first":"Nova"}}}"#.into()),
+            aieos_path: None,
+            personality_dir: None,
+        };
+        let out = identity_section_build(ws.path(), &identity, None);
+        assert!(out.contains("Nova"), "AIEOS identity should render: {out}");
+        assert!(
+            !out.contains("WORKSPACE SOUL MUST NOT APPEAR"),
+            "workspace personality leaked into AIEOS persona: {out}"
+        );
+    }
+
+    #[test]
+    fn identity_personality_dir_loads_from_subdir() {
+        // personality_dir points to a subdir; workspace root personality must
+        // be ignored in favor of the subdir's files.
+        let ws = tempfile::tempdir().unwrap();
+        std::fs::write(ws.path().join("SOUL.md"), "ROOT SOUL MUST NOT APPEAR").unwrap();
+        let sub = ws.path().join("personas").join("analyst");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("SOUL.md"), "Analyst soul from subdir").unwrap();
+
+        let identity = IdentityConfig {
+            format: "openclaw".into(),
+            personality_dir: Some("personas/analyst".into()),
+            ..Default::default()
+        };
+        let out = identity_section_build(ws.path(), &identity, None);
+        assert!(
+            out.contains("Analyst soul from subdir"),
+            "subdir personality should render: {out}"
+        );
+        assert!(
+            !out.contains("ROOT SOUL MUST NOT APPEAR"),
+            "root personality leaked into personality_dir persona: {out}"
+        );
+    }
+
+    #[test]
+    fn identity_system_prompt_override_used_when_no_identity() {
+        // No AIEOS, no personality_dir → system_prompt_override is the soul.
+        let ws = ws_with_files(&[("SOUL.md", "WORKSPACE SOUL MUST NOT APPEAR")]);
+        let identity = IdentityConfig::default(); // openclaw, nothing configured
+        let out = identity_section_build(ws.path(), &identity, Some("You are a terse analyst."));
+        assert_eq!(out, "You are a terse analyst.");
+    }
+
+    #[test]
+    fn identity_global_default_loads_workspace_root_personality() {
+        // No overrides at all → backward-compatible: load workspace root files.
+        let ws = ws_with_files(&[("SOUL.md", "Global workspace soul")]);
+        let identity = IdentityConfig::default();
+        let out = identity_section_build(ws.path(), &identity, None);
+        assert!(
+            out.contains("Global workspace soul"),
+            "default should load workspace root: {out}"
+        );
+        assert!(out.contains("## Project Context"));
     }
 }

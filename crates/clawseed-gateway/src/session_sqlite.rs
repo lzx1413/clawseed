@@ -43,7 +43,15 @@ impl SqliteSessionBackend {
                 created_at  TEXT NOT NULL,
                 FOREIGN KEY (session_key) REFERENCES sessions(session_key) ON DELETE CASCADE
             );
-            CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_key);",
+            CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_key);
+
+            -- Persona↔session binding (旁路表，不碰 sessions 主表 schema).
+            -- Write-once from the client's perspective; on resume the stored
+            -- value is authoritative and ignores the ?persona= query param.
+            CREATE TABLE IF NOT EXISTS session_personas (
+                session_key TEXT PRIMARY KEY,
+                persona     TEXT
+            );",
         )?;
 
         Ok(Self {
@@ -300,5 +308,98 @@ impl SessionBackend for SqliteSessionBackend {
         )
         .ok();
         Some(user_content)
+    }
+
+    fn set_session_persona(&self, session_key: &str, persona: Option<&str>) -> anyhow::Result<()> {
+        let conn = self.conn.lock();
+        match persona {
+            Some(p) => {
+                conn.execute(
+                    "INSERT OR REPLACE INTO session_personas (session_key, persona) VALUES (?1, ?2)",
+                    params![session_key, p],
+                )?;
+            }
+            None => {
+                conn.execute(
+                    "DELETE FROM session_personas WHERE session_key = ?1",
+                    params![session_key],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    fn get_session_persona(&self, session_key: &str) -> anyhow::Result<Option<String>> {
+        let conn = self.conn.lock();
+        let mut stmt =
+            conn.prepare("SELECT persona FROM session_personas WHERE session_key = ?1")?;
+        let mut rows = stmt.query(params![session_key])?;
+        Ok(rows
+            .next()?
+            .and_then(|r| r.get::<_, Option<String>>(0).ok())
+            .flatten())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fresh_backend() -> SqliteSessionBackend {
+        let tmp = tempfile::tempdir().unwrap();
+        SqliteSessionBackend::new(tmp.path()).unwrap()
+        // tmp keeps the temp dir alive for the test via the backend's open conn
+    }
+
+    #[test]
+    fn persona_binding_set_get_roundtrip() {
+        let b = fresh_backend();
+        let key = "gw_s1";
+        b.set_session_persona(key, Some("nova")).unwrap();
+        assert_eq!(b.get_session_persona(key).unwrap().as_deref(), Some("nova"));
+    }
+
+    #[test]
+    fn persona_binding_unset_returns_none() {
+        let b = fresh_backend();
+        assert!(b.get_session_persona("gw_never").unwrap().is_none());
+    }
+
+    #[test]
+    fn persona_binding_clear_by_none() {
+        let b = fresh_backend();
+        let key = "gw_s2";
+        b.set_session_persona(key, Some("nova")).unwrap();
+        assert_eq!(b.get_session_persona(key).unwrap().as_deref(), Some("nova"));
+        // Clearing with None removes the binding.
+        b.set_session_persona(key, None).unwrap();
+        assert!(b.get_session_persona(key).unwrap().is_none());
+    }
+
+    #[test]
+    fn persona_binding_overwrite_same_key() {
+        let b = fresh_backend();
+        let key = "gw_s3";
+        b.set_session_persona(key, Some("nova")).unwrap();
+        b.set_session_persona(key, Some("analyst")).unwrap();
+        assert_eq!(
+            b.get_session_persona(key).unwrap().as_deref(),
+            Some("analyst")
+        );
+    }
+
+    #[test]
+    fn persona_binding_keys_isolated() {
+        let b = fresh_backend();
+        b.set_session_persona("gw_a", Some("nova")).unwrap();
+        b.set_session_persona("gw_b", Some("analyst")).unwrap();
+        assert_eq!(
+            b.get_session_persona("gw_a").unwrap().as_deref(),
+            Some("nova")
+        );
+        assert_eq!(
+            b.get_session_persona("gw_b").unwrap().as_deref(),
+            Some("analyst")
+        );
     }
 }

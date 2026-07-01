@@ -936,6 +936,7 @@ mod tests {
             format: "aieos".into(),
             aieos_path: Some("identity.json".into()),
             aieos_inline: None,
+            personality_dir: None,
         };
         assert!(is_aieos_configured(&config));
     }
@@ -946,6 +947,7 @@ mod tests {
             format: "openclaw".into(),
             aieos_path: Some("identity.json".into()),
             aieos_inline: None,
+            personality_dir: None,
         };
         assert!(!is_aieos_configured(&config));
     }
@@ -956,6 +958,7 @@ mod tests {
             format: "aieos".into(),
             aieos_path: None,
             aieos_inline: None,
+            personality_dir: None,
         };
         assert!(!is_aieos_configured(&config));
     }
@@ -1005,6 +1008,7 @@ mod tests {
             format: "aieos".into(),
             aieos_path: Some("identity.json".into()),
             aieos_inline: None,
+            personality_dir: None,
         };
 
         let identity = load_aieos_identity(&config, temp.path()).unwrap().unwrap();

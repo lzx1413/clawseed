@@ -627,6 +627,12 @@ pub async fn run_gateway(
         .route(
             "/api/sessions/{id}/abort",
             post(api::handle_api_session_abort),
+        )
+        // ── Personas (named agent 分身: soul + memory + tools isolation) ──
+        .route("/api/personas", get(api::handle_api_personas_list))
+        .route(
+            "/api/personas/{name}",
+            put(api::handle_api_persona_put).delete(api::handle_api_persona_delete),
         );
 
     let inner = inner

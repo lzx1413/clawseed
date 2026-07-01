@@ -18,6 +18,7 @@ pub mod identity;
 pub mod observability;
 pub mod observer;
 pub mod parser;
+pub mod persona;
 pub mod personality;
 pub mod prompt;
 pub mod security;

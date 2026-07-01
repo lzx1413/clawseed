@@ -1013,6 +1013,7 @@ impl Agent {
             skill_index: &self.skill_index,
             active_skills: &self.active_skills,
             stable_core_memories: &self.stable_core_memories,
+            system_prompt_override: self.config.system_prompt.as_deref(),
         };
 
         SystemPromptBuilder::with_defaults().build(&ctx)
@@ -1032,6 +1033,7 @@ impl Agent {
             skill_index: &self.skill_index,
             active_skills: &self.active_skills,
             stable_core_memories: &self.stable_core_memories,
+            system_prompt_override: self.config.system_prompt.as_deref(),
         };
 
         SystemPromptBuilder::with_defaults().build_partitioned(&ctx)
