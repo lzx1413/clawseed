@@ -194,6 +194,12 @@
     <string name="settings_refresh_skills">刷新技能</string>
     <string name="settings_skills_refreshed">技能已刷新</string>
     <string name="settings_refresh_skills_failed">刷新技能失败: %1$s</string>
+    <string name="settings_close_skill_editor">关闭</string>
+    <string name="settings_save_skill">保存技能</string>
+    <string name="settings_skill_saved">技能已保存</string>
+    <string name="settings_save_skill_failed">保存技能失败: %1$s</string>
+    <string name="settings_load_skill_failed">加载技能失败: %1$s</string>
+    <string name="settings_skill_editor_desc">编辑此技能的 SKILL.md 内容，保存后生效。</string>
     <string name="settings_save_failed">保存失败: %1$s</string>
 
     <string name="settings_developer_options">开发者选项</string>

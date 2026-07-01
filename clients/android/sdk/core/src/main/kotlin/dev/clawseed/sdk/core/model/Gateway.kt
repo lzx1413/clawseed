@@ -42,9 +42,22 @@ data class ToolInfo(
 data class SkillInfo(
     val name: String = "",
     val description: String = "",
+    val version: String = "",
     val enabled: Boolean = true,
     val triggers: List<String> = emptyList(),
     val permissions: List<String> = emptyList(),
+)
+
+/** Full skill detail including SKILL.md content, returned by /api/skills/{name}. */
+@Serializable
+data class SkillDetail(
+    val name: String = "",
+    val description: String = "",
+    val version: String = "",
+    val author: String? = null,
+    val tags: List<String> = emptyList(),
+    val permissions: List<String> = emptyList(),
+    val content: String = "",
 )
 
 /** Health probe response returned by `/health`. */

@@ -194,6 +194,12 @@
     <string name="settings_refresh_skills">Refresh Skills</string>
     <string name="settings_skills_refreshed">Skills refreshed</string>
     <string name="settings_refresh_skills_failed">Refresh skills failed: %1$s</string>
+    <string name="settings_close_skill_editor">Close</string>
+    <string name="settings_save_skill">Save Skill</string>
+    <string name="settings_skill_saved">Skill saved</string>
+    <string name="settings_save_skill_failed">Save skill failed: %1$s</string>
+    <string name="settings_load_skill_failed">Load skill failed: %1$s</string>
+    <string name="settings_skill_editor_desc">Edit the SKILL.md content for this skill. Changes take effect after saving.</string>
     <string name="settings_save_failed">Save failed: %1$s</string>
 
     <string name="settings_developer_options">Developer Options</string>

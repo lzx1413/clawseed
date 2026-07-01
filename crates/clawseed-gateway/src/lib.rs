@@ -574,6 +574,10 @@ pub async fn run_gateway(
         .route("/api/tools", get(api::handle_api_tools))
         .route("/api/skills", get(api::handle_api_skills))
         .route("/api/skills/reload", post(api::handle_api_skills_reload))
+        .route(
+            "/api/skills/{name}",
+            get(api::handle_api_skill_get).put(api::handle_api_skill_put),
+        )
         .route("/api/provider/models", get(api::handle_api_provider_models))
         .route("/api/personality", get(api::handle_api_personality_get))
         .route("/api/cron", get(api::handle_api_cron_list))

@@ -440,6 +440,18 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                         onToggle = { skillsExpanded = !skillsExpanded },
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Skill editor (shown when a skill is being edited)
+                            if (uiState.editingSkill != null) {
+                                SkillEditor(
+                                    skillName = uiState.editingSkill!!.name,
+                                    content = uiState.skillContent,
+                                    isLoading = uiState.isLoadingSkill,
+                                    isSaving = uiState.isSavingSkill,
+                                    onContentChange = viewModel::updateSkillContent,
+                                    onSave = viewModel::saveSkill,
+                                    onClose = viewModel::closeSkillEditor,
+                                )
+                            }
                             OutlinedButton(
                                 onClick = { viewModel.refreshSkills() },
                                 enabled = !uiState.isRefreshingSkills,
@@ -461,6 +473,7 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                                 SkillCard(
                                     skill = skill,
                                     onToggle = { viewModel.toggleSkill(skill.name, it) },
+                                    onClick = { viewModel.editSkill(skill) },
                                 )
                             }
                         }
@@ -1121,9 +1134,10 @@ private fun ToolCard(
 private fun SkillCard(
     skill: dev.clawseed.sdk.core.model.SkillInfo,
     onToggle: (Boolean) -> Unit,
+    onClick: () -> Unit = {},
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
         ),
@@ -1135,7 +1149,7 @@ private fun SkillCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = skill.name,
+                    text = if (skill.version.isNotBlank()) "${skill.name}  v${skill.version}" else skill.name,
                     style = MaterialTheme.typography.labelLarge,
                     color = if (skill.enabled) MaterialTheme.colorScheme.onSurfaceVariant
                         else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
@@ -1194,6 +1208,88 @@ private fun SkillCard(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SkillEditor(
+    skillName: String,
+    content: String?,
+    isLoading: Boolean,
+    isSaving: Boolean,
+    onContentChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onClose: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = skillName,
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                IconButton(onClick = onClose) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = stringResource(R.string.settings_close_skill_editor),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+
+            if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(200.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                }
+            } else if (content != null) {
+                OutlinedTextField(
+                    value = content,
+                    onValueChange = onContentChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp),
+                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    label = { Text("SKILL.md") },
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    OutlinedButton(
+                        onClick = onSave,
+                        enabled = !isSaving,
+                    ) {
+                        if (isSaving) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+                        Text(if (isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_skill))
+                    }
+                }
+            }
+
+            Text(
+                text = stringResource(R.string.settings_skill_editor_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            )
         }
     }
 }

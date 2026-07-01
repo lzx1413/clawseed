@@ -4,6 +4,7 @@ import dev.clawseed.sdk.core.model.GatewayStatus
 import dev.clawseed.sdk.core.model.HealthInfo
 import dev.clawseed.sdk.core.model.SessionMessage
 import dev.clawseed.sdk.core.model.SessionSummary
+import dev.clawseed.sdk.core.model.SkillDetail
 import dev.clawseed.sdk.core.model.SkillInfo
 import dev.clawseed.sdk.core.model.ToolInfo
 import dev.clawseed.sdk.core.model.WebhookResponse
@@ -208,6 +209,31 @@ class GatewayClient(
             val element = json.parseToJsonElement(body).jsonObject
             element["skills_count"]?.jsonPrimitive?.content?.toInt() ?: 0
         }
+    }
+
+    /** Retrieves full skill detail (including SKILL.md content) by name. */
+    suspend fun skill(name: String): Result<SkillDetail> = withContext(Dispatchers.IO) {
+        runCatching {
+            val encoded = java.net.URLEncoder.encode(name, "UTF-8")
+            val req = Request.Builder().url("$baseUrl/api/skills/$encoded").addAuth().build()
+            val body = execute(req).getOrThrow()
+            json.decodeFromJsonElement(SkillDetail.serializer(), json.parseToJsonElement(body).jsonObject)
+        }
+    }
+
+    /** Updates the SKILL.md content for a skill by name. */
+    suspend fun updateSkill(name: String, content: String): Result<Unit> {
+        val encoded = java.net.URLEncoder.encode(name, "UTF-8")
+        val payload = json.encodeToString(
+            kotlinx.serialization.serializer<Map<String, String>>(),
+            mapOf("content" to content),
+        )
+        val req = Request.Builder()
+            .url("$baseUrl/api/skills/$encoded")
+            .addAuth()
+            .put(payload.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        return execute(req).map {}
     }
 
     /** Lists models through the gateway provider proxy endpoint. */

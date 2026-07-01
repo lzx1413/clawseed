@@ -117,6 +117,7 @@ fn build_index_entry(skill_dir: &Path, fallback_name: &str) -> Option<SkillIndex
         return Some(SkillIndexEntry {
             name,
             description: manifest.description,
+            version: manifest.version,
             trigger_phrases: manifest.triggers,
             permissions: manifest.permissions,
         });
@@ -134,6 +135,7 @@ fn build_index_entry(skill_dir: &Path, fallback_name: &str) -> Option<SkillIndex
         return Some(SkillIndexEntry {
             name,
             description: manifest.description,
+            version: manifest.version,
             trigger_phrases: manifest.triggers,
             permissions: manifest.permissions,
         });
@@ -144,6 +146,7 @@ fn build_index_entry(skill_dir: &Path, fallback_name: &str) -> Option<SkillIndex
         return Some(SkillIndexEntry {
             name: fallback_name.to_string(),
             description: String::new(),
+            version: String::new(),
             trigger_phrases: Vec::new(),
             permissions: Vec::new(),
         });

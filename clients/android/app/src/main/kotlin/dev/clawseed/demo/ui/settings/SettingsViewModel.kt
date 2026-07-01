@@ -74,6 +74,10 @@ data class SettingsUiState(
     val soulContent: String? = null,
     val isRefreshingSkills: Boolean = false,
     val isSavingSoul: Boolean = false,
+    val editingSkill: SkillInfo? = null,
+    val skillContent: String? = null,
+    val isLoadingSkill: Boolean = false,
+    val isSavingSkill: Boolean = false,
     val councilEnabled: Boolean = false,
     val councilReviewers: List<CouncilReviewerDraft> = emptyList(),
     // App update state
@@ -784,6 +788,70 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     )
                 }
         }
+    }
+
+    // ── Skill Editor ────────────────────────────────────────────────────
+
+    fun editSkill(skill: SkillInfo) {
+        _uiState.value = _uiState.value.copy(
+            editingSkill = skill,
+            skillContent = null,
+            isLoadingSkill = true,
+            error = null,
+        )
+        viewModelScope.launch {
+            client().skill(skill.name)
+                .onSuccess { detail ->
+                    _uiState.value = _uiState.value.copy(
+                        skillContent = detail.content,
+                        isLoadingSkill = false,
+                    )
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        skillContent = "",
+                        isLoadingSkill = false,
+                        error = getApplication<Application>().getString(R.string.settings_load_skill_failed, e.message?.take(100) ?: ""),
+                    )
+                }
+        }
+    }
+
+    fun updateSkillContent(content: String) {
+        _uiState.value = _uiState.value.copy(skillContent = content, successMessage = null)
+    }
+
+    fun saveSkill() {
+        val skill = _uiState.value.editingSkill ?: return
+        val content = _uiState.value.skillContent ?: return
+        _uiState.value = _uiState.value.copy(isSavingSkill = true, error = null, successMessage = null)
+        viewModelScope.launch {
+            client().updateSkill(skill.name, content)
+                .onSuccess {
+                    // Refresh skill index to reflect changes
+                    val skillsResult = client().skills()
+                    _uiState.value = _uiState.value.copy(
+                        isSavingSkill = false,
+                        skills = skillsResult.getOrElse { emptyList() },
+                        successMessage = getApplication<Application>().getString(R.string.settings_skill_saved),
+                    )
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        isSavingSkill = false,
+                        error = getApplication<Application>().getString(R.string.settings_save_skill_failed, e.message?.take(100) ?: ""),
+                    )
+                }
+        }
+    }
+
+    fun closeSkillEditor() {
+        _uiState.value = _uiState.value.copy(
+            editingSkill = null,
+            skillContent = null,
+            isLoadingSkill = false,
+            isSavingSkill = false,
+        )
     }
 
     // ── App Update ──────────────────────────────────────────────────

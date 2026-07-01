@@ -19,6 +19,7 @@ use std::path::PathBuf;
 pub struct SkillIndexEntry {
     pub name: String,
     pub description: String,
+    pub version: String,
     pub trigger_phrases: Vec<String>,
     pub permissions: Vec<String>,
 }
@@ -166,6 +167,7 @@ mod tests {
         let entries = vec![SkillIndexEntry {
             name: "auto-coder".into(),
             description: "Autonomous code generation.".into(),
+            version: "0.3.0".into(),
             trigger_phrases: vec!["write code".into(), "implement feature".into()],
             permissions: vec!["file_read".into()],
         }];
