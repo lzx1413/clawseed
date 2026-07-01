@@ -2,6 +2,7 @@ package dev.clawseed.sdk.core.client
 
 import dev.clawseed.sdk.core.model.GatewayStatus
 import dev.clawseed.sdk.core.model.HealthInfo
+import dev.clawseed.sdk.core.model.PersonaInfo
 import dev.clawseed.sdk.core.model.SessionMessage
 import dev.clawseed.sdk.core.model.SessionSummary
 import dev.clawseed.sdk.core.model.SkillDetail
@@ -10,7 +11,9 @@ import dev.clawseed.sdk.core.model.ToolInfo
 import dev.clawseed.sdk.core.model.WebhookResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -152,6 +155,20 @@ class GatewayClient(
             val element = json.parseToJsonElement(body).jsonObject
             val filesObj = element["files"]?.jsonObject ?: return@runCatching emptyMap()
             filesObj.mapValues { it.value.jsonPrimitive.content }
+        }
+    }
+
+    /** Lists named personas (分身) configured on the gateway. */
+    suspend fun personas(): Result<List<PersonaInfo>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val req = Request.Builder().url("$baseUrl/api/personas").addAuth().build()
+            val body = execute(req).getOrThrow()
+            val element = json.parseToJsonElement(body).jsonObject
+            val arr = element["personas"]?.jsonArray ?: return@runCatching emptyList()
+            json.decodeFromJsonElement(
+                kotlinx.serialization.builtins.ListSerializer(PersonaInfo.serializer()),
+                arr,
+            )
         }
     }
 

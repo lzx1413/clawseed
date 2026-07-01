@@ -24,8 +24,15 @@ interface ClawSeedSession : Closeable {
     /** REST client bound to the same gateway configuration. */
     val gateway: GatewayClient
 
-    /** Connects the session and optionally resumes [sessionId]. */
-    suspend fun connect(sessionId: String? = null)
+    /**
+     * Connects the session and optionally resumes [sessionId].
+     *
+     * [persona] selects a named persona (分身) for a **new** session; it is
+     * sent as `?persona=` on the WebSocket URL. On resume (non-null
+     * [sessionId] with an existing binding) the gateway ignores this parameter
+     * and uses the stored binding — persona is write-once per session.
+     */
+    suspend fun connect(sessionId: String? = null, persona: String? = null)
     /** Gracefully disconnects the session from the gateway. */
     suspend fun disconnect()
     /** Sends a user message to the agent. */

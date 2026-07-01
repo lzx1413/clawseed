@@ -51,14 +51,15 @@ internal class DefaultClawSeedSession(
                         name = event.name,
                         resumed = event.resumed,
                         messageCount = event.messageCount,
+                        persona = event.persona,
                     )
                 }
             }
         }
     }
 
-    override suspend fun connect(sessionId: String?) {
-        chatClient.connect(sessionId)
+    override suspend fun connect(sessionId: String?, persona: String?) {
+        chatClient.connect(sessionId, persona)
     }
 
     override suspend fun disconnect() {

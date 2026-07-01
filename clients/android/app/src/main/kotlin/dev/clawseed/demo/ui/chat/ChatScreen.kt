@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +19,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,11 +37,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.res.stringResource
@@ -73,6 +77,10 @@ fun ChatScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var bottomBarHeightPx by remember { mutableStateOf(0) }
+    // Persona chosen in the picker, applied on the next sessionVersion bump.
+    var pendingPersona by remember { mutableStateOf<String?>(null) }
+    var hasPendingPersona by remember { mutableStateOf(false) }
+    var showPersonaSheet by remember { mutableStateOf(false) }
 
     fun dismissInput() {
         focusManager.clearFocus(force = true)
@@ -124,9 +132,16 @@ fun ChatScreen(
         }
     }
 
-    // Switch session only on explicit user action (version bump)
+    // Switch session only on explicit user action (version bump).
+    // When starting a new session from the persona picker, [pendingPersona]
+    // carries the chosen persona (null = default) and is applied here, then
+    // consumed. Resume from the drawer leaves hasPendingPersona=false so the
+    // gateway's stored binding is authoritative.
     LaunchedEffect(sessionVersion) {
-        viewModel.switchToSession(sessionId)
+        val persona = if (hasPendingPersona) pendingPersona else null
+        hasPendingPersona = false
+        pendingPersona = null
+        viewModel.switchToSession(sessionId, persona)
     }
 
     // Propagate session ID changes
@@ -165,7 +180,22 @@ fun ChatScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(uiState.sessionName ?: stringResource(R.string.chat_new_conversation)) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (!uiState.currentPersona.isNullOrEmpty()) {
+                            AssistChip(
+                                onClick = {},
+                                label = { Text(uiState.currentPersona!!) },
+                                modifier = Modifier.padding(end = 8.dp),
+                            )
+                        }
+                        Text(
+                            text = uiState.sessionName ?: stringResource(R.string.chat_new_conversation),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = {
                         dismissInput()
@@ -193,7 +223,7 @@ fun ChatScreen(
                     }
                     IconButton(onClick = {
                         dismissInput()
-                        onNewSession()
+                        showPersonaSheet = true
                     }) {
                         Icon(Icons.Default.Add, contentDescription = stringResource(R.string.chat_new_session))
                     }
@@ -297,5 +327,20 @@ fun ChatScreen(
                 modifier = Modifier.onSizeChanged { bottomBarHeightPx = it.height },
             )
         }
+    }
+
+    // Persona picker — shown when the user taps "+" to start a new chat.
+    if (showPersonaSheet) {
+        PersonaPickerSheet(
+            onDismiss = { showPersonaSheet = false },
+            onStart = { persona ->
+                showPersonaSheet = false
+                pendingPersona = persona
+                hasPendingPersona = true
+                // Bump sessionVersion via the app-level new-session handler;
+                // the LaunchedEffect(sessionVersion) above applies the persona.
+                onNewSession()
+            },
+        )
     }
 }

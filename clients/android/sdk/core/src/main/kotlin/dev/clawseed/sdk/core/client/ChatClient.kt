@@ -55,6 +55,7 @@ internal class ChatClient(
 
     @Volatile private var webSocket: WebSocket? = null
     @Volatile private var sessionId: String? = null
+    @Volatile private var persona: String? = null
     @Volatile private var intentionalDisconnect = false
     @Volatile private var reconnectAttempt = 0
     private val pendingMessages = ConcurrentLinkedQueue<String>()
@@ -69,7 +70,7 @@ internal class ChatClient(
         }
     }
 
-    suspend fun connect(sessionId: String? = null) {
+    suspend fun connect(sessionId: String? = null, persona: String? = null) {
         val targetSessionId = resolveSessionId(sessionId, this.sessionId)
         val currentState = _connectionState.value
         // If already connected/connecting to the same session, no-op or await the in-flight connect.
@@ -89,6 +90,10 @@ internal class ChatClient(
             disconnect()
         }
         this.sessionId = targetSessionId
+        // Persona only takes effect on a fresh connect (the gateway binds it
+        // write-once); on resume the server ignores ?persona= and uses the
+        // stored binding. We still send it so a brand-new session gets bound.
+        this.persona = persona
         intentionalDisconnect = false
         reconnectAttempt = 0
         _connectionState.value = ConnectionState.CONNECTING
@@ -146,11 +151,15 @@ internal class ChatClient(
     }
 
     private fun openWebSocket() {
-        val wsUrl = if (sessionId != null) {
-            val separator = if ("?" in url) "&" else "?"
-            "$url${separator}session_id=$sessionId"
-        } else {
-            url
+        val wsUrl = buildString {
+            append(url)
+            val params = mutableListOf<String>()
+            if (sessionId != null) params.add("session_id=$sessionId")
+            if (!persona.isNullOrEmpty()) params.add("persona=$persona")
+            if (params.isNotEmpty()) {
+                append(if ("?" in url) "&" else "?")
+                append(params.joinToString("&"))
+            }
         }
         val reqBuilder = Request.Builder().url(wsUrl)
         authTokenProvider()?.let { reqBuilder.addHeader("Authorization", "Bearer $it") }

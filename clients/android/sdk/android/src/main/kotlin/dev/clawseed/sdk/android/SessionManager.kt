@@ -76,11 +76,15 @@ class SessionManager internal constructor(
     /**
      * Connects to an existing session or creates a new one when [sessionId] is `null`.
      *
+     * [persona] selects a named persona for a **new** session (sent as
+     * `?persona=`). On resume the gateway ignores it and uses the stored
+     * binding — persona is write-once per session.
+     *
      * Unlike the previous one-at-a-time model, this does **not** disconnect
      * the old session on switch.  Old sessions remain alive in the pool so
      * the gateway continues any ongoing agent turn.
      */
-    suspend fun connect(sessionId: String? = null): ClawSeedSession {
+    suspend fun connect(sessionId: String? = null, persona: String? = null): ClawSeedSession {
         // ── Reuse existing session ──────────────────────────
         if (sessionId != null) {
             val existing = sessions[sessionId]
@@ -92,7 +96,7 @@ class SessionManager internal constructor(
                     return existing
                 }
                 if (state == ConnectionState.DISCONNECTED) {
-                    existing.connect(sessionId)
+                    existing.connect(sessionId, persona)
                     touch(sessionId)
                     _activeSessionId.value = sessionId
                     return existing
@@ -121,7 +125,7 @@ class SessionManager internal constructor(
 
         // ── Create new session ──────────────────────────────
         val session = sessionFactory(config)
-        session.connect(sessionId)
+        session.connect(sessionId, persona)
 
         // Bridge CETP external tools into this session's registry
         runCatching { ClawSeedAndroid.externalToolBridge().attachToRegistry(session.tools) }

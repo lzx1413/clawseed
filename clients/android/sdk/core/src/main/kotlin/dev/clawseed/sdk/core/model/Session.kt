@@ -11,6 +11,10 @@ data class SessionInfo(
     val name: String?,
     val resumed: Boolean,
     val messageCount: Int,
+    /** Persona bound to this session, echoed by the gateway in session_start.
+     *  Null means the default (global) agent. Write-once: on resume this
+     *  reflects the stored binding, not anything the client requested. */
+    val persona: String? = null,
 )
 
 /** Summary information returned by the gateway session list API. */

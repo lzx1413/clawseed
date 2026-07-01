@@ -74,6 +74,8 @@ data class ChatUiState(
     val speechOutputEnabled: Boolean = false,
     val isSpeaking: Boolean = false,
     val speakingMessageId: String? = null,
+    /** Persona bound to the active session (from session_start echo). Null = default. */
+    val currentPersona: String? = null,
 )
 
 /**
@@ -289,7 +291,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         return ClawSeedAndroid.sessionManager()
     }
 
-    fun switchToSession(sessionId: String?) {
+    fun switchToSession(sessionId: String?, persona: String? = null) {
         // If already connected to the same session, skip reconnection
         val currentSid = currentSession?.sessionInfo?.value?.sessionId
         if (currentSid != null && currentSid == sessionId
@@ -329,8 +331,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (sessionId != null && sessionSlots.containsKey(sessionId)) {
             reuseExistingSlot(sessionId)
         } else {
-            doConnect(sessionId)
+            doConnect(sessionId, persona)
         }
+    }
+
+    /**
+     * Start a brand-new session bound to [persona] (null = default global agent).
+     * Persona is write-once: it only takes effect on a fresh session; the
+     * gateway stores the binding and echoes it back in session_start.
+     */
+    fun startNewSession(persona: String?) {
+        switchToSession(null, persona)
     }
 
     /**
@@ -368,12 +379,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         observeAuthEvents()
     }
 
-    private fun doConnect(sessionId: String?) {
+    private fun doConnect(sessionId: String?, persona: String? = null) {
         connectJob?.cancel()
         connectJob = viewModelScope.launch {
             try {
                 ClawSeedAndroid.awaitInit()
-                val session = sessionManager().connect(sessionId)
+                val session = sessionManager().connect(sessionId, persona)
                 currentSession = session
 
                 val sid = session.sessionInfo.value?.sessionId ?: sessionId
@@ -637,6 +648,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.value = _uiState.value.copy(
                         sessionName = info?.name ?: _uiState.value.sessionName,
                         currentSessionId = info?.sessionId,
+                        // Persona is echoed by the gateway on every connect/resume;
+                        // null is a valid value (default global agent), only set
+                        // when we actually have session info so the chip clears on disconnect.
+                        currentPersona = info?.persona,
                     )
                     // Update pool slot sessionId if the gateway assigned a new one
                     val sid = info?.sessionId

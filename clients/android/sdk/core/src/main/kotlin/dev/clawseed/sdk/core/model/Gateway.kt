@@ -37,6 +37,18 @@ data class ToolInfo(
     val source: String? = null,
 )
 
+/** A named persona (分身) returned by `/api/personas`. */
+@Serializable
+data class PersonaInfo(
+    val name: String,
+    @SerialName("is_persona") val isPersona: Boolean = false,
+    @SerialName("has_identity") val hasIdentity: Boolean = false,
+    @SerialName("has_system_prompt") val hasSystemPrompt: Boolean = false,
+    @SerialName("memory_namespace") val memoryNamespace: String? = null,
+    @SerialName("allowed_tools") val allowedTools: List<String> = emptyList(),
+    @SerialName("denied_tools") val deniedTools: List<String> = emptyList(),
+)
+
 /** Description of one skill available in the gateway. */
 @Serializable
 data class SkillInfo(

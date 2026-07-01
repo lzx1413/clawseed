@@ -23,6 +23,11 @@
     <string name="chat_menu">菜单</string>
     <string name="chat_new_session">新建对话</string>
     <string name="chat_speech_output">语音朗读</string>
+    <string name="persona_picker_title">选择分身</string>
+    <string name="persona_default">默认</string>
+    <string name="persona_default_desc">全局助手</string>
+    <string name="persona_start">开始对话</string>
+    <string name="persona_load_failed">加载分身失败</string>
     <string name="chat_input_placeholder">输入消息…</string>
     <string name="chat_stop_generating">停止生成</string>
     <string name="chat_send">发送</string>

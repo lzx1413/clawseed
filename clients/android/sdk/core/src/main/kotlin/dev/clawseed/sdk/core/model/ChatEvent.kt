@@ -3,6 +3,7 @@ package dev.clawseed.sdk.core.model
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -16,6 +17,8 @@ sealed class ChatEvent {
         val resumed: Boolean,
         val messageCount: Int,
         val version: Int?,
+        /** Persona bound to this session, echoed by the gateway. Null = default. */
+        val persona: String? = null,
     ) : ChatEvent()
 
     /** WebSocket connection acknowledged by the gateway. */
@@ -86,6 +89,7 @@ sealed class ChatEvent {
                     resumed = obj["resumed"]?.jsonPrimitive?.booleanOrNull ?: false,
                     messageCount = obj["message_count"]?.jsonPrimitive?.intOrNull ?: 0,
                     version = obj["v"]?.jsonPrimitive?.intOrNull,
+                    persona = obj["persona"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() },
                 )
                 "connected" -> Connected(
                     message = obj["message"]?.jsonPrimitive?.content ?: "",
