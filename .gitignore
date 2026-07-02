@@ -37,6 +37,7 @@ venv/
 .secret_key
 *.key
 *.pem
+*.jks
 credentials.json
 .worktrees/
 .clawseed/*

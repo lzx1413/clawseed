@@ -1,4 +1,5 @@
 import java.time.LocalDate
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -7,6 +8,28 @@ plugins {
 }
 
 val buildDate: String = LocalDate.now().toString()
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) {
+        file.inputStream().use { input -> load(input) }
+    }
+}
+
+fun signingProperty(localName: String, envName: String): String? {
+    return localProperties.getProperty(localName)
+        ?: providers.environmentVariable(envName).orNull
+}
+
+val releaseStoreFile = signingProperty("android.injected.signing.store.file", "ANDROID_KEYSTORE_PATH")
+val releaseStorePassword = signingProperty("android.injected.signing.store.password", "ANDROID_KEYSTORE_PASSWORD")
+val releaseKeyAlias = signingProperty("android.injected.signing.key.alias", "ANDROID_KEY_ALIAS")
+val releaseKeyPassword = signingProperty("android.injected.signing.key.password", "ANDROID_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
 
 android {
     namespace = "dev.clawseed.demo"
@@ -22,9 +45,25 @@ android {
         buildConfigField("String", "SDK_VERSION", "\"0.4.0\"")
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = rootProject.file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                logger.warn("Release signing is not configured; release APK will be unsigned.")
+            }
         }
     }
 
