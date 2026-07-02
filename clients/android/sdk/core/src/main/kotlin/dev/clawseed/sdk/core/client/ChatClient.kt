@@ -25,6 +25,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import java.net.URLEncoder
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
@@ -154,8 +155,8 @@ internal class ChatClient(
         val wsUrl = buildString {
             append(url)
             val params = mutableListOf<String>()
-            if (sessionId != null) params.add("session_id=$sessionId")
-            if (!persona.isNullOrEmpty()) params.add("persona=$persona")
+            if (sessionId != null) params.add("session_id=${queryEncode(sessionId!!)}")
+            if (!persona.isNullOrEmpty()) params.add("persona=${queryEncode(persona!!)}")
             if (params.isNotEmpty()) {
                 append(if ("?" in url) "&" else "?")
                 append(params.joinToString("&"))
@@ -365,6 +366,9 @@ internal class ChatClient(
 
     companion object {
         internal const val PROTOCOL_VERSION = 1
+
+        internal fun queryEncode(value: String): String =
+            URLEncoder.encode(value, "UTF-8")
 
         internal fun resolveSessionId(requestedSessionId: String?, currentSessionId: String?): String? {
             return requestedSessionId ?: currentSessionId

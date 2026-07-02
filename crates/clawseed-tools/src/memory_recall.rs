@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use clawseed_api::memory_traits::{Memory, SearchMode};
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
+use clawseed_memory::namespaced::PUBLIC_NAMESPACE;
 use serde_json::json;
 use std::fmt::Write;
 use std::sync::Arc;
@@ -24,7 +25,7 @@ impl Tool for MemoryRecallTool {
     }
 
     fn description(&self) -> &str {
-        "Search long-term memory for relevant facts, preferences, or context. Returns scored results ranked by relevance. Supports keyword search, time-only query (since/until), or both."
+        "Search long-term memory for relevant facts, preferences, or context. By default searches memories visible to this identity, including shared public memory. Use scope 'public' to search only shared public memory. Returns scored results ranked by relevance. Supports keyword search, time-only query (since/until), or both."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -51,6 +52,11 @@ impl Tool for MemoryRecallTool {
                     "type": "string",
                     "enum": ["bm25", "embedding", "hybrid"],
                     "description": "Search strategy: bm25 (keyword), embedding (semantic), or hybrid (both). Defaults to config value."
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": ["visible", "public"],
+                    "description": "Memory scope to search. Defaults to 'visible' (private memory plus public memory when available). Use 'public' to search only shared public memory."
                 }
             }
         })
@@ -128,15 +134,53 @@ impl Tool for MemoryRecallTool {
             .and_then(serde_json::Value::as_u64)
             .map_or(5, |v| v as usize);
 
-        match self
-            .memory
-            .recall(query, limit, None, since, until, search_mode)
-            .await
-        {
+        let scope = args
+            .get("scope")
+            .and_then(|v| v.as_str())
+            .unwrap_or("visible");
+        let recall_result = match scope {
+            "visible" => {
+                self.memory
+                    .recall(query, limit, None, since, until, search_mode)
+                    .await
+            }
+            "public" => {
+                self.memory
+                    .recall_namespaced(
+                        PUBLIC_NAMESPACE,
+                        query,
+                        limit,
+                        None,
+                        since,
+                        until,
+                        search_mode,
+                    )
+                    .await
+            }
+            other => {
+                return Ok(ToolResult {
+                    success: false,
+                    output: String::new(),
+                    error: Some(format!(
+                        "Invalid scope '{other}'. Expected 'visible' or 'public'."
+                    )),
+                });
+            }
+        };
+
+        match recall_result {
             Ok(entries) if entries.is_empty() => {
                 // Keyword search found nothing — fall back to listing all memories
                 // so the LLM can pick relevant ones from the full set.
-                match self.memory.list(None, None).await {
+                match self.memory.list(None, None).await.map(|all| {
+                    if scope == "public" {
+                        all.into_iter()
+                            .filter(|entry| entry.namespace == PUBLIC_NAMESPACE)
+                            .collect()
+                    } else {
+                        all
+                    }
+                }) {
                     Ok(all) if all.is_empty() => Ok(ToolResult {
                         success: true,
                         output: "No memories found.".into(),
@@ -152,8 +196,8 @@ impl Tool for MemoryRecallTool {
                         for entry in &shown {
                             let _ = writeln!(
                                 output,
-                                "- [{}] {}: {}",
-                                entry.category, entry.key, entry.content
+                                "- [{}][{}] {}: {}",
+                                entry.category, entry.namespace, entry.key, entry.content
                             );
                         }
                         Ok(ToolResult {
@@ -177,8 +221,8 @@ impl Tool for MemoryRecallTool {
                         .map_or_else(String::new, |s| format!(" [{:.0}%]", s * 100.0));
                     let _ = writeln!(
                         output,
-                        "- [{}] {}: {}{score}",
-                        entry.category, entry.key, entry.content
+                        "- [{}][{}] {}: {}{score}",
+                        entry.category, entry.namespace, entry.key, entry.content
                     );
                 }
                 Ok(ToolResult {

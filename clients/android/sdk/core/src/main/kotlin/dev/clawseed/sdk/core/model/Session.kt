@@ -25,6 +25,7 @@ data class SessionSummary(
     @SerialName("created_at") val createdAt: String = "",
     @SerialName("last_activity") val lastActivity: String = "",
     @SerialName("message_count") val messageCount: Int = 0,
+    val persona: String? = null,
 ) {
     /** Creation timestamp converted to epoch milliseconds when parsing succeeds. */
     val createdAtMillis: Long get() = parseIsoToEpochMillis(createdAt)

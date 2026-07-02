@@ -24,10 +24,14 @@
     <string name="chat_new_session">新建对话</string>
     <string name="chat_speech_output">语音朗读</string>
     <string name="persona_picker_title">选择分身</string>
+    <string name="persona_new_chat_title">新建对话</string>
     <string name="persona_default">默认</string>
     <string name="persona_default_desc">全局助手</string>
     <string name="persona_start">开始对话</string>
     <string name="persona_load_failed">加载分身失败</string>
+    <string name="persona_picker_empty">还没有自定义分身。点“管理”创建一个。</string>
+    <string name="persona_manage">管理</string>
+    <string name="persona_current_desc">此会话已绑定该分身。修改分身配置只影响新会话。</string>
     <string name="chat_input_placeholder">输入消息…</string>
     <string name="chat_stop_generating">停止生成</string>
     <string name="chat_send">发送</string>
@@ -49,6 +53,7 @@
     <string name="drawer_chat_history">对话历史</string>
     <string name="drawer_no_conversations">暂无对话</string>
     <string name="drawer_scheduled_tasks">定时任务</string>
+    <string name="drawer_personas">分身</string>
     <string name="drawer_settings">设置</string>
     <string name="drawer_about">关于</string>
     <string name="drawer_rename">重命名</string>
@@ -218,6 +223,31 @@
 
     <string name="settings_data_management">数据管理</string>
     <string name="settings_data_management_subtitle">导出/导入应用数据</string>
+
+    <!-- ========== Personas ========== -->
+    <string name="persona_manager_title">分身</string>
+    <string name="persona_edit_title">编辑分身</string>
+    <string name="persona_create">创建分身</string>
+    <string name="persona_edit">编辑</string>
+    <string name="persona_duplicate">复制</string>
+    <string name="persona_delete_title">删除分身？</string>
+    <string name="persona_delete_desc">已有对话不会被删除，但新对话将不能再使用该分身。</string>
+    <string name="persona_empty_title">还没有分身</string>
+    <string name="persona_empty_desc">为编程、计划、翻译或其他常用工作流创建专用助手。</string>
+    <string name="persona_name_label">分身名称</string>
+    <string name="persona_soul_section">Soul</string>
+    <string name="persona_soul_label">身份与行为</string>
+    <string name="persona_soul_placeholder">描述这个分身是谁、说话方式、擅长什么，以及需要遵守的边界…</string>
+    <string name="persona_memory_section">记忆</string>
+    <string name="persona_isolated_memory">使用独立记忆</string>
+    <string name="persona_isolated_memory_desc">使用分身名称作为它的独立记忆空间。</string>
+    <string name="persona_tools_section">工具权限</string>
+    <string name="persona_tools_empty">Gateway 未返回工具列表。</string>
+    <string name="persona_skills_section">技能</string>
+    <string name="persona_skills_empty">Gateway 未返回技能列表。</string>
+    <string name="persona_save_start">保存并开始</string>
+    <string name="persona_name_required">需要填写分身名称</string>
+    <string name="persona_override_required">请至少添加 Soul 描述、独立记忆或工具规则，使它成为真正的分身。</string>
 
     <string name="settings_about">关于</string>
     <string name="settings_about_app_version">App 版本: %1$s</string>

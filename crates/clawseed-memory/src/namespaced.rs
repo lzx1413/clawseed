@@ -11,6 +11,8 @@ use super::traits::{Memory, MemoryCategory, MemoryEntry, SearchMode};
 use async_trait::async_trait;
 use std::sync::Arc;
 
+pub const PUBLIC_NAMESPACE: &str = "public";
+
 /// Decorator that wraps a `Memory` backend with namespace isolation.
 ///
 /// When configured with a namespace, all memory operations are scoped to that
@@ -30,6 +32,10 @@ impl NamespacedMemory {
     /// Get the namespace used by this decorator.
     pub fn namespace(&self) -> &str {
         &self.namespace
+    }
+
+    fn can_access_namespace(&self, namespace: &str) -> bool {
+        namespace == self.namespace || namespace == PUBLIC_NAMESPACE
     }
 }
 
@@ -67,7 +73,8 @@ impl Memory for NamespacedMemory {
         until: Option<&str>,
         search_mode: Option<SearchMode>,
     ) -> anyhow::Result<Vec<MemoryEntry>> {
-        self.inner
+        let mut entries = self
+            .inner
             .recall_namespaced(
                 &self.namespace,
                 query,
@@ -77,7 +84,28 @@ impl Memory for NamespacedMemory {
                 until,
                 search_mode,
             )
-            .await
+            .await?;
+        let public_entries = self
+            .inner
+            .recall_namespaced(
+                PUBLIC_NAMESPACE,
+                query,
+                limit,
+                session_id,
+                since,
+                until,
+                search_mode,
+            )
+            .await?;
+        entries.extend(public_entries);
+        entries.sort_by(|a, b| {
+            b.score
+                .unwrap_or(0.0)
+                .partial_cmp(&a.score.unwrap_or(0.0))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        entries.truncate(limit);
+        Ok(entries)
     }
 
     async fn recall_with_embeddings(
@@ -97,7 +125,7 @@ impl Memory for NamespacedMemory {
             .await?;
         let filtered: Vec<MemoryEntry> = entries
             .into_iter()
-            .filter(|e| e.namespace == self.namespace)
+            .filter(|e| self.can_access_namespace(&e.namespace))
             .take(limit)
             .collect();
         Ok(filtered)
@@ -106,7 +134,7 @@ impl Memory for NamespacedMemory {
     async fn get(&self, key: &str) -> anyhow::Result<Option<MemoryEntry>> {
         let entry = self.inner.get(key).await?;
         // Return the entry only if it matches our namespace
-        Ok(entry.filter(|e| e.namespace == self.namespace))
+        Ok(entry.filter(|e| self.can_access_namespace(&e.namespace)))
     }
 
     async fn list(
@@ -118,14 +146,14 @@ impl Memory for NamespacedMemory {
         // Filter to only entries in our namespace
         Ok(entries
             .into_iter()
-            .filter(|e| e.namespace == self.namespace)
+            .filter(|e| self.can_access_namespace(&e.namespace))
             .collect())
     }
 
     async fn forget(&self, key: &str) -> anyhow::Result<bool> {
         // First verify the entry is in our namespace before forgetting
         if let Some(entry) = self.inner.get(key).await?
-            && entry.namespace == self.namespace
+            && self.can_access_namespace(&entry.namespace)
         {
             return self.inner.forget(key).await;
         }
@@ -136,7 +164,7 @@ impl Memory for NamespacedMemory {
         let entries = self.inner.list(None, None).await?;
         Ok(entries
             .into_iter()
-            .filter(|e| e.namespace == self.namespace)
+            .filter(|e| self.can_access_namespace(&e.namespace))
             .count())
     }
 
@@ -154,12 +182,12 @@ impl Memory for NamespacedMemory {
         until: Option<&str>,
         search_mode: Option<SearchMode>,
     ) -> anyhow::Result<Vec<MemoryEntry>> {
-        // If the requested namespace matches our own, delegate to the inner memory.
+        // If the requested namespace is own or public, delegate to the inner memory.
         // Otherwise, return empty results (namespace isolation).
-        if namespace == self.namespace {
+        if self.can_access_namespace(namespace) {
             self.inner
                 .recall_namespaced(
-                    &self.namespace,
+                    namespace,
                     query,
                     limit,
                     session_id,
@@ -182,22 +210,26 @@ impl Memory for NamespacedMemory {
         _namespace: Option<&str>,
         importance: Option<f64>,
     ) -> anyhow::Result<()> {
-        // Always use the configured namespace, ignoring any provided namespace
+        let namespace = if _namespace == Some(PUBLIC_NAMESPACE) {
+            PUBLIC_NAMESPACE
+        } else {
+            &self.namespace
+        };
         self.inner
             .store_with_metadata(
                 key,
                 content,
                 category,
                 session_id,
-                Some(&self.namespace),
+                Some(namespace),
                 importance,
             )
             .await
     }
 
     async fn purge_namespace(&self, namespace: &str) -> anyhow::Result<usize> {
-        // Only allow purging our own namespace
-        if namespace == self.namespace {
+        // Only allow purging own or public namespace.
+        if self.can_access_namespace(namespace) {
             self.inner.purge_namespace(namespace).await
         } else {
             anyhow::bail!(
@@ -213,7 +245,7 @@ impl Memory for NamespacedMemory {
         let entries = self.inner.list(None, Some(session_id)).await?;
         let mut count = 0;
         for entry in entries {
-            if entry.namespace == self.namespace && self.inner.forget(&entry.key).await? {
+            if self.can_access_namespace(&entry.namespace) && self.inner.forget(&entry.key).await? {
                 count += 1;
             }
         }
@@ -311,5 +343,50 @@ mod tests {
         assert_eq!(total, 1, "shared backend should hold 1 row");
         assert_eq!(persona_a.count().await.unwrap(), 1);
         assert_eq!(persona_b.count().await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn sqlite_public_namespace_is_visible_to_all_personas() {
+        let tmp = tempfile::tempdir().unwrap();
+        let inner: Arc<dyn Memory> = Arc::new(SqliteMemory::new(tmp.path()).unwrap());
+
+        let persona_a = NamespacedMemory::new(inner.clone(), "persona_a".into());
+        let persona_b = NamespacedMemory::new(inner.clone(), "persona_b".into());
+
+        persona_a
+            .store_with_metadata(
+                "k_public",
+                "The shared project language is Rust",
+                MemoryCategory::Core,
+                None,
+                Some(PUBLIC_NAMESPACE),
+                None,
+            )
+            .await
+            .unwrap();
+        persona_a
+            .store(
+                "k_private",
+                "Persona A private note about Rust",
+                MemoryCategory::Core,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let b_hits = persona_b
+            .recall("Rust", 10, None, None, None, None)
+            .await
+            .unwrap();
+        assert!(
+            b_hits
+                .iter()
+                .any(|e| e.key == "k_public" && e.namespace == PUBLIC_NAMESPACE),
+            "persona B should see public memory, got: {b_hits:?}"
+        );
+        assert!(
+            b_hits.iter().all(|e| e.key != "k_private"),
+            "persona B must not see persona A private memory, got: {b_hits:?}"
+        );
     }
 }

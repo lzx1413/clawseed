@@ -2,6 +2,7 @@ package dev.clawseed.sdk.core.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 /** Snapshot of gateway runtime status and provider configuration. */
 @Serializable
@@ -47,6 +48,33 @@ data class PersonaInfo(
     @SerialName("memory_namespace") val memoryNamespace: String? = null,
     @SerialName("allowed_tools") val allowedTools: List<String> = emptyList(),
     @SerialName("denied_tools") val deniedTools: List<String> = emptyList(),
+    @SerialName("denied_skills") val deniedSkills: List<String> = emptyList(),
+)
+
+/** Full persona detail returned by `/api/personas/{name}`. */
+@Serializable
+data class PersonaDetail(
+    val name: String,
+    @SerialName("is_persona") val isPersona: Boolean = false,
+    val identity: JsonElement? = null,
+    @SerialName("has_identity") val hasIdentity: Boolean = false,
+    @SerialName("system_prompt") val systemPrompt: String? = null,
+    @SerialName("has_system_prompt") val hasSystemPrompt: Boolean = false,
+    @SerialName("memory_namespace") val memoryNamespace: String? = null,
+    @SerialName("allowed_tools") val allowedTools: List<String> = emptyList(),
+    @SerialName("denied_tools") val deniedTools: List<String> = emptyList(),
+    @SerialName("denied_skills") val deniedSkills: List<String> = emptyList(),
+)
+
+/** Payload for creating or updating a persona. */
+@Serializable
+data class PersonaUpsert(
+    val identity: JsonElement? = null,
+    @SerialName("system_prompt") val systemPrompt: String? = null,
+    @SerialName("memory_namespace") val memoryNamespace: String? = null,
+    @SerialName("allowed_tools") val allowedTools: List<String> = emptyList(),
+    @SerialName("denied_tools") val deniedTools: List<String> = emptyList(),
+    @SerialName("denied_skills") val deniedSkills: List<String> = emptyList(),
 )
 
 /** Description of one skill available in the gateway. */

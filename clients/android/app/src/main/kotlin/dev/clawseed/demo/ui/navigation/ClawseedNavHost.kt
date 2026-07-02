@@ -7,6 +7,7 @@ import androidx.navigation.compose.composable
 import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.demo.scheduled.ScheduledTask
 import dev.clawseed.demo.ui.chat.ChatScreen
+import dev.clawseed.demo.ui.persona.PersonaManagerScreen
 import dev.clawseed.demo.ui.scheduled.ScheduledTasksScreen
 import dev.clawseed.demo.ui.settings.SettingsScreen
 
@@ -14,17 +15,21 @@ object Routes {
     const val CHAT = "chat"
     const val SETTINGS = "settings"
     const val SCHEDULED_TASKS = "scheduled_tasks"
+    const val PERSONAS = "personas"
 }
 
 @Composable
 fun ClawseedNavHost(
     navController: NavHostController,
     onToggleDrawer: () -> Unit,
-    onNewSession: () -> Unit = {},
+    onNewSession: (String?) -> Unit = {},
     currentSessionId: String? = null,
     onSessionIdChanged: (String?) -> Unit = {},
     onSessionEstablished: () -> Unit = {},
     sessionVersion: Int = 0,
+    newSessionPersona: String? = null,
+    hasNewSessionPersona: Boolean = false,
+    onNewSessionPersonaConsumed: () -> Unit = {},
     localStore: LocalStore? = null,
     pendingAutoMessage: String? = null,
     onAutoMessageSent: () -> Unit = {},
@@ -42,6 +47,10 @@ fun ClawseedNavHost(
                 onSessionIdChanged = onSessionIdChanged,
                 onSessionEstablished = onSessionEstablished,
                 sessionVersion = sessionVersion,
+                newSessionPersona = newSessionPersona,
+                hasNewSessionPersona = hasNewSessionPersona,
+                onNewSessionPersonaConsumed = onNewSessionPersonaConsumed,
+                onManagePersonas = { navController.navigate(Routes.PERSONAS) },
                 autoSendMessage = pendingAutoMessage,
                 onAutoMessageSent = onAutoMessageSent,
             )
@@ -53,6 +62,14 @@ fun ClawseedNavHost(
             ScheduledTasksScreen(
                 onBack = { navController.popBackStack() },
                 onRunTask = onRunTask,
+            )
+        }
+        composable(Routes.PERSONAS) {
+            PersonaManagerScreen(
+                onBack = { navController.popBackStack() },
+                onStartChat = { persona ->
+                    onNewSession(persona)
+                },
             )
         }
     }

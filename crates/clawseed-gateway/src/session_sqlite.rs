@@ -71,8 +71,10 @@ impl SqliteSessionBackend {
     fn query_sessions_metadata(conn: &Connection, where_clause: &str) -> Vec<SessionMetadata> {
         let sql = format!(
             "SELECT s.session_key, s.created_at, s.last_activity, s.name,
+                    sp.persona,
                     (SELECT COUNT(*) FROM messages m WHERE m.session_key = s.session_key) as msg_count
              FROM sessions s
+             LEFT JOIN session_personas sp ON sp.session_key = s.session_key
              {where_clause}
              ORDER BY s.last_activity DESC"
         );
@@ -86,13 +88,14 @@ impl SqliteSessionBackend {
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, Option<String>>(3)?,
-                row.get::<_, usize>(4)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, usize>(5)?,
             ))
         }) else {
             return Vec::new();
         };
         rows.filter_map(|r| {
-            let (key, created_str, activity_str, name, msg_count) = r.ok()?;
+            let (key, created_str, activity_str, name, persona, msg_count) = r.ok()?;
             let created_at = DateTime::parse_from_rfc3339(&created_str)
                 .ok()?
                 .with_timezone(&Utc);
@@ -105,6 +108,7 @@ impl SqliteSessionBackend {
                 last_activity,
                 message_count: msg_count,
                 name,
+                persona,
             })
         })
         .collect()

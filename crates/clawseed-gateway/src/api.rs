@@ -396,11 +396,46 @@ pub async fn handle_api_personas_list(
                 "memory_namespace": entry.memory_namespace,
                 "allowed_tools": entry.allowed_tools,
                 "denied_tools": entry.denied_tools,
+                "denied_skills": entry.denied_skills,
             })
         })
         .collect();
 
     Json(serde_json::json!({"personas": personas})).into_response()
+}
+
+/// GET /api/personas/:name — read full editable persona detail.
+pub async fn handle_api_persona_get(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+
+    let config = state.config.lock().clone();
+    let Some(entry) = config.agents.get(&name) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("Persona '{name}' not found")})),
+        )
+            .into_response();
+    };
+
+    Json(serde_json::json!({
+        "name": name,
+        "is_persona": entry.has_persona_overrides(),
+        "identity": entry.identity,
+        "has_identity": entry.identity.is_some(),
+        "system_prompt": entry.system_prompt,
+        "has_system_prompt": entry.system_prompt.is_some(),
+        "memory_namespace": entry.memory_namespace,
+        "allowed_tools": entry.allowed_tools,
+        "denied_tools": entry.denied_tools,
+        "denied_skills": entry.denied_skills,
+    }))
+    .into_response()
 }
 
 /// PUT /api/personas/:name — upsert a persona's override fields.
@@ -420,6 +455,8 @@ pub struct PersonaPutBody {
     pub allowed_tools: Vec<String>,
     #[serde(default)]
     pub denied_tools: Vec<String>,
+    #[serde(default)]
+    pub denied_skills: Vec<String>,
 }
 
 pub async fn handle_api_persona_put(
@@ -443,6 +480,7 @@ pub async fn handle_api_persona_put(
         memory_namespace: body.memory_namespace,
         allowed_tools: body.allowed_tools,
         denied_tools: body.denied_tools,
+        denied_skills: body.denied_skills,
     };
     config.agents.insert(name.clone(), entry);
 
@@ -1867,6 +1905,9 @@ pub async fn handle_api_sessions_list(
             });
             if let Some(name) = meta.name {
                 entry["name"] = serde_json::Value::String(name);
+            }
+            if let Some(persona) = meta.persona {
+                entry["persona"] = serde_json::Value::String(persona);
             }
             Some(entry)
         })

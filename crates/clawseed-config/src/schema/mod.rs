@@ -1536,6 +1536,11 @@ pub struct AgentEntryConfig {
     #[serde(default)]
     pub denied_tools: Vec<String>,
 
+    /// Skill names disabled for this persona. Merged into `[skills].excluded`
+    /// when the persona is resolved.
+    #[serde(default)]
+    pub denied_skills: Vec<String>,
+
     /// Direct system-prompt override — the simplest soul form, bypassing both
     /// AIEOS and workspace personality files. When set, takes precedence over
     /// the global `[identity]` for this persona.
@@ -1552,6 +1557,7 @@ impl AgentEntryConfig {
             || self.memory_namespace.is_some()
             || !self.allowed_tools.is_empty()
             || !self.denied_tools.is_empty()
+            || !self.denied_skills.is_empty()
             || self.system_prompt.is_some()
     }
 }

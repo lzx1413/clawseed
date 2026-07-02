@@ -25,6 +25,8 @@ fun ClawseedApp(localStore: LocalStore, notificationSessionId: androidx.compose.
     val navController = rememberNavController()
     var currentSessionId by rememberSaveable { mutableStateOf<String?>(null) }
     var sessionVersion by rememberSaveable { mutableStateOf(0) }
+    var pendingNewSessionPersona by rememberSaveable { mutableStateOf<String?>(null) }
+    var hasPendingNewSessionPersona by rememberSaveable { mutableStateOf(false) }
     var refreshKey by remember { mutableStateOf(0) }
 
     // Auto-send message state for "Run Now" from scheduled tasks
@@ -38,6 +40,8 @@ fun ClawseedApp(localStore: LocalStore, notificationSessionId: androidx.compose.
         val target = notifSessionId
         notificationSessionId.value = null
         currentSessionId = target
+        pendingNewSessionPersona = null
+        hasPendingNewSessionPersona = false
         sessionVersion++
         refreshKey++
         scope.launch {
@@ -55,8 +59,10 @@ fun ClawseedApp(localStore: LocalStore, notificationSessionId: androidx.compose.
         scope.launch { drawerState.close() }
     }
 
-    fun switchSession(sessionId: String?) {
+    fun switchSession(sessionId: String?, persona: String? = null, hasPersona: Boolean = false) {
         currentSessionId = sessionId
+        pendingNewSessionPersona = persona
+        hasPendingNewSessionPersona = hasPersona
         sessionVersion++
         refreshKey++
         scope.launch {
@@ -94,6 +100,10 @@ fun ClawseedApp(localStore: LocalStore, notificationSessionId: androidx.compose.
                     scope.launch { drawerState.close() }
                     navController.navigate(Routes.SCHEDULED_TASKS)
                 },
+                onPersonas = {
+                    scope.launch { drawerState.close() }
+                    navController.navigate(Routes.PERSONAS)
+                },
                 isDrawerOpen = drawerState.isOpen,
                 refreshKey = refreshKey,
             )
@@ -102,7 +112,7 @@ fun ClawseedApp(localStore: LocalStore, notificationSessionId: androidx.compose.
         ClawseedNavHost(
             navController = navController,
             onToggleDrawer = { scope.launch { drawerState.open() } },
-            onNewSession = { switchSession(null) },
+            onNewSession = { persona -> switchSession(null, persona, true) },
             currentSessionId = currentSessionId,
             onSessionIdChanged = { id ->
                 currentSessionId = id
@@ -121,6 +131,12 @@ fun ClawseedApp(localStore: LocalStore, notificationSessionId: androidx.compose.
                 refreshKey++
             },
             sessionVersion = sessionVersion,
+            newSessionPersona = pendingNewSessionPersona,
+            hasNewSessionPersona = hasPendingNewSessionPersona,
+            onNewSessionPersonaConsumed = {
+                pendingNewSessionPersona = null
+                hasPendingNewSessionPersona = false
+            },
             localStore = localStore,
             pendingAutoMessage = pendingAutoMessage,
             onAutoMessageSent = { onAutoMessageSent() },

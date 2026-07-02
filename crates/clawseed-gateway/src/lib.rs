@@ -632,7 +632,9 @@ pub async fn run_gateway(
         .route("/api/personas", get(api::handle_api_personas_list))
         .route(
             "/api/personas/{name}",
-            put(api::handle_api_persona_put).delete(api::handle_api_persona_delete),
+            get(api::handle_api_persona_get)
+                .put(api::handle_api_persona_put)
+                .delete(api::handle_api_persona_delete),
         );
 
     let inner = inner

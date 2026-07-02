@@ -2,7 +2,9 @@ package dev.clawseed.sdk.core.client
 
 import dev.clawseed.sdk.core.model.GatewayStatus
 import dev.clawseed.sdk.core.model.HealthInfo
+import dev.clawseed.sdk.core.model.PersonaDetail
 import dev.clawseed.sdk.core.model.PersonaInfo
+import dev.clawseed.sdk.core.model.PersonaUpsert
 import dev.clawseed.sdk.core.model.SessionMessage
 import dev.clawseed.sdk.core.model.SessionSummary
 import dev.clawseed.sdk.core.model.SkillDetail
@@ -170,6 +172,35 @@ class GatewayClient(
                 arr,
             )
         }
+    }
+
+    /** Retrieves full detail for one named persona. */
+    suspend fun persona(name: String): Result<PersonaDetail> = withContext(Dispatchers.IO) {
+        runCatching {
+            val encoded = java.net.URLEncoder.encode(name, "UTF-8")
+            val req = Request.Builder().url("$baseUrl/api/personas/$encoded").addAuth().build()
+            val body = execute(req).getOrThrow()
+            json.decodeFromJsonElement(PersonaDetail.serializer(), json.parseToJsonElement(body).jsonObject)
+        }
+    }
+
+    /** Creates or replaces one named persona's override fields. */
+    suspend fun upsertPersona(name: String, persona: PersonaUpsert): Result<Unit> {
+        val encoded = java.net.URLEncoder.encode(name, "UTF-8")
+        val payload = json.encodeToString(PersonaUpsert.serializer(), persona)
+        val req = Request.Builder()
+            .url("$baseUrl/api/personas/$encoded")
+            .addAuth()
+            .put(payload.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        return execute(req).map {}
+    }
+
+    /** Deletes a named persona entry. */
+    suspend fun deletePersona(name: String): Result<Unit> {
+        val encoded = java.net.URLEncoder.encode(name, "UTF-8")
+        val req = Request.Builder().url("$baseUrl/api/personas/$encoded").addAuth().delete().build()
+        return execute(req).map {}
     }
 
     /** Updates personality files on the gateway. */

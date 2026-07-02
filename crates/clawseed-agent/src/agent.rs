@@ -93,6 +93,37 @@ pub struct Agent {
     stable_system_content: String,
 }
 
+fn replace_memory_tools(registry: &DefaultToolRegistry, memory: Arc<dyn Memory>) {
+    registry.register_or_replace(
+        Box::new(clawseed_tools::memory_export::MemoryExportTool::new(
+            memory.clone(),
+        )),
+        ToolSource::BuiltIn,
+    );
+    registry.register_or_replace(
+        Box::new(clawseed_tools::memory_forget::MemoryForgetTool::new(
+            memory.clone(),
+        )),
+        ToolSource::BuiltIn,
+    );
+    registry.register_or_replace(
+        Box::new(clawseed_tools::memory_purge::MemoryPurgeTool::new(
+            memory.clone(),
+        )),
+        ToolSource::BuiltIn,
+    );
+    registry.register_or_replace(
+        Box::new(clawseed_tools::memory_recall::MemoryRecallTool::new(
+            memory.clone(),
+        )),
+        ToolSource::BuiltIn,
+    );
+    registry.register_or_replace(
+        Box::new(clawseed_tools::memory_store::MemoryStoreTool::new(memory)),
+        ToolSource::BuiltIn,
+    );
+}
+
 /// Builder for constructing an Agent.
 pub struct AgentBuilder {
     provider: Option<Arc<dyn Provider>>,
@@ -527,6 +558,9 @@ impl Agent {
                 mcp_filters.unwrap_or_default(),
             );
             reg.register_all_arc(shared.to_vec(), ToolSource::BuiltIn);
+            if config.agent.memory_namespace.is_some() {
+                replace_memory_tools(&reg, memory.clone());
+            }
             Arc::new(reg)
         } else {
             let tools = clawseed_tools::registry::all_tools(
@@ -565,6 +599,7 @@ impl Agent {
             .memory(memory)
             .observer(observer)
             .tool_dispatcher(dispatcher)
+            .config(config.agent.clone())
             .model_name(model_name)
             .temperature(temperature)
             .workspace_dir(config.workspace_dir.clone())

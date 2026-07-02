@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use clawseed_api::memory_traits::Memory;
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
+use clawseed_memory::namespaced::PUBLIC_NAMESPACE;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -23,7 +24,7 @@ impl Tool for MemoryForgetTool {
     }
 
     fn description(&self) -> &str {
-        "Remove a memory by key. Use to delete outdated facts or sensitive data. Returns whether the memory was found and removed."
+        "Remove a memory by key. Defaults to visible/private memory. Use scope 'public' only when the user explicitly asks to remove a shared public memory. Returns whether the memory was found and removed."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -33,6 +34,11 @@ impl Tool for MemoryForgetTool {
                 "key": {
                     "type": "string",
                     "description": "The key of the memory to forget"
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": ["visible", "public"],
+                    "description": "Memory scope to delete from. Defaults to 'visible'. Use 'public' to delete a shared public memory."
                 }
             },
             "required": ["key"]
@@ -49,10 +55,40 @@ impl Tool for MemoryForgetTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'key' parameter"))?;
 
+        let scope = args
+            .get("scope")
+            .and_then(|v| v.as_str())
+            .unwrap_or("visible");
+        if scope == "public" {
+            let visible = self.memory.list(None, None).await?;
+            let found_public = visible
+                .iter()
+                .any(|entry| entry.key == key && entry.namespace == PUBLIC_NAMESPACE);
+            if !found_public {
+                return Ok(ToolResult {
+                    success: true,
+                    output: format!("No public memory found with key: {key}"),
+                    error: None,
+                });
+            }
+        } else if scope != "visible" {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(format!(
+                    "Invalid scope '{scope}'. Expected 'visible' or 'public'."
+                )),
+            });
+        }
+
         match self.memory.forget(key).await {
             Ok(true) => Ok(ToolResult {
                 success: true,
-                output: format!("Forgot memory: {key}"),
+                output: if scope == "public" {
+                    format!("Forgot public memory: {key}")
+                } else {
+                    format!("Forgot memory: {key}")
+                },
                 error: None,
             }),
             Ok(false) => Ok(ToolResult {

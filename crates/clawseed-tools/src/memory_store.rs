@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use clawseed_api::memory_traits::{Memory, MemoryCategory};
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
+use clawseed_memory::namespaced::PUBLIC_NAMESPACE;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -23,7 +24,7 @@ impl Tool for MemoryStoreTool {
     }
 
     fn description(&self) -> &str {
-        "Store a fact, preference, or note in long-term memory. Use category 'core' for permanent facts, 'daily' for session notes, 'conversation' for chat context, or a custom category name. IMPORTANT: the 'content' field must be a complete, self-contained sentence that includes context — e.g. 'The user's name is Alice' instead of just 'Alice'. This ensures the memory can be found by keyword search later."
+        "Store a fact, preference, or note in long-term memory. By default stores in this identity's private memory. Use scope 'public' only when the user explicitly asks all identities/personas to remember or share the fact. Use category 'core' for permanent facts, 'daily' for session notes, 'conversation' for chat context, or a custom category name. IMPORTANT: the 'content' field must be a complete, self-contained sentence that includes context — e.g. 'The user's name is Alice' instead of just 'Alice'. This ensures the memory can be found by keyword search later."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -41,6 +42,11 @@ impl Tool for MemoryStoreTool {
                 "category": {
                     "type": "string",
                     "description": "Memory category: 'core' (permanent), 'daily' (session), 'conversation' (chat), or a custom category name. Defaults to 'core'."
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": ["private", "public"],
+                    "description": "Where to store this memory. Defaults to 'private'. Use 'public' only when the user explicitly says everyone/all identities/personas should remember or share it."
                 }
             },
             "required": ["key", "content"]
@@ -69,10 +75,32 @@ impl Tool for MemoryStoreTool {
             Some(other) => MemoryCategory::Custom(other.to_string()),
         };
 
-        match self.memory.store(key, content, category, None).await {
+        let namespace = match args.get("scope").and_then(|v| v.as_str()) {
+            Some("public") => Some(PUBLIC_NAMESPACE),
+            Some("private") | None => None,
+            Some(other) => {
+                return Ok(ToolResult {
+                    success: false,
+                    output: String::new(),
+                    error: Some(format!(
+                        "Invalid scope '{other}'. Expected 'private' or 'public'."
+                    )),
+                });
+            }
+        };
+
+        match self
+            .memory
+            .store_with_metadata(key, content, category, None, namespace, None)
+            .await
+        {
             Ok(()) => Ok(ToolResult {
                 success: true,
-                output: format!("Stored memory: {key}"),
+                output: if namespace == Some(PUBLIC_NAMESPACE) {
+                    format!("Stored public memory: {key}")
+                } else {
+                    format!("Stored private memory: {key}")
+                },
                 error: None,
             }),
             Err(e) => Ok(ToolResult {
@@ -165,6 +193,32 @@ mod tests {
         let entry = mem.get("proj_note").await.unwrap().unwrap();
         assert_eq!(entry.content, "Uses async runtime");
         assert_eq!(entry.category, MemoryCategory::Custom("project".into()));
+    }
+
+    #[tokio::test]
+    async fn store_public_scope_uses_public_namespace() {
+        let (_tmp, mem) = test_mem();
+        let tool = MemoryStoreTool::new(mem.clone());
+        let result = tool
+            .execute(
+                json!({
+                    "key": "shared_lang",
+                    "content": "All identities should know the project uses Rust",
+                    "scope": "public"
+                }),
+                &test_ctx(),
+            )
+            .await
+            .unwrap();
+        assert!(result.success);
+        assert!(result.output.contains("public"));
+
+        let hits = mem
+            .recall_namespaced("public", "Rust", 10, None, None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].key, "shared_lang");
     }
 
     #[tokio::test]

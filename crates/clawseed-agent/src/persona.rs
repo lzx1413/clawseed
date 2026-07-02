@@ -64,6 +64,8 @@ pub fn resolve_persona(
     let mut cfg = config.clone();
     apply_soul_override(&mut cfg, entry);
     apply_tool_overrides(&mut cfg, entry);
+    apply_skill_overrides(&mut cfg, entry);
+    cfg.agent.memory_namespace = entry.memory_namespace.clone();
 
     let memory = entry
         .memory_namespace
@@ -100,6 +102,15 @@ fn apply_tool_overrides(cfg: &mut Config, entry: &AgentEntryConfig) {
     }
     if !entry.denied_tools.is_empty() {
         cfg.agent.denied_tools = entry.denied_tools.clone();
+    }
+}
+
+/// Apply persona-specific skill exclusions.
+fn apply_skill_overrides(cfg: &mut Config, entry: &AgentEntryConfig) {
+    for skill in &entry.denied_skills {
+        if !cfg.skills.excluded.contains(skill) {
+            cfg.skills.excluded.push(skill.clone());
+        }
     }
 }
 
@@ -261,6 +272,26 @@ mod tests {
     }
 
     #[test]
+    fn skill_overrides_merge_with_global_exclusions() {
+        let mut cfg = base_config();
+        cfg.skills.excluded = vec!["global-skill".into()];
+        cfg.agents.insert(
+            "focused".into(),
+            AgentEntryConfig {
+                denied_skills: vec!["persona-skill".into(), "global-skill".into()],
+                ..Default::default()
+            },
+        );
+
+        let ov = resolve_persona(&cfg, Some("focused"), none_mem()).expect("persona resolved");
+        assert_eq!(
+            ov.config.skills.excluded,
+            vec!["global-skill".to_string(), "persona-skill".to_string()]
+        );
+        assert_eq!(cfg.skills.excluded, vec!["global-skill"]);
+    }
+
+    #[test]
     fn no_soul_no_tools_only_namespace_still_resolves() {
         let mut cfg = base_config();
         cfg.agents.insert(
@@ -274,6 +305,10 @@ mod tests {
         let ov = resolve_persona(&cfg, Some("memonly"), none_mem()).expect("persona resolved");
         // Inherits global soul (AIEOS marker preserved).
         assert!(identity::is_aieos_configured(&ov.config.identity));
+        assert_eq!(
+            ov.config.agent.memory_namespace.as_deref(),
+            Some("persona_memonly")
+        );
         assert!(ov.memory.is_some());
     }
 
@@ -293,5 +328,9 @@ mod tests {
         let ov = resolve_persona(&cfg, Some("nova"), none_mem()).expect("persona resolved");
         // cfg.memory.namespace (the column namespace) is NOT changed by persona.
         assert_eq!(ov.config.memory.namespace.as_deref(), Some("global_ns"));
+        assert_eq!(
+            ov.config.agent.memory_namespace.as_deref(),
+            Some("persona_nova")
+        );
     }
 }

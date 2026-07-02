@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,16 +58,23 @@ import dev.clawseed.demo.ui.chat.components.MessageBubble
 import dev.clawseed.demo.ui.chat.components.SpeakerOffIcon
 import dev.clawseed.demo.ui.chat.components.SpeakerStopIcon
 import dev.clawseed.demo.ui.chat.components.SpeakerPlayIcon
+import dev.clawseed.demo.ui.persona.personaSummary
+import dev.clawseed.sdk.android.ClawSeedAndroid
+import dev.clawseed.sdk.core.model.PersonaDetail
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     onToggleDrawer: () -> Unit,
-    onNewSession: () -> Unit = {},
+    onNewSession: (String?) -> Unit = {},
     sessionId: String? = null,
     onSessionIdChanged: (String?) -> Unit = {},
     onSessionEstablished: () -> Unit = {},
     sessionVersion: Int = 0,
+    newSessionPersona: String? = null,
+    hasNewSessionPersona: Boolean = false,
+    onNewSessionPersonaConsumed: () -> Unit = {},
+    onManagePersonas: () -> Unit = {},
     autoSendMessage: String? = null,
     onAutoMessageSent: () -> Unit = {},
 ) {
@@ -77,10 +85,9 @@ fun ChatScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var bottomBarHeightPx by remember { mutableStateOf(0) }
-    // Persona chosen in the picker, applied on the next sessionVersion bump.
-    var pendingPersona by remember { mutableStateOf<String?>(null) }
-    var hasPendingPersona by remember { mutableStateOf(false) }
     var showPersonaSheet by remember { mutableStateOf(false) }
+    var showCurrentPersona by remember { mutableStateOf(false) }
+    var currentPersonaDetail by remember { mutableStateOf<PersonaDetail?>(null) }
 
     fun dismissInput() {
         focusManager.clearFocus(force = true)
@@ -133,14 +140,12 @@ fun ChatScreen(
     }
 
     // Switch session only on explicit user action (version bump).
-    // When starting a new session from the persona picker, [pendingPersona]
-    // carries the chosen persona (null = default) and is applied here, then
-    // consumed. Resume from the drawer leaves hasPendingPersona=false so the
-    // gateway's stored binding is authoritative.
+    // When starting a new session, App may carry a one-shot persona request.
+    // Resume from the drawer leaves hasNewSessionPersona=false so the gateway's
+    // stored binding is authoritative.
     LaunchedEffect(sessionVersion) {
-        val persona = if (hasPendingPersona) pendingPersona else null
-        hasPendingPersona = false
-        pendingPersona = null
+        val persona = if (hasNewSessionPersona) newSessionPersona else null
+        if (hasNewSessionPersona) onNewSessionPersonaConsumed()
         viewModel.switchToSession(sessionId, persona)
     }
 
@@ -177,6 +182,46 @@ fun ChatScreen(
         }
     }
 
+    LaunchedEffect(showCurrentPersona, uiState.currentPersona) {
+        val name = uiState.currentPersona
+        if (showCurrentPersona && !name.isNullOrEmpty() && ClawSeedAndroid.isInitialized) {
+            ClawSeedAndroid.gatewayClient().persona(name)
+                .onSuccess { currentPersonaDetail = it }
+        }
+    }
+
+    if (showCurrentPersona && !uiState.currentPersona.isNullOrEmpty()) {
+        AlertDialog(
+            onDismissRequest = {
+                showCurrentPersona = false
+                currentPersonaDetail = null
+            },
+            title = { Text(uiState.currentPersona!!) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        currentPersonaDetail?.let { personaSummary(it) }
+                            ?: stringResource(R.string.common_loading),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        stringResource(R.string.persona_current_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showCurrentPersona = false
+                    currentPersonaDetail = null
+                }) {
+                    Text(stringResource(R.string.common_close))
+                }
+            },
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -184,7 +229,7 @@ fun ChatScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (!uiState.currentPersona.isNullOrEmpty()) {
                             AssistChip(
-                                onClick = {},
+                                onClick = { showCurrentPersona = true },
                                 label = { Text(uiState.currentPersona!!) },
                                 modifier = Modifier.padding(end = 8.dp),
                             )
@@ -335,11 +380,11 @@ fun ChatScreen(
             onDismiss = { showPersonaSheet = false },
             onStart = { persona ->
                 showPersonaSheet = false
-                pendingPersona = persona
-                hasPendingPersona = true
-                // Bump sessionVersion via the app-level new-session handler;
-                // the LaunchedEffect(sessionVersion) above applies the persona.
-                onNewSession()
+                onNewSession(persona)
+            },
+            onManage = {
+                showPersonaSheet = false
+                onManagePersonas()
             },
         )
     }

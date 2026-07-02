@@ -17,6 +17,8 @@ pub struct SessionMetadata {
     pub message_count: usize,
     /// Optional human-readable name.
     pub name: Option<String>,
+    /// Persona bound to this session, if any.
+    pub persona: Option<String>,
 }
 
 /// Session state information.

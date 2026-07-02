@@ -324,6 +324,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             connState = ConnectionState.DISCONNECTED,
             sessionName = null,
             currentSessionId = null,
+            currentPersona = null,
             error = null,
         )
 
@@ -371,6 +372,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             connState = slot.session.connectionState.value,
             sessionName = slot.accumulator.sessionTitle.value ?: slot.session.sessionInfo.value?.name,
             currentSessionId = sessionId,
+            currentPersona = slot.session.sessionInfo.value?.persona,
         )
 
         // Resume observation

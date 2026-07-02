@@ -40,6 +40,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.clawseed.demo.R
+import dev.clawseed.demo.ui.persona.PersonaDot
+import dev.clawseed.demo.ui.persona.personaSummary
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.core.model.PersonaInfo
 import kotlinx.coroutines.launch
@@ -55,6 +57,7 @@ private data class PickerEntry(val name: String?, val subtitle: String?)
 fun PersonaPickerSheet(
     onDismiss: () -> Unit,
     onStart: (persona: String?) -> Unit,
+    onManage: () -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
@@ -73,14 +76,14 @@ fun PersonaPickerSheet(
             return@LaunchedEffect
         }
         ClawSeedAndroid.gatewayClient().personas()
-            .onSuccess { personas = it; loading = false }
+            .onSuccess { personas = it.filter { info -> info.isPersona }; loading = false }
             .onFailure { loadError = true; loading = false }
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
             Text(
-                text = stringResource(R.string.persona_picker_title),
+                text = stringResource(R.string.persona_new_chat_title),
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
@@ -136,8 +139,18 @@ fun PersonaPickerSheet(
                             }
                             // Colored dot badge for non-default personas
                             if (entry.name != null) {
-                                PersonaDot(entry.name)
+                                PersonaDot(entry.name, Modifier.size(10.dp))
                             }
+                        }
+                    }
+                    if (personas.isEmpty()) {
+                        item {
+                            Text(
+                                text = stringResource(R.string.persona_picker_empty),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(12.dp),
+                            )
                         }
                     }
                 }
@@ -150,6 +163,10 @@ fun PersonaPickerSheet(
             ) {
                 OutlinedButton(onClick = onDismiss) {
                     Text(stringResource(R.string.common_cancel))
+                }
+                Spacer(Modifier.width(8.dp))
+                OutlinedButton(onClick = onManage) {
+                    Text(stringResource(R.string.persona_manage))
                 }
                 Spacer(Modifier.width(8.dp))
                 Button(
@@ -165,28 +182,5 @@ fun PersonaPickerSheet(
 
 /** One-line summary of a persona's overrides, for the picker subtitle. */
 private fun PersonaInfo.subtitle(): String {
-    val parts = mutableListOf<String>()
-    if (hasIdentity) parts.add("soul")
-    if (hasSystemPrompt) parts.add("prompt")
-    if (memoryNamespace != null) parts.add("独立记忆")
-    if (allowedTools.isNotEmpty()) parts.add(allowedTools.joinToString(","))
-    if (deniedTools.isNotEmpty()) parts.add("禁用 " + deniedTools.joinToString(","))
-    return parts.joinToString(" · ")
-}
-
-/** A small deterministic-color dot to visually distinguish personas. */
-@Composable
-private fun PersonaDot(name: String) {
-    val palette = listOf(
-        MaterialTheme.colorScheme.primary,
-        MaterialTheme.colorScheme.tertiary,
-        MaterialTheme.colorScheme.secondary,
-    )
-    val color = palette[name.hashCode().let { Math.floorMod(it, palette.size) }]
-    Box(
-        modifier = Modifier
-            .padding(start = 4.dp)
-            .size(10.dp)
-            .background(color, CircleShape),
-    )
+    return personaSummary(this)
 }

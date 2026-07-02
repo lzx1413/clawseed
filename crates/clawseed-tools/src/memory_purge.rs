@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use clawseed_api::memory_traits::Memory;
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
+use clawseed_memory::namespaced::PUBLIC_NAMESPACE;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -23,7 +24,7 @@ impl Tool for MemoryPurgeTool {
     }
 
     fn description(&self) -> &str {
-        "Remove all memories in a namespace (category) or session. Use to bulk-delete conversation context or category-scoped data. Returns the number of deleted entries. WARNING: This operation cannot be undone."
+        "Remove all memories in a namespace or session. Use scope 'public' only when the user explicitly asks to clear shared public memory. Returns the number of deleted entries. WARNING: This operation cannot be undone."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -37,6 +38,11 @@ impl Tool for MemoryPurgeTool {
                 "session_id": {
                     "type": "string",
                     "description": "The session ID to purge. Deletes all memories in this session."
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": ["visible", "public"],
+                    "description": "Memory scope to purge. Defaults to 'visible'. Use 'public' to purge the shared public namespace."
                 }
             },
             "minProperties": 1
@@ -48,7 +54,23 @@ impl Tool for MemoryPurgeTool {
         args: serde_json::Value,
         _ctx: &dyn ToolContext,
     ) -> anyhow::Result<ToolResult> {
-        let namespace = args.get("namespace").and_then(|v| v.as_str());
+        let scope = args
+            .get("scope")
+            .and_then(|v| v.as_str())
+            .unwrap_or("visible");
+        let namespace = if scope == "public" {
+            Some(PUBLIC_NAMESPACE)
+        } else if scope == "visible" {
+            args.get("namespace").and_then(|v| v.as_str())
+        } else {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(format!(
+                    "Invalid scope '{scope}'. Expected 'visible' or 'public'."
+                )),
+            });
+        };
         let session_id = args.get("session_id").and_then(|v| v.as_str());
 
         if namespace.is_none() && session_id.is_none() {

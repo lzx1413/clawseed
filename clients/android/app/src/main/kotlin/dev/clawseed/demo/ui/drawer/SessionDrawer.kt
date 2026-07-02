@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
@@ -53,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.clawseed.demo.BuildConfig
 import dev.clawseed.demo.R
+import dev.clawseed.demo.ui.persona.PersonaDot
 import dev.clawseed.demo.ui.settings.UpdateCheckResult
 import dev.clawseed.demo.ui.settings.SettingsViewModel
 import dev.clawseed.sdk.core.model.SessionSummary
@@ -64,6 +66,7 @@ fun SessionDrawer(
     onDeleteCurrentSession: () -> Unit = {},
     onSettings: () -> Unit,
     onScheduledTasks: () -> Unit = {},
+    onPersonas: () -> Unit = {},
     isDrawerOpen: Boolean = false,
     refreshKey: Int = 0,
     viewModel: SessionsViewModel = viewModel(),
@@ -128,6 +131,13 @@ fun SessionDrawer(
             HorizontalDivider()
 
             NavigationDrawerItem(
+                label = { Text(stringResource(R.string.drawer_personas)) },
+                selected = false,
+                onClick = onPersonas,
+                icon = { Icon(Icons.Default.Person, contentDescription = null) },
+            )
+
+            NavigationDrawerItem(
                 label = { Text(stringResource(R.string.drawer_scheduled_tasks)) },
                 selected = false,
                 onClick = onScheduledTasks,
@@ -171,11 +181,27 @@ private fun SessionItem(
 
     NavigationDrawerItem(
         label = {
-            Text(
-                text = session.name ?: session.id.take(8),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            val persona = session.persona
+            Column {
+                Text(
+                    text = session.name ?: session.id.take(8),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (!persona.isNullOrEmpty()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        PersonaDot(persona, Modifier.size(7.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            text = persona,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
         },
         selected = isSelected,
         onClick = onSelect,
