@@ -1,6 +1,5 @@
 package dev.clawseed.demo.ui.persona
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -53,7 +51,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -217,13 +214,13 @@ private fun PersonaList(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onView(persona.name) },
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                colors = CardDefaults.cardColors(containerColor = personaContainerColor(persona.name)),
             ) {
                 Row(
                     modifier = Modifier.padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    PersonaDot(persona.name, Modifier.size(34.dp))
+                    PersonaDot(persona.name, Modifier.size(34.dp), showInitial = true)
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -625,21 +622,6 @@ private fun PersonaSkillCard(
             }
         }
     }
-}
-
-@Composable
-fun PersonaDot(name: String, modifier: Modifier = Modifier.size(10.dp)) {
-    val palette = listOf(
-        MaterialTheme.colorScheme.primary,
-        MaterialTheme.colorScheme.tertiary,
-        MaterialTheme.colorScheme.secondary,
-    )
-    val color = palette[Math.floorMod(name.hashCode(), palette.size)]
-    Box(
-        modifier = modifier
-            .clip(CircleShape)
-            .background(color),
-    )
 }
 
 fun personaSummary(persona: PersonaInfo): String {

@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,12 +35,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.clawseed.demo.R
 import dev.clawseed.demo.ui.persona.PersonaDot
+import dev.clawseed.demo.ui.persona.personaContainerColor
 import dev.clawseed.demo.ui.persona.personaSummary
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.core.model.PersonaInfo
@@ -112,9 +115,14 @@ fun PersonaPickerSheet(
                 ) {
                     items(entries) { entry ->
                         val isSelected = selected == entry.name
+                        val rowBackground = entry.name
+                            ?.let { personaContainerColor(it) }
+                            ?: if (isSelected) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f) else Color.Transparent
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(rowBackground)
                                 .clickable { selected = entry.name }
                                 .padding(vertical = 10.dp, horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -137,9 +145,8 @@ fun PersonaPickerSheet(
                                     )
                                 }
                             }
-                            // Colored dot badge for non-default personas
                             if (entry.name != null) {
-                                PersonaDot(entry.name, Modifier.size(10.dp))
+                                PersonaDot(entry.name, Modifier.size(28.dp), showInitial = true)
                             }
                         }
                     }

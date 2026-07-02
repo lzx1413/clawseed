@@ -115,6 +115,9 @@ fun ClawseedApp(localStore: LocalStore, notificationSessionId: androidx.compose.
             onNewSession = { persona -> switchSession(null, persona, true) },
             currentSessionId = currentSessionId,
             onSessionIdChanged = { id ->
+                if (hasPendingNewSessionPersona && id != null) {
+                    return@ClawseedNavHost
+                }
                 currentSessionId = id
                 refreshKey++
                 // Update scheduled task sessionId if auto-run is pending

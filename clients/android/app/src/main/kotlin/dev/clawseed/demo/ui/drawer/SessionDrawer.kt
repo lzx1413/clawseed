@@ -1,5 +1,6 @@
 package dev.clawseed.demo.ui.drawer
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -42,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
@@ -55,6 +58,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.clawseed.demo.BuildConfig
 import dev.clawseed.demo.R
 import dev.clawseed.demo.ui.persona.PersonaDot
+import dev.clawseed.demo.ui.persona.personaContainerColor
+import dev.clawseed.demo.ui.persona.personaContentColor
 import dev.clawseed.demo.ui.settings.UpdateCheckResult
 import dev.clawseed.demo.ui.settings.SettingsViewModel
 import dev.clawseed.sdk.core.model.SessionSummary
@@ -189,13 +194,20 @@ private fun SessionItem(
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (!persona.isNullOrEmpty()) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        PersonaDot(persona, Modifier.size(7.dp))
+                    Row(
+                        modifier = Modifier
+                            .padding(top = 3.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(personaContainerColor(persona))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        PersonaDot(persona, Modifier.size(14.dp), showInitial = true)
                         Spacer(Modifier.width(5.dp))
                         Text(
                             text = persona,
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = personaContentColor(persona),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )

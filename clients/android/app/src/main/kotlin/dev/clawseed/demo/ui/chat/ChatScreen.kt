@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -59,6 +61,9 @@ import dev.clawseed.demo.ui.chat.components.SpeakerOffIcon
 import dev.clawseed.demo.ui.chat.components.SpeakerStopIcon
 import dev.clawseed.demo.ui.chat.components.SpeakerPlayIcon
 import dev.clawseed.demo.ui.persona.personaSummary
+import dev.clawseed.demo.ui.persona.PersonaDot
+import dev.clawseed.demo.ui.persona.personaContainerColor
+import dev.clawseed.demo.ui.persona.personaContentColor
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.core.model.PersonaDetail
 
@@ -145,8 +150,8 @@ fun ChatScreen(
     // stored binding is authoritative.
     LaunchedEffect(sessionVersion) {
         val persona = if (hasNewSessionPersona) newSessionPersona else null
-        if (hasNewSessionPersona) onNewSessionPersonaConsumed()
         viewModel.switchToSession(sessionId, persona)
+        if (hasNewSessionPersona) onNewSessionPersonaConsumed()
     }
 
     // Propagate session ID changes
@@ -228,9 +233,17 @@ fun ChatScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (!uiState.currentPersona.isNullOrEmpty()) {
+                            val personaName = uiState.currentPersona!!
                             AssistChip(
                                 onClick = { showCurrentPersona = true },
-                                label = { Text(uiState.currentPersona!!) },
+                                label = { Text(personaName) },
+                                leadingIcon = {
+                                    PersonaDot(personaName, Modifier.size(20.dp), showInitial = true)
+                                },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = personaContainerColor(personaName),
+                                    labelColor = personaContentColor(personaName),
+                                ),
                                 modifier = Modifier.padding(end = 8.dp),
                             )
                         }
@@ -380,7 +393,7 @@ fun ChatScreen(
             onDismiss = { showPersonaSheet = false },
             onStart = { persona ->
                 showPersonaSheet = false
-                onNewSession(persona)
+                viewModel.startNewSession(persona)
             },
             onManage = {
                 showPersonaSheet = false
