@@ -21,6 +21,8 @@ data class PersonaDraft(
     val systemPrompt: String = "",
     val model: String = "",
     val thinkingEnabled: Boolean? = null,
+    val avatar: String = "",
+    val color: String = "",
     val memoryMode: String = "shared",
     val allowedTools: Set<String> = emptySet(),
     val deniedSkills: Set<String> = emptySet(),
@@ -175,6 +177,8 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             systemPrompt = systemPrompt ?: identity?.toString().orEmpty(),
             model = model.orEmpty(),
             thinkingEnabled = thinkingEnabled,
+            avatar = avatar.orEmpty(),
+            color = color.orEmpty(),
             memoryMode = if (ns.isBlank()) "shared" else "isolated",
             allowedTools = if (allowedTools.isEmpty()) defaultAllowedTools(tools) else allowedTools.toSet(),
             deniedSkills = deniedSkills.toSet(),
@@ -195,6 +199,8 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             deniedSkills = deniedSkills.sorted(),
             model = model.trim().ifEmpty { null },
             thinkingEnabled = thinkingEnabled,
+            avatar = avatar.trim().ifEmpty { null },
+            color = color.trim().ifEmpty { null },
         )
     }
 
@@ -205,6 +211,8 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             || deniedSkills.isNotEmpty()
             || model.isNotBlank()
             || thinkingEnabled != null
+            || avatar.isNotBlank()
+            || color.isNotBlank()
 
     private fun defaultAllowedTools(tools: List<ToolInfo>): Set<String> =
         tools.filter { it.sourceType == "builtin" }.map { it.name }.toSet()

@@ -1,5 +1,8 @@
 package dev.clawseed.demo.ui.persona
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,12 +60,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.clawseed.demo.R
 import dev.clawseed.sdk.core.model.SkillInfo
+import dev.clawseed.sdk.core.model.PersonaDetail
 import dev.clawseed.sdk.core.model.PersonaInfo
 import dev.clawseed.sdk.core.model.ToolInfo
 
@@ -71,6 +76,7 @@ import dev.clawseed.sdk.core.model.ToolInfo
 fun PersonaManagerScreen(
     onBack: () -> Unit,
     onStartChat: (String) -> Unit,
+    initialPersona: String? = null,
     viewModel: PersonaViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -79,26 +85,10 @@ fun PersonaManagerScreen(
         viewModel.load()
     }
 
-    uiState.viewing?.let { detail ->
-        AlertDialog(
-            onDismissRequest = viewModel::closeEditor,
-            title = { Text(detail.name) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(personaSummary(detail), style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        stringResource(R.string.persona_current_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = viewModel::closeEditor) {
-                    Text(stringResource(R.string.common_close))
-                }
-            },
-        )
+    LaunchedEffect(initialPersona) {
+        if (!initialPersona.isNullOrBlank()) {
+            viewModel.view(initialPersona)
+        }
     }
 
     Scaffold(
@@ -106,13 +96,21 @@ fun PersonaManagerScreen(
             TopAppBar(
                 title = {
                     Text(
-                        if (uiState.editing == null) stringResource(R.string.persona_manager_title)
-                        else stringResource(R.string.persona_edit_title),
+                        when {
+                            uiState.editing != null -> stringResource(R.string.persona_edit_title)
+                            uiState.viewing != null -> uiState.viewing!!.name
+                            else -> stringResource(R.string.persona_manager_title)
+                        },
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (uiState.editing != null) viewModel.closeEditor() else onBack()
+                        when {
+                            uiState.editing != null -> viewModel.closeEditor()
+                            uiState.viewing != null && !initialPersona.isNullOrBlank() -> onBack()
+                            uiState.viewing != null -> viewModel.closeEditor()
+                            else -> onBack()
+                        }
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
@@ -120,7 +118,7 @@ fun PersonaManagerScreen(
             )
         },
         floatingActionButton = {
-            if (uiState.editing == null) {
+            if (uiState.editing == null && uiState.viewing == null) {
                 FloatingActionButton(onClick = viewModel::newPersona) {
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.persona_create))
                 }
@@ -143,6 +141,14 @@ fun PersonaManagerScreen(
                     onSave = { viewModel.save() },
                     onSaveAndStart = { viewModel.save(onStartChat) },
                     onCancel = viewModel::closeEditor,
+                )
+
+                uiState.viewing != null -> PersonaDetailView(
+                    detail = uiState.viewing!!,
+                    skills = uiState.skills,
+                    onStart = onStartChat,
+                    onEdit = { viewModel.edit(uiState.viewing!!.name) },
+                    onDuplicate = { viewModel.duplicate(uiState.viewing!!.toInfo()) },
                 )
 
                 uiState.isLoading && uiState.personas.isEmpty() -> CircularProgressIndicator(
@@ -221,13 +227,19 @@ private fun PersonaList(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onView(persona.name) },
-                colors = CardDefaults.cardColors(containerColor = personaContainerColor(persona.name)),
+                colors = CardDefaults.cardColors(containerColor = personaContainerColor(persona.name, persona.color)),
             ) {
                 Row(
                     modifier = Modifier.padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    PersonaDot(persona.name, Modifier.size(34.dp), showInitial = true)
+                    PersonaDot(
+                        persona.name,
+                        Modifier.size(34.dp),
+                        showInitial = true,
+                        avatar = persona.avatar,
+                        color = persona.color,
+                    )
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -250,20 +262,227 @@ private fun PersonaList(
                     IconButton(onClick = { onEdit(persona.name) }) {
                         Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.persona_edit))
                     }
+                    IconButton(onClick = { onDuplicate(persona) }) {
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.persona_duplicate))
+                    }
                     IconButton(onClick = { confirmDelete = true }) {
                         Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.common_delete))
                     }
                 }
-                Row(
-                    modifier = Modifier.padding(start = 58.dp, end = 12.dp, bottom = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+            }
+        }
+    }
+}
+
+@Composable
+private fun PersonaDetailView(
+    detail: PersonaDetail,
+    skills: List<SkillInfo>,
+    onStart: (String) -> Unit,
+    onEdit: () -> Unit,
+    onDuplicate: () -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            PersonaIdentityHeader(detail)
+        }
+        item {
+            PersonaSection(title = stringResource(R.string.persona_llm_section)) {
+                SettingLine(
+                    label = stringResource(R.string.persona_model_label),
+                    value = detail.model?.takeIf { it.isNotBlank() }
+                        ?: stringResource(R.string.persona_model_inherit),
+                )
+                SettingLine(
+                    label = stringResource(R.string.persona_thinking_override),
+                    value = when (detail.thinkingEnabled) {
+                        true -> stringResource(R.string.persona_thinking_on)
+                        false -> stringResource(R.string.persona_thinking_off)
+                        null -> stringResource(R.string.persona_thinking_inherit)
+                    },
+                )
+            }
+        }
+        item {
+            PersonaSection(title = stringResource(R.string.persona_memory_section)) {
+                SettingLine(
+                    label = stringResource(R.string.persona_memory_section),
+                    value = detail.memoryNamespace?.takeIf { it.isNotBlank() }
+                        ?: stringResource(R.string.persona_memory_shared),
+                )
+            }
+        }
+        item {
+            PersonaSection(title = stringResource(R.string.persona_tools_section)) {
+                SettingLine(
+                    label = stringResource(R.string.persona_tools_section),
+                    value = detail.allowedTools.takeIf { it.isNotEmpty() }
+                        ?.joinToString(", ")
+                        ?: stringResource(R.string.persona_tools_inherit),
+                )
+            }
+        }
+        item {
+            PersonaSection(title = stringResource(R.string.persona_skills_section)) {
+                val enabledSkills = skills
+                    .filter { !detail.deniedSkills.contains(it.name) }
+                    .map { it.name }
+                SettingLine(
+                    label = stringResource(R.string.persona_skills_enabled),
+                    value = enabledSkills.takeIf { it.isNotEmpty() }
+                        ?.joinToString(", ")
+                        ?: stringResource(R.string.persona_skills_none_enabled),
+                )
+            }
+        }
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(onClick = onDuplicate, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.persona_duplicate), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Edit, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.persona_edit), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Button(onClick = { onStart(detail.name) }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.persona_start), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PersonaIdentityHeader(detail: PersonaDetail) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = personaContainerColor(detail.name, detail.color)),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            PersonaDot(
+                detail.name,
+                Modifier.size(52.dp),
+                showInitial = true,
+                avatar = detail.avatar,
+                color = detail.color,
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = detail.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    TextButton(onClick = { onDuplicate(persona) }) {
-                        Text(stringResource(R.string.persona_duplicate))
+                    personaFeatureTags(detail).forEach { tag ->
+                        FilterChip(
+                            selected = false,
+                            onClick = {},
+                            label = {
+                                Text(
+                                    text = tag,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            modifier = Modifier.height(26.dp),
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun personaFeatureTags(detail: PersonaDetail): List<String> {
+    return buildList {
+        addAll(personaTypeTags(detail))
+        add(
+            if (detail.hasSystemPrompt || detail.hasIdentity) {
+                stringResource(R.string.persona_feature_custom_soul)
+            } else {
+                stringResource(R.string.persona_feature_global_soul)
+            }
+        )
+        add(
+            detail.model?.takeIf { it.isNotBlank() }
+                ?: stringResource(R.string.persona_model_inherit)
+        )
+        add(
+            when (detail.thinkingEnabled) {
+                true -> stringResource(R.string.persona_feature_thinking_on)
+                false -> stringResource(R.string.persona_feature_thinking_off)
+                null -> stringResource(R.string.persona_feature_thinking_inherit)
+            }
+        )
+        add(
+            if (detail.memoryNamespace.isNullOrBlank()) {
+                stringResource(R.string.persona_feature_shared_memory)
+            } else {
+                stringResource(R.string.persona_feature_private_memory)
+            }
+        )
+        if (detail.allowedTools.isNotEmpty()) {
+            add(stringResource(R.string.persona_feature_tools_count, detail.allowedTools.size))
+        }
+    }.distinct().take(6)
+}
+
+@Composable
+private fun personaTypeTags(detail: PersonaDetail): List<String> {
+    val text = "${detail.name} ${detail.systemPrompt.orEmpty()}".lowercase()
+    val tags = mutableListOf<String>()
+    if (listOf("翻译", "translate", "translation", "translator").any { text.contains(it) }) {
+        tags.add(stringResource(R.string.persona_type_translation))
+    }
+    if (listOf("代码", "编程", "coding", "code", "developer", "program").any { text.contains(it) }) {
+        tags.add(stringResource(R.string.persona_type_coding))
+    }
+    if (listOf("写作", "文案", "writing", "writer", "copy").any { text.contains(it) }) {
+        tags.add(stringResource(R.string.persona_type_writing))
+    }
+    if (listOf("计划", "规划", "plan", "planner", "strategy").any { text.contains(it) }) {
+        tags.add(stringResource(R.string.persona_type_planning))
+    }
+    if (listOf("研究", "搜索", "research", "analysis", "analyst").any { text.contains(it) }) {
+        tags.add(stringResource(R.string.persona_type_research))
+    }
+    return tags.take(2)
+}
+
+@Composable
+private fun SettingLine(label: String, value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
 }
 
@@ -295,6 +514,90 @@ private fun EmptyPersonaState(onCreate: () -> Unit) {
     }
 }
 
+@Composable
+private fun PersonaAppearanceSection(
+    draft: PersonaDraft,
+    onDraftChange: (PersonaDraft) -> Unit,
+) {
+    val context = LocalContext.current
+    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            onDraftChange(draft.copy(avatar = uri.toString()))
+        }
+    }
+
+    PersonaSection(title = stringResource(R.string.persona_appearance_section)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PersonaDot(
+                draft.name.ifBlank { stringResource(R.string.persona_default) },
+                Modifier.size(42.dp),
+                showInitial = true,
+                avatar = draft.avatar,
+                color = draft.color,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = stringResource(R.string.persona_avatar_label),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = stringResource(R.string.persona_avatar_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            OutlinedButton(onClick = { avatarPicker.launch(arrayOf("image/*")) }) {
+                Text(stringResource(R.string.persona_avatar_choose))
+            }
+        }
+        if (draft.avatar.isNotBlank()) {
+            OutlinedButton(onClick = { onDraftChange(draft.copy(avatar = "", color = "")) }) {
+                Text(stringResource(R.string.persona_avatar_clear))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThinkingModeSelector(
+    value: Boolean?,
+    onChange: (Boolean?) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(stringResource(R.string.persona_thinking_mode))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            FilterChip(
+                selected = value == null,
+                onClick = { onChange(null) },
+                label = { Text(stringResource(R.string.persona_thinking_inherit)) },
+            )
+            FilterChip(
+                selected = value == true,
+                onClick = { onChange(true) },
+                label = { Text(stringResource(R.string.persona_thinking_on)) },
+            )
+            FilterChip(
+                selected = value == false,
+                onClick = { onChange(false) },
+                label = { Text(stringResource(R.string.persona_thinking_off)) },
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PersonaEditor(
@@ -309,6 +612,7 @@ private fun PersonaEditor(
     onCancel: () -> Unit,
 ) {
     var modelExpanded by remember { mutableStateOf(false) }
+    var soulExpanded by remember { mutableStateOf(false) }
     var toolsExpanded by remember { mutableStateOf(false) }
     var skillsExpanded by remember { mutableStateOf(false) }
 
@@ -327,7 +631,22 @@ private fun PersonaEditor(
             )
         }
         item {
-            PersonaSection(title = stringResource(R.string.persona_soul_section)) {
+            PersonaAppearanceSection(
+                draft = draft,
+                onDraftChange = onDraftChange,
+            )
+        }
+        item {
+            CollapsiblePersonaSection(
+                title = stringResource(R.string.persona_soul_section),
+                subtitle = if (draft.systemPrompt.isBlank()) {
+                    stringResource(R.string.persona_soul_not_set_short)
+                } else {
+                    stringResource(R.string.persona_soul_customized)
+                },
+                expanded = soulExpanded,
+                onToggle = { soulExpanded = !soulExpanded },
+            ) {
                 OutlinedTextField(
                     value = draft.systemPrompt,
                     onValueChange = { onDraftChange(draft.copy(systemPrompt = it)) },
@@ -379,48 +698,10 @@ private fun PersonaEditor(
                         }
                     }
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.persona_thinking_override))
-                        Text(
-                            stringResource(R.string.persona_thinking_override_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(
-                        checked = draft.thinkingEnabled != null,
-                        onCheckedChange = { enabled ->
-                            onDraftChange(draft.copy(thinkingEnabled = if (enabled) false else null))
-                        },
-                    )
-                }
-                if (draft.thinkingEnabled != null) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(stringResource(R.string.persona_thinking_enabled))
-                            Text(
-                                stringResource(R.string.persona_thinking_enabled_desc),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Switch(
-                            checked = draft.thinkingEnabled == true,
-                            onCheckedChange = { enabled ->
-                                onDraftChange(draft.copy(thinkingEnabled = enabled))
-                            },
-                        )
-                    }
-                }
+                ThinkingModeSelector(
+                    value = draft.thinkingEnabled,
+                    onChange = { onDraftChange(draft.copy(thinkingEnabled = it)) },
+                )
             }
         }
         item {
@@ -461,6 +742,9 @@ private fun PersonaEditor(
                 ToolSelector(
                     tools = tools,
                     allowed = draft.allowedTools,
+                    onSelectAll = { onDraftChange(draft.copy(allowedTools = tools.map { it.name }.toSet())) },
+                    onSelectNone = { onDraftChange(draft.copy(allowedTools = emptySet())) },
+                    onRestoreDefault = { onDraftChange(draft.copy(allowedTools = defaultAllowedTools(tools))) },
                     onToggle = { tool ->
                         onDraftChange(
                             draft.copy(
@@ -476,7 +760,7 @@ private fun PersonaEditor(
                 title = stringResource(R.string.persona_skills_section),
                 subtitle = stringResource(
                     R.string.persona_skills_summary,
-                    skills.size - draft.deniedSkills.size,
+                    (skills.size - draft.deniedSkills.size).coerceAtLeast(0),
                     skills.size,
                 ),
                 expanded = skillsExpanded,
@@ -577,6 +861,9 @@ private fun PersonaSection(title: String, content: @Composable ColumnScope.() ->
 private fun ToolSelector(
     tools: List<ToolInfo>,
     allowed: Set<String>,
+    onSelectAll: () -> Unit,
+    onSelectNone: () -> Unit,
+    onRestoreDefault: () -> Unit,
     onToggle: (String) -> Unit,
 ) {
     if (tools.isEmpty()) {
@@ -588,6 +875,20 @@ private fun ToolSelector(
         return
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            OutlinedButton(onClick = onSelectAll) {
+                Text(stringResource(R.string.persona_tools_select_all))
+            }
+            OutlinedButton(onClick = onSelectNone) {
+                Text(stringResource(R.string.persona_tools_select_none))
+            }
+            OutlinedButton(onClick = onRestoreDefault) {
+                Text(stringResource(R.string.persona_tools_restore_default))
+            }
+        }
         tools.forEach { tool ->
             PersonaToolCard(
                 tool = tool,
@@ -803,6 +1104,25 @@ fun personaSummary(persona: dev.clawseed.sdk.core.model.PersonaDetail): String {
     if (persona.deniedTools.isNotEmpty()) parts.add("blocked: ${persona.deniedTools.joinToString(", ")}")
     return parts.ifEmpty { listOf("Persona") }.joinToString("\n")
 }
+
+private fun PersonaDetail.toInfo(): PersonaInfo =
+    PersonaInfo(
+        name = name,
+        isPersona = isPersona,
+        hasIdentity = hasIdentity,
+        hasSystemPrompt = hasSystemPrompt,
+        memoryNamespace = memoryNamespace,
+        allowedTools = allowedTools,
+        deniedTools = deniedTools,
+        deniedSkills = deniedSkills,
+        model = model,
+        thinkingEnabled = thinkingEnabled,
+        avatar = avatar,
+        color = color,
+    )
+
+private fun defaultAllowedTools(tools: List<ToolInfo>): Set<String> =
+    tools.filter { it.sourceType == "builtin" }.map { it.name }.toSet()
 
 private fun Set<String>.toggle(value: String): Set<String> =
     if (contains(value)) this - value else this + value

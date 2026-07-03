@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -53,6 +53,9 @@ import androidx.compose.ui.res.stringResource
 import dev.clawseed.demo.R
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.clawseed.sdk.core.model.ConnectionState
 import dev.clawseed.demo.data.ChatEntry
 import dev.clawseed.demo.ui.chat.components.ChatBottomBar
@@ -60,12 +63,9 @@ import dev.clawseed.demo.ui.chat.components.MessageBubble
 import dev.clawseed.demo.ui.chat.components.SpeakerOffIcon
 import dev.clawseed.demo.ui.chat.components.SpeakerStopIcon
 import dev.clawseed.demo.ui.chat.components.SpeakerPlayIcon
-import dev.clawseed.demo.ui.persona.personaSummary
 import dev.clawseed.demo.ui.persona.PersonaDot
 import dev.clawseed.demo.ui.persona.personaContainerColor
 import dev.clawseed.demo.ui.persona.personaContentColor
-import dev.clawseed.sdk.android.ClawSeedAndroid
-import dev.clawseed.sdk.core.model.PersonaDetail
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,19 +80,19 @@ fun ChatScreen(
     hasNewSessionPersona: Boolean = false,
     onNewSessionPersonaConsumed: () -> Unit = {},
     onManagePersonas: () -> Unit = {},
+    onOpenPersona: (String) -> Unit = {},
     autoSendMessage: String? = null,
     onAutoMessageSent: () -> Unit = {},
 ) {
     val viewModel: ChatViewModel = viewModel(LocalContext.current as ComponentActivity)
     val uiState by viewModel.uiState.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
     var input by remember { mutableStateOf("") }
     val density = LocalDensity.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var bottomBarHeightPx by remember { mutableStateOf(0) }
     var showPersonaSheet by remember { mutableStateOf(false) }
-    var showCurrentPersona by remember { mutableStateOf(false) }
-    var currentPersonaDetail by remember { mutableStateOf<PersonaDetail?>(null) }
 
     fun dismissInput() {
         focusManager.clearFocus(force = true)
@@ -102,6 +102,18 @@ fun ChatScreen(
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { /* granted or denied — tool handler checks at call time */ }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshPersonaVisuals()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     LaunchedEffect(Unit) {
         locationPermissionLauncher.launch(
@@ -187,46 +199,6 @@ fun ChatScreen(
         }
     }
 
-    LaunchedEffect(showCurrentPersona, uiState.currentPersona) {
-        val name = uiState.currentPersona
-        if (showCurrentPersona && !name.isNullOrEmpty() && ClawSeedAndroid.isInitialized) {
-            ClawSeedAndroid.gatewayClient().persona(name)
-                .onSuccess { currentPersonaDetail = it }
-        }
-    }
-
-    if (showCurrentPersona && !uiState.currentPersona.isNullOrEmpty()) {
-        AlertDialog(
-            onDismissRequest = {
-                showCurrentPersona = false
-                currentPersonaDetail = null
-            },
-            title = { Text(uiState.currentPersona!!) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        currentPersonaDetail?.let { personaSummary(it) }
-                            ?: stringResource(R.string.common_loading),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
-                        stringResource(R.string.persona_current_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showCurrentPersona = false
-                    currentPersonaDetail = null
-                }) {
-                    Text(stringResource(R.string.common_close))
-                }
-            },
-        )
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -234,15 +206,22 @@ fun ChatScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (!uiState.currentPersona.isNullOrEmpty()) {
                             val personaName = uiState.currentPersona!!
+                            val personaVisual = uiState.personaVisuals[personaName]
                             AssistChip(
-                                onClick = { showCurrentPersona = true },
+                                onClick = { onOpenPersona(personaName) },
                                 label = { Text(personaName) },
                                 leadingIcon = {
-                                    PersonaDot(personaName, Modifier.size(20.dp), showInitial = true)
+                                    PersonaDot(
+                                        personaName,
+                                        Modifier.size(20.dp),
+                                        showInitial = true,
+                                        avatar = personaVisual?.avatar,
+                                        color = personaVisual?.color,
+                                    )
                                 },
                                 colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = personaContainerColor(personaName),
-                                    labelColor = personaContentColor(personaName),
+                                    containerColor = personaContainerColor(personaName, personaVisual?.color),
+                                    labelColor = personaContentColor(personaName, personaVisual?.color),
                                 ),
                                 modifier = Modifier.padding(end = 8.dp),
                             )

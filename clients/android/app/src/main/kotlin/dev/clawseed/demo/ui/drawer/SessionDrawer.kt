@@ -62,6 +62,7 @@ import dev.clawseed.demo.ui.persona.personaContainerColor
 import dev.clawseed.demo.ui.persona.personaContentColor
 import dev.clawseed.demo.ui.settings.UpdateCheckResult
 import dev.clawseed.demo.ui.settings.SettingsViewModel
+import dev.clawseed.sdk.core.model.PersonaInfo
 import dev.clawseed.sdk.core.model.SessionSummary
 
 @Composable
@@ -118,6 +119,7 @@ fun SessionDrawer(
                     items(uiState.sessions, key = { it.id }) { session ->
                         SessionItem(
                             session = session,
+                            personaVisuals = uiState.personaVisuals,
                             isSelected = session.id == currentSessionId,
                             onSelect = { onSelectSession(session.id) },
                             onDelete = {
@@ -169,6 +171,7 @@ fun SessionDrawer(
 @Composable
 private fun SessionItem(
     session: SessionSummary,
+    personaVisuals: Map<String, PersonaInfo>,
     isSelected: Boolean,
     onSelect: () -> Unit,
     onDelete: () -> Unit,
@@ -187,6 +190,7 @@ private fun SessionItem(
     NavigationDrawerItem(
         label = {
             val persona = session.persona
+            val personaVisual = persona?.let { personaVisuals[it] }
             Column {
                 Text(
                     text = session.name ?: session.id.take(8),
@@ -198,16 +202,22 @@ private fun SessionItem(
                         modifier = Modifier
                             .padding(top = 3.dp)
                             .clip(RoundedCornerShape(999.dp))
-                            .background(personaContainerColor(persona))
+                            .background(personaContainerColor(persona, personaVisual?.color))
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        PersonaDot(persona, Modifier.size(14.dp), showInitial = true)
+                        PersonaDot(
+                            persona,
+                            Modifier.size(14.dp),
+                            showInitial = true,
+                            avatar = personaVisual?.avatar,
+                            color = personaVisual?.color,
+                        )
                         Spacer(Modifier.width(5.dp))
                         Text(
                             text = persona,
                             style = MaterialTheme.typography.labelSmall,
-                            color = personaContentColor(persona),
+                            color = personaContentColor(persona, personaVisual?.color),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )

@@ -26,6 +26,7 @@ import dev.clawseed.sdk.android.ChatAccumulator
 import dev.clawseed.sdk.android.cetp.AuthRequiredEvent
 import dev.clawseed.sdk.core.ClawSeedSession
 import dev.clawseed.sdk.core.model.ConnectionState
+import dev.clawseed.sdk.core.model.PersonaInfo
 import dev.clawseed.sdk.core.model.SessionInfo
 import dev.clawseed.sdk.core.tool.ToolResult
 import kotlinx.coroutines.Job
@@ -76,6 +77,7 @@ data class ChatUiState(
     val speakingMessageId: String? = null,
     /** Persona bound to the active session (from session_start echo). Null = default. */
     val currentPersona: String? = null,
+    val personaVisuals: Map<String, PersonaInfo> = emptyMap(),
 )
 
 /**
@@ -246,6 +248,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.value = _uiState.value.copy(speakingMessageId = id)
             }
         }
+        refreshPersonaVisuals()
     }
 
     override fun onCleared() {
@@ -291,7 +294,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         return ClawSeedAndroid.sessionManager()
     }
 
+    fun refreshPersonaVisuals() {
+        viewModelScope.launch {
+            runCatching {
+                ClawSeedAndroid.awaitInit()
+                ClawSeedAndroid.gatewayClient().personas().getOrThrow()
+                    .filter { it.isPersona }
+                    .associateBy { it.name }
+            }.onSuccess { visuals ->
+                _uiState.value = _uiState.value.copy(personaVisuals = visuals)
+            }
+        }
+    }
+
     fun switchToSession(sessionId: String?, persona: String? = null) {
+        refreshPersonaVisuals()
         // If already connected to the same session, skip reconnection
         val currentSid = currentSession?.sessionInfo?.value?.sessionId
         if (currentSid != null && currentSid == sessionId

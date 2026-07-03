@@ -1554,6 +1554,16 @@ pub struct AgentEntryConfig {
     #[serde(default)]
     pub thinking_enabled: Option<bool>,
 
+    /// Optional short avatar label for UI clients, typically an emoji or one
+    /// to two display characters. Runtime resolution ignores this field.
+    #[serde(default)]
+    pub avatar: Option<String>,
+
+    /// Optional UI accent color in `#RRGGBB` format. Runtime resolution ignores
+    /// this field.
+    #[serde(default)]
+    pub color: Option<String>,
+
     /// Direct system-prompt override — the simplest soul form, bypassing both
     /// AIEOS and workspace personality files. When set, takes precedence over
     /// the global `[identity]` for this persona.
@@ -1573,6 +1583,8 @@ impl AgentEntryConfig {
             || !self.denied_skills.is_empty()
             || self.model.is_some()
             || self.thinking_enabled.is_some()
+            || self.avatar.is_some()
+            || self.color.is_some()
             || self.system_prompt.is_some()
     }
 }

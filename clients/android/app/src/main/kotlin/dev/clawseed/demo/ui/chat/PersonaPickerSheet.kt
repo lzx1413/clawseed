@@ -115,8 +115,9 @@ fun PersonaPickerSheet(
                 ) {
                     items(entries) { entry ->
                         val isSelected = selected == entry.name
-                        val rowBackground = entry.name
-                            ?.let { personaContainerColor(it) }
+                        val persona = personas.find { it.name == entry.name }
+                        val rowBackground = persona
+                            ?.let { personaContainerColor(it.name, it.color) }
                             ?: if (isSelected) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f) else Color.Transparent
                         Row(
                             modifier = Modifier
@@ -145,8 +146,14 @@ fun PersonaPickerSheet(
                                     )
                                 }
                             }
-                            if (entry.name != null) {
-                                PersonaDot(entry.name, Modifier.size(28.dp), showInitial = true)
+                            if (persona != null) {
+                                PersonaDot(
+                                    persona.name,
+                                    Modifier.size(28.dp),
+                                    showInitial = true,
+                                    avatar = persona.avatar,
+                                    color = persona.color,
+                                )
                             }
                         }
                     }
