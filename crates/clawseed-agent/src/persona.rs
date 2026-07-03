@@ -65,6 +65,7 @@ pub fn resolve_persona(
     apply_soul_override(&mut cfg, entry);
     apply_tool_overrides(&mut cfg, entry);
     apply_skill_overrides(&mut cfg, entry);
+    apply_provider_overrides(&mut cfg, entry);
     cfg.agent.memory_namespace = entry.memory_namespace.clone();
 
     let memory = entry
@@ -114,11 +115,45 @@ fn apply_skill_overrides(cfg: &mut Config, entry: &AgentEntryConfig) {
     }
 }
 
+/// Apply model/thinking overrides to the active provider profile.
+fn apply_provider_overrides(cfg: &mut Config, entry: &AgentEntryConfig) {
+    let Some(fallback) = cfg.providers.fallback.clone() else {
+        return;
+    };
+    let Some(provider) = cfg.providers.models.get_mut(&fallback) else {
+        return;
+    };
+
+    if let Some(model) = entry.model.as_ref().filter(|m| !m.trim().is_empty()) {
+        provider.model = Some(model.trim().to_string());
+    }
+
+    if let Some(enabled) = entry.thinking_enabled {
+        let thinking_type = if enabled { "enabled" } else { "disabled" };
+        let mut extra = provider
+            .provider_extra
+            .take()
+            .unwrap_or_else(|| serde_json::json!({}));
+        if !extra.is_object() {
+            extra = serde_json::json!({});
+        }
+        if let Some(obj) = extra.as_object_mut() {
+            obj.insert(
+                "thinking".to_string(),
+                serde_json::json!({ "type": thinking_type }),
+            );
+        }
+        provider.provider_extra = Some(extra);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::identity;
-    use clawseed_config::schema::{AgentConfig, AgentEntryConfig, IdentityConfig};
+    use clawseed_config::schema::{
+        AgentConfig, AgentEntryConfig, IdentityConfig, ModelProviderConfig,
+    };
     use clawseed_memory::none::NoneMemory;
 
     fn base_config() -> Config {
@@ -289,6 +324,78 @@ mod tests {
             vec!["global-skill".to_string(), "persona-skill".to_string()]
         );
         assert_eq!(cfg.skills.excluded, vec!["global-skill"]);
+    }
+
+    #[test]
+    fn provider_overrides_apply_model_and_thinking_to_fallback_profile() {
+        let mut cfg = base_config();
+        cfg.providers.fallback = Some("default".into());
+        cfg.providers.models.insert(
+            "default".into(),
+            ModelProviderConfig {
+                api_key: None,
+                name: None,
+                base_url: None,
+                api_path: None,
+                model: Some("global-model".into()),
+                temperature: None,
+                timeout_secs: None,
+                extra_headers: std::collections::HashMap::new(),
+                wire_api: None,
+                max_tokens: None,
+                provider_extra: Some(serde_json::json!({
+                    "thinking": { "type": "enabled" },
+                    "other": "kept"
+                })),
+                merge_system_into_user: false,
+            },
+        );
+        cfg.agents.insert(
+            "fast".into(),
+            AgentEntryConfig {
+                model: Some("persona-model".into()),
+                thinking_enabled: Some(false),
+                ..Default::default()
+            },
+        );
+
+        let ov = resolve_persona(&cfg, Some("fast"), none_mem()).expect("persona resolved");
+        let provider = ov
+            .config
+            .providers
+            .models
+            .get("default")
+            .expect("provider profile");
+        assert_eq!(provider.model.as_deref(), Some("persona-model"));
+        assert_eq!(
+            provider.provider_extra.as_ref().and_then(|extra| {
+                extra
+                    .get("thinking")
+                    .and_then(|thinking| thinking.get("type"))
+                    .and_then(|value| value.as_str())
+            }),
+            Some("disabled")
+        );
+        assert_eq!(
+            provider
+                .provider_extra
+                .as_ref()
+                .and_then(|extra| extra.get("other"))
+                .and_then(|value| value.as_str()),
+            Some("kept")
+        );
+
+        let global_provider = cfg.providers.models.get("default").expect("global profile");
+        assert_eq!(global_provider.model.as_deref(), Some("global-model"));
+        assert_eq!(
+            global_provider.provider_extra.as_ref().and_then(|extra| {
+                extra
+                    .get("thinking")
+                    .and_then(|thinking| thinking.get("type"))
+                    .and_then(|value| value.as_str())
+            }),
+            Some("enabled")
+        );
     }
 
     #[test]

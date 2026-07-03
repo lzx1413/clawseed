@@ -181,6 +181,7 @@ async fn get_curate_plan(provider: &dyn Provider, model: &str, prompt: &str) -> 
     let request = ChatRequest {
         messages: &messages,
         tools: None,
+        provider_extra: None,
     };
 
     let response = provider.chat(request, model, None).await?;

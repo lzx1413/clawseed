@@ -49,6 +49,8 @@ data class PersonaInfo(
     @SerialName("allowed_tools") val allowedTools: List<String> = emptyList(),
     @SerialName("denied_tools") val deniedTools: List<String> = emptyList(),
     @SerialName("denied_skills") val deniedSkills: List<String> = emptyList(),
+    val model: String? = null,
+    @SerialName("thinking_enabled") val thinkingEnabled: Boolean? = null,
 )
 
 /** Full persona detail returned by `/api/personas/{name}`. */
@@ -64,6 +66,8 @@ data class PersonaDetail(
     @SerialName("allowed_tools") val allowedTools: List<String> = emptyList(),
     @SerialName("denied_tools") val deniedTools: List<String> = emptyList(),
     @SerialName("denied_skills") val deniedSkills: List<String> = emptyList(),
+    val model: String? = null,
+    @SerialName("thinking_enabled") val thinkingEnabled: Boolean? = null,
 )
 
 /** Payload for creating or updating a persona. */
@@ -75,6 +79,8 @@ data class PersonaUpsert(
     @SerialName("allowed_tools") val allowedTools: List<String> = emptyList(),
     @SerialName("denied_tools") val deniedTools: List<String> = emptyList(),
     @SerialName("denied_skills") val deniedSkills: List<String> = emptyList(),
+    val model: String? = null,
+    @SerialName("thinking_enabled") val thinkingEnabled: Boolean? = null,
 )
 
 /** Description of one skill available in the gateway. */

@@ -132,6 +132,7 @@ impl ChatResponse {
 pub struct ChatRequest<'a> {
     pub messages: &'a [ChatMessage],
     pub tools: Option<&'a [ToolSpec]>,
+    pub provider_extra: Option<&'a serde_json::Value>,
 }
 
 /// A tool result to feed back to the LLM.

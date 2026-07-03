@@ -238,16 +238,26 @@
     <string name="persona_soul_section">Soul</string>
     <string name="persona_soul_label">Identity and behavior</string>
     <string name="persona_soul_placeholder">Describe who this persona is, how it should speak, what it is good at, and any boundaries it should follow…</string>
+    <string name="persona_llm_section">LLM</string>
+    <string name="persona_model_label">Model</string>
+    <string name="persona_model_inherit">Inherit global model</string>
+    <string name="persona_model_placeholder">Leave blank to inherit the global model</string>
+    <string name="persona_thinking_override">Override thinking mode</string>
+    <string name="persona_thinking_override_desc">Leave off to inherit the global thinking setting.</string>
+    <string name="persona_thinking_enabled">Enable thinking</string>
+    <string name="persona_thinking_enabled_desc">Controls reasoning mode for this persona only.</string>
     <string name="persona_memory_section">Memory</string>
     <string name="persona_isolated_memory">Use isolated memory</string>
     <string name="persona_isolated_memory_desc">Use the persona name as its private memory space.</string>
     <string name="persona_tools_section">Tool access</string>
+    <string name="persona_tools_summary">%1$d of %2$d tools enabled</string>
     <string name="persona_tools_empty">No tools reported by the gateway.</string>
     <string name="persona_skills_section">Skills</string>
+    <string name="persona_skills_summary">%1$d of %2$d skills enabled</string>
     <string name="persona_skills_empty">No skills reported by the gateway.</string>
     <string name="persona_save_start">Save and start</string>
     <string name="persona_name_required">Persona name is required</string>
-    <string name="persona_override_required">Add a Soul description, isolated memory, or tool rule so this is a real persona.</string>
+    <string name="persona_override_required">Add a Soul description, model setting, isolated memory, tool rule, or skill rule so this is a real persona.</string>
 
     <string name="settings_about">About</string>
     <string name="settings_about_app_version">App version: %1$s</string>

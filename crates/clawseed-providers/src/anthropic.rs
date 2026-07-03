@@ -999,6 +999,7 @@ impl Provider for AnthropicProvider {
             } else {
                 Some(&tool_specs)
             },
+            provider_extra: None,
         };
         self.chat(request, model, temperature).await
     }

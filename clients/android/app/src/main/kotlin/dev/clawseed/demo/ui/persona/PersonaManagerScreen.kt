@@ -23,13 +23,19 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -131,6 +137,7 @@ fun PersonaManagerScreen(
                     draft = uiState.editing!!,
                     tools = uiState.tools,
                     skills = uiState.skills,
+                    availableModels = uiState.availableModels,
                     isSaving = uiState.isSaving,
                     onDraftChange = { viewModel.updateDraft { _ -> it } },
                     onSave = { viewModel.save() },
@@ -288,17 +295,23 @@ private fun EmptyPersonaState(onCreate: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PersonaEditor(
     draft: PersonaDraft,
     tools: List<ToolInfo>,
     skills: List<SkillInfo>,
+    availableModels: List<String>,
     isSaving: Boolean,
     onDraftChange: (PersonaDraft) -> Unit,
     onSave: () -> Unit,
     onSaveAndStart: () -> Unit,
     onCancel: () -> Unit,
 ) {
+    var modelExpanded by remember { mutableStateOf(false) }
+    var toolsExpanded by remember { mutableStateOf(false) }
+    var skillsExpanded by remember { mutableStateOf(false) }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -328,6 +341,89 @@ private fun PersonaEditor(
             }
         }
         item {
+            PersonaSection(title = stringResource(R.string.persona_llm_section)) {
+                ExposedDropdownMenuBox(
+                    expanded = modelExpanded,
+                    onExpandedChange = { modelExpanded = it },
+                ) {
+                    OutlinedTextField(
+                        value = draft.model.ifBlank { stringResource(R.string.persona_model_inherit) },
+                        onValueChange = {},
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                        readOnly = true,
+                        singleLine = true,
+                        label = { Text(stringResource(R.string.persona_model_label)) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded) },
+                    )
+                    ExposedDropdownMenu(
+                        expanded = modelExpanded,
+                        onDismissRequest = { modelExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.persona_model_inherit)) },
+                            onClick = {
+                                onDraftChange(draft.copy(model = ""))
+                                modelExpanded = false
+                            },
+                        )
+                        availableModels.forEach { model ->
+                            DropdownMenuItem(
+                                text = { Text(model, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                onClick = {
+                                    onDraftChange(draft.copy(model = model))
+                                    modelExpanded = false
+                                },
+                            )
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.persona_thinking_override))
+                        Text(
+                            stringResource(R.string.persona_thinking_override_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = draft.thinkingEnabled != null,
+                        onCheckedChange = { enabled ->
+                            onDraftChange(draft.copy(thinkingEnabled = if (enabled) false else null))
+                        },
+                    )
+                }
+                if (draft.thinkingEnabled != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.persona_thinking_enabled))
+                            Text(
+                                stringResource(R.string.persona_thinking_enabled_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = draft.thinkingEnabled == true,
+                            onCheckedChange = { enabled ->
+                                onDraftChange(draft.copy(thinkingEnabled = enabled))
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        item {
             PersonaSection(title = stringResource(R.string.persona_memory_section)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -352,7 +448,16 @@ private fun PersonaEditor(
             }
         }
         item {
-            PersonaSection(title = stringResource(R.string.persona_tools_section)) {
+            CollapsiblePersonaSection(
+                title = stringResource(R.string.persona_tools_section),
+                subtitle = stringResource(
+                    R.string.persona_tools_summary,
+                    draft.allowedTools.size,
+                    tools.size,
+                ),
+                expanded = toolsExpanded,
+                onToggle = { toolsExpanded = !toolsExpanded },
+            ) {
                 ToolSelector(
                     tools = tools,
                     allowed = draft.allowedTools,
@@ -367,7 +472,16 @@ private fun PersonaEditor(
             }
         }
         item {
-            PersonaSection(title = stringResource(R.string.persona_skills_section)) {
+            CollapsiblePersonaSection(
+                title = stringResource(R.string.persona_skills_section),
+                subtitle = stringResource(
+                    R.string.persona_skills_summary,
+                    skills.size - draft.deniedSkills.size,
+                    skills.size,
+                ),
+                expanded = skillsExpanded,
+                onToggle = { skillsExpanded = !skillsExpanded },
+            ) {
                 SkillSelector(
                     skills = skills,
                     denied = draft.deniedSkills,
@@ -393,6 +507,50 @@ private fun PersonaEditor(
                 Button(onClick = onSaveAndStart, enabled = !isSaving) {
                     Text(stringResource(R.string.persona_save_start))
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CollapsiblePersonaSection(
+    title: String,
+    subtitle: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggle),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Icon(
+                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                )
+            }
+            if (expanded) {
+                content()
             }
         }
     }
@@ -627,6 +785,8 @@ private fun PersonaSkillCard(
 fun personaSummary(persona: PersonaInfo): String {
     val parts = mutableListOf<String>()
     if (persona.hasIdentity || persona.hasSystemPrompt) parts.add("Soul")
+    persona.model?.takeIf { it.isNotBlank() }?.let { parts.add("model $it") }
+    persona.thinkingEnabled?.let { parts.add(if (it) "thinking on" else "thinking off") }
     if (persona.memoryNamespace != null) parts.add("isolated memory")
     if (persona.allowedTools.isNotEmpty()) parts.add("allowed ${persona.allowedTools.size} tools")
     if (persona.deniedTools.isNotEmpty()) parts.add("blocked ${persona.deniedTools.size} tools")
@@ -636,6 +796,8 @@ fun personaSummary(persona: PersonaInfo): String {
 fun personaSummary(persona: dev.clawseed.sdk.core.model.PersonaDetail): String {
     val parts = mutableListOf<String>()
     if (persona.hasIdentity || persona.hasSystemPrompt) parts.add("Soul")
+    persona.model?.takeIf { it.isNotBlank() }?.let { parts.add("model: $it") }
+    persona.thinkingEnabled?.let { parts.add(if (it) "thinking: on" else "thinking: off") }
     if (persona.memoryNamespace != null) parts.add("isolated memory: ${persona.memoryNamespace}")
     if (persona.allowedTools.isNotEmpty()) parts.add("allowed: ${persona.allowedTools.joinToString(", ")}")
     if (persona.deniedTools.isNotEmpty()) parts.add("blocked: ${persona.deniedTools.joinToString(", ")}")

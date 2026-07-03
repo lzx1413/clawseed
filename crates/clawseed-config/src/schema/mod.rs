@@ -1541,6 +1541,19 @@ pub struct AgentEntryConfig {
     #[serde(default)]
     pub denied_skills: Vec<String>,
 
+    /// Optional model override for this persona. When set, it replaces the
+    /// current fallback provider's model while keeping provider credentials
+    /// and transport settings from the global provider profile.
+    #[serde(default)]
+    pub model: Option<String>,
+
+    /// Optional thinking/reasoning toggle for this persona. `None` inherits the
+    /// global provider profile; `Some(true/false)` writes
+    /// `provider_extra.thinking.type = enabled/disabled` for this persona's
+    /// resolved config.
+    #[serde(default)]
+    pub thinking_enabled: Option<bool>,
+
     /// Direct system-prompt override — the simplest soul form, bypassing both
     /// AIEOS and workspace personality files. When set, takes precedence over
     /// the global `[identity]` for this persona.
@@ -1558,6 +1571,8 @@ impl AgentEntryConfig {
             || !self.allowed_tools.is_empty()
             || !self.denied_tools.is_empty()
             || !self.denied_skills.is_empty()
+            || self.model.is_some()
+            || self.thinking_enabled.is_some()
             || self.system_prompt.is_some()
     }
 }

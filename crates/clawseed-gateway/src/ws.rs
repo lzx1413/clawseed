@@ -252,14 +252,24 @@ async fn handle_socket(
         Some(ov) => (ov.config, ov.memory.unwrap_or_else(|| state.mem.clone())),
         None => (config, state.mem.clone()),
     };
+    let agent_model = agent_config
+        .providers
+        .fallback_provider()
+        .and_then(|entry| entry.model.clone())
+        .unwrap_or_else(|| state.model.clone());
+    let agent_temperature = agent_config
+        .providers
+        .fallback_provider()
+        .and_then(|entry| entry.temperature)
+        .unwrap_or(state.temperature);
 
     let mut agent = match clawseed_agent::agent::Agent::from_config_with_shared_components(
         &agent_config,
         state.provider.clone(),
         shared_memory,
         state.observer.clone(),
-        state.model.clone(),
-        state.temperature,
+        agent_model,
+        agent_temperature,
         Some(state.shared_builtin_tools.clone()),
     )
     .await

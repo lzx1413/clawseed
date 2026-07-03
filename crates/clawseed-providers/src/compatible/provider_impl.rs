@@ -752,7 +752,7 @@ impl Provider for OpenAiCompatibleProvider {
             .apply_auth_header(
                 self.http_client()
                     .post(&url)
-                    .json(&self.merge_extra(&native_request)),
+                    .json(&self.merge_extra_with_request(&native_request, request.provider_extra)),
                 credential,
             )
             .send()
@@ -928,11 +928,20 @@ impl Provider for OpenAiCompatibleProvider {
                 return stream::once(async move { Err(StreamError::Json(error)) }).boxed();
             }
         };
-        if let Some(ref extra) = self.provider_extra
-            && let (Some(obj), Some(extra_obj)) = (payload.as_object_mut(), extra.as_object())
-        {
-            for (k, v) in extra_obj {
-                obj.insert(k.clone(), v.clone());
+        if let Some(obj) = payload.as_object_mut() {
+            if let Some(ref extra) = self.provider_extra
+                && let Some(extra_obj) = extra.as_object()
+            {
+                for (k, v) in extra_obj {
+                    obj.insert(k.clone(), v.clone());
+                }
+            }
+            if let Some(extra) = request.provider_extra
+                && let Some(extra_obj) = extra.as_object()
+            {
+                for (k, v) in extra_obj {
+                    obj.insert(k.clone(), v.clone());
+                }
             }
         }
 

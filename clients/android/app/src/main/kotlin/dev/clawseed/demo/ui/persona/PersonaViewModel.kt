@@ -19,6 +19,8 @@ data class PersonaDraft(
     val originalName: String? = null,
     val name: String = "",
     val systemPrompt: String = "",
+    val model: String = "",
+    val thinkingEnabled: Boolean? = null,
     val memoryMode: String = "shared",
     val allowedTools: Set<String> = emptySet(),
     val deniedSkills: Set<String> = emptySet(),
@@ -28,6 +30,7 @@ data class PersonaUiState(
     val personas: List<PersonaInfo> = emptyList(),
     val tools: List<ToolInfo> = emptyList(),
     val skills: List<SkillInfo> = emptyList(),
+    val availableModels: List<String> = emptyList(),
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,
     val editing: PersonaDraft? = null,
@@ -46,10 +49,12 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             val personasResult = ClawSeedAndroid.gatewayClient().personas()
             val toolsResult = ClawSeedAndroid.gatewayClient().tools()
             val skillsResult = ClawSeedAndroid.gatewayClient().skills()
+            val modelsResult = ClawSeedAndroid.gatewayClient().models()
             _uiState.value = _uiState.value.copy(
                 personas = personasResult.getOrElse { emptyList() }.filter { it.isPersona },
                 tools = toolsResult.getOrElse { emptyList() },
                 skills = skillsResult.getOrElse { emptyList() },
+                availableModels = modelsResult.getOrElse { emptyList() },
                 isLoading = false,
                 error = personasResult.exceptionOrNull()?.message
                     ?: toolsResult.exceptionOrNull()?.message
@@ -168,6 +173,8 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             originalName = name,
             name = name,
             systemPrompt = systemPrompt ?: identity?.toString().orEmpty(),
+            model = model.orEmpty(),
+            thinkingEnabled = thinkingEnabled,
             memoryMode = if (ns.isBlank()) "shared" else "isolated",
             allowedTools = if (allowedTools.isEmpty()) defaultAllowedTools(tools) else allowedTools.toSet(),
             deniedSkills = deniedSkills.toSet(),
@@ -186,6 +193,8 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             allowedTools = allowedTools.sorted(),
             deniedTools = emptyList(),
             deniedSkills = deniedSkills.sorted(),
+            model = model.trim().ifEmpty { null },
+            thinkingEnabled = thinkingEnabled,
         )
     }
 
@@ -194,6 +203,8 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             || memoryMode == "isolated"
             || allowedTools.isNotEmpty()
             || deniedSkills.isNotEmpty()
+            || model.isNotBlank()
+            || thinkingEnabled != null
 
     private fun defaultAllowedTools(tools: List<ToolInfo>): Set<String> =
         tools.filter { it.sourceType == "builtin" }.map { it.name }.toSet()

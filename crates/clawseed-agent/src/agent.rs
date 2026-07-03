@@ -65,6 +65,7 @@ pub struct Agent {
     tool_dispatcher: Box<dyn ToolDispatcher>,
     config: clawseed_config::schema::AgentConfig,
     model_name: String,
+    provider_extra: Option<serde_json::Value>,
     temperature: f64,
     workspace_dir: std::path::PathBuf,
     autonomy_level: AutonomyLevel,
@@ -134,6 +135,7 @@ pub struct AgentBuilder {
     tool_dispatcher: Option<Box<dyn ToolDispatcher>>,
     config: Option<clawseed_config::schema::AgentConfig>,
     model_name: Option<String>,
+    provider_extra: Option<serde_json::Value>,
     temperature: Option<f64>,
     workspace_dir: Option<std::path::PathBuf>,
     autonomy_level: Option<AutonomyLevel>,
@@ -171,6 +173,7 @@ impl AgentBuilder {
             tool_dispatcher: None,
             config: None,
             model_name: None,
+            provider_extra: None,
             temperature: None,
             workspace_dir: None,
             autonomy_level: None,
@@ -235,6 +238,11 @@ impl AgentBuilder {
 
     pub fn model_name(mut self, model_name: String) -> Self {
         self.model_name = Some(model_name);
+        self
+    }
+
+    pub fn provider_extra(mut self, provider_extra: Option<serde_json::Value>) -> Self {
+        self.provider_extra = provider_extra;
         self
     }
 
@@ -366,6 +374,7 @@ impl AgentBuilder {
                 .ok_or_else(|| anyhow::anyhow!("tool_dispatcher is required"))?,
             config: self.config.unwrap_or_default(),
             model_name: self.model_name.unwrap_or_else(|| "<unconfigured>".into()),
+            provider_extra: self.provider_extra,
             temperature: self.temperature.unwrap_or(0.7),
             workspace_dir: self
                 .workspace_dir
@@ -601,6 +610,12 @@ impl Agent {
             .tool_dispatcher(dispatcher)
             .config(config.agent.clone())
             .model_name(model_name)
+            .provider_extra(
+                config
+                    .providers
+                    .fallback_provider()
+                    .and_then(|entry| entry.provider_extra.clone()),
+            )
             .temperature(temperature)
             .workspace_dir(config.workspace_dir.clone())
             .autonomy_level(config.autonomy.level)
@@ -1394,6 +1409,7 @@ impl Agent {
                         } else {
                             None
                         },
+                        provider_extra: self.provider_extra.as_ref(),
                     },
                     &effective_model,
                     Some(self.temperature),
@@ -1551,6 +1567,7 @@ impl Agent {
                     } else {
                         None
                     },
+                    provider_extra: self.provider_extra.as_ref(),
                 },
                 &effective_model,
                 Some(self.temperature),
@@ -1654,6 +1671,7 @@ impl Agent {
                         } else {
                             None
                         },
+                        provider_extra: self.provider_extra.as_ref(),
                     },
                     &effective_model,
                     Some(self.temperature),

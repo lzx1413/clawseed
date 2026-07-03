@@ -397,6 +397,8 @@ pub async fn handle_api_personas_list(
                 "allowed_tools": entry.allowed_tools,
                 "denied_tools": entry.denied_tools,
                 "denied_skills": entry.denied_skills,
+                "model": entry.model,
+                "thinking_enabled": entry.thinking_enabled,
             })
         })
         .collect();
@@ -434,6 +436,8 @@ pub async fn handle_api_persona_get(
         "allowed_tools": entry.allowed_tools,
         "denied_tools": entry.denied_tools,
         "denied_skills": entry.denied_skills,
+        "model": entry.model,
+        "thinking_enabled": entry.thinking_enabled,
     }))
     .into_response()
 }
@@ -457,6 +461,10 @@ pub struct PersonaPutBody {
     pub denied_tools: Vec<String>,
     #[serde(default)]
     pub denied_skills: Vec<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub thinking_enabled: Option<bool>,
 }
 
 pub async fn handle_api_persona_put(
@@ -481,6 +489,8 @@ pub async fn handle_api_persona_put(
         allowed_tools: body.allowed_tools,
         denied_tools: body.denied_tools,
         denied_skills: body.denied_skills,
+        model: body.model,
+        thinking_enabled: body.thinking_enabled,
     };
     config.agents.insert(name.clone(), entry);
 
