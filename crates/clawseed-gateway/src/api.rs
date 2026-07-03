@@ -2333,8 +2333,10 @@ mod tests {
 
     fn config_with_temp_save_path() -> (clawseed_config::schema::Config, tempfile::TempDir) {
         let temp_dir = tempfile::tempdir().expect("temp config dir");
-        let mut config = clawseed_config::schema::Config::default();
-        config.config_path = temp_dir.path().join("clawseed.toml");
+        let config = clawseed_config::schema::Config {
+            config_path: temp_dir.path().join("clawseed.toml"),
+            ..Default::default()
+        };
         (config, temp_dir)
     }
 
