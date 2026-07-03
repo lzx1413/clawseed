@@ -8,6 +8,7 @@ import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.demo.i18n.label
 import dev.clawseed.demo.scheduled.ScheduledTask
 import dev.clawseed.demo.scheduled.ScheduledTaskStore
+import dev.clawseed.demo.ui.persona.PersonaAvatarStorage
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.embedded.GatewayConfigManager
 import kotlinx.coroutines.Dispatchers
@@ -108,6 +109,11 @@ class DataTransferManager(private val context: Context) {
         zipOut.putNextEntry(ZipEntry("config/scheduled_tasks.json"))
         zipOut.write(json.encodeToString(tasks).toByteArray())
         zipOut.closeEntry()
+
+        val avatarDir = PersonaAvatarStorage.avatarDir(context)
+        if (avatarDir.exists()) {
+            addDirectoryToZip(zipOut, avatarDir, "config/persona_avatars")
+        }
     }
 
     private fun exportMemory(zipOut: ZipOutputStream) {
@@ -287,6 +293,13 @@ class DataTransferManager(private val context: Context) {
         if (importedPrefs.exists()) {
             val prefsData = deserializePreferencesMap(importedPrefs.readText())
             localStore.importPreferences(prefsData)
+        }
+
+        val importedAvatarDir = File(tempDir, "config/persona_avatars")
+        if (importedAvatarDir.exists()) {
+            val localAvatarDir = PersonaAvatarStorage.avatarDir(context)
+            localAvatarDir.deleteRecursively()
+            importedAvatarDir.copyRecursively(localAvatarDir, overwrite = true)
         }
 
         return true
@@ -600,26 +613,37 @@ class DataTransferManager(private val context: Context) {
 
     /** Serializes a preferences map with type discriminators to JSON. */
     private fun serializePreferencesMap(prefs: Map<String, Map<String, Any?>>): String {
-        val sb = StringBuilder("{\n")
+        val obj = org.json.JSONObject()
         for ((key, entry) in prefs) {
             val type = entry["type"] as? String ?: "string"
             val value = entry["value"]
-            sb.append("  \"$key\": {\"type\": \"$type\", \"value\": ")
+            val entryObj = org.json.JSONObject()
+            entryObj.put("type", type)
             when (type) {
-                "string" -> sb.append("\"${escapeJsonString(value as? String ?: "")}\"")
-                "boolean" -> sb.append(value as? Boolean ?: false)
-                "long", "int" -> sb.append(value as? Number ?: 0)
-                "float" -> sb.append(value as? Number ?: 0.0)
-                else -> sb.append("\"${escapeJsonString(value?.toString() ?: "")}\"")
+                "string" -> entryObj.put("value", value as? String ?: "")
+                "boolean" -> entryObj.put("value", value as? Boolean ?: false)
+                "long", "int" -> entryObj.put("value", value as? Number ?: 0)
+                "float" -> entryObj.put("value", value as? Number ?: 0.0)
+                else -> entryObj.put("value", value?.toString() ?: "")
             }
-            sb.append("},\n")
+            obj.put(key, entryObj)
         }
-        sb.append("}")
-        return sb.toString()
+        return obj.toString(2)
     }
 
     /** Deserializes a preferences map from JSON. */
     private fun deserializePreferencesMap(jsonStr: String): Map<String, Map<String, Any?>> {
+        return deserializePreferencesObject(jsonStr).getOrElse {
+            val withoutTrailingCommas = removeTrailingJsonCommas(jsonStr)
+            deserializePreferencesObject(withoutTrailingCommas).getOrElse {
+                deserializePreferencesObject(
+                    removeMalformedSensitivePreferenceLines(withoutTrailingCommas),
+                ).getOrThrow()
+            }
+        }
+    }
+
+    private fun deserializePreferencesObject(jsonStr: String): Result<Map<String, Map<String, Any?>>> = runCatching {
         val result = mutableMapOf<String, Map<String, Any?>>()
         val obj = org.json.JSONObject(jsonStr)
         for (key in obj.keys()) {
@@ -635,16 +659,22 @@ class DataTransferManager(private val context: Context) {
             }
             result[key] = mapOf("type" to type, "value" to value)
         }
-        return result
+        result
     }
 
-    private fun escapeJsonString(s: String): String {
-        return s.replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-            .replace("\t", "\\t")
+    private fun removeMalformedSensitivePreferenceLines(jsonStr: String): String {
+        return jsonStr.lineSequence()
+            .filterNot { line ->
+                val trimmed = line.trimStart()
+                trimmed.startsWith("\"provider_api_keys\"") ||
+                    trimmed.startsWith("\"bearer_token\"")
+            }
+            .joinToString("\n")
+            .let(::removeTrailingJsonCommas)
     }
+
+    private fun removeTrailingJsonCommas(jsonStr: String): String =
+        jsonStr.replace(Regex(",\\s*([}\\]])"), "$1")
 
     companion object {
         private const val TAG = "DataTransferManager"

@@ -106,12 +106,13 @@ fun PersonaDot(
 private fun rememberPersonaAvatarBitmap(avatar: String?) =
     avatar
         ?.trim()
-        ?.takeIf { it.isLikelyImageUri() }
+        ?.takeIf { PersonaAvatarStorage.isAvatarUri(it) }
         ?.let { uriText ->
             val context = LocalContext.current
             remember(uriText) {
                 runCatching {
-                    val uri = Uri.parse(uriText)
+                    val uri = PersonaAvatarStorage.resolveAvatarUri(context, uriText)
+                        ?: return@runCatching null
                     decodePersonaAvatar(context.contentResolver, uri)?.asImageBitmap()
                 }.getOrNull()
             }
@@ -148,7 +149,7 @@ private fun calculateInSampleSize(width: Int, height: Int, targetSize: Int): Int
 }
 
 private fun String.isLikelyImageUri(): Boolean =
-    startsWith("content://") || startsWith("file://")
+    PersonaAvatarStorage.isAvatarUri(this)
 
 private fun personaInitial(name: String): String {
     return name.trim().firstOrNull()?.uppercase() ?: "?"

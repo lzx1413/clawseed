@@ -1,6 +1,5 @@
 package dev.clawseed.demo.ui.persona
 
-import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -522,13 +521,10 @@ private fun PersonaAppearanceSection(
     val context = LocalContext.current
     val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
+            val storedAvatar = PersonaAvatarStorage.saveAvatar(context, draft.name, uri)
+            if (storedAvatar != null) {
+                onDraftChange(draft.copy(avatar = storedAvatar))
             }
-            onDraftChange(draft.copy(avatar = uri.toString()))
         }
     }
 

@@ -128,7 +128,8 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSaving = true, error = null)
-            val upsert = draft.toUpsert()
+            val localAvatar = PersonaAvatarStorage.ensureLocalAvatar(getApplication(), name, draft.avatar)
+            val upsert = draft.copy(avatar = localAvatar).toUpsert()
             ClawSeedAndroid.gatewayClient().upsertPersona(name, upsert)
                 .onSuccess {
                     val oldName = draft.originalName
