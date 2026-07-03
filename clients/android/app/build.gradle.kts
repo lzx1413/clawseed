@@ -40,7 +40,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 8
-        versionName = "2.0"
+        versionName = "1.10.0"
         buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
         buildConfigField("String", "SDK_VERSION", "\"0.4.0\"")
     }

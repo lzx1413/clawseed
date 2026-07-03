@@ -17,6 +17,10 @@
 
 ClawSeed is an AI agent **runtime** written in Rust. It connects to LLM providers (Anthropic, Gemini, Bedrock, DeepSeek, OpenAI-compatible, and more), acts through pluggable tools, and serves clients over HTTP/WebSocket. It ships with an Android demo app that runs the full agent stack on-device.
 
+## NEWS
+
+- 2026-07-03: ClawSeed now officially supports personas.
+
 An agent runtime should do three things: receive messages, call an LLM, execute tools. Everything else — channels, dashboards, integrations — belongs to the application layer. ClawSeed provides crates with stable traits; applications compose them.
 
 ```toml
