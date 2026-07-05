@@ -370,6 +370,66 @@ async fn file_tools_reject_path_traversal() {
     assert!(!result.success, "file_edit should reject path traversal");
 }
 
+#[tokio::test]
+async fn file_tools_reject_absolute_paths() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let outside = tempfile::TempDir::new().unwrap();
+    let tools = all_tools(dir.path().to_path_buf());
+    let c = ctx(dir.path().to_path_buf());
+
+    let outside_write = outside.path().join("write.txt");
+    let fw = tools.iter().find(|t| t.name() == "file_write").unwrap();
+    let result = fw
+        .execute(
+            serde_json::json!({"path": outside_write, "content": "outside"}),
+            &c,
+        )
+        .await
+        .unwrap();
+    assert!(!result.success, "file_write should reject absolute paths");
+    assert!(
+        !outside_write.exists(),
+        "file_write should not create files outside workspace"
+    );
+
+    let outside_edit = outside.path().join("edit.txt");
+    std::fs::write(&outside_edit, "before").unwrap();
+    let fe = tools.iter().find(|t| t.name() == "file_edit").unwrap();
+    let result = fe
+        .execute(
+            serde_json::json!({"path": outside_edit, "old_string": "before", "new_string": "after"}),
+            &c,
+        )
+        .await
+        .unwrap();
+    assert!(!result.success, "file_edit should reject absolute paths");
+    assert_eq!(std::fs::read_to_string(outside_edit).unwrap(), "before");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn file_write_rejects_symlink_escape() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let outside = tempfile::TempDir::new().unwrap();
+    std::os::unix::fs::symlink(outside.path(), dir.path().join("outside_link")).unwrap();
+
+    let tools = all_tools(dir.path().to_path_buf());
+    let fw = tools.iter().find(|t| t.name() == "file_write").unwrap();
+    let result = fw
+        .execute(
+            serde_json::json!({"path": "outside_link/new.txt", "content": "outside"}),
+            &ctx(dir.path().to_path_buf()),
+        )
+        .await
+        .unwrap();
+
+    assert!(!result.success, "file_write should reject symlink escapes");
+    assert!(
+        !outside.path().join("new.txt").exists(),
+        "file_write should not follow symlinks outside workspace"
+    );
+}
+
 // ── 4. Glob search ───────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -480,6 +540,31 @@ async fn shell_failing_command() {
         .await
         .unwrap();
     assert!(!result.success, "shell 'false' should report failure");
+}
+
+#[tokio::test]
+async fn shell_runs_in_workspace() {
+    let dir = tempfile::TempDir::new().unwrap();
+    std::fs::write(dir.path().join("workspace_marker.txt"), "marker").unwrap();
+    let tools = all_tools(dir.path().to_path_buf());
+    let sh = tools.iter().find(|t| t.name() == "shell").unwrap();
+    let result = sh
+        .execute(
+            serde_json::json!({"command": "test -f workspace_marker.txt && pwd"}),
+            &ctx(dir.path().to_path_buf()),
+        )
+        .await
+        .unwrap();
+
+    assert!(result.success, "shell cwd check failed: {:?}", result.error);
+    assert!(
+        result
+            .output
+            .trim()
+            .ends_with(dir.path().to_string_lossy().as_ref()),
+        "shell should run in workspace, got: {}",
+        result.output
+    );
 }
 
 // ── 7. Cron tools (all stubs — just verify they execute) ─────────────────────

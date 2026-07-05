@@ -10,6 +10,7 @@ pub mod secrets;
 use clawseed_api::hook::{Hook, HookResult, ToolCall, ToolExecutionResult};
 use clawseed_config::schema::AutonomyConfig;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 pub use clawseed_config::schema::AutonomyLevel;
 pub use pairing::PairingGuard;
@@ -26,17 +27,38 @@ pub struct SecurityPolicy {
     autonomy_level: AutonomyLevel,
     allowed_commands: Vec<String>,
     max_actions_per_hour: u32,
-    action_count: std::sync::atomic::AtomicU32,
+    rate_window: std::sync::Mutex<RateWindow>,
+}
+
+struct RateWindow {
+    started_at: Instant,
+    action_count: u32,
 }
 
 impl SecurityPolicy {
+    const RATE_WINDOW: Duration = Duration::from_secs(60 * 60);
+
     /// Build a SecurityPolicy from the autonomy config and workspace dir.
     pub fn from_config(autonomy: &AutonomyConfig, _workspace_dir: &Path) -> Self {
         Self {
             autonomy_level: autonomy.level,
             allowed_commands: autonomy.allowed_commands.clone(),
             max_actions_per_hour: autonomy.max_actions_per_hour,
-            action_count: std::sync::atomic::AtomicU32::new(0),
+            rate_window: std::sync::Mutex::new(RateWindow {
+                started_at: Instant::now(),
+                action_count: 0,
+            }),
+        }
+    }
+
+    fn rate_window(&self) -> std::sync::MutexGuard<'_, RateWindow> {
+        self.rate_window.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn reset_window_if_expired(window: &mut RateWindow) {
+        if window.started_at.elapsed() >= Self::RATE_WINDOW {
+            window.started_at = Instant::now();
+            window.action_count = 0;
         }
     }
 
@@ -52,8 +74,9 @@ impl SecurityPolicy {
         if self.max_actions_per_hour == 0 {
             return true;
         }
-        use std::sync::atomic::Ordering;
-        self.action_count.load(Ordering::Relaxed) >= self.max_actions_per_hour
+        let mut window = self.rate_window();
+        Self::reset_window_if_expired(&mut window);
+        window.action_count >= self.max_actions_per_hour
     }
 
     /// Record an action and return whether the budget allows it.
@@ -63,9 +86,13 @@ impl SecurityPolicy {
         if self.max_actions_per_hour == 0 {
             return false;
         }
-        use std::sync::atomic::Ordering;
-        let current = self.action_count.fetch_add(1, Ordering::Relaxed);
-        current < self.max_actions_per_hour
+        let mut window = self.rate_window();
+        Self::reset_window_if_expired(&mut window);
+        if window.action_count >= self.max_actions_per_hour {
+            return false;
+        }
+        window.action_count += 1;
+        true
     }
 
     /// Validate a command for execution.
@@ -125,6 +152,14 @@ impl SecurityPolicy {
     }
 }
 
+#[cfg(test)]
+impl SecurityPolicy {
+    fn force_rate_window_started_at(&self, started_at: Instant) {
+        let mut window = self.rate_window();
+        window.started_at = started_at;
+    }
+}
+
 /// Simple check for tilde-user paths like `~root/...`.
 fn regex_tilde_user_path(command: &str) -> Option<String> {
     for part in command.split_whitespace() {
@@ -164,5 +199,41 @@ impl Hook for SecurityPolicy {
     fn after_tool_call(&self, _result: &ToolExecutionResult) -> HookResult {
         self.record_action();
         HookResult::Continue
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rate_limit_resets_after_one_hour_window() {
+        let autonomy = AutonomyConfig {
+            max_actions_per_hour: 1,
+            ..AutonomyConfig::default()
+        };
+        let policy = SecurityPolicy::from_config(&autonomy, Path::new("."));
+
+        assert!(!policy.is_rate_limited());
+        assert!(policy.record_action());
+        assert!(policy.is_rate_limited());
+
+        policy.force_rate_window_started_at(Instant::now() - SecurityPolicy::RATE_WINDOW);
+
+        assert!(!policy.is_rate_limited());
+        assert!(policy.record_action());
+        assert!(policy.is_rate_limited());
+    }
+
+    #[test]
+    fn zero_action_budget_is_always_limited() {
+        let autonomy = AutonomyConfig {
+            max_actions_per_hour: 0,
+            ..AutonomyConfig::default()
+        };
+        let policy = SecurityPolicy::from_config(&autonomy, Path::new("."));
+
+        assert!(policy.is_rate_limited());
+        assert!(!policy.record_action());
     }
 }

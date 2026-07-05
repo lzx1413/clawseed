@@ -1,3 +1,4 @@
+use crate::util_helpers::resolve_workspace_write_path;
 use async_trait::async_trait;
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
@@ -60,16 +61,16 @@ impl Tool for FileWriteTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'content' parameter"))?;
 
-        // Security: reject path traversal
-        if path.contains("../") || path.contains("..\\") || path == ".." {
-            return Ok(ToolResult {
-                success: false,
-                output: String::new(),
-                error: Some("Path traversal ('..') is not allowed.".into()),
-            });
-        }
-
-        let full_path = ctx.workspace_dir().join(path);
+        let full_path = match resolve_workspace_write_path(ctx.workspace_dir(), path) {
+            Ok(path) => path,
+            Err(e) => {
+                return Ok(ToolResult {
+                    success: false,
+                    output: String::new(),
+                    error: Some(e),
+                });
+            }
+        };
 
         // Create parent directories if needed
         if let Some(parent) = full_path.parent() {

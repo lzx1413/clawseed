@@ -1,3 +1,4 @@
+use crate::util_helpers::resolve_existing_workspace_path;
 use async_trait::async_trait;
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
@@ -69,16 +70,16 @@ impl Tool for FileEditTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'new_string' parameter"))?;
 
-        // Security: reject path traversal
-        if path.contains("../") || path.contains("..\\") || path == ".." {
-            return Ok(ToolResult {
-                success: false,
-                output: String::new(),
-                error: Some("Path traversal ('..') is not allowed.".into()),
-            });
-        }
-
-        let full_path = ctx.workspace_dir().join(path);
+        let full_path = match resolve_existing_workspace_path(ctx.workspace_dir(), path) {
+            Ok(path) => path,
+            Err(e) => {
+                return Ok(ToolResult {
+                    success: false,
+                    output: String::new(),
+                    error: Some(e),
+                });
+            }
+        };
 
         let content = match tokio::fs::read_to_string(&full_path).await {
             Ok(c) => c,

@@ -587,32 +587,22 @@ impl Tool for GitOperationsTool {
             }
         };
 
-        // Check if we're in a git repository
-        if !working_dir.join(".git").exists() {
-            // Try to find .git in parent directories
-            let mut current_dir = working_dir.as_path();
-            let mut found_git = false;
-            while current_dir.parent().is_some() {
-                if current_dir.join(".git").exists() {
-                    found_git = true;
-                    break;
-                }
-                current_dir = current_dir.parent().unwrap();
-            }
-
-            if !found_git {
-                return Ok(ToolResult {
-                    success: false,
-                    output: String::new(),
-                    error: Some("Not in a git repository".into()),
-                });
-            }
+        if self
+            .run_git_command(&["rev-parse", "--is-inside-work-tree"], &working_dir)
+            .await
+            .is_err()
+        {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some("Not in a git repository".into()),
+            });
         }
 
         // Write operations are allowed
 
         // Execute the requested operation
-        match operation {
+        let result = match operation {
             "status" => self.git_status(args, &working_dir).await,
             "diff" => self.git_diff(args, &working_dir).await,
             "log" => self.git_log(args, &working_dir).await,
@@ -625,6 +615,15 @@ impl Tool for GitOperationsTool {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Unknown operation: {operation}")),
+            }),
+        };
+
+        match result {
+            Ok(result) => Ok(result),
+            Err(e) => Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(e.to_string()),
             }),
         }
     }

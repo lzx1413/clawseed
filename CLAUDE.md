@@ -159,6 +159,7 @@ Full-featured chat client (Kotlin + Jetpack Compose) that runs the gateway on-de
 ## Key Conventions
 
 - **Before every commit, run `./tools/ci-local.sh` to verify fmt/clippy/test pass.** This mirrors the CI pipeline. Fix all failures before committing.
+- Use Angular-style commit messages: `type(scope): subject`. Common types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`. Keep the subject imperative, lowercase unless it names code, and under 72 characters when practical. Use `!` for breaking changes, e.g. `feat(agent)!: change tool dispatch contract`, and include a `BREAKING CHANGE:` footer when needed.
 - Rust edition 2024, minimum version 1.87
 - Config loaded from `~/.clawseed/config.toml` with env var expansion
 - Release profile uses fat LTO + codegen-units=1 + panic=abort
