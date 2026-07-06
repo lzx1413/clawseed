@@ -226,7 +226,7 @@ cargo test -- --ignored
 
 #### Stage 1: Lint (15-minute timeout)
 
-- Rust 1.87.0 + rustfmt + clippy
+- Rust 1.95.0 + rustfmt + clippy
 - `cargo fmt --all -- --check`
 - `cargo clippy -- -D warnings` (all warnings as errors)
 - Uses rust-cache for speed

@@ -173,16 +173,17 @@ cd clients/android && ./gradlew assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-两种模式都读取 `~/.clawseed/config.toml`。最小配置：
+两种模式默认读取 `~/.clawseed/clawseed.toml`。最小配置：
 
 ```toml
-[providers.models.default]
-provider = "anthropic"
+workspace_dir = "/home/user/workspace"
+
+[providers]
+fallback = "anthropic"
+
+[providers.models.anthropic]
 model = "claude-sonnet-4-20250514"
 api_key = "${ANTHROPIC_API_KEY}"
-
-[agent]
-workspace_dir = "/home/user/workspace"
 ```
 
 ## 扩展 ClawSeed

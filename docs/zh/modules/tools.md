@@ -22,7 +22,7 @@
 |------|------|------|
 | `HttpRequestTool` | `http_request` | 发送 HTTP 请求（可配置域名白名单） |
 | `WebFetchTool` | `web_fetch` | 抓取网页内容 |
-| `WebSearchTool` | `web_search` | DuckDuckGo 搜索 |
+| `WebSearchTool` | `web_search_tool` | 通过 DuckDuckGo、Brave、SearXNG、Tavily 或 Bing 搜索 |
 
 ### 记忆
 
@@ -78,6 +78,7 @@ pub fn all_tools(workspace_dir: PathBuf, config: &Config, memory: Arc<dyn Memory
    - `http_request` — 仅当 `config.http_request.enabled` 为 true
    - `web_fetch` — 仅当 `config.web_fetch.enabled` 为 true
    - `web_search` — 仅当 `config.web_search.enabled` 为 true
+   - `skill` / `skill_create` — 仅当 `config.skills.enabled` 为 true
 3. 有条件工具可配置域名白名单等参数
 4. 返回 `Vec<Box<dyn Tool>>`
 

@@ -22,7 +22,7 @@
 |------|------|-------------|
 | `HttpRequestTool` | `http_request` | Send HTTP requests (configurable domain allowlists) |
 | `WebFetchTool` | `web_fetch` | Fetch web page content |
-| `WebSearchTool` | `web_search` | DuckDuckGo search |
+| `WebSearchTool` | `web_search_tool` | Web search via DuckDuckGo, Brave, SearXNG, Tavily, or Bing |
 
 ### Memory
 
@@ -78,6 +78,7 @@ pub fn all_tools(workspace_dir: PathBuf, config: &Config, memory: Arc<dyn Memory
    - `http_request` — only when `config.http_request.enabled` is true
    - `web_fetch` — only when `config.web_fetch.enabled` is true
    - `web_search` — only when `config.web_search.enabled` is true
+   - `skill` / `skill_create` — only when `config.skills.enabled` is true
 3. Conditionally-enabled tools can be configured with domain allowlists, etc.
 4. Returns `Vec<Box<dyn Tool>>`
 

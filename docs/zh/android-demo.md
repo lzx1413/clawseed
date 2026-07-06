@@ -242,7 +242,7 @@ process = ProcessBuilder(binary.absolutePath, "gateway", "--port", "42617")
 `ensureConfig()` 负责初始化和修补配置：
 
 1. 创建 `~/.clawseed/` 和 `workspace/` 目录
-2. 若 `config.toml` 不存在，生成初始配置
+2. 若 `clawseed.toml` 不存在，生成初始配置
 3. 若存在，修补缺失字段（workspace_dir、web 功能启用等）
 4. 自动启用 `web_fetch`、`http_request`、`web_search`
 5. 为网络工具添加 `allowed_domains = ["*"]`

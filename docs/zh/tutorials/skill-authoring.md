@@ -197,7 +197,7 @@ Failed to activate skill 'my-skill': Skill 'my-skill' requires permission 'web_s
 通过将 Skill 放在用户级目录或配置额外根目录，可以跨项目共享 Skill：
 
 ```toml
-# ~/.clawseed/config.toml
+# ~/.clawseed/clawseed.toml
 [skills]
 extra_roots = ["/opt/team-skills"]
 ```

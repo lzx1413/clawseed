@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/clawseed.png" alt="ClawSeed" width="240=0" />
+  <img src="assets/clawseed.png" alt="ClawSeed" width="240" />
 </p>
 
 <p align="center">
@@ -172,16 +172,17 @@ cd clients/android && ./gradlew assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Both modes read `~/.clawseed/config.toml`. Minimal config:
+Both modes read `~/.clawseed/clawseed.toml` by default. Minimal config:
 
 ```toml
-[providers.models.default]
-provider = "anthropic"
+workspace_dir = "/home/user/workspace"
+
+[providers]
+fallback = "anthropic"
+
+[providers.models.anthropic]
 model = "claude-sonnet-4-20250514"
 api_key = "${ANTHROPIC_API_KEY}"
-
-[agent]
-workspace_dir = "/home/user/workspace"
 ```
 
 ## Extending ClawSeed

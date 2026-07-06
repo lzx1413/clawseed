@@ -226,7 +226,7 @@ cargo test -- --ignored
 
 #### Stage 1: Lint（15 分钟超时）
 
-- Rust 1.87.0 + rustfmt + clippy
+- Rust 1.95.0 + rustfmt + clippy
 - `cargo fmt --all -- --check`
 - `cargo clippy -- -D warnings`（所有警告视为错误）
 - 使用 rust-cache 加速

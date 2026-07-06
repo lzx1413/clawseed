@@ -99,6 +99,8 @@ pub struct AgentConfig {
     pub max_tool_iterations: usize,           // Max tool loop iterations (default 25)
     pub temperature: Option<f64>,
     pub max_tokens: Option<u32>,
+    pub auto_continue_on_truncation: bool,
+    pub max_auto_continue: usize,
     pub web_search_enabled: bool,
     pub web_search_provider: Option<String>,
     pub system_prompt: Option<String>,
@@ -150,6 +152,28 @@ pub struct MemoryConfig {
     pub response_cache_hot_entries: usize,
     pub namespace: Option<String>,
     pub qdrant: QdrantConfig,
+    pub hygiene_enabled: bool,
+    pub conversation_retention_days: u32,
+    pub snapshot_enabled: bool,
+    pub auto_hydrate: bool,
+    pub conflict_threshold: f64,
+    pub conflict_mode: Option<ConflictMode>,
+    pub auto_recall: bool,
+    pub auto_recall_limit: usize,
+    pub embedding_provider: Option<String>,
+    pub embedding_model: Option<String>,
+    pub embedding_dims: Option<usize>,
+    pub search_mode: Option<SearchMode>,
+    pub vector_weight: Option<f32>,
+    pub keyword_weight: Option<f32>,
+    pub merge_strategy: Option<MergeStrategy>,
+    pub embedding_cache_max: Option<usize>,
+    pub backfill_on_startup: bool,
+    pub defer_embedding: Option<bool>,
+    pub stable_memory_in_system_prompt: Option<bool>,
+    pub min_retention_floor: Option<usize>,
+    pub daily_retention_floor: Option<usize>,
+    pub conversation_retention_floor: Option<usize>,
 }
 ```
 
@@ -199,20 +223,25 @@ Environment variables take precedence over the config file:
 | `CLAWSEED_STORAGE_DB_URL` | Storage DB URL |
 | `CLAWSEED_WEB_SEARCH_ENABLED` | Enable web search |
 | `CLAWSEED_WEB_SEARCH_PROVIDER` | Web search provider |
+| `CLAWSEED_WEB_SEARCH_TAVILY_API_KEY` | Tavily API key |
+| `CLAWSEED_EMBEDDING_PROVIDER` | Memory embedding provider |
+| `CLAWSEED_EMBEDDING_MODEL` | Memory embedding model |
+| `CLAWSEED_EMBEDDING_API_KEY` | First embedding route API key |
+| `CLAWSEED_EMBEDDING_DIMENSIONS` | Memory embedding dimensions |
 
 ## Configuration Example
 
 ```toml
-[providers]
-fallback = "openai"
+workspace_dir = "/home/user/workspace"
 
-[providers.models.default]
-provider = "anthropic"
+[providers]
+fallback = "anthropic"
+
+[providers.models.anthropic]
 model = "claude-sonnet-4-20250514"
 api_key = "${ANTHROPIC_API_KEY}"
 
-[providers.models.fast]
-provider = "groq"
+[providers.models.groq]
 model = "llama-3.1-8b"
 api_key = "${GROQ_API_KEY}"
 

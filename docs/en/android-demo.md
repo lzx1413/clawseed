@@ -242,7 +242,7 @@ process = ProcessBuilder(binary.absolutePath, "gateway", "--port", "42617")
 `ensureConfig()` handles initialization and patching:
 
 1. Creates `~/.clawseed/` and `workspace/` directories
-2. Generates initial config if `config.toml` doesn't exist
+2. Generates initial config if `clawseed.toml` doesn't exist
 3. Patches missing fields if it does (workspace_dir, web feature enablement, etc.)
 4. Auto-enables `web_fetch`, `http_request`, `web_search`
 5. Adds `allowed_domains = ["*"]` for network tools

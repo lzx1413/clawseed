@@ -72,15 +72,13 @@
 - `POST /api/skills/reload` — 从磁盘重新读取技能索引，无需重启（返回 `{ ok, skills_count }`）
 
 #### 会话
-- `POST /sessions` — 创建会话
 - `GET /api/sessions` — 列出所有会话
 - `GET /api/sessions/running` — 获取运行中的会话
-- `GET /sessions/{id}` — 获取会话
 - `GET /api/sessions/{id}/messages` — 获取会话消息
 - `GET /api/sessions/{id}/state` — 获取会话状态
-- `PUT /sessions/{id}` — 重命名会话
-- `DELETE /sessions/{id}` — 删除会话
-- `POST /sessions/{id}/abort` — 中止运行中的会话
+- `PUT /api/sessions/{id}` — 重命名会话
+- `DELETE /api/sessions/{id}` — 删除会话
+- `POST /api/sessions/{id}/abort` — 中止运行中的会话
 
 #### 记忆
 - `GET /api/memory` — 列出记忆
@@ -90,7 +88,6 @@
 #### 定时任务
 - `GET /api/cron` — 列出任务
 - `POST /api/cron` — 添加任务
-- `GET /api/cron/{id}` — 获取任务详情
 - `PATCH /api/cron/{id}` — 更新任务
 - `DELETE /api/cron/{id}` — 删除任务
 - `GET /api/cron/{id}/runs` — 任务执行历史

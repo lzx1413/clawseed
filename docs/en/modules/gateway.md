@@ -72,15 +72,13 @@ Each WebSocket connection creates its own Agent via `Agent::from_config_with_sha
 - `POST /api/skills/reload` — Re-read skill index from disk without restarting (returns `{ ok, skills_count }`)
 
 #### Sessions
-- `POST /sessions` — Create session
 - `GET /api/sessions` — List all sessions
 - `GET /api/sessions/running` — Get running sessions
-- `GET /sessions/{id}` — Get session
 - `GET /api/sessions/{id}/messages` — Get session messages
 - `GET /api/sessions/{id}/state` — Get session state
-- `PUT /sessions/{id}` — Rename session
-- `DELETE /sessions/{id}` — Delete session
-- `POST /sessions/{id}/abort` — Abort running session
+- `PUT /api/sessions/{id}` — Rename session
+- `DELETE /api/sessions/{id}` — Delete session
+- `POST /api/sessions/{id}/abort` — Abort running session
 
 #### Memory
 - `GET /api/memory` — List memories
@@ -90,7 +88,6 @@ Each WebSocket connection creates its own Agent via `Agent::from_config_with_sha
 #### Cron Jobs
 - `GET /api/cron` — List jobs
 - `POST /api/cron` — Add job
-- `GET /api/cron/{id}` — Get job details
 - `PATCH /api/cron/{id}` — Update job
 - `DELETE /api/cron/{id}` — Delete job
 - `GET /api/cron/{id}/runs` — Job execution history

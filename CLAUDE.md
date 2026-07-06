@@ -1,168 +1,91 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file is the short operating guide for Claude Code in this repository. Keep detailed architecture and module documentation in `docs/`; use this file only for commands, conventions, and pointers.
 
-## Build & Run Commands
+## Priority Rules
+
+- Start every user-facing reply with `Developer`.
+- Before starting development work, write a short plan and ask the user to confirm it. Do not begin implementation until the user confirms.
+- If unclear or risky details appear during development, stop and ask the user before proceeding.
+- Use detailed Angular-style commit messages: `type(scope): subject`. Include a commit body for non-trivial changes explaining what changed, why it changed, and how it was verified.
+
+## Common Commands
 
 ```bash
 cargo build                          # Debug build
-cargo build --release                # Optimized (LTO, stripped)
-cargo check                          # Fast type-check
+cargo build --release                # Optimized release build
+cargo check                          # Fast workspace type-check
 cargo clippy                         # Lint
 cargo test                           # All tests
 cargo test -p clawseed-agent         # Single crate
-cargo test --test agent_integration  # Single test file
-cargo fmt                            # Format check
+cargo test --test agent_integration  # Single integration test target
+cargo fmt                            # Format
+./tools/ci-local.sh                  # Pre-commit local CI
 ```
 
 Run the gateway:
+
 ```bash
 ./target/release/clawseed gateway --host 0.0.0.0 --port 3000
 ```
 
 Run local interactive chat:
+
 ```bash
-./target/release/clawseed chat                              # Default config
-./target/release/clawseed chat --model gpt-4o               # Override model
-./target/release/clawseed chat --temperature 0.5             # Override temperature
-./target/release/clawseed chat --system-prompt "You are..."  # Override system prompt
+./target/release/clawseed chat
+./target/release/clawseed chat --model gpt-4o --temperature 0.5
+./target/release/clawseed chat --system-prompt "You are..."
 ```
 
-Android demo app:
+Android demo:
+
 ```bash
-./tools/build-clawseed-android.sh aarch64 build             # Cross-compile gateway binary
-cd clients/android && ./gradlew assembleDebug                # Build APK
-adb install -r app/build/outputs/apk/debug/app-debug.apk    # Install
+./tools/build-clawseed-android.sh aarch64 build
+cd clients/android && ./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## Architecture
+## Project Facts
 
-ClawSeed is a Rust AI agent runtime with trait-based plugin architecture. 8 workspace crates + 1 Android client with unidirectional dependency flow:
+- Rust edition 2024, minimum Rust version 1.95.
+- Config defaults to `~/.clawseed/clawseed.toml`; workspace defaults to `~/.clawseed/workspace/`.
+- Workspace crates: `clawseed-api`, `clawseed-agent`, `clawseed-tools`, `clawseed-providers`, `clawseed-memory`, `clawseed-config`, `clawseed-gateway`, `clawseed`.
+- Android client lives in `clients/android/`.
+- Release profile uses fat LTO, `codegen-units = 1`, `strip = true`, `panic = "abort"`.
 
-```
-clawseed-api (traits only, no impls)
-  ← clawseed-agent (orchestration + runtime assembly: loop, hooks, dispatch, security, parser, bootstrapping)
-    ← clawseed-tools (25+ built-in tools)
-    ← clawseed-providers (LLM backends: Anthropic, Gemini, OpenAI, Bedrock, DeepSeek, Ollama, etc.)
-    ← clawseed-memory (SQLite + vector/keyword search)
-      ← clawseed-gateway (Axum HTTP/WS server, remote tool bridge)
-  ← clawseed-config (TOML config, loaded from ~/.clawseed/config.toml)
-  ← clawseed (CLI binary)
+## Where To Read
 
-clients/android (Kotlin/Compose demo app, runs gateway on-device)
-```
+- Overview and quick start: `README.md` / `README_zh.md`
+- Architecture and runtime init chain: `docs/en/architecture.md` / `docs/zh/architecture.md`
+- Build, test, Android cross-compilation: `docs/en/build-and-test.md` / `docs/zh/build-and-test.md`
+- Module docs:
+  - Agent: `docs/en/modules/agent.md` / `docs/zh/modules/agent.md`
+  - API traits: `docs/en/modules/api.md` / `docs/zh/modules/api.md`
+  - Config: `docs/en/modules/config.md` / `docs/zh/modules/config.md`
+  - Gateway: `docs/en/modules/gateway.md` / `docs/zh/modules/gateway.md`
+  - Memory: `docs/en/modules/memory.md` / `docs/zh/modules/memory.md`
+  - Providers: `docs/en/modules/providers.md` / `docs/zh/modules/providers.md`
+  - Tools: `docs/en/modules/tools.md` / `docs/zh/modules/tools.md`
+- Remote tools: `docs/en/remote-tool-call.md` / `docs/zh/remote-tool-call.md`
+- CETP external tool protocol: `docs/en/external-tool-protocol.md` / `docs/zh/external-tool-protocol.md`
+- Android demo architecture: `docs/en/android-demo.md` / `docs/zh/android-demo.md`
+- Skills: `docs/en/skills.md` / `docs/zh/skills.md`
 
-> **Note:** The dependency arrows above show crate-level import direction. At runtime, `Agent::from_config_with_registry()` directly instantiates provider, memory, and tools from their respective crates — the agent crate is not a pure orchestration layer, it also owns runtime assembly. The gateway uses `Agent::from_config_with_shared_components()` to reuse shared `AppState` components (provider, memory, observer) across connections instead of creating new ones per connection.
+## Architecture Notes
 
-### Core Traits (clawseed-api)
+- ClawSeed is a Rust AI agent runtime with trait-based extension points.
+- Runtime dependency flow is one-way: `clawseed-api <- agent <- tools/providers/memory <- gateway <- binary`.
+- `Agent::from_config_with_registry()` is used for CLI/embedded assembly and creates provider, memory, tools, hooks, and dispatcher from config.
+- `Agent::from_config_with_shared_components()` is used by gateway paths and reuses shared `AppState` provider, memory, observer, model, temperature, and BuiltIn tool instances.
+- Gateway has two tool registries: shared `AppState.tool_registry` for `/api/tools`, and per-agent `Agent.tool_registry` for actual dispatch.
+- Remote tools must be visible in the shared registry and injected into the per-connection agent before use.
+- MCP is not a usable capability yet. `ToolSource::Mcp` and config/schema/filtering exist, but MCP client types are stubs.
 
-All extensibility flows through these traits — new capabilities register implementations without modifying agent code:
+## Conventions
 
-- **Tool**: `name()`, `description()`, `parameters_schema()`, `execute(args, ctx)` → `ToolResult`
-- **ToolRegistry**: `register()`, `get_tool()`, `tool_specs()`, `unregister()` — unified tool management with `ToolSource` (BuiltIn/MCP/Remote). MCP tool source is defined in the enum and registry infrastructure supports it, but the actual MCP protocol client is not yet implemented — see "MCP Status" below.
-- **Provider**: `chat()`, `stream_chat()`, `supports_native_tools()`, `warmup()`
-- **Hook**: `before_tool_call()` → Continue/Cancel/Modify, `after_tool_call()`
-- **Memory**: `store()`, `recall()`, `get()`, `forget()`, `list()`
-- **ToolContext**: `workspace_dir()` — workspace path for file operations
-
-### Agent Assembly & Loop (clawseed-agent/src/agent.rs)
-
-`Agent::from_config_with_registry()` is the primary constructor for CLI/embedded use. It does runtime assembly — directly instantiates provider (via `ProviderFactoryRegistry`), memory (via `clawseed_memory::create_memory()`), and tools (via `clawseed_tools::registry::all_tools()`), then selects a dispatcher based on `provider.supports_native_tools()`. Tools depend on memory being constructed first; dispatcher depends on provider capabilities. All components are passed to `Agent::builder()` for final construction.
-
-`Agent::from_config_with_shared_components()` is the constructor for gateway use. It accepts pre-built `Arc<dyn Provider>`, `Arc<dyn Memory>`, `Arc<dyn Observer>`, model name, temperature, and `shared_builtin_tools: Arc<[Arc<dyn Tool>]>` from `AppState` — these shared components are reused across all WebSocket/webhook connections. BuiltIn tools are no longer re-created per connection; the shared `Arc<dyn Tool>` instances are registered into each agent's per-connection `DefaultToolRegistry` via `register_all_arc()`. HookRunner remains per-connection (SecurityPolicy rate limits and remote tools must be isolated). The provider field is `Arc<dyn Provider>` (not `Box`); `AgentBuilder.provider()` wraps `Box→Arc`, and `shared_provider()` accepts `Arc` directly.
-
-The agent loop then:
-1. Accept message → add to history
-2. Call provider with tool specs
-3. Parse response via ToolDispatcher (XmlToolDispatcher for prompt-guided with multi-format fallback, NativeToolDispatcher for Anthropic/Gemini/OpenAI)
-4. Dispatch tools (parallel when possible)
-5. Feed results back to provider
-6. Repeat until no tool calls or max iterations
-
-### Security (clawseed-agent/src/security/)
-
-AutonomyLevel: ReadOnly / Supervised / Full. SecurityPolicy implements the `Hook` trait to globally intercept tool calls — validates commands, rate-limits actions, blocks forbidden paths (/etc/passwd, /etc/shadow, etc.). Always registered as the first hook in the pipeline.
-
-### Remote Tools (clawseed-gateway)
-
-Mobile clients connect via WebSocket, register tool specs, and execute tools locally. Gateway wraps them as `RemoteTool` implementing the `Tool` trait. Remote tool registration is a three-step flow:
-
-1. **Register to shared registry** — `state.tool_registry.register_or_replace(tool, ToolSource::Remote { session })` so `/api/tools` reflects the tool globally
-2. **Inject into per-connection Agent** — `agent.add_remote_tools(tools, session)` before processing each message, so the agent can actually invoke the tool
-3. **Cleanup on disconnect** — `state.tool_registry.unregister_by_source(&ToolSource::Remote { session })`
-
-This means the shared registry (`AppState.tool_registry`) and each agent's private registry (`Agent.tool_registry`) are separate instances — see "Dual Tool Registry" below. Agent code sees no difference between local and remote tools once injected.
-
-### Tool Registration (clawseed-agent/src/tool_registry.rs)
-
-`DefaultToolRegistry` implements the `ToolRegistry` trait using `DashMap` for lock-free concurrent access. Supports three tool sources (BuiltIn/MCP/Remote), glob-based filtering (`allowed_tools`/`denied_tools`), and per-MCP-server filtering. `all_tools()` in clawseed-tools creates enabled tools based on config. In addition to `register()`/`register_all()` (which take `Box<dyn Tool>`), it provides `register_arc()`/`register_all_arc()` (which take `Arc<dyn Tool>`) for reusing shared tool instances without re-construction.
-
-### Dual Tool Registry & Shared Components
-
-At runtime there are **two independent `ToolRegistry` instances** with different scopes:
-
-| Registry | Scope | Created in | Purpose |
-|---|---|---|---|
-| `AppState.tool_registry` | Gateway-wide (shared) | `clawseed-gateway/src/lib.rs` | `/api/tools` endpoint visibility, global tool listing |
-| `Agent.tool_registry` | Per-connection (isolated) | `clawseed-agent/src/agent.rs` (`Agent::builder().build()`) | Actual tool dispatch during agent turns |
-
-Implications:
-- `/api/tools` may show tools (from remote connections) that a given agent cannot actually invoke
-- Remote tools must be registered in **both** registries to be both visible and executable (see "Remote Tools" above)
-- In single-connection scenarios (current Android demo), the two registries are effectively in sync
-
-**Shared components**: `AppState` holds `Arc<dyn Provider>`, `Arc<dyn Memory>`, `Arc<dyn Observer>`, `model: String`, `temperature: f64`, and `shared_builtin_tools: Arc<[Arc<dyn Tool>]>`. Gateway connections use `from_config_with_shared_components()` to reuse these, avoiding per-connection provider (HTTP connection pools), memory (SQLite connections), and BuiltIn tool duplication. The shared `Arc<dyn Tool>` instances are registered into each agent's per-connection `DefaultToolRegistry` (with connection-specific filters) via `register_all_arc()`, so each agent still has its own registry with independent filtering while sharing the underlying tool objects. HookRunner remains per-connection (SecurityPolicy rate limits and remote tools must be isolated). Config updates via `/api/config` do **not** rebuild shared components — restart the gateway for provider/model/temperature/memory/BuiltIn-tool changes to take effect.
-
-### Provider Factory (clawseed-providers/src/factory.rs)
-
-`ProviderFactoryRegistry` replaces the monolithic match chain. Each provider implements `ProviderFactory` trait with `name()`, `aliases()`, and `create()`. `Agent::from_config_with_registry()` accepts a custom registry for Android/embedded with minimal provider sets.
-
-### Memory (clawseed-memory)
-
-SQLite backend with hybrid search (BM25 keyword + vector embeddings). Categories: Core, Daily, Conversation, Custom. NoneMemory stub when disabled. Advanced features: consolidation (heuristic two-phase extraction — Daily history + importance-gated Core promotion), hygiene (12-hour cadence-gated pruning of stale Conversation/Daily entries; never touches Core), snapshot (export Core memories to `MEMORY_SNAPSHOT.md` + auto-hydrate on cold boot), conflict detection (multi-signal Combined mode — Jaccard + cosine + BM25 fusion with contradiction signals; `[SUPERSEDED]` marking for contradictory Core entries), curator (LLM-driven nightly cleanup — duplicate detection, merge, delete), chunker (markdown text splitting for consolidation/embedding prep), local ONNX embedding (`local-embedding` feature gate — gte-multilingual-base INT8, auto-download from HuggingFace, model caching). Config: `hygiene_enabled`, `conversation_retention_days`, `snapshot_enabled`, `auto_hydrate`, `conflict_threshold`, `conflict_mode`, `embedding_provider`, `embedding_model`, `embedding_dims`, `auto_recall`, `auto_recall_limit`, `stable_memory_in_system_prompt`. Full docs: `docs/en/modules/memory.md`, `docs/zh/modules/memory.md`.
-
-### MCP Status (planned, not yet implemented)
-
-The `ToolSource::Mcp` enum variant and `McpConfig` schema exist, and `DefaultToolRegistry` supports per-server tool filtering. However, all MCP types in `crates/clawseed-agent/src/tools.rs` (`McpRegistry`, `DeferredMcpToolSet`, `McpToolWrapper`, `ToolSearchTool`) are **stubs** — they return empty collections or errors. There is no MCP protocol client library. The gateway has wiring that calls `McpRegistry::connect_all()`, but it returns immediately without connecting. Do not treat MCP as a usable capability.
-
-### Runtime Init Chain
-
-The initialization flow from entry point to running agent:
-
-```
-CLI (clawseed/src/main.rs)
-  └→ Gateway: run_gateway() (clawseed-gateway/src/lib.rs)
-       ├─ Creates AppState with shared provider, memory, observer, model, temperature, shared_builtin_tools, tool_registry
-       └─ Each WebSocket connection (clawseed-gateway/src/ws.rs):
-            ├─ Agent::from_config_with_shared_components() — reuses shared components
-            │    ├─ Reuses state.provider, state.mem, state.observer, state.model, state.temperature, state.shared_builtin_tools
-            │    ├─ Creates per-connection hooks, dispatcher, skill index; BuiltIn tools use shared Arc instances
-            │    └─ Agent::builder().build() — creates agent-local tool_registry (shared tool objects, per-connection filters)
-            ├─ Remote tools: register to shared registry + inject into agent
-            └─ Message loop: agent.chat() / agent.run()
-
-Webhook (clawseed-gateway/src/handlers.rs)
-  └→ Agent::from_config_with_shared_components() — same shared components, per-request Agent
-
-Chat mode (clawseed/src/main.rs)
-  └→ Agent::from_config() directly — creates own provider/memory, no gateway layer
-```
-
-### CETP (ClawSeed External Tool Protocol)
-
-Protocol for third-party Android apps to expose read-only data tools to ClawSeed via ContentProvider. The Android client's `ExternalToolBridge` discovers Provider apps via PackageManager, calls `list_tools`/`execute_tool` via `ContentResolver.call()`, wraps them as `CetpProxyTool` (implementing `ClawSeedTool`), and registers them through the existing RemoteTool path — the gateway and agent see no difference. Providers self-manage authorization via `Binder.getCallingUid()` + `AUTH_REQUIRED` error codes. Dynamic refresh via `PACKAGE_ADDED`/`PACKAGE_REPLACED`/`PACKAGE_REMOVED` broadcasts. Protocol docs: `docs/zh/external-tool-protocol.md`, `docs/en/external-tool-protocol.md`. Provider tutorial: `docs/zh/cetp-provider-tutorial.md`, `docs/en/cetp-provider-tutorial.md`.
-
-### Android Demo App (clients/android)
-
-Full-featured chat client (Kotlin + Jetpack Compose) that runs the gateway on-device as a foreground service. Architecture: `MainActivity` → `ClawseedService` (manages gateway process + WebSocket) → `ChatViewModel`/`SessionsViewModel`/`SettingsViewModel` → Compose UI. The `lib/` module provides a reusable `ClawseedClient` WebSocket library. Features: streaming chat, Markdown rendering (tables, code blocks, inline formatting), extended thinking display, session management, regenerate last response, on-device tools (device_info, get_location), CETP external tool bridge, scheduled background tasks (AlarmManager with daily/weekday/once repeat modes, BootReceiver for re-scheduling after reboot), Soul customization (in-app personality editor via `/api/personality`), appearance settings (light/dark/system theme + OLED mode), LLM configuration with 11 provider presets, thinking mode toggle, debug mode.
-
-## Key Conventions
-
-- **Before every commit, run `./tools/ci-local.sh` to verify fmt/clippy/test pass.** This mirrors the CI pipeline. Fix all failures before committing.
-- Use Angular-style commit messages: `type(scope): subject`. Common types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`. Keep the subject imperative, lowercase unless it names code, and under 72 characters when practical. Use `!` for breaking changes, e.g. `feat(agent)!: change tool dispatch contract`, and include a `BREAKING CHANGE:` footer when needed.
-- Rust edition 2024, minimum version 1.87
-- Config loaded from `~/.clawseed/config.toml` with env var expansion
-- Release profile uses fat LTO + codegen-units=1 + panic=abort
-- Streaming-first: all providers support `stream_chat()` returning `BoxStream<StreamChunk>`
-- Hook pipeline: before/after tool execution without core modifications
-- Zero-cost defaults: disabled tools don't register; missing memory → NoneMemory fallback
+- Before commits, run `./tools/ci-local.sh` and fix failures.
+- Keep commit subjects imperative, lowercase unless naming code, and usually under 72 chars.
+- Use `!` plus a `BREAKING CHANGE:` footer for breaking changes.
+- Prefer existing crate boundaries and helper APIs over new abstractions.
+- Disabled tools should not register; missing memory should degrade to `NoneMemory`.
+- Hook pipeline supports before/after tool execution; `SecurityPolicy` is the first hook.

@@ -924,10 +924,13 @@ encrypt = true
             self.storage.db_url = Some(v);
         }
         if let Ok(v) = std::env::var("CLAWSEED_WEB_SEARCH_ENABLED") {
-            self.agent.web_search_enabled = v.parse().unwrap_or(false);
+            let enabled = v.parse().unwrap_or(false);
+            self.agent.web_search_enabled = enabled;
+            self.web_search.enabled = enabled;
         }
         if let Ok(v) = std::env::var("CLAWSEED_WEB_SEARCH_PROVIDER") {
-            self.agent.web_search_provider = Some(v);
+            self.agent.web_search_provider = Some(v.clone());
+            self.web_search.provider = Some(v);
         }
         if let Ok(v) = std::env::var("CLAWSEED_WEB_SEARCH_TAVILY_API_KEY") {
             self.web_search.tavily_api_key = Some(v);

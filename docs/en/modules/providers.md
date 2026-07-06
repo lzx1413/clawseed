@@ -170,19 +170,17 @@ Providers estimate token usage from response metadata, used for cost tracking. `
 
 ```toml
 [providers]
-fallback = "openai"
+fallback = "anthropic"
 
-[providers.models.default]
-provider = "anthropic"
+[providers.models.anthropic]
 model = "claude-sonnet-4-20250514"
 api_key = "${ANTHROPIC_API_KEY}"
 
-[providers.models.fast]
-provider = "groq"
+[providers.models.groq]
 model = "llama-3.1-8b"
 api_key = "${GROQ_API_KEY}"
 
 [reliability]
 max_retries = 3
-fallback_model = "fast"
+provider_backoff_ms = 500
 ```

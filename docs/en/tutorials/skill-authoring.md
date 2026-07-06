@@ -197,7 +197,7 @@ This prevents skills from being activated in environments where they can't funct
 You can share skills across projects by placing them in user-level directories or configuring extra roots:
 
 ```toml
-# ~/.clawseed/config.toml
+# ~/.clawseed/clawseed.toml
 [skills]
 extra_roots = ["/opt/team-skills"]
 ```
