@@ -1109,16 +1109,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let config = test_config(&tmp);
 
-        let job = add_job(&config, "* * * * *", "echo due").unwrap();
+        let at = Utc::now() + ChronoDuration::minutes(10);
+        let job = add_shell_job(&config, None, Schedule::At { at }, "echo due", None).unwrap();
 
-        // next_run is computed from the current minute using the local timezone,
-        // so it may land within the same minute. Use a reference point 1 second
-        // after insertion so that the "next occurrence" is always strictly in the future.
-        let check_from = Utc::now() + ChronoDuration::seconds(1);
-        let due_now = due_jobs(&config, check_from).unwrap();
+        let due_now = due_jobs(&config, at - ChronoDuration::seconds(1)).unwrap();
         assert!(due_now.is_empty(), "new job should not be due immediately");
 
-        let far_future = Utc::now() + ChronoDuration::days(365);
+        let far_future = at + ChronoDuration::days(365);
         let due_future = due_jobs(&config, far_future).unwrap();
         assert_eq!(due_future.len(), 1, "job should be due in far future");
 
