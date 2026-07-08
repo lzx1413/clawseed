@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -126,6 +127,10 @@ fun ChatScreen(
 
     val listState = rememberLazyListState()
     val isStreaming = uiState.streamingContent.isNotEmpty() || uiState.thinkingContent.isNotEmpty()
+    val displayedItemCount = uiState.messages.size +
+        (if (uiState.thinkingContent.isNotEmpty()) 1 else 0) +
+        (if (uiState.streamingContent.isNotEmpty()) 1 else 0)
+    val bottomAnchorIndex = displayedItemCount
     // Track whether user just sent a message — isStreaming arrives asynchronously
     // (one composition frame late), causing a blank gap between send→stop button.
     // This local flag bridges that gap and clears itself once isStreaming arrives.
@@ -160,7 +165,9 @@ fun ChatScreen(
     // When starting a new session, App may carry a one-shot persona request.
     // Resume from the drawer leaves hasNewSessionPersona=false so the gateway's
     // stored binding is authoritative.
+    var scrollToLatestAfterSessionSwitch by remember { mutableStateOf(false) }
     LaunchedEffect(sessionVersion) {
+        scrollToLatestAfterSessionSwitch = true
         val persona = if (hasNewSessionPersona) newSessionPersona else null
         viewModel.switchToSession(sessionId, persona)
         if (hasNewSessionPersona) onNewSessionPersonaConsumed()
@@ -174,14 +181,33 @@ fun ChatScreen(
         }
     }
 
+    // Opening a stored session should land on the latest reply even though the
+    // list state starts at the top before history messages are measured.
+    val isSessionContentReadyForInitialScroll = if (sessionId == null) {
+        uiState.currentSessionId == null
+    } else {
+        uiState.currentSessionId == sessionId
+    }
+    LaunchedEffect(
+        sessionVersion,
+        displayedItemCount,
+        isSessionContentReadyForInitialScroll,
+    ) {
+        if (
+            scrollToLatestAfterSessionSwitch &&
+            isSessionContentReadyForInitialScroll &&
+            displayedItemCount > 0
+        ) {
+            listState.scrollToItem(bottomAnchorIndex)
+            scrollToLatestAfterSessionSwitch = false
+        }
+    }
+
     // Auto-scroll to bottom on new messages (only when user is near bottom)
     LaunchedEffect(uiState.messages.size, uiState.streamingContent, uiState.thinkingContent) {
         if (isNearBottom && (uiState.messages.isNotEmpty() || uiState.streamingContent.isNotEmpty() || uiState.thinkingContent.isNotEmpty())) {
-            val totalItems = uiState.messages.size +
-                (if (uiState.thinkingContent.isNotEmpty()) 1 else 0) +
-                (if (uiState.streamingContent.isNotEmpty()) 1 else 0)
-            if (totalItems > 0) {
-                listState.animateScrollToItem(totalItems - 1)
+            if (displayedItemCount > 0) {
+                listState.animateScrollToItem(bottomAnchorIndex)
             }
         }
     }
@@ -191,11 +217,8 @@ fun ChatScreen(
             return@LaunchedEffect
         }
 
-        val totalItems = uiState.messages.size +
-            (if (uiState.thinkingContent.isNotEmpty()) 1 else 0) +
-            (if (uiState.streamingContent.isNotEmpty()) 1 else 0)
-        if (totalItems > 0) {
-            listState.animateScrollToItem(totalItems - 1)
+        if (displayedItemCount > 0) {
+            listState.animateScrollToItem(bottomAnchorIndex)
         }
     }
 
@@ -326,6 +349,9 @@ fun ChatScreen(
                             )
                         )
                     }
+                }
+                item(key = "__bottom_anchor__") {
+                    Spacer(Modifier.size(1.dp))
                 }
             }
 
