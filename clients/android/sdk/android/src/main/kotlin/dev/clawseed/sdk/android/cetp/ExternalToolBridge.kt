@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -88,21 +89,14 @@ class ExternalToolBridge(private val context: Context) {
             val toolsResult = cetpClient.listTools(authority)
             if (toolsResult !is CetpResult.Success) {
                 Log.w(TAG, "scan: list_tools failed for $authority: $toolsResult")
-                // Provider process may not be running. Try to start it via
-                // an explicit intent to the discovery service, then retry.
-                try {
-                    val serviceIntent = android.content.Intent(CetpConstants.ACTION_TOOL_PROVIDER).apply {
-                        setPackage(packageName)
-                    }
-                    // Start the provider app's main activity as a fallback to
-                    // ensure its process is running.
-                    val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
-                    if (launchIntent != null) {
-                        launchIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        context.startActivity(launchIntent)
-                        Thread.sleep(500)
-                    }
-                } catch (_: Exception) {}
+                // Discovery runs during app startup and needs a complete tool
+                // list. Some providers only initialize after their app process
+                // is launched, so discovery may bring the provider app forward.
+                // Runtime execute_tool recovery tries silent preparation first
+                // and only brings the provider forward if that still fails.
+                if (!wakeProviderForDiscovery(packageName)) {
+                    prepareProviderSilently(authority)
+                }
                 val retryResult = cetpClient.listTools(authority)
                 if (retryResult !is CetpResult.Success) {
                     Log.w(TAG, "scan: list_tools retry also failed for $authority")
@@ -111,7 +105,7 @@ class ExternalToolBridge(private val context: Context) {
                 val retryTools = parseTools(retryResult.data, label)
                 if (retryTools.isEmpty()) continue
 
-                Log.d(TAG, "scan: $label provides ${retryTools.size} tool(s) (after process start)")
+                Log.d(TAG, "scan: $label provides ${retryTools.size} tool(s) (after provider wake)")
 
                 val providerInfo = parseProviderInfo(authority)
                 discovered.add(
@@ -276,8 +270,45 @@ class ExternalToolBridge(private val context: Context) {
         return context.packageManager.queryIntentServices(intent, 0).isNotEmpty()
     }
 
+    private suspend fun prepareProviderSilently(authority: String): Boolean {
+        return try {
+            val client = context.contentResolver.acquireContentProviderClient(authority)
+                ?: return false
+            client.close()
+            delay(PROVIDER_PREPARE_DELAY_MS)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to prepare CETP provider $authority: ${e.message}")
+            false
+        }
+    }
+
+    private suspend fun wakeProviderForDiscovery(packageName: String): Boolean {
+        return try {
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+                ?: return false
+            launchIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(launchIntent)
+            delay(PROVIDER_PREPARE_DELAY_MS)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to wake CETP provider app $packageName for discovery: ${e.message}")
+            false
+        }
+    }
+
+    private fun shouldPrepareProviderAfterExecuteError(result: CetpResult.Error): Boolean {
+        if (result.errorCode != CetpConstants.ERROR_INTERNAL_ERROR) return false
+        return result.errorMessage.startsWith("Provider call failed")
+    }
+
+    private fun shouldRetryWithProviderWake(result: CetpResult<String>): Boolean {
+        return result is CetpResult.Error && shouldPrepareProviderAfterExecuteError(result)
+    }
+
     companion object {
         private const val TAG = "ExternalToolBridge"
+        private const val PROVIDER_PREPARE_DELAY_MS = 500L
     }
 
     private inner class CetpProxyTool(
@@ -293,7 +324,33 @@ class ExternalToolBridge(private val context: Context) {
         override suspend fun execute(args: JsonObject): ToolResult {
             val argsJson = args.toString()
             val requestId = java.util.UUID.randomUUID().toString()
-            val result = cetpClient.executeTool(authority, localToolName, argsJson, requestId)
+            val firstResult = cetpClient.executeTool(authority, localToolName, argsJson, requestId)
+            val result = if (shouldRetryWithProviderWake(firstResult)) {
+                Log.w(
+                    TAG,
+                    "execute_tool failed for $authority/$localToolName; preparing provider and retrying",
+                )
+                val preparedResult = if (prepareProviderSilently(authority)) {
+                    cetpClient.executeTool(authority, localToolName, argsJson, requestId)
+                } else {
+                    firstResult
+                }
+                if (shouldRetryWithProviderWake(preparedResult)) {
+                    Log.w(
+                        TAG,
+                        "execute_tool still failed for $authority/$localToolName; waking $providerPackageName and retrying once",
+                    )
+                    if (wakeProviderForDiscovery(providerPackageName)) {
+                        cetpClient.executeTool(authority, localToolName, argsJson, requestId)
+                    } else {
+                        preparedResult
+                    }
+                } else {
+                    preparedResult
+                }
+            } else {
+                firstResult
+            }
 
             return when (result) {
                 is CetpResult.Success -> ToolResult.Success(result.data)
