@@ -91,11 +91,13 @@
 - `PATCH /api/users/me/profile/items/{id}` — 更新画像条目，或将 `status` 设为 `rejected`
 - `DELETE /api/users/me/profile/items/{id}` — 删除画像条目
 - `DELETE /api/users/me/profile` — 删除全部画像条目
+- `PUT /api/users/me/profile/import` — 使用 `replace`、`merge` 或 `append` 原子导入画像条目
 
 当前本地 Gateway 将已认证连接映射到稳定的 `owner` 主体。会话首次使用时绑定所有者，
 之后不能重新分配。
 拒绝推断条目会保留其来源信息，并阻止自动推断再次覆盖相同键；手动编辑条目会将其标记为
 显式设置并恢复为生效状态。
+导入条目的来源统一标记为 `imported`，并保留置信度、状态、证据会话和过期时间元数据。
 
 #### 定时任务
 - `GET /api/cron` — 列出任务

@@ -11,9 +11,13 @@ import dev.clawseed.sdk.core.model.SkillDetail
 import dev.clawseed.sdk.core.model.SkillInfo
 import dev.clawseed.sdk.core.model.ToolInfo
 import dev.clawseed.sdk.core.model.UserProfile
+import dev.clawseed.sdk.core.model.UserProfileImportItem
+import dev.clawseed.sdk.core.model.UserProfileImportRequest
+import dev.clawseed.sdk.core.model.UserProfileImportResult
 import dev.clawseed.sdk.core.model.UserProfileItem
 import dev.clawseed.sdk.core.model.UserProfilePatch
 import dev.clawseed.sdk.core.model.UserProfileUpsert
+import dev.clawseed.sdk.core.model.ProfileImportStrategy
 import dev.clawseed.sdk.core.model.WebhookResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -211,6 +215,23 @@ class GatewayClient(
             json.parseToJsonElement(body).jsonObject["deleted"]?.jsonPrimitive?.content?.toInt()
                 ?: 0
         }
+    }
+
+    /** Atomically imports a profile backup using the requested conflict strategy. */
+    suspend fun importUserProfile(
+        items: List<UserProfileImportItem>,
+        strategy: ProfileImportStrategy,
+    ): Result<UserProfileImportResult> {
+        val payload = json.encodeToString(
+            UserProfileImportRequest.serializer(),
+            UserProfileImportRequest(strategy = strategy, items = items),
+        )
+        val req = Request.Builder()
+            .url("$baseUrl/api/users/me/profile/import")
+            .addAuth()
+            .put(payload.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        return execute(req).mapCatching { json.decodeFromString<UserProfileImportResult>(it) }
     }
 
     /** Retrieves personality files (SOUL.md, etc.) from the gateway. */

@@ -334,7 +334,12 @@ fun DataTransferSection() {
 }
 
 /** Categories that support choosing an import strategy (not just REPLACE). */
-private val STRATEGY_CATEGORIES = setOf(DataCategory.MEMORY, DataCategory.SESSIONS, DataCategory.SKILLS)
+private val STRATEGY_CATEGORIES = setOf(
+    DataCategory.MEMORY,
+    DataCategory.SESSIONS,
+    DataCategory.SKILLS,
+    DataCategory.USER_PROFILE,
+)
 
 private val DataCategory.defaultStrategy: ImportStrategy
     get() = when (this) {
@@ -342,6 +347,7 @@ private val DataCategory.defaultStrategy: ImportStrategy
         DataCategory.MEMORY -> ImportStrategy.MERGE
         DataCategory.SESSIONS -> ImportStrategy.APPEND
         DataCategory.SKILLS -> ImportStrategy.MERGE
+        DataCategory.USER_PROFILE -> ImportStrategy.MERGE
         DataCategory.PERSONALITY -> ImportStrategy.REPLACE
     }
 
@@ -350,6 +356,11 @@ private val DataCategory.defaultStrategies: List<ImportStrategy>
         DataCategory.MEMORY -> listOf(ImportStrategy.MERGE, ImportStrategy.REPLACE)
         DataCategory.SESSIONS -> listOf(ImportStrategy.APPEND, ImportStrategy.REPLACE)
         DataCategory.SKILLS -> listOf(ImportStrategy.MERGE, ImportStrategy.REPLACE)
+        DataCategory.USER_PROFILE -> listOf(
+            ImportStrategy.MERGE,
+            ImportStrategy.APPEND,
+            ImportStrategy.REPLACE,
+        )
         else -> listOf(ImportStrategy.REPLACE)
     }
 
@@ -377,6 +388,12 @@ private fun ImportResult.summaryString(): String {
     }
     if (importedPersonalityFiles > 0) {
         parts.add(stringResource(R.string.data_import_summary_personality, importedPersonalityFiles))
+    }
+    if (importedProfile) {
+        parts.add(stringResource(R.string.data_import_summary_user_profile, importedProfileItems))
+    }
+    if (skippedProfileItems > 0) {
+        parts.add(stringResource(R.string.data_import_summary_user_profile_skipped, skippedProfileItems))
     }
     return parts.joinToString(", ")
 }

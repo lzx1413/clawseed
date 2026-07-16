@@ -3,11 +3,12 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use clawseed_api::user_profile::{
-    ProfileCategory, ProfileItem, ProfileItemInput, ProfileSource, ProfileStatus, UserProfile,
-    UserProfileStore,
+    ProfileCategory, ProfileImportResult, ProfileImportStrategy, ProfileItem, ProfileItemInput,
+    ProfileSource, ProfileStatus, UserProfile, UserProfileStore,
 };
 use parking_lot::Mutex;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use std::collections::HashSet;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -162,6 +163,58 @@ impl SqliteUserProfileStore {
             Self::map_item,
         )?)
     }
+
+    fn upsert_in_transaction(
+        tx: &Transaction<'_>,
+        user_id: &str,
+        input: ProfileItemInput,
+        value_json: String,
+        now: &str,
+        version: u64,
+    ) -> anyhow::Result<ProfileItem> {
+        let existing = tx
+            .query_row(
+                "SELECT id, created_at FROM user_profile_items
+                 WHERE user_id = ?1 AND key = ?2",
+                params![user_id, input.key],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )
+            .optional()?;
+        let (id, created_at) =
+            existing.unwrap_or_else(|| (Uuid::new_v4().to_string(), now.to_string()));
+        tx.execute(
+            "INSERT INTO user_profile_items(
+                id, user_id, key, value_json, category, confidence, source, status,
+                evidence_session_id, expires_at, created_at, updated_at, version
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+             ON CONFLICT(user_id, key) DO UPDATE SET
+                value_json = excluded.value_json,
+                category = excluded.category,
+                confidence = excluded.confidence,
+                source = excluded.source,
+                status = excluded.status,
+                evidence_session_id = excluded.evidence_session_id,
+                expires_at = excluded.expires_at,
+                updated_at = excluded.updated_at,
+                version = excluded.version",
+            params![
+                id,
+                user_id,
+                input.key,
+                value_json,
+                input.category.to_string(),
+                input.confidence,
+                input.source.to_string(),
+                input.status.to_string(),
+                input.evidence_session_id,
+                input.expires_at,
+                created_at,
+                now,
+                version,
+            ],
+        )?;
+        Self::select_item(tx, user_id, &id)
+    }
 }
 
 #[async_trait]
@@ -201,48 +254,7 @@ impl UserProfileStore for SqliteUserProfileStore {
         let mut conn = self.conn.lock();
         let tx = conn.transaction()?;
         let version = Self::next_version(&tx, user_id, &now)?;
-        let existing = tx
-            .query_row(
-                "SELECT id, created_at FROM user_profile_items
-                 WHERE user_id = ?1 AND key = ?2",
-                params![user_id, input.key],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-            )
-            .optional()?;
-        let (id, created_at) =
-            existing.unwrap_or_else(|| (Uuid::new_v4().to_string(), now.clone()));
-        tx.execute(
-            "INSERT INTO user_profile_items(
-                id, user_id, key, value_json, category, confidence, source, status,
-                evidence_session_id, expires_at, created_at, updated_at, version
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
-             ON CONFLICT(user_id, key) DO UPDATE SET
-                value_json = excluded.value_json,
-                category = excluded.category,
-                confidence = excluded.confidence,
-                source = excluded.source,
-                status = excluded.status,
-                evidence_session_id = excluded.evidence_session_id,
-                expires_at = excluded.expires_at,
-                updated_at = excluded.updated_at,
-                version = excluded.version",
-            params![
-                id,
-                user_id,
-                input.key,
-                value_json,
-                input.category.to_string(),
-                input.confidence,
-                input.source.to_string(),
-                input.status.to_string(),
-                input.evidence_session_id,
-                input.expires_at,
-                created_at,
-                now,
-                version,
-            ],
-        )?;
-        let item = Self::select_item(&tx, user_id, &id)?;
+        let item = Self::upsert_in_transaction(&tx, user_id, input, value_json, &now, version)?;
         tx.commit()?;
         Ok(item)
     }
@@ -277,6 +289,62 @@ impl UserProfileStore for SqliteUserProfileStore {
         }
         tx.commit()?;
         Ok(deleted)
+    }
+
+    async fn import_items(
+        &self,
+        user_id: &str,
+        items: Vec<ProfileItemInput>,
+        strategy: ProfileImportStrategy,
+    ) -> anyhow::Result<ProfileImportResult> {
+        Self::validate_user_id(user_id)?;
+        let mut keys = HashSet::with_capacity(items.len());
+        let mut validated = Vec::with_capacity(items.len());
+        for input in items {
+            if !keys.insert(input.key.clone()) {
+                anyhow::bail!("profile import contains duplicate key: {}", input.key);
+            }
+            let value_json = Self::validate_input(&input)?;
+            validated.push((input, value_json));
+        }
+
+        let now = Utc::now().to_rfc3339();
+        let mut conn = self.conn.lock();
+        let tx = conn.transaction()?;
+        let deleted = if strategy == ProfileImportStrategy::Replace {
+            tx.execute(
+                "DELETE FROM user_profile_items WHERE user_id = ?1",
+                params![user_id],
+            )?
+        } else {
+            0
+        };
+        let mut imported = 0;
+        let mut skipped = 0;
+        for (input, value_json) in validated {
+            if strategy == ProfileImportStrategy::Append {
+                let exists = tx
+                    .query_row(
+                        "SELECT 1 FROM user_profile_items WHERE user_id = ?1 AND key = ?2",
+                        params![user_id, input.key],
+                        |_| Ok(()),
+                    )
+                    .optional()?
+                    .is_some();
+                if exists {
+                    skipped += 1;
+                    continue;
+                }
+            }
+            let version = Self::next_version(&tx, user_id, &now)?;
+            Self::upsert_in_transaction(&tx, user_id, input, value_json, &now, version)?;
+            imported += 1;
+        }
+        if deleted > 0 && imported == 0 {
+            Self::next_version(&tx, user_id, &now)?;
+        }
+        tx.commit()?;
+        Ok(ProfileImportResult { imported, skipped })
     }
 
     async fn health_check(&self) -> bool {
@@ -369,5 +437,92 @@ mod tests {
         let mut invalid = input("language", serde_json::json!("zh-CN"));
         invalid.confidence = 1.1;
         assert!(store.upsert("owner", invalid).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn imports_profiles_with_replace_merge_and_append_semantics() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SqliteUserProfileStore::new(dir.path()).unwrap();
+        store
+            .upsert("owner", input("language", serde_json::json!("en-US")))
+            .await
+            .unwrap();
+
+        let append = store
+            .import_items(
+                "owner",
+                vec![
+                    input("language", serde_json::json!("zh-CN")),
+                    input("response.style", serde_json::json!("concise")),
+                ],
+                ProfileImportStrategy::Append,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            append,
+            ProfileImportResult {
+                imported: 1,
+                skipped: 1
+            }
+        );
+        assert_eq!(store.load("owner").await.unwrap().items.len(), 2);
+
+        let mut imported = input("language", serde_json::json!("zh-CN"));
+        imported.source = ProfileSource::Imported;
+        imported.status = ProfileStatus::Rejected;
+        let merge = store
+            .import_items("owner", vec![imported], ProfileImportStrategy::Merge)
+            .await
+            .unwrap();
+        assert_eq!(merge.imported, 1);
+        let language = store
+            .load("owner")
+            .await
+            .unwrap()
+            .items
+            .into_iter()
+            .find(|item| item.key == "language")
+            .unwrap();
+        assert_eq!(language.value, serde_json::json!("zh-CN"));
+        assert_eq!(language.source, ProfileSource::Imported);
+        assert_eq!(language.status, ProfileStatus::Rejected);
+
+        let replace = store
+            .import_items(
+                "owner",
+                vec![input("expertise.rust", serde_json::json!(true))],
+                ProfileImportStrategy::Replace,
+            )
+            .await
+            .unwrap();
+        assert_eq!(replace.imported, 1);
+        let profile = store.load("owner").await.unwrap();
+        assert_eq!(profile.items.len(), 1);
+        assert_eq!(profile.items[0].key, "expertise.rust");
+    }
+
+    #[tokio::test]
+    async fn profile_import_is_atomic_when_validation_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SqliteUserProfileStore::new(dir.path()).unwrap();
+        store
+            .upsert("owner", input("language", serde_json::json!("en-US")))
+            .await
+            .unwrap();
+        let result = store
+            .import_items(
+                "owner",
+                vec![
+                    input("valid.key", serde_json::json!(true)),
+                    input("invalid/key", serde_json::json!(false)),
+                ],
+                ProfileImportStrategy::Replace,
+            )
+            .await;
+        assert!(result.is_err());
+        let profile = store.load("owner").await.unwrap();
+        assert_eq!(profile.items.len(), 1);
+        assert_eq!(profile.items[0].key, "language");
     }
 }

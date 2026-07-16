@@ -8,7 +8,9 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Json},
 };
-use clawseed_api::user_profile::{ProfileCategory, ProfileItemInput, ProfileSource, ProfileStatus};
+use clawseed_api::user_profile::{
+    ProfileCategory, ProfileImportStrategy, ProfileItemInput, ProfileSource, ProfileStatus,
+};
 use serde::Deserialize;
 
 const MASKED_SECRET: &str = "***MASKED***";
@@ -80,6 +82,23 @@ pub struct UserProfilePatchBody {
     pub expires_at: Option<String>,
     #[serde(default)]
     pub clear_expires_at: bool,
+}
+
+#[derive(Deserialize)]
+pub struct UserProfileImportItemBody {
+    pub key: String,
+    pub value: serde_json::Value,
+    pub category: ProfileCategory,
+    pub confidence: f64,
+    pub status: ProfileStatus,
+    pub evidence_session_id: Option<String>,
+    pub expires_at: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct UserProfileImportBody {
+    pub strategy: ProfileImportStrategy,
+    pub items: Vec<UserProfileImportItemBody>,
 }
 
 #[derive(Deserialize)]
@@ -1521,6 +1540,52 @@ pub async fn handle_api_user_profile_clear(
     }
 }
 
+/// PUT /api/users/me/profile/import — atomically restore a profile backup.
+pub async fn handle_api_user_profile_import(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<UserProfileImportBody>,
+) -> impl IntoResponse {
+    if let Err(error) = require_auth(&state, &headers) {
+        return error.into_response();
+    }
+    let Some(store) = state.user_profile_store.as_ref() else {
+        return profile_store_disabled_response();
+    };
+    if body.items.len() > 512 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Profile import exceeds 512 items"})),
+        )
+            .into_response();
+    }
+    let items = body
+        .items
+        .into_iter()
+        .map(|item| ProfileItemInput {
+            key: item.key,
+            value: item.value,
+            category: item.category,
+            confidence: item.confidence,
+            source: ProfileSource::Imported,
+            status: item.status,
+            evidence_session_id: item.evidence_session_id,
+            expires_at: item.expires_at,
+        })
+        .collect();
+    match store
+        .import_items(super::LOCAL_OWNER_USER_ID, items, body.strategy)
+        .await
+    {
+        Ok(result) => Json(result).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 /// GET /api/cost — cost summary
 pub async fn handle_api_cost(
     State(state): State<AppState>,
@@ -2647,6 +2712,86 @@ mod tests {
         assert_eq!(rejected["source"], "inferred");
         assert_eq!(rejected["confidence"], 0.91);
         assert_eq!(rejected["evidence_session_id"], "session-1");
+    }
+
+    #[tokio::test]
+    async fn user_profile_import_marks_items_imported_and_applies_strategy() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = test_state(clawseed_config::schema::Config::default());
+        state.user_profile_store = Some(Arc::new(
+            clawseed_memory::user_profile::SqliteUserProfileStore::new(dir.path()).unwrap(),
+        ));
+        let store = state.user_profile_store.as_ref().unwrap();
+        store
+            .upsert(
+                super::super::LOCAL_OWNER_USER_ID,
+                ProfileItemInput {
+                    key: "preference.language".into(),
+                    value: serde_json::json!("en-US"),
+                    category: ProfileCategory::Preference,
+                    confidence: 1.0,
+                    source: ProfileSource::Explicit,
+                    status: ProfileStatus::Active,
+                    evidence_session_id: None,
+                    expires_at: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        let response = handle_api_user_profile_import(
+            State(state.clone()),
+            HeaderMap::new(),
+            Json(UserProfileImportBody {
+                strategy: ProfileImportStrategy::Append,
+                items: vec![
+                    UserProfileImportItemBody {
+                        key: "preference.language".into(),
+                        value: serde_json::json!("zh-CN"),
+                        category: ProfileCategory::Preference,
+                        confidence: 0.9,
+                        status: ProfileStatus::Active,
+                        evidence_session_id: Some("session-1".into()),
+                        expires_at: None,
+                    },
+                    UserProfileImportItemBody {
+                        key: "preference.response_style".into(),
+                        value: serde_json::json!("concise"),
+                        category: ProfileCategory::Preference,
+                        confidence: 0.88,
+                        status: ProfileStatus::Rejected,
+                        evidence_session_id: Some("session-2".into()),
+                        expires_at: None,
+                    },
+                ],
+            }),
+        )
+        .await
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let result = response_json(response).await;
+        assert_eq!(result["imported"], 1);
+        assert_eq!(result["skipped"], 1);
+        let profile = store.load(super::super::LOCAL_OWNER_USER_ID).await.unwrap();
+        let language = profile
+            .items
+            .iter()
+            .find(|item| item.key == "preference.language")
+            .unwrap();
+        assert_eq!(language.value, serde_json::json!("en-US"));
+        assert_eq!(language.source, ProfileSource::Explicit);
+        let response_style = profile
+            .items
+            .iter()
+            .find(|item| item.key == "preference.response_style")
+            .unwrap();
+        assert_eq!(response_style.source, ProfileSource::Imported);
+        assert_eq!(response_style.status, ProfileStatus::Rejected);
+        assert_eq!(
+            response_style.evidence_session_id.as_deref(),
+            Some("session-2")
+        );
     }
 
     fn config_with_temp_save_path() -> (clawseed_config::schema::Config, tempfile::TempDir) {

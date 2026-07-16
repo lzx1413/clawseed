@@ -1,7 +1,9 @@
 package dev.clawseed.sdk.core.client
 
 import dev.clawseed.sdk.core.model.ProfileCategory
+import dev.clawseed.sdk.core.model.ProfileImportStrategy
 import dev.clawseed.sdk.core.model.ProfileStatus
+import dev.clawseed.sdk.core.model.UserProfileImportItem
 import dev.clawseed.sdk.core.model.UserProfilePatch
 import dev.clawseed.sdk.core.model.UserProfileUpsert
 import kotlinx.coroutines.test.runTest
@@ -35,6 +37,10 @@ class GatewayClientUserProfileTest {
             val profile = client.userProfile().getOrThrow()
             assertEquals("preference.language", profile.items.single().key)
             assertEquals("zh-CN", profile.items.single().value.toString().trim('"'))
+            val importItem = UserProfileImportItem.from(profile.items.single())
+            assertEquals(ProfileStatus.ACTIVE, importItem.status)
+            assertEquals(0.95, importItem.confidence)
+            assertEquals("session-1", importItem.evidenceSessionId)
             val getRequest = server.takeRequest()
             assertEquals("/api/users/me/profile", getRequest.path)
             assertEquals("Bearer token-1", getRequest.getHeader("Authorization"))
@@ -63,6 +69,7 @@ class GatewayClientUserProfileTest {
             server.enqueue(MockResponse().setBody(itemJson.replace("\"active\"", "\"rejected\"")))
             server.enqueue(MockResponse().setBody("""{"deleted":true}"""))
             server.enqueue(MockResponse().setBody("""{"deleted":3}"""))
+            server.enqueue(MockResponse().setBody("""{"imported":2,"skipped":1}"""))
             val client = GatewayClient(server.url("").toString().trimEnd('/'), null)
 
             client.patchUserProfileItem(
@@ -78,6 +85,29 @@ class GatewayClientUserProfileTest {
             assertEquals("DELETE", server.takeRequest().method)
             assertEquals(3, client.clearUserProfile().getOrThrow())
             assertEquals("/api/users/me/profile", server.takeRequest().path)
+
+            val imported = client.importUserProfile(
+                items = listOf(
+                    UserProfileImportItem(
+                        key = "preference.language",
+                        value = JsonPrimitive("zh-CN"),
+                        category = ProfileCategory.PREFERENCE,
+                        confidence = 0.95,
+                        status = ProfileStatus.REJECTED,
+                        evidenceSessionId = "session-1",
+                    ),
+                ),
+                strategy = ProfileImportStrategy.APPEND,
+            ).getOrThrow()
+            assertEquals(2, imported.imported)
+            assertEquals(1, imported.skipped)
+            val importRequest = server.takeRequest()
+            assertEquals("PUT", importRequest.method)
+            assertEquals("/api/users/me/profile/import", importRequest.path)
+            val importPayload = importRequest.body.readUtf8()
+            assertTrue(importPayload.contains("\"strategy\":\"append\""))
+            assertTrue(importPayload.contains("\"status\":\"rejected\""))
+            assertTrue(!importPayload.contains("\"source\""))
         } finally {
             server.shutdown()
         }

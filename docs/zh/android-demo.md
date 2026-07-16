@@ -42,6 +42,12 @@ ClawSeed Android Demo 是一个完整的端侧 AI Agent 应用，在 Android 设
 
 **关键设计**：整个 Agent 栈在设备端运行，LLM 推理通过网络调用云端 Provider。
 
+### 用户画像备份
+
+设置中的数据迁移页面可以将结构化用户画像导出到备份 ZIP 内的
+`user_profile/profile.json`。导入支持合并、追加和替换策略，并通过已认证的 Gateway API
+原子更新正在使用的 SQLite 数据库，无需重启应用。
+
 ## 模块结构
 
 ```

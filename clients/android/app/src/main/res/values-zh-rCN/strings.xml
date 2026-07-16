@@ -111,6 +111,8 @@
     <string name="data_import_summary_messages">%1$d 条消息</string>
     <string name="data_import_summary_skills">%1$d 个技能</string>
     <string name="data_import_summary_personality">%1$d 个人格文件</string>
+    <string name="data_import_summary_user_profile">%1$d 条用户画像</string>
+    <string name="data_import_summary_user_profile_skipped">已跳过 %1$d 条用户画像</string>
     <string name="data_export_missing_manifest">导出文件缺少 manifest.json</string>
     <string name="data_export_version_incompatible">导出文件格式版本不兼容 (v%1$d > v%2$d)</string>
     <string name="data_export_missing_category">导出文件中不包含 %1$s 数据</string>
@@ -128,6 +130,8 @@
     <string name="enum_data_category_skills_desc">导出所有技能文件和配置</string>
     <string name="enum_data_category_personality">人格</string>
     <string name="enum_data_category_personality_desc">导出 SOUL.md 等人格文件</string>
+    <string name="enum_data_category_user_profile">用户画像</string>
+    <string name="enum_data_category_user_profile_desc">导出已保存的偏好、推断信息和已拒绝条目</string>
 
     <!-- ImportStrategy enum -->
     <string name="enum_import_strategy_replace">替换</string>

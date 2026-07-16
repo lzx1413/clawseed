@@ -111,6 +111,8 @@
     <string name="data_import_summary_messages">%1$d messages</string>
     <string name="data_import_summary_skills">%1$d skills</string>
     <string name="data_import_summary_personality">%1$d personality files</string>
+    <string name="data_import_summary_user_profile">%1$d profile items</string>
+    <string name="data_import_summary_user_profile_skipped">%1$d profile items skipped</string>
     <string name="data_export_missing_manifest">Export file missing manifest.json</string>
     <string name="data_export_version_incompatible">Export file format version incompatible (v%1$d > v%2$d)</string>
     <string name="data_export_missing_category">Export file does not contain %1$s data</string>
@@ -128,6 +130,8 @@
     <string name="enum_data_category_skills_desc">Export all skill files and config</string>
     <string name="enum_data_category_personality">Personality</string>
     <string name="enum_data_category_personality_desc">Export SOUL.md and other personality files</string>
+    <string name="enum_data_category_user_profile">User Profile</string>
+    <string name="enum_data_category_user_profile_desc">Export saved preferences, inferred details, and rejected items</string>
 
     <!-- ImportStrategy enum -->
     <string name="enum_import_strategy_replace">Replace</string>

@@ -42,6 +42,13 @@ The ClawSeed Android Demo is a complete on-device AI agent application. The enti
 
 **Key design**: The entire agent stack runs on-device; LLM inference is called over the network to a cloud provider.
 
+### User Profile Backup
+
+The Settings data-transfer screen can export the structured user profile into
+`user_profile/profile.json` inside the backup ZIP. Imports support merge, append,
+and replace strategies. Profile imports are applied through the authenticated Gateway
+API so the live SQLite database is updated atomically without restarting the app.
+
 ## Module Structure
 
 ```

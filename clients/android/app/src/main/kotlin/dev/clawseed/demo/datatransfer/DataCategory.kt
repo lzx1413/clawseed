@@ -5,8 +5,8 @@ import dev.clawseed.demo.R
 
 /** Categories of data that can be exported/imported. */
 enum class DataCategory(
-    @StringRes val labelRes: Int,
-    @StringRes val descriptionRes: Int,
+    @param:StringRes val labelRes: Int,
+    @param:StringRes val descriptionRes: Int,
     val isSensitive: Boolean,
 ) {
     CONFIG(
@@ -28,6 +28,11 @@ enum class DataCategory(
         labelRes = R.string.enum_data_category_skills,
         descriptionRes = R.string.enum_data_category_skills_desc,
         isSensitive = false,
+    ),
+    USER_PROFILE(
+        labelRes = R.string.enum_data_category_user_profile,
+        descriptionRes = R.string.enum_data_category_user_profile_desc,
+        isSensitive = true,
     ),
     PERSONALITY(
         labelRes = R.string.enum_data_category_personality,

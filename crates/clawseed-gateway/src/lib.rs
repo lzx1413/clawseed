@@ -570,6 +570,14 @@ pub async fn run_gateway(
         .route("/api/personality", put(api::handle_api_personality_put))
         .layer(RequestBodyLimitLayer::new(65_536));
 
+    // Profile backups may contain multiple values up to 16KB each.
+    let user_profile_import_router = Router::new()
+        .route(
+            "/api/users/me/profile/import",
+            put(api::handle_api_user_profile_import),
+        )
+        .layer(RequestBodyLimitLayer::new(1_048_576));
+
     // Build router with middleware
     let inner = Router::new()
         // ── Admin routes (for CLI management) ──
@@ -671,6 +679,7 @@ pub async fn run_gateway(
         // ── Config PUT with larger body limit ──
         .merge(config_put_router)
         .merge(personality_put_router)
+        .merge(user_profile_import_router)
         // ── SPA fallback: non-API GET requests serve index.html ──
         .fallback(get(static_files::handle_spa_fallback))
         .with_state(state)

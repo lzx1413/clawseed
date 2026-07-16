@@ -50,6 +50,18 @@ enum class ProfileStatus {
 }
 
 @Serializable
+enum class ProfileImportStrategy {
+    @SerialName("replace")
+    REPLACE,
+
+    @SerialName("merge")
+    MERGE,
+
+    @SerialName("append")
+    APPEND,
+}
+
+@Serializable
 data class UserProfileItem(
     val id: String,
     @SerialName("user_id") val userId: String,
@@ -88,4 +100,39 @@ data class UserProfilePatch(
     val status: ProfileStatus? = null,
     @SerialName("expires_at") val expiresAt: String? = null,
     @SerialName("clear_expires_at") val clearExpiresAt: Boolean = false,
+)
+
+@Serializable
+data class UserProfileImportItem(
+    val key: String,
+    val value: JsonElement,
+    val category: ProfileCategory,
+    val confidence: Double,
+    val status: ProfileStatus,
+    @SerialName("evidence_session_id") val evidenceSessionId: String? = null,
+    @SerialName("expires_at") val expiresAt: String? = null,
+) {
+    companion object {
+        fun from(item: UserProfileItem): UserProfileImportItem = UserProfileImportItem(
+            key = item.key,
+            value = item.value,
+            category = item.category,
+            confidence = item.confidence,
+            status = item.status,
+            evidenceSessionId = item.evidenceSessionId,
+            expiresAt = item.expiresAt,
+        )
+    }
+}
+
+@Serializable
+data class UserProfileImportRequest(
+    val strategy: ProfileImportStrategy,
+    val items: List<UserProfileImportItem>,
+)
+
+@Serializable
+data class UserProfileImportResult(
+    val imported: Int,
+    val skipped: Int,
 )

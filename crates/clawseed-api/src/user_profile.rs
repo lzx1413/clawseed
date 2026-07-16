@@ -149,6 +149,21 @@ pub struct ProfileItemInput {
     pub expires_at: Option<String>,
 }
 
+/// Conflict behavior for a profile backup import.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProfileImportStrategy {
+    Replace,
+    Merge,
+    Append,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProfileImportResult {
+    pub imported: usize,
+    pub skipped: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UserProfile {
     pub user_id: String,
@@ -166,6 +181,14 @@ pub trait UserProfileStore: Send + Sync {
     async fn delete_item(&self, user_id: &str, item_id: &str) -> anyhow::Result<bool>;
 
     async fn clear(&self, user_id: &str) -> anyhow::Result<usize>;
+
+    /// Atomically import a validated profile backup for one user.
+    async fn import_items(
+        &self,
+        user_id: &str,
+        items: Vec<ProfileItemInput>,
+        strategy: ProfileImportStrategy,
+    ) -> anyhow::Result<ProfileImportResult>;
 
     async fn health_check(&self) -> bool;
 }

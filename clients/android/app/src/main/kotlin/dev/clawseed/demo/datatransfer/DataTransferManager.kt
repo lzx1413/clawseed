@@ -11,6 +11,9 @@ import dev.clawseed.demo.scheduled.ScheduledTaskStore
 import dev.clawseed.demo.ui.persona.PersonaAvatarStorage
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.embedded.GatewayConfigManager
+import dev.clawseed.sdk.core.model.ProfileImportStrategy as SdkProfileImportStrategy
+import dev.clawseed.sdk.core.model.UserProfileImportItem
+import dev.clawseed.sdk.core.model.UserProfileImportResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -64,6 +67,7 @@ class DataTransferManager(private val context: Context) {
                     DataCategory.MEMORY -> exportMemory(zipOut)
                     DataCategory.SESSIONS -> exportSessions(zipOut)
                     DataCategory.SKILLS -> exportSkills(zipOut)
+                    DataCategory.USER_PROFILE -> exportUserProfile(zipOut)
                     DataCategory.PERSONALITY -> exportPersonality(zipOut)
                 }
             }
@@ -144,6 +148,13 @@ class DataTransferManager(private val context: Context) {
         }
     }
 
+    private suspend fun exportUserProfile(zipOut: ZipOutputStream) {
+        val profile = ClawSeedAndroid.gatewayClient().userProfile().getOrThrow()
+        zipOut.putNextEntry(ZipEntry(UserProfileArchive.ENTRY_NAME))
+        zipOut.write(UserProfileArchive.encode(profile).toByteArray())
+        zipOut.closeEntry()
+    }
+
     private fun exportPersonality(zipOut: ZipOutputStream) {
         val personalityDir = configManager.personalityDir()
         if (!personalityDir.exists()) return
@@ -216,6 +227,9 @@ class DataTransferManager(private val context: Context) {
             var importedSessions = 0
             var importedMessages = 0
             var importedPersonalityFiles = 0
+            var importedProfileItems = 0
+            var skippedProfileItems = 0
+            var importedProfile = false
             var importedConfig = false
             var importedTasks = 0
 
@@ -243,6 +257,13 @@ class DataTransferManager(private val context: Context) {
                         DataCategory.SKILLS -> {
                             val strategy = strategies[category] ?: ImportStrategy.MERGE
                             importedSkills = importSkills(tempDir, strategy)
+                        }
+                        DataCategory.USER_PROFILE -> {
+                            val strategy = strategies[category] ?: ImportStrategy.MERGE
+                            val result = importUserProfile(tempDir, strategy)
+                            importedProfileItems = result.imported
+                            skippedProfileItems = result.skipped
+                            importedProfile = true
                         }
                         DataCategory.PERSONALITY -> {
                             importedPersonalityFiles = importPersonality(tempDir)
@@ -272,6 +293,9 @@ class DataTransferManager(private val context: Context) {
                 importedSessions = importedSessions,
                 importedMessages = importedMessages,
                 importedPersonalityFiles = importedPersonalityFiles,
+                importedProfileItems = importedProfileItems,
+                skippedProfileItems = skippedProfileItems,
+                importedProfile = importedProfile,
                 importedConfig = importedConfig,
                 importedTasks = importedTasks,
                 warnings = warnings,
@@ -548,6 +572,23 @@ class DataTransferManager(private val context: Context) {
         }
 
         return count
+    }
+
+    private suspend fun importUserProfile(
+        tempDir: File,
+        strategy: ImportStrategy,
+    ): UserProfileImportResult {
+        val profileFile = File(tempDir, UserProfileArchive.ENTRY_NAME)
+        require(profileFile.exists()) { "Profile archive is missing ${UserProfileArchive.ENTRY_NAME}" }
+        val profile = UserProfileArchive.decode(profileFile.readText())
+        val sdkStrategy = when (strategy) {
+            ImportStrategy.REPLACE -> SdkProfileImportStrategy.REPLACE
+            ImportStrategy.MERGE -> SdkProfileImportStrategy.MERGE
+            ImportStrategy.APPEND -> SdkProfileImportStrategy.APPEND
+        }
+        return ClawSeedAndroid.gatewayClient()
+            .importUserProfile(profile.items.map(UserProfileImportItem::from), sdkStrategy)
+            .getOrThrow()
     }
 
     private suspend fun importPersonality(tempDir: File): Int {
