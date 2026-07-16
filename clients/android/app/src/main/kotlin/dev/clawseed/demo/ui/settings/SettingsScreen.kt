@@ -129,12 +129,17 @@ private fun ExpandableSection(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onManageUserProfile: () -> Unit = {},
+    localStore: LocalStore? = null,
+) {
     val viewModel: SettingsViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var llmExpanded by remember { mutableStateOf(false) }
     var memoryExpanded by remember { mutableStateOf(false) }
+    var userModelExpanded by remember { mutableStateOf(false) }
     var searchEngineExpanded by remember { mutableStateOf(false) }
     var soulExpanded by remember { mutableStateOf(false) }
     var toolsExpanded by remember { mutableStateOf(false) }
@@ -383,6 +388,61 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
                     }
                 }
 
+                // User modeling section
+                item {
+                    ExpandableSection(
+                        title = stringResource(R.string.settings_user_model),
+                        expanded = userModelExpanded,
+                        onToggle = { userModelExpanded = !userModelExpanded },
+                        subtitle = if (!userModelExpanded) {
+                            if (uiState.userModelAutoInfer) {
+                                stringResource(R.string.settings_user_model_enabled)
+                            } else {
+                                stringResource(R.string.settings_user_model_disabled)
+                            }
+                        } else null,
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            UserModelCard(
+                                enabled = uiState.userModelAutoInfer,
+                                controlsEnabled = !uiState.isSaving && uiState.configToml.isNotBlank(),
+                                onToggle = viewModel::toggleUserModelAutoInfer,
+                            )
+                            OutlinedButton(
+                                onClick = onManageUserProfile,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(stringResource(R.string.settings_manage_user_profile))
+                                Spacer(modifier = Modifier.weight(1f))
+                                Icon(
+                                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = null,
+                                )
+                            }
+                            Button(
+                                onClick = viewModel::saveUserModelConfig,
+                                enabled = !uiState.isSaving && uiState.configToml.isNotBlank(),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                if (uiState.isSaving) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                                Text(
+                                    if (uiState.isSaving) {
+                                        stringResource(R.string.common_saving)
+                                    } else {
+                                        stringResource(R.string.settings_save_user_model)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Soul section
                 item {
                     val soulLoaded = uiState.soulContent != null
@@ -545,6 +605,46 @@ fun SettingsScreen(onBack: () -> Unit, localStore: LocalStore? = null) {
 
                 item { Spacer(modifier = Modifier.height(16.dp)) }
             }
+        }
+    }
+}
+
+@Composable
+private fun UserModelCard(
+    enabled: Boolean,
+    controlsEnabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.settings_user_model_auto_infer),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = stringResource(R.string.settings_user_model_auto_infer_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Switch(
+                checked = enabled,
+                onCheckedChange = onToggle,
+                enabled = controlsEnabled,
+            )
         }
     }
 }

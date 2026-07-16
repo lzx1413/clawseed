@@ -266,6 +266,9 @@ auto_save = true
 [user_model]
 enabled = true
 max_prompt_items = 20
+auto_infer = false
+inference_min_confidence = 0.8
+max_inferred_items_per_turn = 3
 
 [autonomy]
 level = "supervised"
@@ -297,7 +300,11 @@ config = { level = "info" }
 
 `user_model.enabled` controls structured local-user profiles. Profile data is stored in
 `<workspace>/user_model/profiles.db`; `max_prompt_items` limits the active, unexpired
-items injected into the Agent system prompt.
+items injected into the Agent system prompt. `auto_infer` is an opt-in switch that runs
+low-temperature profile extraction after successful turns without delaying the response.
+Only non-sensitive items meeting `inference_min_confidence` are accepted, with at most
+`max_inferred_items_per_turn` writes per turn. Explicit, imported, and rejected items are
+never overwritten by inference.
 
 ### IdentityConfig — Identity Configuration
 

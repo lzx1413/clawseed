@@ -10,6 +10,10 @@ import dev.clawseed.sdk.core.model.SessionSummary
 import dev.clawseed.sdk.core.model.SkillDetail
 import dev.clawseed.sdk.core.model.SkillInfo
 import dev.clawseed.sdk.core.model.ToolInfo
+import dev.clawseed.sdk.core.model.UserProfile
+import dev.clawseed.sdk.core.model.UserProfileItem
+import dev.clawseed.sdk.core.model.UserProfilePatch
+import dev.clawseed.sdk.core.model.UserProfileUpsert
 import dev.clawseed.sdk.core.model.WebhookResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -147,6 +151,66 @@ class GatewayClient(
             .put(toml.toRequestBody(TOML_MEDIA_TYPE))
             .build()
         return execute(req).map {}
+    }
+
+    /** Retrieves the authenticated user's structured profile. */
+    suspend fun userProfile(): Result<UserProfile> = withContext(Dispatchers.IO) {
+        runCatching {
+            val req = Request.Builder().url("$baseUrl/api/users/me/profile").addAuth().build()
+            val body = execute(req).getOrThrow()
+            json.decodeFromString<UserProfile>(body)
+        }
+    }
+
+    /** Creates or replaces one explicit profile key. */
+    suspend fun upsertUserProfileItem(input: UserProfileUpsert): Result<UserProfileItem> {
+        val payload = json.encodeToString(UserProfileUpsert.serializer(), input)
+        val req = Request.Builder()
+            .url("$baseUrl/api/users/me/profile")
+            .addAuth()
+            .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        return execute(req).mapCatching { json.decodeFromString<UserProfileItem>(it) }
+    }
+
+    /** Updates one profile item, including rejecting an inferred value. */
+    suspend fun patchUserProfileItem(
+        itemId: String,
+        patch: UserProfilePatch,
+    ): Result<UserProfileItem> {
+        val encodedId = java.net.URLEncoder.encode(itemId, "UTF-8")
+        val payload = json.encodeToString(UserProfilePatch.serializer(), patch)
+        val req = Request.Builder()
+            .url("$baseUrl/api/users/me/profile/items/$encodedId")
+            .addAuth()
+            .patch(payload.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        return execute(req).mapCatching { json.decodeFromString<UserProfileItem>(it) }
+    }
+
+    /** Permanently deletes one profile item. */
+    suspend fun deleteUserProfileItem(itemId: String): Result<Unit> {
+        val encodedId = java.net.URLEncoder.encode(itemId, "UTF-8")
+        val req = Request.Builder()
+            .url("$baseUrl/api/users/me/profile/items/$encodedId")
+            .addAuth()
+            .delete()
+            .build()
+        return execute(req).map {}
+    }
+
+    /** Permanently deletes all profile items for the authenticated user. */
+    suspend fun clearUserProfile(): Result<Int> = withContext(Dispatchers.IO) {
+        runCatching {
+            val req = Request.Builder()
+                .url("$baseUrl/api/users/me/profile")
+                .addAuth()
+                .delete()
+                .build()
+            val body = execute(req).getOrThrow()
+            json.parseToJsonElement(body).jsonObject["deleted"]?.jsonPrimitive?.content?.toInt()
+                ?: 0
+        }
     }
 
     /** Retrieves personality files (SOUL.md, etc.) from the gateway. */

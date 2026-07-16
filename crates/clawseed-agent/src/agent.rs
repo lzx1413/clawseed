@@ -81,6 +81,7 @@ pub struct Agent {
     user_profile_version: Option<u64>,
     user_profile_items: Vec<ProfileItem>,
     max_profile_prompt_items: usize,
+    user_model_config: clawseed_config::schema::UserModelConfig,
     history: Vec<ConversationMessage>,
     hook_runner: Option<Arc<HookRunner>>,
     skill_index: Vec<crate::skills::SkillIndexEntry>,
@@ -154,6 +155,7 @@ pub struct AgentBuilder {
     user_profile_store: Option<Arc<dyn UserProfileStore>>,
     user_context: Option<UserContext>,
     max_profile_prompt_items: Option<usize>,
+    user_model_config: Option<clawseed_config::schema::UserModelConfig>,
     allowed_tools: Option<Vec<String>>,
     denied_tools: Option<Vec<String>>,
     mcp_tool_filters: Option<std::collections::HashMap<String, Vec<String>>>,
@@ -195,6 +197,7 @@ impl AgentBuilder {
             user_profile_store: None,
             user_context: None,
             max_profile_prompt_items: None,
+            user_model_config: None,
             allowed_tools: None,
             denied_tools: None,
             mcp_tool_filters: None,
@@ -318,6 +321,11 @@ impl AgentBuilder {
         self
     }
 
+    pub fn user_model_config(mut self, config: clawseed_config::schema::UserModelConfig) -> Self {
+        self.user_model_config = Some(config);
+        self
+    }
+
     pub fn allowed_tools(mut self, allowed_tools: Option<Vec<String>>) -> Self {
         self.allowed_tools = allowed_tools;
         self
@@ -418,6 +426,7 @@ impl AgentBuilder {
             user_profile_version: None,
             user_profile_items: Vec::new(),
             max_profile_prompt_items: self.max_profile_prompt_items.unwrap_or(20),
+            user_model_config: self.user_model_config.unwrap_or_default(),
             history: Vec::new(),
             hook_runner: self.hook_runner,
             skill_index: self.skill_index.unwrap_or_default(),
@@ -658,6 +667,7 @@ impl Agent {
             .stable_memory_in_system_prompt(
                 config.memory.effective_stable_memory_in_system_prompt(),
             )
+            .user_model_config(config.user_model.clone())
             .hook_runner(Some(Arc::new(hook_runner)))
             .skill_index(skill_index)
             .max_active_skills(config.skills.max_active)
@@ -883,6 +893,27 @@ impl Agent {
         self.user_profile_items = items;
         self.user_profile_version = Some(profile.version);
         changed
+    }
+
+    fn schedule_user_profile_inference(&self, user_message: &str, assistant_response: &str) {
+        if !self.user_model_config.enabled || !self.user_model_config.auto_infer {
+            return;
+        }
+        let (Some(store), Some(context)) = (&self.user_profile_store, &self.user_context) else {
+            return;
+        };
+        crate::user_model::spawn_profile_inference(
+            self.provider.clone(),
+            store.clone(),
+            context.clone(),
+            self.model_name.clone(),
+            user_message.to_string(),
+            assistant_response.to_string(),
+            crate::user_model::InferenceOptions {
+                min_confidence: self.user_model_config.inference_min_confidence,
+                max_items: self.user_model_config.max_inferred_items_per_turn,
+            },
+        );
     }
 
     /// Rebuild the system prompt and replace the system message in history.
@@ -1545,6 +1576,7 @@ impl Agent {
                     continue;
                 }
 
+                self.schedule_user_profile_inference(user_message, &final_text);
                 return Ok(final_text);
             }
 
@@ -1820,6 +1852,7 @@ impl Agent {
                     continue;
                 }
 
+                self.schedule_user_profile_inference(user_message, &final_text);
                 return Ok(final_text);
             }
 
@@ -1892,6 +1925,8 @@ mod tests {
         responses: Mutex<Vec<ChatResponse>>,
     }
 
+    struct ProfileInferenceProvider;
+
     #[async_trait]
     impl Provider for MockProvider {
         async fn chat_with_system(
@@ -1921,6 +1956,34 @@ mod tests {
                 });
             }
             Ok(guard.remove(0))
+        }
+    }
+
+    #[async_trait]
+    impl Provider for ProfileInferenceProvider {
+        async fn chat_with_system(
+            &self,
+            _system_prompt: Option<&str>,
+            _message: &str,
+            _model: &str,
+            _temperature: Option<f64>,
+        ) -> Result<String> {
+            Ok(r#"{"items":[{"key":"preference.response_style","value":"concise","category":"preference","confidence":0.95,"expires_in_days":null}]}"#.into())
+        }
+
+        async fn chat(
+            &self,
+            _request: ChatRequest<'_>,
+            _model: &str,
+            _temperature: Option<f64>,
+        ) -> Result<ChatResponse> {
+            Ok(ChatResponse {
+                text: Some("Understood.".into()),
+                tool_calls: vec![],
+                usage: None,
+                reasoning_content: None,
+                stop_reason: clawseed_api::provider::StopReason::EndTurn,
+            })
         }
     }
 
@@ -1980,6 +2043,51 @@ mod tests {
 
         let response = agent.turn("hi").await.unwrap();
         assert_eq!(response, "hello");
+    }
+
+    #[tokio::test]
+    async fn completed_turn_schedules_profile_inference() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(
+            clawseed_memory::user_profile::SqliteUserProfileStore::new(dir.path()).unwrap(),
+        );
+        let observer: Arc<dyn Observer> = Arc::new(crate::observer::NoopObserver);
+        let user_model_config = clawseed_config::schema::UserModelConfig {
+            auto_infer: true,
+            ..Default::default()
+        };
+        let mut agent = Agent::builder()
+            .provider(Box::new(ProfileInferenceProvider))
+            .tools(vec![Box::new(MockTool)])
+            .memory(make_memory())
+            .observer(observer)
+            .tool_dispatcher(Box::new(NativeToolDispatcher))
+            .workspace_dir(dir.path().to_path_buf())
+            .user_profile_store(store.clone())
+            .user_context(UserContext {
+                user_id: "owner".into(),
+                session_id: Some("session-1".into()),
+                persona_id: None,
+            })
+            .user_model_config(user_model_config)
+            .build()
+            .expect("agent builder should succeed");
+
+        assert_eq!(
+            agent.turn("Please keep responses concise.").await.unwrap(),
+            "Understood."
+        );
+
+        let mut profile = store.load("owner").await.unwrap();
+        for _ in 0..50 {
+            if !profile.items.is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            profile = store.load("owner").await.unwrap();
+        }
+        assert_eq!(profile.items.len(), 1);
+        assert_eq!(profile.items[0].key, "preference.response_style");
     }
 
     #[tokio::test]

@@ -76,6 +76,7 @@ pub struct UserProfileCreateBody {
 pub struct UserProfilePatchBody {
     pub value: Option<serde_json::Value>,
     pub category: Option<ProfileCategory>,
+    pub status: Option<ProfileStatus>,
     pub expires_at: Option<String>,
     #[serde(default)]
     pub clear_expires_at: bool,
@@ -1429,15 +1430,36 @@ pub async fn handle_api_user_profile_patch(
     let expires_at = if body.clear_expires_at {
         None
     } else {
-        body.expires_at.or(current.expires_at)
+        body.expires_at.clone().or(current.expires_at.clone())
+    };
+    if body.status == Some(ProfileStatus::Superseded) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Profile status may only be active or rejected"})),
+        )
+            .into_response();
+    }
+    let has_manual_edit = body.value.is_some()
+        || body.category.is_some()
+        || body.expires_at.is_some()
+        || body.clear_expires_at;
+    let status = body.status.unwrap_or(if has_manual_edit {
+        ProfileStatus::Active
+    } else {
+        current.status
+    });
+    let (confidence, source) = if has_manual_edit || status == ProfileStatus::Active {
+        (1.0, ProfileSource::Explicit)
+    } else {
+        (current.confidence, current.source)
     };
     let input = ProfileItemInput {
         key: current.key,
         value: body.value.unwrap_or(current.value),
         category: body.category.unwrap_or(current.category),
-        confidence: 1.0,
-        source: ProfileSource::Explicit,
-        status: ProfileStatus::Active,
+        confidence,
+        source,
+        status,
         evidence_session_id: current.evidence_session_id,
         expires_at,
     };
@@ -2554,6 +2576,7 @@ mod tests {
             Json(UserProfilePatchBody {
                 value: Some(serde_json::json!("balanced")),
                 category: None,
+                status: None,
                 expires_at: None,
                 clear_expires_at: false,
             }),
@@ -2576,6 +2599,54 @@ mod tests {
         let profile = response_json(get).await;
         assert_eq!(profile["version"], 3);
         assert_eq!(profile["items"].as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn user_profile_api_reject_preserves_inferred_provenance() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = test_state(clawseed_config::schema::Config::default());
+        state.user_profile_store = Some(Arc::new(
+            clawseed_memory::user_profile::SqliteUserProfileStore::new(dir.path()).unwrap(),
+        ));
+        let store = state.user_profile_store.as_ref().unwrap();
+        let inferred = store
+            .upsert(
+                super::super::LOCAL_OWNER_USER_ID,
+                ProfileItemInput {
+                    key: "preference.response_style".into(),
+                    value: serde_json::json!("concise"),
+                    category: ProfileCategory::Preference,
+                    confidence: 0.91,
+                    source: ProfileSource::Inferred,
+                    status: ProfileStatus::Active,
+                    evidence_session_id: Some("session-1".into()),
+                    expires_at: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        let response = handle_api_user_profile_patch(
+            State(state),
+            HeaderMap::new(),
+            Path(inferred.id),
+            Json(UserProfilePatchBody {
+                value: None,
+                category: None,
+                status: Some(ProfileStatus::Rejected),
+                expires_at: None,
+                clear_expires_at: false,
+            }),
+        )
+        .await
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let rejected = response_json(response).await;
+        assert_eq!(rejected["status"], "rejected");
+        assert_eq!(rejected["source"], "inferred");
+        assert_eq!(rejected["confidence"], 0.91);
+        assert_eq!(rejected["evidence_session_id"], "session-1");
     }
 
     fn config_with_temp_save_path() -> (clawseed_config::schema::Config, tempfile::TempDir) {

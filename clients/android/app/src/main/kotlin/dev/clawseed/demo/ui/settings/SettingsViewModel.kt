@@ -61,6 +61,7 @@ data class SettingsUiState(
     val thinkingEnabled: Boolean = false,
     val maxTokens: String = "262144",
     val autoContinueOnTruncation: Boolean = true,
+    val userModelAutoInfer: Boolean = false,
     val sessionTtlHours: String = "0",
     val searchEngine: String = "",
     val tavilyApiKey: String = "",
@@ -188,6 +189,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 maxTokens = maxTokens,
             )
             val autoContinue = extractAutoContinueOnTruncation(toml)
+            val userModelAutoInfer = UserModelConfigToml.extractAutoInfer(toml)
             val searchEngine = extractSearchEngine(toml)
             val tavilyKey = extractTavilyApiKey(toml)
             val embeddingProv = extractEmbeddingProvider(toml)
@@ -214,6 +216,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 thinkingEnabled = thinking,
                 maxTokens = maxTokens,
                 autoContinueOnTruncation = autoContinue,
+                userModelAutoInfer = userModelAutoInfer,
                 searchEngine = searchEngine,
                 tavilyApiKey = tavilyKey,
                 embeddingProvider = embeddingProv,
@@ -297,6 +300,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun toggleAutoContinueOnTruncation(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(autoContinueOnTruncation = enabled, successMessage = null)
+    }
+
+    fun toggleUserModelAutoInfer(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(userModelAutoInfer = enabled, successMessage = null)
     }
 
     fun updateSearchEngine(engine: String) {
@@ -421,6 +428,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             maxTokens = maxTokens,
         )
         val autoContinue = extractAutoContinueOnTruncation(toml)
+        val userModelAutoInfer = UserModelConfigToml.extractAutoInfer(toml)
         val searchEngine = extractSearchEngine(toml)
         val tavilyKey = extractTavilyApiKey(toml)
         val embeddingProv = extractEmbeddingProvider(toml)
@@ -445,6 +453,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             thinkingEnabled = thinking,
             maxTokens = maxTokens,
             autoContinueOnTruncation = autoContinue,
+            userModelAutoInfer = userModelAutoInfer,
             searchEngine = searchEngine,
             tavilyApiKey = tavilyKey,
             embeddingProvider = embeddingProv,
@@ -547,6 +556,88 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                         configToml = toml,
                         error = getApplication<Application>().getString(R.string.settings_save_failed_gateway, e.message?.take(100) ?: ""),
                     )
+                }
+        }
+    }
+
+    fun saveUserModelConfig() {
+        viewModelScope.launch {
+            val state = _uiState.value
+            if (state.configToml.isBlank()) {
+                _uiState.value = state.copy(
+                    error = getApplication<Application>().getString(
+                        R.string.settings_user_model_config_unavailable,
+                    ),
+                )
+                return@launch
+            }
+            val toml = UserModelConfigToml.updateAutoInfer(
+                state.configToml,
+                state.userModelAutoInfer,
+            )
+            _uiState.value = state.copy(isSaving = true, error = null, successMessage = null)
+
+            if (!ClawSeedAndroid.isInitialized) {
+                runCatching { saveToLocalConfig(toml) }
+                    .onSuccess {
+                        _uiState.value = _uiState.value.copy(
+                            isSaving = false,
+                            configToml = toml,
+                            successMessage = getApplication<Application>().getString(
+                                R.string.settings_save_config_local,
+                            ),
+                        )
+                    }
+                    .onFailure { error ->
+                        _uiState.value = _uiState.value.copy(
+                            isSaving = false,
+                            error = getApplication<Application>().getString(
+                                R.string.settings_save_failed,
+                                error.message?.take(100) ?: "",
+                            ),
+                        )
+                    }
+                return@launch
+            }
+
+            client().updateConfig(toml)
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(
+                        isSaving = false,
+                        configToml = toml,
+                        successMessage = getApplication<Application>().getString(
+                            R.string.settings_save_config_gateway,
+                        ),
+                    )
+                    viewModelScope.launch {
+                        ClawSeedAndroid.restartGateway()
+                        loadAll()
+                    }
+                }
+                .onFailure { gatewayError ->
+                    runCatching { saveToLocalConfig(toml) }
+                        .onSuccess {
+                            _uiState.value = _uiState.value.copy(
+                                isSaving = false,
+                                configToml = toml,
+                                successMessage = getApplication<Application>().getString(
+                                    R.string.settings_save_config_local,
+                                ),
+                                error = getApplication<Application>().getString(
+                                    R.string.settings_save_failed_gateway,
+                                    gatewayError.message?.take(100) ?: "",
+                                ),
+                            )
+                        }
+                        .onFailure { localError ->
+                            _uiState.value = _uiState.value.copy(
+                                isSaving = false,
+                                error = getApplication<Application>().getString(
+                                    R.string.settings_save_failed,
+                                    localError.message?.take(100) ?: "",
+                                ),
+                            )
+                        }
                 }
         }
     }

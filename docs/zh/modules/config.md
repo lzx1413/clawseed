@@ -266,6 +266,9 @@ auto_save = true
 [user_model]
 enabled = true
 max_prompt_items = 20
+auto_infer = false
+inference_min_confidence = 0.8
+max_inferred_items_per_turn = 3
 
 [autonomy]
 level = "supervised"
@@ -297,7 +300,10 @@ config = { level = "info" }
 
 `user_model.enabled` 控制结构化本地用户画像。画像数据存储在
 `<workspace>/user_model/profiles.db`；`max_prompt_items` 限制注入 Agent 系统提示中
-处于 active 且未过期的条目数量。
+处于 active 且未过期的条目数量。`auto_infer` 是默认关闭的选择加入开关；开启后，
+Agent 会在成功回合结束后以后台低温模型调用提取画像，不延迟主回复。系统只接受达到
+`inference_min_confidence` 的非敏感条目，每轮最多写入
+`max_inferred_items_per_turn` 条，且不会覆盖 explicit、imported 或 rejected 条目。
 
 ### IdentityConfig — 身份配置
 

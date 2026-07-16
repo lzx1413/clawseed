@@ -88,12 +88,14 @@
 #### 用户画像
 - `GET /api/users/me/profile` — 获取当前已认证本地用户的画像
 - `POST /api/users/me/profile` — 创建或替换一个画像键
-- `PATCH /api/users/me/profile/items/{id}` — 更新画像条目
+- `PATCH /api/users/me/profile/items/{id}` — 更新画像条目，或将 `status` 设为 `rejected`
 - `DELETE /api/users/me/profile/items/{id}` — 删除画像条目
 - `DELETE /api/users/me/profile` — 删除全部画像条目
 
 当前本地 Gateway 将已认证连接映射到稳定的 `owner` 主体。会话首次使用时绑定所有者，
 之后不能重新分配。
+拒绝推断条目会保留其来源信息，并阻止自动推断再次覆盖相同键；手动编辑条目会将其标记为
+显式设置并恢复为生效状态。
 
 #### 定时任务
 - `GET /api/cron` — 列出任务

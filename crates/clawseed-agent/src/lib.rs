@@ -25,3 +25,4 @@ pub mod security;
 pub mod skills;
 pub mod tool_registry;
 pub mod tools;
+pub mod user_model;

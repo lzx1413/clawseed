@@ -342,10 +342,27 @@ pub struct UserModelConfig {
     /// Maximum active profile items rendered into the system prompt.
     #[serde(default = "default_user_model_prompt_items")]
     pub max_prompt_items: usize,
+    /// Infer durable profile items from completed conversations.
+    #[serde(default)]
+    pub auto_infer: bool,
+    /// Minimum model confidence accepted for an inferred item.
+    #[serde(default = "default_user_model_inference_confidence")]
+    pub inference_min_confidence: f64,
+    /// Maximum inferred items persisted from one completed turn.
+    #[serde(default = "default_user_model_inference_items")]
+    pub max_inferred_items_per_turn: usize,
 }
 
 fn default_user_model_prompt_items() -> usize {
     20
+}
+
+fn default_user_model_inference_confidence() -> f64 {
+    0.8
+}
+
+fn default_user_model_inference_items() -> usize {
+    3
 }
 
 impl Default for UserModelConfig {
@@ -353,6 +370,9 @@ impl Default for UserModelConfig {
         Self {
             enabled: true,
             max_prompt_items: default_user_model_prompt_items(),
+            auto_infer: false,
+            inference_min_confidence: default_user_model_inference_confidence(),
+            max_inferred_items_per_turn: default_user_model_inference_items(),
         }
     }
 }
@@ -885,6 +905,13 @@ backend = "sqlite"
 auto_save = true
 auto_recall_limit = 3
 
+[user_model]
+enabled = true
+max_prompt_items = 20
+auto_infer = false
+inference_min_confidence = 0.8
+max_inferred_items_per_turn = 3
+
 [reliability]
 max_retries = 2
 provider_backoff_ms = 500
@@ -1070,11 +1097,19 @@ mod tests {
         let defaults: Config = toml::from_str("").unwrap();
         assert!(defaults.user_model.enabled);
         assert_eq!(defaults.user_model.max_prompt_items, 20);
+        assert!(!defaults.user_model.auto_infer);
+        assert_eq!(defaults.user_model.inference_min_confidence, 0.8);
+        assert_eq!(defaults.user_model.max_inferred_items_per_turn, 3);
 
-        let configured: Config =
-            toml::from_str("[user_model]\nenabled = false\nmax_prompt_items = 7\n").unwrap();
+        let configured: Config = toml::from_str(
+            "[user_model]\nenabled = false\nmax_prompt_items = 7\nauto_infer = true\ninference_min_confidence = 0.9\nmax_inferred_items_per_turn = 2\n",
+        )
+        .unwrap();
         assert!(!configured.user_model.enabled);
         assert_eq!(configured.user_model.max_prompt_items, 7);
+        assert!(configured.user_model.auto_infer);
+        assert_eq!(configured.user_model.inference_min_confidence, 0.9);
+        assert_eq!(configured.user_model.max_inferred_items_per_turn, 2);
     }
 
     #[test]

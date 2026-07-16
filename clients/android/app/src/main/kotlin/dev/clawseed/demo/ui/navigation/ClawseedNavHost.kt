@@ -8,6 +8,7 @@ import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.demo.scheduled.ScheduledTask
 import dev.clawseed.demo.ui.chat.ChatScreen
 import dev.clawseed.demo.ui.persona.PersonaManagerScreen
+import dev.clawseed.demo.ui.profile.UserProfileScreen
 import dev.clawseed.demo.ui.scheduled.ScheduledTasksScreen
 import dev.clawseed.demo.ui.settings.SettingsScreen
 
@@ -16,6 +17,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val SCHEDULED_TASKS = "scheduled_tasks"
     const val PERSONAS = "personas"
+    const val USER_PROFILE = "user_profile"
     const val PERSONA_NAME_ARG = "name"
     const val PERSONA_DETAIL = "personas/{$PERSONA_NAME_ARG}"
 
@@ -62,7 +64,14 @@ fun ClawseedNavHost(
             )
         }
         composable(Routes.SETTINGS) {
-            SettingsScreen(onBack = { navController.popBackStack() }, localStore = localStore)
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onManageUserProfile = { navController.navigate(Routes.USER_PROFILE) },
+                localStore = localStore,
+            )
+        }
+        composable(Routes.USER_PROFILE) {
+            UserProfileScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.SCHEDULED_TASKS) {
             ScheduledTasksScreen(

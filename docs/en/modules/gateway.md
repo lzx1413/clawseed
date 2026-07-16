@@ -88,12 +88,14 @@ Each WebSocket connection creates its own Agent via `Agent::from_config_with_sha
 #### User Profile
 - `GET /api/users/me/profile` — Get the authenticated local user's profile
 - `POST /api/users/me/profile` — Create or replace a profile key
-- `PATCH /api/users/me/profile/items/{id}` — Update a profile item
+- `PATCH /api/users/me/profile/items/{id}` — Update a profile item or set `status` to `rejected`
 - `DELETE /api/users/me/profile/items/{id}` — Delete a profile item
 - `DELETE /api/users/me/profile` — Delete all profile items
 
 The current local gateway maps authenticated connections to the stable `owner`
 principal. Session ownership is bound on first use and cannot be reassigned.
+Rejecting an inferred item preserves its provenance and prevents automatic inference
+from replacing the same key. Editing an item makes it explicit and active.
 
 #### Cron Jobs
 - `GET /api/cron` — List jobs

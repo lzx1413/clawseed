@@ -2,6 +2,7 @@ package dev.clawseed.demo
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,21 +37,19 @@ fun ClawseedApp(localStore: LocalStore, notificationSessionId: androidx.compose.
 
     // Navigate to session from notification tap
     val notifSessionId = notificationSessionId.value
-    if (notifSessionId != null) {
-        val target = notifSessionId
+    LaunchedEffect(notifSessionId) {
+        val target = notifSessionId ?: return@LaunchedEffect
         notificationSessionId.value = null
         currentSessionId = target
         pendingNewSessionPersona = null
         hasPendingNewSessionPersona = false
         sessionVersion++
         refreshKey++
-        scope.launch {
-            localStore.setActiveSessionId(target)
-            drawerState.close()
-            navController.navigate(Routes.CHAT) {
-                popUpTo(Routes.CHAT) { inclusive = true }
-                launchSingleTop = true
-            }
+        localStore.setActiveSessionId(target)
+        drawerState.close()
+        navController.navigate(Routes.CHAT) {
+            popUpTo(Routes.CHAT) { inclusive = true }
+            launchSingleTop = true
         }
     }
 

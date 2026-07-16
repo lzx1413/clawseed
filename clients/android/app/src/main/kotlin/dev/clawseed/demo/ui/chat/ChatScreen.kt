@@ -50,9 +50,9 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivity
 import androidx.compose.ui.res.stringResource
 import dev.clawseed.demo.R
-import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -85,7 +85,8 @@ fun ChatScreen(
     autoSendMessage: String? = null,
     onAutoMessageSent: () -> Unit = {},
 ) {
-    val viewModel: ChatViewModel = viewModel(LocalContext.current as ComponentActivity)
+    val activity = checkNotNull(LocalActivity.current as? ComponentActivity)
+    val viewModel: ChatViewModel = viewModel(activity)
     val uiState by viewModel.uiState.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
     var input by remember { mutableStateOf("") }

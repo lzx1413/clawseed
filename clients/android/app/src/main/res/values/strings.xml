@@ -190,6 +190,48 @@
     <string name="settings_save_memory_config">Save Memory Config</string>
     <string name="settings_embedding_local_hint">First use will download ~80MB model file, then cached locally</string>
 
+    <string name="settings_user_model">User Modeling</string>
+    <string name="settings_user_model_enabled">Enabled</string>
+    <string name="settings_user_model_disabled">Disabled</string>
+    <string name="settings_user_model_auto_infer">Learn from conversations</string>
+    <string name="settings_user_model_auto_infer_desc">Save durable preferences after successful replies. Sensitive data is filtered and manual profile choices are preserved.</string>
+    <string name="settings_save_user_model">Save User Modeling</string>
+    <string name="settings_user_model_config_unavailable">User modeling settings are unavailable until the Gateway config loads successfully.</string>
+    <string name="settings_manage_user_profile">Manage Profile</string>
+
+    <!-- ========== User Profile ========== -->
+    <string name="profile_title">Your Profile</string>
+    <string name="profile_add">Add Item</string>
+    <string name="profile_edit">Edit Item</string>
+    <string name="profile_reject">Reject</string>
+    <string name="profile_clear">Clear Profile</string>
+    <string name="profile_key">Key</string>
+    <string name="profile_value">Value</string>
+    <string name="profile_category">Category</string>
+    <string name="profile_key_invalid">Use up to 256 ASCII letters, numbers, periods, underscores, or hyphens.</string>
+    <string name="profile_confidence">%1$d%% confidence</string>
+    <string name="profile_updated">Updated %1$s</string>
+    <string name="profile_empty_title">No profile items</string>
+    <string name="profile_empty_desc">Stable preferences and details saved for your assistant will appear here.</string>
+    <string name="profile_delete_title">Delete profile item?</string>
+    <string name="profile_delete_desc">Delete “%1$s” permanently?</string>
+    <string name="profile_reject_title">Reject inferred item?</string>
+    <string name="profile_reject_desc">“%1$s” will stop influencing responses and will not be learned again automatically.</string>
+    <string name="profile_clear_title">Clear your profile?</string>
+    <string name="profile_clear_desc">All explicit, inferred, and rejected profile items will be deleted permanently.</string>
+    <string name="profile_category_identity">Identity</string>
+    <string name="profile_category_preference">Preferences</string>
+    <string name="profile_category_expertise">Expertise</string>
+    <string name="profile_category_goal">Goals</string>
+    <string name="profile_category_constraint">Constraints</string>
+    <string name="profile_category_accessibility">Accessibility</string>
+    <string name="profile_source_explicit">Explicit</string>
+    <string name="profile_source_inferred">Inferred</string>
+    <string name="profile_source_imported">Imported</string>
+    <string name="profile_status_active">Active</string>
+    <string name="profile_status_superseded">Superseded</string>
+    <string name="profile_status_rejected">Rejected</string>
+
     <string name="settings_soul_load_failed">Soul content load failed, please refresh</string>
     <string name="settings_soul_not_customized">Not customized</string>
     <string name="settings_soul_load_error">Load failed</string>

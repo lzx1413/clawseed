@@ -190,6 +190,48 @@
     <string name="settings_save_memory_config">保存记忆配置</string>
     <string name="settings_embedding_local_hint">首次使用将下载约 80MB 模型文件，之后缓存到本地</string>
 
+    <string name="settings_user_model">用户建模</string>
+    <string name="settings_user_model_enabled">已启用</string>
+    <string name="settings_user_model_disabled">已关闭</string>
+    <string name="settings_user_model_auto_infer">从对话中学习</string>
+    <string name="settings_user_model_auto_infer_desc">在成功回复后保存稳定偏好；系统会过滤敏感数据，并保留用户手动设置的画像。</string>
+    <string name="settings_save_user_model">保存用户建模设置</string>
+    <string name="settings_user_model_config_unavailable">Gateway 配置成功加载后才能修改用户建模设置。</string>
+    <string name="settings_manage_user_profile">管理用户画像</string>
+
+    <!-- ========== User Profile ========== -->
+    <string name="profile_title">我的用户画像</string>
+    <string name="profile_add">新增条目</string>
+    <string name="profile_edit">编辑条目</string>
+    <string name="profile_reject">拒绝</string>
+    <string name="profile_clear">清空画像</string>
+    <string name="profile_key">键名</string>
+    <string name="profile_value">值</string>
+    <string name="profile_category">类别</string>
+    <string name="profile_key_invalid">最多 256 个 ASCII 字母、数字、点、下划线或连字符。</string>
+    <string name="profile_confidence">置信度 %1$d%%</string>
+    <string name="profile_updated">更新于 %1$s</string>
+    <string name="profile_empty_title">暂无画像条目</string>
+    <string name="profile_empty_desc">为助手保存的稳定偏好和个人信息会显示在这里。</string>
+    <string name="profile_delete_title">删除画像条目？</string>
+    <string name="profile_delete_desc">永久删除“%1$s”？</string>
+    <string name="profile_reject_title">拒绝推断条目？</string>
+    <string name="profile_reject_desc">“%1$s”将不再影响回复，系统也不会再次自动学习该条目。</string>
+    <string name="profile_clear_title">清空用户画像？</string>
+    <string name="profile_clear_desc">所有手动、推断和已拒绝的画像条目都将被永久删除。</string>
+    <string name="profile_category_identity">身份</string>
+    <string name="profile_category_preference">偏好</string>
+    <string name="profile_category_expertise">专业能力</string>
+    <string name="profile_category_goal">目标</string>
+    <string name="profile_category_constraint">约束</string>
+    <string name="profile_category_accessibility">无障碍</string>
+    <string name="profile_source_explicit">手动设置</string>
+    <string name="profile_source_inferred">自动推断</string>
+    <string name="profile_source_imported">已导入</string>
+    <string name="profile_status_active">生效中</string>
+    <string name="profile_status_superseded">已替代</string>
+    <string name="profile_status_rejected">已拒绝</string>
+
     <string name="settings_soul_load_failed">Soul 内容加载失败，请刷新重试</string>
     <string name="settings_soul_not_customized">未自定义</string>
     <string name="settings_soul_load_error">加载失败</string>
