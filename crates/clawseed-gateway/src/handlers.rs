@@ -239,8 +239,23 @@ pub(crate) async fn run_gateway_chat_with_tools(
         )
         .await?;
         if let Some(sid) = session_id {
+            if let Some(ref backend) = _state.session_backend {
+                let session_key = format!("gw_{sid}");
+                if !backend.bind_session_user(&session_key, crate::LOCAL_OWNER_USER_ID)? {
+                    anyhow::bail!("session belongs to another user");
+                }
+            }
             agent.set_memory_session_id(Some(sid.to_string()));
         }
+        agent.set_user_profile_store(
+            _state.user_profile_store.clone(),
+            config.user_model.max_prompt_items,
+        );
+        agent.set_user_context(Some(clawseed_api::user_profile::UserContext {
+            user_id: crate::LOCAL_OWNER_USER_ID.to_string(),
+            session_id: session_id.map(str::to_string),
+            persona_id: persona.map(str::to_string),
+        }));
         agent.turn(message).await
     }
 }
@@ -697,6 +712,7 @@ mod tests {
             model: "test-model".into(),
             temperature: 0.0,
             mem: Arc::new(MockMemory),
+            user_profile_store: None,
             auto_save: false,
             webhook_secret_hash: None,
             pairing: Arc::new(PairingGuard::new(false, &[])),
@@ -753,6 +769,7 @@ mod tests {
             model: "test-model".into(),
             temperature: 0.0,
             mem: Arc::new(MockMemory),
+            user_profile_store: None,
             auto_save: false,
             webhook_secret_hash: None,
             pairing: Arc::new(PairingGuard::new(false, &[])),
@@ -1006,6 +1023,7 @@ mod tests {
             model: "test-model".into(),
             temperature: 0.0,
             mem: memory,
+            user_profile_store: None,
             auto_save: false,
             webhook_secret_hash: None,
             pairing: Arc::new(PairingGuard::new(false, &[])),
@@ -1078,6 +1096,7 @@ mod tests {
             model: "test-model".into(),
             temperature: 0.0,
             mem: memory,
+            user_profile_store: None,
             auto_save: true,
             webhook_secret_hash: None,
             pairing: Arc::new(PairingGuard::new(false, &[])),
@@ -1162,6 +1181,7 @@ mod tests {
             model: "test-model".into(),
             temperature: 0.0,
             mem: memory,
+            user_profile_store: None,
             auto_save: false,
             webhook_secret_hash: Some(Arc::from(hash_webhook_secret(&secret))),
             pairing: Arc::new(PairingGuard::new(false, &[])),
@@ -1217,6 +1237,7 @@ mod tests {
             model: "test-model".into(),
             temperature: 0.0,
             mem: memory,
+            user_profile_store: None,
             auto_save: false,
             webhook_secret_hash: Some(Arc::from(hash_webhook_secret(&valid_secret))),
             pairing: Arc::new(PairingGuard::new(false, &[])),
@@ -1277,6 +1298,7 @@ mod tests {
             model: "test-model".into(),
             temperature: 0.0,
             mem: memory,
+            user_profile_store: None,
             auto_save: false,
             webhook_secret_hash: Some(Arc::from(hash_webhook_secret(&secret))),
             pairing: Arc::new(PairingGuard::new(false, &[])),

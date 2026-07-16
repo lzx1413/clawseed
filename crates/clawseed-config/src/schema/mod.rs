@@ -130,6 +130,10 @@ pub struct Config {
     #[serde(default)]
     pub memory: MemoryConfig,
 
+    /// Structured user modeling configuration.
+    #[serde(default)]
+    pub user_model: UserModelConfig,
+
     #[serde(default)]
     pub autonomy: AutonomyConfig,
 
@@ -327,6 +331,30 @@ pub struct MemoryConfig {
     /// Overrides `min_retention_floor` if set. None = use global floor.
     #[serde(default)]
     pub conversation_retention_floor: Option<usize>,
+}
+
+/// Structured user profile configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserModelConfig {
+    /// Enable profile persistence and prompt injection.
+    #[serde(default = "default_true_val")]
+    pub enabled: bool,
+    /// Maximum active profile items rendered into the system prompt.
+    #[serde(default = "default_user_model_prompt_items")]
+    pub max_prompt_items: usize,
+}
+
+fn default_user_model_prompt_items() -> usize {
+    20
+}
+
+impl Default for UserModelConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_prompt_items: default_user_model_prompt_items(),
+        }
+    }
 }
 
 fn default_memory_backend() -> String {
@@ -786,6 +814,7 @@ impl Default for Config {
             secrets: SecretsConfig::default(),
             runtime: RuntimeConfig::default(),
             memory: MemoryConfig::default(),
+            user_model: UserModelConfig::default(),
             autonomy: AutonomyConfig::default(),
             cron: CronConfig::default(),
             scheduler: SchedulerConfig::default(),
@@ -1034,6 +1063,18 @@ mod tests {
     #[test]
     fn default_port_is_42617() {
         assert_eq!(GatewayConfig::default().port, 42617);
+    }
+
+    #[test]
+    fn user_model_config_defaults_and_overrides() {
+        let defaults: Config = toml::from_str("").unwrap();
+        assert!(defaults.user_model.enabled);
+        assert_eq!(defaults.user_model.max_prompt_items, 20);
+
+        let configured: Config =
+            toml::from_str("[user_model]\nenabled = false\nmax_prompt_items = 7\n").unwrap();
+        assert!(!configured.user_model.enabled);
+        assert_eq!(configured.user_model.max_prompt_items, 7);
     }
 
     #[test]

@@ -35,6 +35,7 @@ pub struct Config {
     pub secrets: SecretsConfig,
     pub runtime: RuntimeConfig,
     pub memory: MemoryConfig,
+    pub user_model: UserModelConfig,
     pub autonomy: AutonomyConfig,
     pub cron: CronConfig,
     pub scheduler: SchedulerConfig,
@@ -262,6 +263,10 @@ port = 3000
 backend = "sqlite"
 auto_save = true
 
+[user_model]
+enabled = true
+max_prompt_items = 20
+
 [autonomy]
 level = "supervised"
 allowed_commands = ["ls", "cat", "grep", "find", "git"]
@@ -289,6 +294,10 @@ type = "security_policy"
 type = "audit_log"
 config = { level = "info" }
 ```
+
+`user_model.enabled` 控制结构化本地用户画像。画像数据存储在
+`<workspace>/user_model/profiles.db`；`max_prompt_items` 限制注入 Agent 系统提示中
+处于 active 且未过期的条目数量。
 
 ### IdentityConfig — 身份配置
 

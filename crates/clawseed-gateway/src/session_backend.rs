@@ -19,6 +19,8 @@ pub struct SessionMetadata {
     pub name: Option<String>,
     /// Persona bound to this session, if any.
     pub persona: Option<String>,
+    /// Authenticated user that owns this session.
+    pub user_id: Option<String>,
 }
 
 /// Session state information.
@@ -95,4 +97,14 @@ pub trait SessionBackend: Send + Sync + 'static {
 
     /// Read the persona bound to a session, if any.
     fn get_session_persona(&self, session_key: &str) -> anyhow::Result<Option<String>>;
+
+    /// Bind a session to a user. Returns false if another user already owns it.
+    fn bind_session_user(&self, _session_key: &str, _user_id: &str) -> anyhow::Result<bool> {
+        Ok(true)
+    }
+
+    /// Read the authenticated user bound to a session.
+    fn get_session_user(&self, _session_key: &str) -> anyhow::Result<Option<String>> {
+        Ok(None)
+    }
 }

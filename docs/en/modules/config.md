@@ -35,6 +35,7 @@ pub struct Config {
     pub secrets: SecretsConfig,
     pub runtime: RuntimeConfig,
     pub memory: MemoryConfig,
+    pub user_model: UserModelConfig,
     pub autonomy: AutonomyConfig,
     pub cron: CronConfig,
     pub scheduler: SchedulerConfig,
@@ -262,6 +263,10 @@ port = 3000
 backend = "sqlite"
 auto_save = true
 
+[user_model]
+enabled = true
+max_prompt_items = 20
+
 [autonomy]
 level = "supervised"
 allowed_commands = ["ls", "cat", "grep", "find", "git"]
@@ -289,6 +294,10 @@ type = "security_policy"
 type = "audit_log"
 config = { level = "info" }
 ```
+
+`user_model.enabled` controls structured local-user profiles. Profile data is stored in
+`<workspace>/user_model/profiles.db`; `max_prompt_items` limits the active, unexpired
+items injected into the Agent system prompt.
 
 ### IdentityConfig — Identity Configuration
 

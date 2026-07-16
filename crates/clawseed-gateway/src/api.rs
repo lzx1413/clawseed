@@ -8,6 +8,7 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Json},
 };
+use clawseed_api::user_profile::{ProfileCategory, ProfileItemInput, ProfileSource, ProfileStatus};
 use serde::Deserialize;
 
 const MASKED_SECRET: &str = "***MASKED***";
@@ -61,6 +62,23 @@ pub struct MemoryStoreBody {
     pub key: String,
     pub content: String,
     pub category: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct UserProfileCreateBody {
+    pub key: String,
+    pub value: serde_json::Value,
+    pub category: ProfileCategory,
+    pub expires_at: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct UserProfilePatchBody {
+    pub value: Option<serde_json::Value>,
+    pub category: Option<ProfileCategory>,
+    pub expires_at: Option<String>,
+    #[serde(default)]
+    pub clear_expires_at: bool,
 }
 
 #[derive(Deserialize)]
@@ -1317,6 +1335,170 @@ pub async fn handle_api_memory_delete(
     }
 }
 
+fn profile_store_disabled_response() -> axum::response::Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({"error": "User modeling is disabled"})),
+    )
+        .into_response()
+}
+
+/// GET /api/users/me/profile — load the authenticated local user's profile.
+pub async fn handle_api_user_profile_get(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(error) = require_auth(&state, &headers) {
+        return error.into_response();
+    }
+    let Some(store) = state.user_profile_store.as_ref() else {
+        return profile_store_disabled_response();
+    };
+    match store.load(super::LOCAL_OWNER_USER_ID).await {
+        Ok(profile) => Json(profile).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Profile load failed: {error}")})),
+        )
+            .into_response(),
+    }
+}
+
+/// POST /api/users/me/profile — create or replace a profile key.
+pub async fn handle_api_user_profile_upsert(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<UserProfileCreateBody>,
+) -> impl IntoResponse {
+    if let Err(error) = require_auth(&state, &headers) {
+        return error.into_response();
+    }
+    let Some(store) = state.user_profile_store.as_ref() else {
+        return profile_store_disabled_response();
+    };
+    let input = ProfileItemInput {
+        key: body.key,
+        value: body.value,
+        category: body.category,
+        confidence: 1.0,
+        source: ProfileSource::Explicit,
+        status: ProfileStatus::Active,
+        evidence_session_id: None,
+        expires_at: body.expires_at,
+    };
+    match store.upsert(super::LOCAL_OWNER_USER_ID, input).await {
+        Ok(item) => (StatusCode::CREATED, Json(item)).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+/// PATCH /api/users/me/profile/items/{id} — update a profile item.
+pub async fn handle_api_user_profile_patch(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<UserProfilePatchBody>,
+) -> impl IntoResponse {
+    if let Err(error) = require_auth(&state, &headers) {
+        return error.into_response();
+    }
+    let Some(store) = state.user_profile_store.as_ref() else {
+        return profile_store_disabled_response();
+    };
+    let profile = match store.load(super::LOCAL_OWNER_USER_ID).await {
+        Ok(profile) => profile,
+        Err(error) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Profile load failed: {error}")})),
+            )
+                .into_response();
+        }
+    };
+    let Some(current) = profile.items.into_iter().find(|item| item.id == id) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "Profile item not found"})),
+        )
+            .into_response();
+    };
+    let expires_at = if body.clear_expires_at {
+        None
+    } else {
+        body.expires_at.or(current.expires_at)
+    };
+    let input = ProfileItemInput {
+        key: current.key,
+        value: body.value.unwrap_or(current.value),
+        category: body.category.unwrap_or(current.category),
+        confidence: 1.0,
+        source: ProfileSource::Explicit,
+        status: ProfileStatus::Active,
+        evidence_session_id: current.evidence_session_id,
+        expires_at,
+    };
+    match store.upsert(super::LOCAL_OWNER_USER_ID, input).await {
+        Ok(item) => Json(item).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+/// DELETE /api/users/me/profile/items/{id} — delete one profile item.
+pub async fn handle_api_user_profile_delete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    if let Err(error) = require_auth(&state, &headers) {
+        return error.into_response();
+    }
+    let Some(store) = state.user_profile_store.as_ref() else {
+        return profile_store_disabled_response();
+    };
+    match store.delete_item(super::LOCAL_OWNER_USER_ID, &id).await {
+        Ok(true) => Json(serde_json::json!({"deleted": true})).into_response(),
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "Profile item not found"})),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Profile delete failed: {error}")})),
+        )
+            .into_response(),
+    }
+}
+
+/// DELETE /api/users/me/profile — remove all profile items for the user.
+pub async fn handle_api_user_profile_clear(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(error) = require_auth(&state, &headers) {
+        return error.into_response();
+    }
+    let Some(store) = state.user_profile_store.as_ref() else {
+        return profile_store_disabled_response();
+    };
+    match store.clear(super::LOCAL_OWNER_USER_ID).await {
+        Ok(deleted) => Json(serde_json::json!({"deleted": deleted})).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Profile clear failed: {error}")})),
+        )
+            .into_response(),
+    }
+}
+
 /// GET /api/cost — cost summary
 pub async fn handle_api_cost(
     State(state): State<AppState>,
@@ -2295,6 +2477,7 @@ mod tests {
             model: "test-model".into(),
             temperature: 0.0,
             mem: Arc::new(MockMemory),
+            user_profile_store: None,
             auto_save: false,
             webhook_secret_hash: None,
             pairing: Arc::new(PairingGuard::new(false, &[])),
@@ -2329,6 +2512,70 @@ mod tests {
             .expect("response body")
             .to_bytes();
         serde_json::from_slice(&body).expect("valid json response")
+    }
+
+    #[tokio::test]
+    async fn user_profile_api_crud_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = test_state(clawseed_config::schema::Config::default());
+        state.user_profile_store = Some(Arc::new(
+            clawseed_memory::user_profile::SqliteUserProfileStore::new(dir.path()).unwrap(),
+        ));
+        let headers = HeaderMap::new();
+
+        let create = handle_api_user_profile_upsert(
+            State(state.clone()),
+            headers.clone(),
+            Json(UserProfileCreateBody {
+                key: "response.style".into(),
+                value: serde_json::json!("concise"),
+                category: ProfileCategory::Preference,
+                expires_at: None,
+            }),
+        )
+        .await
+        .into_response();
+        assert_eq!(create.status(), StatusCode::CREATED);
+        let created = response_json(create).await;
+        let item_id = created["id"].as_str().unwrap().to_string();
+
+        let get = handle_api_user_profile_get(State(state.clone()), headers.clone())
+            .await
+            .into_response();
+        let profile = response_json(get).await;
+        assert_eq!(profile["user_id"], super::super::LOCAL_OWNER_USER_ID);
+        assert_eq!(profile["version"], 1);
+        assert_eq!(profile["items"][0]["value"], "concise");
+
+        let patch = handle_api_user_profile_patch(
+            State(state.clone()),
+            headers.clone(),
+            Path(item_id.clone()),
+            Json(UserProfilePatchBody {
+                value: Some(serde_json::json!("balanced")),
+                category: None,
+                expires_at: None,
+                clear_expires_at: false,
+            }),
+        )
+        .await
+        .into_response();
+        assert_eq!(patch.status(), StatusCode::OK);
+        assert_eq!(response_json(patch).await["value"], "balanced");
+
+        let delete =
+            handle_api_user_profile_delete(State(state.clone()), headers.clone(), Path(item_id))
+                .await
+                .into_response();
+        assert_eq!(delete.status(), StatusCode::OK);
+        assert_eq!(response_json(delete).await["deleted"], true);
+
+        let get = handle_api_user_profile_get(State(state), headers)
+            .await
+            .into_response();
+        let profile = response_json(get).await;
+        assert_eq!(profile["version"], 3);
+        assert_eq!(profile["items"].as_array().unwrap().len(), 0);
     }
 
     fn config_with_temp_save_path() -> (clawseed_config::schema::Config, tempfile::TempDir) {

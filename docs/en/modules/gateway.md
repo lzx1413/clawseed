@@ -85,6 +85,16 @@ Each WebSocket connection creates its own Agent via `Agent::from_config_with_sha
 - `POST /api/memory` — Store new memory
 - `DELETE /api/memory/{key}` — Delete memory
 
+#### User Profile
+- `GET /api/users/me/profile` — Get the authenticated local user's profile
+- `POST /api/users/me/profile` — Create or replace a profile key
+- `PATCH /api/users/me/profile/items/{id}` — Update a profile item
+- `DELETE /api/users/me/profile/items/{id}` — Delete a profile item
+- `DELETE /api/users/me/profile` — Delete all profile items
+
+The current local gateway maps authenticated connections to the stable `owner`
+principal. Session ownership is bound on first use and cannot be reassigned.
+
 #### Cron Jobs
 - `GET /api/cron` — List jobs
 - `POST /api/cron` — Add job

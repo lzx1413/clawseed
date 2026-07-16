@@ -17,6 +17,7 @@ use clawseed_api::provider::{
 };
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_registry::{ToolRegistry, ToolSource};
+use clawseed_api::user_profile::{ProfileItem, ProfileStatus, UserContext, UserProfileStore};
 use clawseed_config::schema::{AutonomyLevel, IdentityConfig};
 use std::sync::Arc;
 use std::time::Instant;
@@ -75,6 +76,11 @@ pub struct Agent {
     auto_recall_limit: usize,
     stable_memory_in_system_prompt: bool,
     memory_session_id: Option<String>,
+    user_profile_store: Option<Arc<dyn UserProfileStore>>,
+    user_context: Option<UserContext>,
+    user_profile_version: Option<u64>,
+    user_profile_items: Vec<ProfileItem>,
+    max_profile_prompt_items: usize,
     history: Vec<ConversationMessage>,
     hook_runner: Option<Arc<HookRunner>>,
     skill_index: Vec<crate::skills::SkillIndexEntry>,
@@ -145,6 +151,9 @@ pub struct AgentBuilder {
     auto_recall_limit: Option<usize>,
     stable_memory_in_system_prompt: Option<bool>,
     memory_session_id: Option<String>,
+    user_profile_store: Option<Arc<dyn UserProfileStore>>,
+    user_context: Option<UserContext>,
+    max_profile_prompt_items: Option<usize>,
     allowed_tools: Option<Vec<String>>,
     denied_tools: Option<Vec<String>>,
     mcp_tool_filters: Option<std::collections::HashMap<String, Vec<String>>>,
@@ -183,6 +192,9 @@ impl AgentBuilder {
             auto_recall_limit: None,
             stable_memory_in_system_prompt: None,
             memory_session_id: None,
+            user_profile_store: None,
+            user_context: None,
+            max_profile_prompt_items: None,
             allowed_tools: None,
             denied_tools: None,
             mcp_tool_filters: None,
@@ -291,6 +303,21 @@ impl AgentBuilder {
         self
     }
 
+    pub fn user_profile_store(mut self, store: Arc<dyn UserProfileStore>) -> Self {
+        self.user_profile_store = Some(store);
+        self
+    }
+
+    pub fn user_context(mut self, context: UserContext) -> Self {
+        self.user_context = Some(context);
+        self
+    }
+
+    pub fn max_profile_prompt_items(mut self, limit: usize) -> Self {
+        self.max_profile_prompt_items = Some(limit);
+        self
+    }
+
     pub fn allowed_tools(mut self, allowed_tools: Option<Vec<String>>) -> Self {
         self.allowed_tools = allowed_tools;
         self
@@ -386,6 +413,11 @@ impl AgentBuilder {
             auto_recall_limit: self.auto_recall_limit.unwrap_or(3),
             stable_memory_in_system_prompt: self.stable_memory_in_system_prompt.unwrap_or(true),
             memory_session_id: self.memory_session_id,
+            user_profile_store: self.user_profile_store,
+            user_context: self.user_context,
+            user_profile_version: None,
+            user_profile_items: Vec::new(),
+            max_profile_prompt_items: self.max_profile_prompt_items.unwrap_or(20),
             history: Vec::new(),
             hook_runner: self.hook_runner,
             skill_index: self.skill_index.unwrap_or_default(),
@@ -675,6 +707,23 @@ impl Agent {
         self.memory_session_id = session_id;
     }
 
+    pub fn set_user_profile_store(
+        &mut self,
+        store: Option<Arc<dyn UserProfileStore>>,
+        max_prompt_items: usize,
+    ) {
+        self.user_profile_store = store;
+        self.max_profile_prompt_items = max_prompt_items;
+        self.user_profile_version = None;
+        self.user_profile_items.clear();
+    }
+
+    pub fn set_user_context(&mut self, context: Option<UserContext>) {
+        self.user_context = context;
+        self.user_profile_version = None;
+        self.user_profile_items.clear();
+    }
+
     /// Activate a skill by name.
     pub fn activate_skill(&mut self, name: &str) -> Result<String> {
         // Check if skill system is enabled
@@ -798,6 +847,42 @@ impl Agent {
         self.injected_core_state = new_state;
         self.stable_core_memories = entries;
         true
+    }
+
+    /// Refresh the profile for the authenticated user.
+    async fn refresh_user_profile(&mut self) -> bool {
+        let (Some(store), Some(context)) = (&self.user_profile_store, &self.user_context) else {
+            let changed = !self.user_profile_items.is_empty();
+            self.user_profile_items.clear();
+            self.user_profile_version = None;
+            return changed;
+        };
+        let profile = match store.load(&context.user_id).await {
+            Ok(profile) => profile,
+            Err(error) => {
+                tracing::debug!(user_id = %context.user_id, %error, "user profile refresh skipped");
+                return false;
+            }
+        };
+        let now = chrono::Utc::now();
+        let items: Vec<ProfileItem> = profile
+            .items
+            .into_iter()
+            .filter(|item| item.status == ProfileStatus::Active)
+            .filter(|item| {
+                item.expires_at.as_deref().is_none_or(|expires_at| {
+                    chrono::DateTime::parse_from_rfc3339(expires_at)
+                        .map(|expiry| expiry > now)
+                        .unwrap_or(false)
+                })
+            })
+            .take(self.max_profile_prompt_items)
+            .collect();
+        let changed =
+            self.user_profile_version != Some(profile.version) || self.user_profile_items != items;
+        self.user_profile_items = items;
+        self.user_profile_version = Some(profile.version);
+        changed
     }
 
     /// Rebuild the system prompt and replace the system message in history.
@@ -1062,6 +1147,7 @@ impl Agent {
             autonomy_level: self.autonomy_level,
             skill_index: &self.skill_index,
             active_skills: &self.active_skills,
+            user_profile_items: &self.user_profile_items,
             stable_core_memories: &self.stable_core_memories,
             system_prompt_override: self.config.system_prompt.as_deref(),
         };
@@ -1082,6 +1168,7 @@ impl Agent {
             autonomy_level: self.autonomy_level,
             skill_index: &self.skill_index,
             active_skills: &self.active_skills,
+            user_profile_items: &self.user_profile_items,
             stable_core_memories: &self.stable_core_memories,
             system_prompt_override: self.config.system_prompt.as_deref(),
         };
@@ -1334,6 +1421,9 @@ impl Agent {
 
     /// Execute a single agent turn: send message, dispatch tools, return final text.
     pub async fn turn(&mut self, user_message: &str) -> Result<String> {
+        if self.refresh_user_profile().await && !self.history.is_empty() {
+            self.rebuild_system_prompt()?;
+        }
         // Refresh stable Core memories before preparing the turn.
         // This ensures the first system prompt includes stable memories,
         // and subsequent turns rebuild if Core memories changed.
@@ -1487,6 +1577,9 @@ impl Agent {
         cancel_token: Option<tokio_util::sync::CancellationToken>,
         debug: bool,
     ) -> Result<String> {
+        if self.refresh_user_profile().await && !self.history.is_empty() {
+            self.rebuild_system_prompt()?;
+        }
         // Refresh stable Core memories before preparing the turn.
         if self.refresh_stable_core_memories().await && !self.history.is_empty() {
             self.rebuild_system_prompt()?;

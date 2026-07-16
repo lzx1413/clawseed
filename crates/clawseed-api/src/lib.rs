@@ -24,6 +24,7 @@ pub mod schema;
 pub mod tool;
 pub mod tool_context;
 pub mod tool_registry;
+pub mod user_profile;
 
 tokio::task_local! {
     /// Override for tool choice mode, set by the agent loop.

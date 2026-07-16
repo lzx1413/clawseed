@@ -42,6 +42,7 @@ use clawseed_agent::tools;
 use clawseed_agent::tools::CanvasStore;
 use clawseed_api::memory_traits::Memory;
 use clawseed_api::provider::Provider;
+use clawseed_api::user_profile::UserProfileStore;
 
 use clawseed_config::schema::Config;
 use parking_lot::Mutex;
@@ -75,6 +76,8 @@ impl NodeRegistry {
 pub const MAX_BODY_SIZE: usize = 65_536;
 /// Default request timeout (30s) — prevents slow-loris attacks.
 pub const REQUEST_TIMEOUT_SECS: u64 = 30;
+/// Stable principal for the current local, single-user gateway mode.
+pub const LOCAL_OWNER_USER_ID: &str = "owner";
 
 /// Read gateway request timeout from `CLAWSEED_GATEWAY_TIMEOUT_SECS` env var
 /// at runtime, falling back to [`REQUEST_TIMEOUT_SECS`].
@@ -101,6 +104,7 @@ pub struct AppState {
     pub model: String,
     pub temperature: f64,
     pub mem: Arc<dyn Memory>,
+    pub user_profile_store: Option<Arc<dyn UserProfileStore>>,
     pub auto_save: bool,
     /// SHA-256 hash of `X-Webhook-Secret` (hex-encoded), never plaintext.
     pub webhook_secret_hash: Option<Arc<str>>,
@@ -201,6 +205,17 @@ pub async fn run_gateway(
         fallback.and_then(|e| e.api_key.as_deref()),
     )
     .await?;
+    let user_profile_store: Option<Arc<dyn UserProfileStore>> = if config.user_model.enabled {
+        match clawseed_memory::user_profile::SqliteUserProfileStore::new(&config.workspace_dir) {
+            Ok(store) => Some(Arc::new(store)),
+            Err(error) => {
+                tracing::warn!(%error, "User modeling disabled: profile store initialization failed");
+                None
+            }
+        }
+    } else {
+        None
+    };
     let runtime: Box<dyn std::any::Any> = Box::new(());
     let security = Arc::new(SecurityPolicy::from_config(
         &config.autonomy,
@@ -519,6 +534,7 @@ pub async fn run_gateway(
         model,
         temperature,
         mem,
+        user_profile_store,
         auto_save: config.memory.auto_save,
         webhook_secret_hash,
         pairing,
@@ -603,6 +619,16 @@ pub async fn run_gateway(
         .route("/api/memory", get(api::handle_api_memory_list))
         .route("/api/memory", post(api::handle_api_memory_store))
         .route("/api/memory/{key}", delete(api::handle_api_memory_delete))
+        .route(
+            "/api/users/me/profile",
+            get(api::handle_api_user_profile_get)
+                .post(api::handle_api_user_profile_upsert)
+                .delete(api::handle_api_user_profile_clear),
+        )
+        .route(
+            "/api/users/me/profile/items/{id}",
+            delete(api::handle_api_user_profile_delete).patch(api::handle_api_user_profile_patch),
+        )
         .route("/api/cost", get(api::handle_api_cost))
         .route("/api/cli-tools", get(api::handle_api_cli_tools))
         .route("/api/channels", get(api::handle_api_channels))

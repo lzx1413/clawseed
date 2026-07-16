@@ -17,6 +17,7 @@ pub mod retrieval;
 pub mod snapshot;
 pub mod sqlite;
 pub mod traits;
+pub mod user_profile;
 pub mod vector;
 
 #[cfg(feature = "local-embedding")]

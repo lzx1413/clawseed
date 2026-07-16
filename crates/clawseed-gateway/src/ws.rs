@@ -214,6 +214,33 @@ async fn handle_socket(
     let session_id = session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let session_key = format!("{GW_SESSION_PREFIX}{session_id}");
 
+    if let Some(ref backend) = state.session_backend {
+        match backend.bind_session_user(&session_key, crate::LOCAL_OWNER_USER_ID) {
+            Ok(true) => {}
+            Ok(false) => {
+                let error = serde_json::json!({
+                    "type": "error",
+                    "code": "SESSION_OWNER_MISMATCH",
+                    "message": "Session belongs to another user"
+                });
+                let _ = sender.send(Message::Text(error.to_string().into())).await;
+                return;
+            }
+            Err(error) => {
+                tracing::error!(%error, %session_id, "Failed to bind session owner");
+                let response = serde_json::json!({
+                    "type": "error",
+                    "code": "SESSION_BIND_FAILED",
+                    "message": "Failed to establish session ownership"
+                });
+                let _ = sender
+                    .send(Message::Text(response.to_string().into()))
+                    .await;
+                return;
+            }
+        }
+    }
+
     // Build a persistent Agent for this connection so history is maintained across turns.
     let config = state.config.lock().clone();
 
@@ -295,6 +322,15 @@ async fn handle_socket(
         }
     };
     agent.set_memory_session_id(Some(session_id.clone()));
+    agent.set_user_profile_store(
+        state.user_profile_store.clone(),
+        agent_config.user_model.max_prompt_items,
+    );
+    agent.set_user_context(Some(clawseed_api::user_profile::UserContext {
+        user_id: crate::LOCAL_OWNER_USER_ID.to_string(),
+        session_id: Some(session_id.clone()),
+        persona_id: effective_persona.clone(),
+    }));
 
     // ── Remote tool registry for Android integration PoC (Phase 2) ────────────────
     // Creates an mpsc channel for RemoteTool to send execution requests.

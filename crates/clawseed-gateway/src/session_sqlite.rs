@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use clawseed_api::provider::ChatMessage;
 use parking_lot::Mutex;
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use super::session_backend::{SessionBackend, SessionMetadata, SessionState};
 
@@ -32,6 +32,7 @@ impl SqliteSessionBackend {
                 state           TEXT NOT NULL DEFAULT 'idle',
                 turn_id         TEXT,
                 turn_started_at TEXT,
+                user_id         TEXT,
                 created_at      TEXT NOT NULL,
                 last_activity   TEXT NOT NULL
             );
@@ -54,6 +55,23 @@ impl SqliteSessionBackend {
             );",
         )?;
 
+        let has_user_id = {
+            let mut stmt = conn.prepare("PRAGMA table_info(sessions)")?;
+            stmt.query_map([], |row| row.get::<_, String>(1))?
+                .filter_map(Result::ok)
+                .any(|name| name == "user_id")
+        };
+        if !has_user_id {
+            conn.execute_batch(
+                "ALTER TABLE sessions ADD COLUMN user_id TEXT;
+                 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);",
+            )?;
+        } else {
+            conn.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);",
+            )?;
+        }
+
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
@@ -71,7 +89,7 @@ impl SqliteSessionBackend {
     fn query_sessions_metadata(conn: &Connection, where_clause: &str) -> Vec<SessionMetadata> {
         let sql = format!(
             "SELECT s.session_key, s.created_at, s.last_activity, s.name,
-                    sp.persona,
+                    sp.persona, s.user_id,
                     (SELECT COUNT(*) FROM messages m WHERE m.session_key = s.session_key) as msg_count
              FROM sessions s
              LEFT JOIN session_personas sp ON sp.session_key = s.session_key
@@ -89,13 +107,14 @@ impl SqliteSessionBackend {
                 row.get::<_, String>(2)?,
                 row.get::<_, Option<String>>(3)?,
                 row.get::<_, Option<String>>(4)?,
-                row.get::<_, usize>(5)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, usize>(6)?,
             ))
         }) else {
             return Vec::new();
         };
         rows.filter_map(|r| {
-            let (key, created_str, activity_str, name, persona, msg_count) = r.ok()?;
+            let (key, created_str, activity_str, name, persona, user_id, msg_count) = r.ok()?;
             let created_at = DateTime::parse_from_rfc3339(&created_str)
                 .ok()?
                 .with_timezone(&Utc);
@@ -109,6 +128,7 @@ impl SqliteSessionBackend {
                 message_count: msg_count,
                 name,
                 persona,
+                user_id,
             })
         })
         .collect()
@@ -343,6 +363,36 @@ impl SessionBackend for SqliteSessionBackend {
             .and_then(|r| r.get::<_, Option<String>>(0).ok())
             .flatten())
     }
+
+    fn bind_session_user(&self, session_key: &str, user_id: &str) -> anyhow::Result<bool> {
+        let conn = self.conn.lock();
+        self.ensure_session(&conn, session_key)?;
+        let existing = conn.query_row(
+            "SELECT user_id FROM sessions WHERE session_key = ?1",
+            params![session_key],
+            |row| row.get::<_, Option<String>>(0),
+        )?;
+        if existing.as_deref().is_some_and(|owner| owner != user_id) {
+            return Ok(false);
+        }
+        conn.execute(
+            "UPDATE sessions SET user_id = ?1 WHERE session_key = ?2 AND user_id IS NULL",
+            params![user_id, session_key],
+        )?;
+        Ok(true)
+    }
+
+    fn get_session_user(&self, session_key: &str) -> anyhow::Result<Option<String>> {
+        let conn = self.conn.lock();
+        Ok(conn
+            .query_row(
+                "SELECT user_id FROM sessions WHERE session_key = ?1",
+                params![session_key],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten())
+    }
 }
 
 #[cfg(test)]
@@ -404,6 +454,21 @@ mod tests {
         assert_eq!(
             b.get_session_persona("gw_b").unwrap().as_deref(),
             Some("analyst")
+        );
+    }
+
+    #[test]
+    fn session_user_binding_is_immutable() {
+        let backend = fresh_backend();
+        assert!(backend.bind_session_user("gw_a", "owner").unwrap());
+        assert_eq!(
+            backend.get_session_user("gw_a").unwrap().as_deref(),
+            Some("owner")
+        );
+        assert!(!backend.bind_session_user("gw_a", "other").unwrap());
+        assert_eq!(
+            backend.get_session_user("gw_a").unwrap().as_deref(),
+            Some("owner")
         );
     }
 }
