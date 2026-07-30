@@ -84,6 +84,7 @@ impl Tool for SkillCreateTool {
                 success: false,
                 output: "Skill name is required.".into(),
                 error: Some("missing name".into()),
+                presentation: None,
             });
         }
 
@@ -96,6 +97,7 @@ impl Tool for SkillCreateTool {
                     name
                 ),
                 error: Some("invalid name".into()),
+                presentation: None,
             });
         }
 
@@ -104,6 +106,7 @@ impl Tool for SkillCreateTool {
                 success: false,
                 output: "Skill description is required.".into(),
                 error: Some("missing description".into()),
+                presentation: None,
             });
         }
 
@@ -112,6 +115,7 @@ impl Tool for SkillCreateTool {
                 success: false,
                 output: "Skill content (SKILL.md body) is required.".into(),
                 error: Some("missing content".into()),
+                presentation: None,
             });
         }
 
@@ -187,6 +191,7 @@ impl Tool for SkillCreateTool {
             success: true,
             output,
             error: None,
+            presentation: None,
         })
     }
 }

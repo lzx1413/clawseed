@@ -85,6 +85,7 @@ impl Tool for MemoryStoreTool {
                     error: Some(format!(
                         "Invalid scope '{other}'. Expected 'private' or 'public'."
                     )),
+                    presentation: None,
                 });
             }
         };
@@ -102,11 +103,13 @@ impl Tool for MemoryStoreTool {
                     format!("Stored private memory: {key}")
                 },
                 error: None,
+                presentation: None,
             }),
             Err(e) => Ok(ToolResult {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Failed to store memory: {e}")),
+                presentation: None,
             }),
         }
     }

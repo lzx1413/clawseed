@@ -423,4 +423,10 @@
     <string name="chat_tool_alarm_missing_params">缺少必需参数：hour 和 minute</string>
     <string name="chat_tool_alarm_invalid_range">参数范围无效：hour 应为 0-23，minute 应为 0-59</string>
     <string name="chat_auth_hint">请在 %1$s App 中完成授权</string>
+    <string name="data_media_cache">媒体缓存</string>
+    <string name="data_media_cache_desc">已缓存的 Agent 图片预览。音频和视频默认流式播放。</string>
+    <string name="data_media_cache_size">已使用 %1$s</string>
+    <string name="data_clear_media_cache">清除媒体缓存</string>
+    <string name="data_media_cache_cleared">媒体缓存已清除</string>
+    <string name="data_media_cache_clear_failed">无法清除媒体缓存</string>
 </resources>

@@ -33,6 +33,7 @@ impl Tool for CronListTool {
             success: true,
             output: "No cron jobs found".to_string(),
             error: None,
+            presentation: None,
         })
     }
 }

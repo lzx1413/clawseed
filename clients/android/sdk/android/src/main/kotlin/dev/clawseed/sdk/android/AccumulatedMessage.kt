@@ -1,5 +1,7 @@
 package dev.clawseed.sdk.android
 
+import dev.clawseed.sdk.core.model.ToolPresentation
+
 /** Message models emitted by [ChatAccumulator]. */
 sealed class AccumulatedMessage {
     abstract val id: String
@@ -35,6 +37,7 @@ sealed class AccumulatedMessage {
         val callId: String,
         val name: String,
         val output: String,
+        val presentation: ToolPresentation? = null,
     ) : AccumulatedMessage()
 
     /** Reasoning or thinking block captured before flush. */

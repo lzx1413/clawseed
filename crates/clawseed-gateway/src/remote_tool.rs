@@ -170,6 +170,7 @@ impl Tool for RemoteTool {
                 success: false,
                 output: String::new(),
                 error: Some("WebSocket handler not available".into()),
+                presentation: None,
             });
         }
 
@@ -180,11 +181,13 @@ impl Tool for RemoteTool {
                 success: result.success,
                 output: result.output,
                 error: result.error,
+                presentation: None,
             }),
             Ok(Err(_)) => Ok(ToolResult {
                 success: false,
                 output: String::new(),
                 error: Some("Response channel closed".into()),
+                presentation: None,
             }),
             Err(_) => Ok(ToolResult {
                 success: false,
@@ -192,6 +195,7 @@ impl Tool for RemoteTool {
                 error: Some(format!(
                     "Timeout waiting for remote tool response after {REMOTE_TOOL_TIMEOUT_SECS}s"
                 )),
+                presentation: None,
             }),
         }
     }

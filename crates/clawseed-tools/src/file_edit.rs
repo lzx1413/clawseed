@@ -77,6 +77,7 @@ impl Tool for FileEditTool {
                     success: false,
                     output: String::new(),
                     error: Some(e),
+                    presentation: None,
                 });
             }
         };
@@ -88,6 +89,7 @@ impl Tool for FileEditTool {
                     success: false,
                     output: String::new(),
                     error: Some(format!("Failed to read file: {e}")),
+                    presentation: None,
                 });
             }
         };
@@ -98,6 +100,7 @@ impl Tool for FileEditTool {
                 success: false,
                 output: String::new(),
                 error: Some("old_string not found in file".into()),
+                presentation: None,
             });
         }
         if count > 1 {
@@ -105,6 +108,7 @@ impl Tool for FileEditTool {
                 success: false,
                 output: String::new(),
                 error: Some(format!("old_string found {count} times; must be unique")),
+                presentation: None,
             });
         }
 
@@ -115,11 +119,13 @@ impl Tool for FileEditTool {
                 success: true,
                 output: format!("Edited {path}"),
                 error: None,
+                presentation: None,
             }),
             Err(e) => Ok(ToolResult {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Failed to write file: {e}")),
+                presentation: None,
             }),
         }
     }

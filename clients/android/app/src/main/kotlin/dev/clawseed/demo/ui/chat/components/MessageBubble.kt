@@ -1,16 +1,21 @@
 package dev.clawseed.demo.ui.chat.components
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -47,7 +54,19 @@ import androidx.compose.ui.unit.dp
 import dev.clawseed.demo.R
 import dev.clawseed.demo.data.ChatEntry
 import dev.clawseed.demo.data.ToolCallInfo
+import dev.clawseed.demo.ui.chat.rememberRichMediaImageLoader
+import dev.clawseed.sdk.core.model.ContentBlock
+import dev.clawseed.sdk.core.model.MediaReference
+import dev.clawseed.sdk.core.model.ToolPresentation
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import coil3.compose.AsyncImage
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 @Composable
 fun MessageBubble(
@@ -63,6 +82,7 @@ fun MessageBubble(
         is ChatEntry.AssistantMessage -> AssistantBubble(
             content = entry.content,
             isStreaming = entry.isStreaming,
+            presentation = entry.presentation,
             onRegenerate = onRegenerate,
             onSpeak = onSpeak,
             onStop = onStop,
@@ -111,6 +131,7 @@ private fun UserBubble(content: String, modifier: Modifier = Modifier) {
 private fun AssistantBubble(
     content: String,
     isStreaming: Boolean,
+    presentation: dev.clawseed.sdk.core.model.ToolPresentation?,
     onRegenerate: (() -> Unit)?,
     onSpeak: ((String) -> Unit)?,
     onStop: (() -> Unit)?,
@@ -125,6 +146,7 @@ private fun AssistantBubble(
         SelectionContainer {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 MarkdownContent(content = content)
+                presentation?.let { RichContentBlocks(it) }
                 if (isStreaming) {
                     Text(
                         text = "█",
@@ -462,6 +484,309 @@ private fun ToolInvocationsCard(entry: ChatEntry.ToolInvocations, modifier: Modi
                     ToolCallRow(inv)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RichContentBlocks(presentation: ToolPresentation, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        presentation.blocks.forEach { block ->
+            when (block) {
+                is ContentBlock.Markdown -> MarkdownContent(block.text)
+                is ContentBlock.SearchResults -> SearchResultsCard(block)
+                is ContentBlock.Image -> ImageContentCard(block.media, block.alt)
+                is ContentBlock.Audio -> AudioContentCard(block.media, block.title)
+                is ContentBlock.Video -> VideoContentCard(block.media, block.title)
+                is ContentBlock.Link -> LinkContentCard(block)
+                is ContentBlock.Unsupported -> Unit
+            }
+        }
+    }
+}
+
+private fun MediaReference.safeHttpsUrl(): String? = url?.takeIf { it.startsWith("https://") }
+
+@Composable
+private fun ImageContentCard(media: MediaReference, alt: String?, modifier: Modifier = Modifier) {
+    val url = media.safeHttpsUrl()
+    val imageLoader = rememberRichMediaImageLoader()
+    var showPreview by remember(url) { mutableStateOf(false) }
+    val colorScheme = MaterialTheme.colorScheme
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (url == null) {
+            Text(
+                text = "图片资源暂不可用",
+                style = MaterialTheme.typography.bodySmall,
+                color = colorScheme.onSurfaceVariant,
+            )
+        } else {
+            AsyncImage(
+                model = url,
+                imageLoader = imageLoader,
+                contentDescription = alt,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 260.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { showPreview = true },
+            )
+            alt?.takeIf { it.isNotBlank() }?.let { description ->
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+
+    if (showPreview && url != null) {
+        Dialog(onDismissRequest = { showPreview = false }) {
+            Image(
+                painter = coil3.compose.rememberAsyncImagePainter(
+                    model = url,
+                    imageLoader = imageLoader,
+                ),
+                contentDescription = alt,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AudioContentCard(media: MediaReference, title: String?, modifier: Modifier = Modifier) {
+    val url = media.safeHttpsUrl()
+    val context = LocalContext.current
+    if (url == null) {
+        Text(
+            text = "音频资源暂不可用",
+            modifier = modifier.padding(top = 8.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+    val player = remember(url) {
+        ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(url)) }
+    }
+    var isPlaying by remember(player) { mutableStateOf(false) }
+    var positionMs by remember(player) { mutableStateOf(0L) }
+    var durationMs by remember(player) { mutableStateOf(media.durationMs ?: 0L) }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onPlaybackStateChanged(state: Int) {
+                if (player.duration > 0) durationMs = player.duration
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            player.release()
+        }
+    }
+    LaunchedEffect(player, isPlaying) {
+        while (isActive && isPlaying) {
+            positionMs = player.currentPosition.coerceAtLeast(0L)
+            delay(500)
+        }
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        TextButton(onClick = {
+            if (isPlaying) player.pause() else {
+                player.prepare()
+                player.play()
+            }
+        }) { Text(if (isPlaying) "暂停" else "播放") }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title ?: "音频", style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (durationMs > 0) {
+                Text(
+                    text = "${formatDuration(positionMs)} / ${formatDuration(durationMs)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VideoContentCard(media: MediaReference, title: String?, modifier: Modifier = Modifier) {
+    val url = media.safeHttpsUrl()
+    val context = LocalContext.current
+    if (url == null) {
+        Text(
+            text = "视频资源暂不可用",
+            modifier = modifier.padding(top = 8.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+    val player = remember(url) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(url))
+            prepare()
+            playWhenReady = false
+        }
+    }
+    DisposableEffect(player) { onDispose { player.release() } }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        title?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        AndroidView(
+            factory = { viewContext ->
+                PlayerView(viewContext).apply {
+                    this.player = player
+                    useController = true
+                }
+            },
+            update = { it.player = player },
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(8.dp)),
+        )
+    }
+}
+
+@Composable
+private fun LinkContentCard(block: ContentBlock.Link, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val safeUrl = block.url.takeIf { it.startsWith("https://") }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .then(if (safeUrl != null) Modifier.clickable {
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(safeUrl))) }
+            } else Modifier)
+            .padding(12.dp),
+    ) {
+        Text(block.title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+        block.source?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
+        block.description?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    }
+}
+
+private fun formatDuration(durationMs: Long): String {
+    val totalSeconds = (durationMs / 1000).coerceAtLeast(0)
+    return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
+}
+
+/** Compact renderer for structured search tool results. */
+@Composable
+private fun SearchResultsCard(block: ContentBlock.SearchResults, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val colorScheme = MaterialTheme.colorScheme
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = "搜索结果 · ${block.query}",
+            style = MaterialTheme.typography.titleSmall,
+            color = colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        block.items.take(3).forEach { item ->
+            val isSafeExternalUrl = item.url.startsWith("https://")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .then(
+                        if (isSafeExternalUrl) {
+                            Modifier.clickable {
+                                runCatching {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
+                                }
+                            }
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colorScheme.primary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    item.source?.let { source ->
+                        Text(
+                            text = source,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        )
+                    }
+                    item.description?.let { description ->
+                        Text(
+                            text = description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colorScheme.onSurfaceVariant,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+        if (block.items.size > 3) {
+            Text(
+                text = "另有 ${block.items.size - 3} 条结果，可展开工具详情查看。",
+                style = MaterialTheme.typography.labelSmall,
+                color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            )
         }
     }
 }

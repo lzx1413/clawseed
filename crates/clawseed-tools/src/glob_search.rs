@@ -87,6 +87,7 @@ impl Tool for GlobSearchTool {
                 success: false,
                 output: String::new(),
                 error: Some("Absolute paths are not allowed. Use a relative glob pattern.".into()),
+                presentation: None,
             });
         }
 
@@ -96,6 +97,7 @@ impl Tool for GlobSearchTool {
                 success: false,
                 output: String::new(),
                 error: Some("Path traversal ('..') is not allowed in glob patterns.".into()),
+                presentation: None,
             });
         }
 
@@ -112,6 +114,7 @@ impl Tool for GlobSearchTool {
                     success: false,
                     output: String::new(),
                     error: Some(format!("Invalid glob pattern: {e}")),
+                    presentation: None,
                 });
             }
         };
@@ -170,6 +173,7 @@ impl Tool for GlobSearchTool {
                     success: true,
                     output,
                     error: None,
+                    presentation: None,
                 });
             }
         };
@@ -230,6 +234,7 @@ impl Tool for GlobSearchTool {
             success: true,
             output,
             error: None,
+            presentation: None,
         })
     }
 }

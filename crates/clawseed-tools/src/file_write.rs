@@ -68,6 +68,7 @@ impl Tool for FileWriteTool {
                     success: false,
                     output: String::new(),
                     error: Some(e),
+                    presentation: None,
                 });
             }
         };
@@ -82,11 +83,13 @@ impl Tool for FileWriteTool {
                 success: true,
                 output: format!("Wrote {path}"),
                 error: None,
+                presentation: None,
             }),
             Err(e) => Ok(ToolResult {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Failed to write file: {e}")),
+                presentation: None,
             }),
         }
     }

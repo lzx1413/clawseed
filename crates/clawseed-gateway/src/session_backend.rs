@@ -3,6 +3,16 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use clawseed_api::provider::ChatMessage;
+use clawseed_api::tool::ToolPresentation;
+
+/// A persisted transcript entry. Presentation data is intentionally separate
+/// from `ChatMessage`: it is rendered by clients but never sent back to an LLM.
+#[derive(Debug, Clone)]
+pub struct PersistedMessage {
+    pub role: String,
+    pub content: String,
+    pub presentation: Option<ToolPresentation>,
+}
 
 /// Metadata for a persisted session.
 #[derive(Debug, Clone)]
@@ -40,6 +50,19 @@ pub trait SessionBackend: Send + Sync + 'static {
     /// Load all messages for a session.
     fn load(&self, session_key: &str) -> Vec<ChatMessage>;
 
+    /// Load transcript entries for client history, including optional UI-only
+    /// rich-content data. Backends that do not support it remain compatible.
+    fn load_with_presentations(&self, session_key: &str) -> Vec<PersistedMessage> {
+        self.load(session_key)
+            .into_iter()
+            .map(|message| PersistedMessage {
+                role: message.role,
+                content: message.content,
+                presentation: None,
+            })
+            .collect()
+    }
+
     /// Append a message to a session.
     fn append(&self, session_key: &str, message: &ChatMessage) -> anyhow::Result<()>;
 
@@ -50,6 +73,16 @@ pub trait SessionBackend: Send + Sync + 'static {
     /// — timestamp prefix + memory context — so session resume preserves prompt
     /// cache fidelity).
     fn update_last_user(&self, session_key: &str, message: &ChatMessage) -> anyhow::Result<()>;
+
+    /// Store client-facing rich content for the last assistant message in a
+    /// completed turn. The plain assistant content remains the LLM history.
+    fn set_last_assistant_presentation(
+        &self,
+        _session_key: &str,
+        _presentation: &ToolPresentation,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
 
     /// List all session keys.
     fn list_sessions(&self) -> Vec<String>;

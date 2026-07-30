@@ -975,6 +975,9 @@ async fn process_chat_message(
     // update_last periodically (every 500ms) so partial content survives.
     // The final response overwrites this via update_last on completion.
     let mut accumulated_text = String::new();
+    // Presentations are emitted live with each tool result, then consolidated
+    // onto the final assistant message for durable history restoration.
+    let mut turn_presentations = Vec::new();
     let mut partial_saved = false;
     let mut last_partial_save = std::time::Instant::now();
     let partial_save_interval = std::time::Duration::from_millis(500);
@@ -1014,8 +1017,17 @@ async fn process_chat_message(
                         TurnEvent::ToolCall { id, name, args } => {
                             serde_json::json!({ "type": "tool_call", "id": id, "name": name, "args": args })
                         }
-                        TurnEvent::ToolResult { id, name, output } => {
-                            serde_json::json!({ "type": "tool_result", "id": id, "name": name, "output": output })
+                        TurnEvent::ToolResult { id, name, output, presentation } => {
+                            if let Some(ref presentation) = presentation {
+                                turn_presentations.push(presentation.clone());
+                            }
+                            serde_json::json!({
+                                "type": "tool_result",
+                                "id": id,
+                                "name": name,
+                                "output": output,
+                                "presentation": presentation,
+                            })
                         }
                         TurnEvent::DebugPrompt { messages_json, estimated_tokens } => {
                             serde_json::json!({ "type": "debug_prompt", "messages": messages_json, "estimated_tokens": estimated_tokens })
@@ -1146,6 +1158,19 @@ async fn process_chat_message(
                     let _ = backend.update_last(session_key, &assistant_msg);
                 } else {
                     let _ = backend.append(session_key, &assistant_msg);
+                }
+
+                if !turn_presentations.is_empty() {
+                    let blocks = turn_presentations
+                        .iter()
+                        .flat_map(|presentation| presentation.blocks.clone())
+                        .collect();
+                    let presentation = clawseed_api::tool::ToolPresentation::new(blocks);
+                    if let Err(error) =
+                        backend.set_last_assistant_presentation(session_key, &presentation)
+                    {
+                        tracing::warn!(%error, "failed to persist assistant rich-content presentation");
+                    }
                 }
 
                 // Update the persisted user message with enriched content

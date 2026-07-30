@@ -34,6 +34,7 @@ impl Tool for CronUpdateTool {
             success: true,
             output: format!("Cron job {} updated", id),
             error: None,
+            presentation: None,
         })
     }
 }

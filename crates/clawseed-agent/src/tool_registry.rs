@@ -335,6 +335,7 @@ mod tests {
                 success: true,
                 output: "ok".into(),
                 error: None,
+                presentation: None,
             })
         }
     }

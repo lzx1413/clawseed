@@ -55,6 +55,7 @@ impl Tool for ShellTool {
                         error: Some(format!(
                             "Command timed out after {SHELL_TIMEOUT_SECS} seconds"
                         )),
+                        presentation: None,
                     });
                 }
             };
@@ -65,12 +66,14 @@ impl Tool for ShellTool {
                     success: true,
                     output: stdout,
                     error: None,
+                    presentation: None,
                 }
             } else {
                 ToolResult {
                     success: false,
                     output: stdout,
                     error: Some(stderr),
+                    presentation: None,
                 }
             }
         };
@@ -79,6 +82,7 @@ impl Tool for ShellTool {
             success: false,
             output: String::new(),
             error: Some("Shell not supported on this platform".to_string()),
+            presentation: None,
         };
         Ok(output)
     }

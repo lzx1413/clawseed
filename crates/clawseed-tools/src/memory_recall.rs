@@ -88,6 +88,7 @@ impl Tool for MemoryRecallTool {
                 error: Some(
                     "Provide at least 'query' (keywords) or time range ('since'/'until')".into(),
                 ),
+                presentation: None,
             });
         }
 
@@ -101,6 +102,7 @@ impl Tool for MemoryRecallTool {
                 error: Some(format!(
                     "Invalid 'since' date: {s}. Expected RFC 3339 format, e.g. 2025-03-01T00:00:00Z"
                 )),
+                presentation: None,
             });
         }
         if let Some(u) = until
@@ -112,6 +114,7 @@ impl Tool for MemoryRecallTool {
                 error: Some(format!(
                     "Invalid 'until' date: {u}. Expected RFC 3339 format, e.g. 2025-03-01T00:00:00Z"
                 )),
+                presentation: None,
             });
         }
         if let (Some(s), Some(u)) = (since, until)
@@ -125,6 +128,7 @@ impl Tool for MemoryRecallTool {
                 success: false,
                 output: String::new(),
                 error: Some("'since' must be before 'until'".into()),
+                presentation: None,
             });
         }
 
@@ -164,6 +168,7 @@ impl Tool for MemoryRecallTool {
                     error: Some(format!(
                         "Invalid scope '{other}'. Expected 'visible' or 'public'."
                     )),
+                    presentation: None,
                 });
             }
         };
@@ -185,6 +190,7 @@ impl Tool for MemoryRecallTool {
                         success: true,
                         output: "No memories found.".into(),
                         error: None,
+                        presentation: None,
                     }),
                     Ok(all) => {
                         let shown: Vec<_> = all.iter().take(limit * 2).collect();
@@ -204,12 +210,14 @@ impl Tool for MemoryRecallTool {
                             success: true,
                             output,
                             error: None,
+                            presentation: None,
                         })
                     }
                     Err(_) => Ok(ToolResult {
                         success: true,
                         output: "No memories found.".into(),
                         error: None,
+                        presentation: None,
                     }),
                 }
             }
@@ -229,12 +237,14 @@ impl Tool for MemoryRecallTool {
                     success: true,
                     output,
                     error: None,
+                    presentation: None,
                 })
             }
             Err(e) => Ok(ToolResult {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Memory recall failed: {e}")),
+                presentation: None,
             }),
         }
     }

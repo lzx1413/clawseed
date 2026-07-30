@@ -97,12 +97,14 @@ impl Tool for MemoryExportTool {
                     success: true,
                     output: json_output,
                     error: None,
+                    presentation: None,
                 })
             }
             Err(e) => Ok(ToolResult {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Export failed: {e}")),
+                presentation: None,
             }),
         }
     }

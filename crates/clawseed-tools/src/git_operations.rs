@@ -160,6 +160,7 @@ impl GitOperationsTool {
             success: true,
             output: serde_json::to_string_pretty(&result).unwrap_or_default(),
             error: None,
+            presentation: None,
         })
     }
 
@@ -243,6 +244,7 @@ impl GitOperationsTool {
             success: true,
             output: serde_json::to_string_pretty(&result).unwrap_or_default(),
             error: None,
+            presentation: None,
         })
     }
 
@@ -287,6 +289,7 @@ impl GitOperationsTool {
             output: serde_json::to_string_pretty(&json!({ "commits": commits }))
                 .unwrap_or_default(),
             error: None,
+            presentation: None,
         })
     }
 
@@ -326,6 +329,7 @@ impl GitOperationsTool {
             }))
             .unwrap_or_default(),
             error: None,
+            presentation: None,
         })
     }
 
@@ -371,11 +375,13 @@ impl GitOperationsTool {
                 success: true,
                 output: format!("Committed: {message}"),
                 error: None,
+                presentation: None,
             }),
             Err(e) => Ok(ToolResult {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Commit failed: {e}")),
+                presentation: None,
             }),
         }
     }
@@ -402,11 +408,13 @@ impl GitOperationsTool {
                 success: true,
                 output: format!("Staged: {paths}"),
                 error: None,
+                presentation: None,
             }),
             Err(e) => Ok(ToolResult {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Add failed: {e}")),
+                presentation: None,
             }),
         }
     }
@@ -444,11 +452,13 @@ impl GitOperationsTool {
                 success: true,
                 output: format!("Switched to branch: {branch_name}"),
                 error: None,
+                presentation: None,
             }),
             Err(e) => Ok(ToolResult {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Checkout failed: {e}")),
+                presentation: None,
             }),
         }
     }
@@ -488,11 +498,13 @@ impl GitOperationsTool {
                 success: true,
                 output: out,
                 error: None,
+                presentation: None,
             }),
             Err(e) => Ok(ToolResult {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Stash {action} failed: {e}")),
+                presentation: None,
             }),
         }
     }
@@ -571,6 +583,7 @@ impl Tool for GitOperationsTool {
                     success: false,
                     output: String::new(),
                     error: Some("Missing 'operation' parameter".into()),
+                    presentation: None,
                 });
             }
         };
@@ -583,6 +596,7 @@ impl Tool for GitOperationsTool {
                     success: false,
                     output: String::new(),
                     error: Some(format!("Invalid path: {e}")),
+                    presentation: None,
                 });
             }
         };
@@ -596,6 +610,7 @@ impl Tool for GitOperationsTool {
                 success: false,
                 output: String::new(),
                 error: Some("Not in a git repository".into()),
+                presentation: None,
             });
         }
 
@@ -615,6 +630,7 @@ impl Tool for GitOperationsTool {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Unknown operation: {operation}")),
+                presentation: None,
             }),
         };
 
@@ -624,6 +640,7 @@ impl Tool for GitOperationsTool {
                 success: false,
                 output: String::new(),
                 error: Some(e.to_string()),
+                presentation: None,
             }),
         }
     }

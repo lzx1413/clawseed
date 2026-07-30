@@ -34,6 +34,7 @@ impl Tool for CronRemoveTool {
             success: true,
             output: format!("Cron job {} removed", id),
             error: None,
+            presentation: None,
         })
     }
 }

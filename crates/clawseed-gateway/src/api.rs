@@ -2225,10 +2225,16 @@ pub async fn handle_api_session_messages(
     };
 
     let session_key = format!("gw_{id}");
-    let msgs = backend.load(&session_key);
+    let msgs = backend.load_with_presentations(&session_key);
     let messages: Vec<serde_json::Value> = msgs
         .into_iter()
-        .map(|m| serde_json::json!({ "role": m.role, "content": m.content }))
+        .map(|m| {
+            serde_json::json!({
+                "role": m.role,
+                "content": m.content,
+                "presentation": m.presentation,
+            })
+        })
         .collect();
 
     Json(serde_json::json!({

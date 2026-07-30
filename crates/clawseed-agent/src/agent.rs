@@ -40,11 +40,25 @@ pub enum TurnEvent {
         id: String,
         name: String,
         output: String,
+        presentation: Option<clawseed_api::tool::ToolPresentation>,
     },
     DebugPrompt {
         messages_json: String,
         estimated_tokens: usize,
     },
+}
+
+fn validated_presentation(
+    tool_name: &str,
+    presentation: Option<clawseed_api::tool::ToolPresentation>,
+) -> Option<clawseed_api::tool::ToolPresentation> {
+    presentation.and_then(|presentation| match presentation.validate() {
+        Ok(()) => Some(presentation),
+        Err(error) => {
+            tracing::warn!(tool = tool_name, %error, "discarding invalid tool presentation");
+            None
+        }
+    })
 }
 
 /// A tool call resolved through before-hooks, ready for execution.
@@ -1234,6 +1248,7 @@ impl Agent {
                         output: format!("Cancelled by hook: {reason}"),
                         success: false,
                         tool_call_id: call.tool_call_id.clone(),
+                        presentation: None,
                     };
                 }
             }
@@ -1241,32 +1256,38 @@ impl Agent {
 
         // Execute the tool
         let ctx = self.build_tool_context();
-        let (result, success) = if let Some(tool) = self.tool_registry.get_tool(&tool_name) {
-            match tool.execute(tool_args.clone(), &ctx).await {
-                Ok(r) => {
-                    self.observer.record_event(&ObserverEvent::ToolCall {
-                        tool: tool_name.clone(),
-                        duration: start.elapsed(),
-                        success: r.success,
-                    });
-                    if r.success {
-                        (r.output, true)
-                    } else {
-                        (format!("Error: {}", r.error.unwrap_or(r.output)), false)
+        let (result, success, presentation) =
+            if let Some(tool) = self.tool_registry.get_tool(&tool_name) {
+                match tool.execute(tool_args.clone(), &ctx).await {
+                    Ok(r) => {
+                        self.observer.record_event(&ObserverEvent::ToolCall {
+                            tool: tool_name.clone(),
+                            duration: start.elapsed(),
+                            success: r.success,
+                        });
+                        let presentation = validated_presentation(&tool_name, r.presentation);
+                        if r.success {
+                            (r.output, true, presentation)
+                        } else {
+                            (
+                                format!("Error: {}", r.error.unwrap_or(r.output)),
+                                false,
+                                presentation,
+                            )
+                        }
+                    }
+                    Err(e) => {
+                        self.observer.record_event(&ObserverEvent::ToolCall {
+                            tool: tool_name.clone(),
+                            duration: start.elapsed(),
+                            success: false,
+                        });
+                        (format!("Error executing {}: {e}", tool_name), false, None)
                     }
                 }
-                Err(e) => {
-                    self.observer.record_event(&ObserverEvent::ToolCall {
-                        tool: tool_name.clone(),
-                        duration: start.elapsed(),
-                        success: false,
-                    });
-                    (format!("Error executing {}: {e}", tool_name), false)
-                }
-            }
-        } else {
-            (format!("Unknown tool: {}", tool_name), false)
-        };
+            } else {
+                (format!("Unknown tool: {}", tool_name), false, None)
+            };
 
         let duration = start.elapsed();
 
@@ -1276,6 +1297,7 @@ impl Agent {
                 success,
                 output: result.clone(),
                 error: None,
+                presentation: presentation.clone(),
             };
             hooks
                 .fire_after_tool_call(&tool_name, &tool_result_obj, duration)
@@ -1287,6 +1309,7 @@ impl Agent {
             output: result,
             success,
             tool_call_id: call.tool_call_id.clone(),
+            presentation,
         }
     }
 
@@ -1358,37 +1381,48 @@ impl Agent {
                 output: resolved.output.clone(),
                 success: false,
                 tool_call_id: resolved.tool_call_id.clone(),
+                presentation: None,
             };
         }
 
         let start = Instant::now();
         let ctx = self.build_tool_context();
-        let (result, success) = if let Some(tool) = self.tool_registry.get_tool(&resolved.name) {
-            match tool.execute(resolved.args.clone(), &ctx).await {
-                Ok(r) => {
-                    self.observer.record_event(&ObserverEvent::ToolCall {
-                        tool: resolved.name.clone(),
-                        duration: start.elapsed(),
-                        success: r.success,
-                    });
-                    if r.success {
-                        (r.output, true)
-                    } else {
-                        (format!("Error: {}", r.error.unwrap_or(r.output)), false)
+        let (result, success, presentation) =
+            if let Some(tool) = self.tool_registry.get_tool(&resolved.name) {
+                match tool.execute(resolved.args.clone(), &ctx).await {
+                    Ok(r) => {
+                        self.observer.record_event(&ObserverEvent::ToolCall {
+                            tool: resolved.name.clone(),
+                            duration: start.elapsed(),
+                            success: r.success,
+                        });
+                        let presentation = validated_presentation(&resolved.name, r.presentation);
+                        if r.success {
+                            (r.output, true, presentation)
+                        } else {
+                            (
+                                format!("Error: {}", r.error.unwrap_or(r.output)),
+                                false,
+                                presentation,
+                            )
+                        }
+                    }
+                    Err(e) => {
+                        self.observer.record_event(&ObserverEvent::ToolCall {
+                            tool: resolved.name.clone(),
+                            duration: start.elapsed(),
+                            success: false,
+                        });
+                        (
+                            format!("Error executing {}: {e}", resolved.name),
+                            false,
+                            None,
+                        )
                     }
                 }
-                Err(e) => {
-                    self.observer.record_event(&ObserverEvent::ToolCall {
-                        tool: resolved.name.clone(),
-                        duration: start.elapsed(),
-                        success: false,
-                    });
-                    (format!("Error executing {}: {e}", resolved.name), false)
-                }
-            }
-        } else {
-            (format!("Unknown tool: {}", resolved.name), false)
-        };
+            } else {
+                (format!("Unknown tool: {}", resolved.name), false, None)
+            };
 
         let duration = start.elapsed();
 
@@ -1398,6 +1432,7 @@ impl Agent {
                 success,
                 output: result.clone(),
                 error: None,
+                presentation: presentation.clone(),
             };
             hooks
                 .fire_after_tool_call(&resolved.name, &tool_result_obj, duration)
@@ -1409,6 +1444,7 @@ impl Agent {
             output: result,
             success,
             tool_call_id: resolved.tool_call_id.clone(),
+            presentation,
         }
     }
 
@@ -1760,6 +1796,7 @@ impl Agent {
                                     id: result_id,
                                     name,
                                     output,
+                                    presentation: None,
                                 })
                                 .await;
                         }
@@ -1893,6 +1930,7 @@ impl Agent {
                         id: result_id,
                         name: result.name.clone(),
                         output: result.output.clone(),
+                        presentation: result.presentation.clone(),
                     })
                     .await;
             }
@@ -2010,6 +2048,7 @@ mod tests {
                 success: true,
                 output: "tool-out".into(),
                 error: None,
+                presentation: None,
             })
         }
     }
@@ -2204,6 +2243,7 @@ mod tests {
                     success: true,
                     output: "ok".into(),
                     error: None,
+                    presentation: None,
                 })
             }
         }

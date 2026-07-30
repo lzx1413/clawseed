@@ -70,6 +70,7 @@ impl Tool for LlmTaskTool {
             success: false,
             output: String::new(),
             error: Some("llm_task provider backend not available".to_string()),
+            presentation: None,
         })
     }
 }

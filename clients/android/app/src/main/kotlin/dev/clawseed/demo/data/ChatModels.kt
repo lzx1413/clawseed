@@ -25,6 +25,7 @@ sealed class ChatEntry {
         override val timestamp: Long,
         val content: String,
         val isStreaming: Boolean = false,
+        val presentation: dev.clawseed.sdk.core.model.ToolPresentation? = null,
     ) : ChatEntry()
 
     data class ToolInvocations(

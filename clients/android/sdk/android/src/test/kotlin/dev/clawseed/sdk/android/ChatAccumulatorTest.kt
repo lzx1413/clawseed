@@ -225,7 +225,7 @@ class ChatAccumulatorTest {
         override val tools: ToolRegistry = ToolRegistry()
         override val gateway: GatewayClient = GatewayClient("http://localhost")
 
-        override suspend fun connect(sessionId: String?) = Unit
+        override suspend fun connect(sessionId: String?, persona: String?) = Unit
 
         override suspend fun disconnect() = Unit
 

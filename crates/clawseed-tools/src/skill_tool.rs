@@ -62,6 +62,7 @@ impl Tool for SkillTool {
                 success: false,
                 output: "Skill name is required.".into(),
                 error: Some("missing skill name".into()),
+                presentation: None,
             });
         }
 
@@ -75,16 +76,19 @@ impl Tool for SkillTool {
                 success: true,
                 output: format!("Activating skill '{skill_name}'..."),
                 error: None,
+                presentation: None,
             }),
             "deactivate" => Ok(ToolResult {
                 success: true,
                 output: format!("Deactivating skill '{skill_name}'..."),
                 error: None,
+                presentation: None,
             }),
             _ => Ok(ToolResult {
                 success: false,
                 output: format!("Unknown action '{action}'. Use 'activate' or 'deactivate'."),
                 error: Some(format!("invalid action: {action}")),
+                presentation: None,
             }),
         }
     }

@@ -423,4 +423,10 @@
     <string name="chat_tool_alarm_missing_params">Missing required params: hour and minute</string>
     <string name="chat_tool_alarm_invalid_range">Invalid parameter range: hour should be 0-23, minute should be 0-59</string>
     <string name="chat_auth_hint">Please authorize in %1$s App</string>
+    <string name="data_media_cache">Media cache</string>
+    <string name="data_media_cache_desc">Cached agent image previews. Audio and video stream by default.</string>
+    <string name="data_media_cache_size">Using %1$s</string>
+    <string name="data_clear_media_cache">Clear media cache</string>
+    <string name="data_media_cache_cleared">Media cache cleared</string>
+    <string name="data_media_cache_clear_failed">Could not clear media cache</string>
 </resources>

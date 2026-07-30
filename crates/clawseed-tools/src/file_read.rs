@@ -51,6 +51,7 @@ impl Tool for FileReadTool {
                     success: false,
                     output: String::new(),
                     error: Some(format!("Cannot read path {}: {}", path, e)),
+                    presentation: None,
                 });
             }
         };
@@ -61,6 +62,7 @@ impl Tool for FileReadTool {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Path {} is outside workspace", path)),
+                presentation: None,
             });
         }
 
@@ -74,6 +76,7 @@ impl Tool for FileReadTool {
                     metadata.len(),
                     MAX_FILE_SIZE_BYTES
                 )),
+                presentation: None,
             });
         }
 
@@ -82,6 +85,7 @@ impl Tool for FileReadTool {
             success: true,
             output: content,
             error: None,
+            presentation: None,
         })
     }
 }

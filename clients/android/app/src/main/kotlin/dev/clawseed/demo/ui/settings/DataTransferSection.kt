@@ -40,6 +40,7 @@ import dev.clawseed.demo.datatransfer.ImportResult
 import dev.clawseed.demo.datatransfer.ImportStrategy
 import dev.clawseed.demo.i18n.desc
 import dev.clawseed.demo.i18n.label
+import dev.clawseed.demo.ui.chat.RichMediaCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -67,11 +68,18 @@ fun DataTransferSection() {
     var importResult by remember { mutableStateOf<ImportResult?>(null) }
     var importError by remember { mutableStateOf<String?>(null) }
 
+    // Rich media is deliberately separated from exported conversation data.
+    var mediaCacheBytes by remember { mutableStateOf(RichMediaCache.sizeBytes(context)) }
+    var isClearingMediaCache by remember { mutableStateOf(false) }
+    var mediaCacheStatus by remember { mutableStateOf<String?>(null) }
+
     // Pre-resolve format strings for use inside coroutines (non-Composable context)
     val exportSuccessFormat = stringResource(R.string.data_export_success)
     val exportFailedFormat = stringResource(R.string.data_export_failed)
     val importFailedFormat = stringResource(R.string.data_import_failed)
     val cannotReadFile = stringResource(R.string.data_cannot_read_file)
+    val mediaCacheCleared = stringResource(R.string.data_media_cache_cleared)
+    val mediaCacheClearFailed = stringResource(R.string.data_media_cache_clear_failed)
 
     // SAF launchers
     val exportLauncher = rememberLauncherForActivityResult(
@@ -124,6 +132,46 @@ fun DataTransferSection() {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.data_media_cache), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    stringResource(R.string.data_media_cache_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    stringResource(R.string.data_media_cache_size, formatByteSize(mediaCacheBytes)),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Button(
+                    onClick = {
+                        scope.launch {
+                            isClearingMediaCache = true
+                            mediaCacheStatus = null
+                            val cleared = withContext(Dispatchers.IO) { RichMediaCache.clear(context) }
+                            mediaCacheBytes = withContext(Dispatchers.IO) { RichMediaCache.sizeBytes(context) }
+                            mediaCacheStatus = if (cleared) mediaCacheCleared else mediaCacheClearFailed
+                            isClearingMediaCache = false
+                        }
+                    },
+                    enabled = !isClearingMediaCache,
+                ) {
+                    if (isClearingMediaCache) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(stringResource(R.string.data_clear_media_cache))
+                }
+                mediaCacheStatus?.let { status ->
+                    Text(status, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+
         // Export card
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -331,6 +379,12 @@ fun DataTransferSection() {
             },
         )
     }
+}
+
+private fun formatByteSize(bytes: Long): String = when {
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+    else -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
 }
 
 /** Categories that support choosing an import strategy (not just REPLACE). */

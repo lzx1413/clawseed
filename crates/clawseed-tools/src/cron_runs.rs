@@ -34,6 +34,7 @@ impl Tool for CronRunsTool {
             success: true,
             output: format!("No runs found for cron job {}", id),
             error: None,
+            presentation: None,
         })
     }
 }

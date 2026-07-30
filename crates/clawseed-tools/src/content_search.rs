@@ -113,6 +113,7 @@ impl Tool for ContentSearchTool {
                 success: false,
                 output: String::new(),
                 error: Some("Empty pattern is not allowed.".into()),
+                presentation: None,
             });
         }
 
@@ -130,6 +131,7 @@ impl Tool for ContentSearchTool {
                 error: Some(format!(
                     "Invalid output_mode '{output_mode}'. Allowed values: content, files_with_matches, count."
                 )),
+                presentation: None,
             });
         }
 
@@ -171,6 +173,7 @@ impl Tool for ContentSearchTool {
                 success: false,
                 output: String::new(),
                 error: Some("Path traversal ('..') is not allowed.".into()),
+                presentation: None,
             });
         }
 
@@ -184,6 +187,7 @@ impl Tool for ContentSearchTool {
                     success: false,
                     output: String::new(),
                     error: Some(format!("Cannot resolve path '{search_path}': {e}")),
+                    presentation: None,
                 });
             }
         };
@@ -198,6 +202,7 @@ impl Tool for ContentSearchTool {
                 error: Some(format!(
                     "Resolved path for '{search_path}' is outside the allowed workspace."
                 )),
+                presentation: None,
             });
         }
 
@@ -209,6 +214,7 @@ impl Tool for ContentSearchTool {
                 error: Some(
                     "Multiline matching requires ripgrep (rg), which is not available.".into(),
                 ),
+                presentation: None,
             });
         }
 
@@ -259,6 +265,7 @@ impl Tool for ContentSearchTool {
                     success: false,
                     output: String::new(),
                     error: Some(format!("Failed to execute search command: {e}")),
+                    presentation: None,
                 });
             }
             Err(_) => {
@@ -266,6 +273,7 @@ impl Tool for ContentSearchTool {
                     success: false,
                     output: String::new(),
                     error: Some(format!("Search timed out after {TIMEOUT_SECS} seconds.")),
+                    presentation: None,
                 });
             }
         };
@@ -278,6 +286,7 @@ impl Tool for ContentSearchTool {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Search error: {}", stderr.trim())),
+                presentation: None,
             });
         }
 
@@ -303,6 +312,7 @@ impl Tool for ContentSearchTool {
             success: true,
             output: final_output,
             error: None,
+            presentation: None,
         })
     }
 }

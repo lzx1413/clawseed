@@ -105,6 +105,7 @@ impl Tool for CalculatorTool {
                     success: false,
                     output: String::new(),
                     error: Some("Missing required parameter: function".to_string()),
+                    presentation: None,
                 });
             }
         };
@@ -144,11 +145,13 @@ impl Tool for CalculatorTool {
                 success: true,
                 output,
                 error: None,
+                presentation: None,
             }),
             Err(err) => Ok(ToolResult {
                 success: false,
                 output: String::new(),
                 error: Some(err),
+                presentation: None,
             }),
         }
     }

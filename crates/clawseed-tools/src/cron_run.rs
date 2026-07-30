@@ -34,6 +34,7 @@ impl Tool for CronRunTool {
             success: true,
             output: format!("Cron job {} triggered", id),
             error: None,
+            presentation: None,
         })
     }
 }

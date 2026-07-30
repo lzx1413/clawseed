@@ -220,6 +220,7 @@ impl Tool for HttpRequestTool {
                     success: false,
                     output: String::new(),
                     error: Some(e.to_string()),
+                    presentation: None,
                 });
             }
         };
@@ -231,6 +232,7 @@ impl Tool for HttpRequestTool {
                     success: false,
                     output: String::new(),
                     error: Some(e.to_string()),
+                    presentation: None,
                 });
             }
         };
@@ -281,12 +283,14 @@ impl Tool for HttpRequestTool {
                     } else {
                         None
                     },
+                    presentation: None,
                 })
             }
             Err(e) => Ok(ToolResult {
                 success: false,
                 output: String::new(),
                 error: Some(format!("HTTP request failed: {e}")),
+                presentation: None,
             }),
         }
     }

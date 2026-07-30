@@ -128,6 +128,7 @@ impl Tool for McpToolWrapper {
             success: false,
             output: String::new(),
             error: Some("MCP stub".into()),
+            presentation: None,
         })
     }
 }
@@ -164,6 +165,7 @@ impl Tool for ToolSearchTool {
             success: false,
             output: String::new(),
             error: Some("Tool search stub".into()),
+            presentation: None,
         })
     }
 }

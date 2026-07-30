@@ -90,11 +90,13 @@ impl Tool for ReviewerMemoryStoreTool {
                 success: true,
                 output: format!("Stored council feedback: {key}"),
                 error: None,
+                presentation: None,
             }),
             Err(e) => Ok(ToolResult {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Failed to store council feedback: {e}")),
+                presentation: None,
             }),
         }
     }

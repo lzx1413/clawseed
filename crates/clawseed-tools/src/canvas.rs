@@ -238,6 +238,7 @@ impl Tool for CanvasTool {
                     success: false,
                     output: String::new(),
                     error: Some("Missing required parameter: action".to_string()),
+                    presentation: None,
                 });
             }
         };
@@ -264,6 +265,7 @@ impl Tool for CanvasTool {
                                 "Missing required parameter: content (for render action)"
                                     .to_string(),
                             ),
+                            presentation: None,
                         });
                     }
                 };
@@ -276,6 +278,7 @@ impl Tool for CanvasTool {
                             "Content exceeds maximum size of {} bytes",
                             MAX_CONTENT_SIZE
                         )),
+                        presentation: None,
                     });
                 }
 
@@ -287,6 +290,7 @@ impl Tool for CanvasTool {
                             content_type, canvas_id, frame.frame_id
                         ),
                         error: None,
+                        presentation: None,
                     }),
                     None => Ok(ToolResult {
                         success: false,
@@ -295,6 +299,7 @@ impl Tool for CanvasTool {
                             "Maximum canvas count ({}) reached. Clear unused canvases first.",
                             MAX_CANVAS_COUNT
                         )),
+                        presentation: None,
                     }),
                 }
             }
@@ -305,11 +310,13 @@ impl Tool for CanvasTool {
                     output: serde_json::to_string_pretty(&frame)
                         .unwrap_or_else(|_| frame.content.clone()),
                     error: None,
+                    presentation: None,
                 }),
                 None => Ok(ToolResult {
                     success: true,
                     output: format!("Canvas '{}' is empty", canvas_id),
                     error: None,
+                    presentation: None,
                 }),
             },
 
@@ -323,6 +330,7 @@ impl Tool for CanvasTool {
                         format!("Canvas '{}' was already empty", canvas_id)
                     },
                     error: None,
+                    presentation: None,
                 })
             }
 
@@ -337,6 +345,7 @@ impl Tool for CanvasTool {
                                 "Missing required parameter: expression (for eval action)"
                                     .to_string(),
                             ),
+                            presentation: None,
                         });
                     }
                 };
@@ -350,6 +359,7 @@ impl Tool for CanvasTool {
                             canvas_id, frame.frame_id
                         ),
                         error: None,
+                        presentation: None,
                     }),
                     None => Ok(ToolResult {
                         success: false,
@@ -358,6 +368,7 @@ impl Tool for CanvasTool {
                             "Maximum canvas count ({}) reached. Clear unused canvases first.",
                             MAX_CANVAS_COUNT
                         )),
+                        presentation: None,
                     }),
                 }
             }
@@ -369,6 +380,7 @@ impl Tool for CanvasTool {
                     "Unknown action: '{}'. Valid actions: render, snapshot, clear, eval",
                     other
                 )),
+                presentation: None,
             }),
         }
     }

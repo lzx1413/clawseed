@@ -93,6 +93,7 @@ impl WebFetchTool {
                     success: false,
                     output: String::new(),
                     error: Some(format!("HTTP request failed: {e}")),
+                    presentation: None,
                 };
             }
         };
@@ -107,6 +108,7 @@ impl WebFetchTool {
                     status.as_u16(),
                     status.canonical_reason().unwrap_or("Unknown")
                 )),
+                presentation: None,
             };
         }
 
@@ -133,6 +135,7 @@ impl WebFetchTool {
                     "Unsupported content type: {content_type}. \
                      web_fetch supports text/html, text/plain, text/markdown, and application/json."
                 )),
+                presentation: None,
             };
         };
 
@@ -143,6 +146,7 @@ impl WebFetchTool {
                     success: false,
                     output: String::new(),
                     error: Some(format!("Failed to read response body: {e}")),
+                    presentation: None,
                 };
             }
         };
@@ -159,6 +163,7 @@ impl WebFetchTool {
             success: true,
             output,
             error: None,
+            presentation: None,
         }
     }
 }
@@ -207,6 +212,7 @@ impl Tool for WebFetchTool {
                     success: false,
                     output: String::new(),
                     error: Some(e.to_string()),
+                    presentation: None,
                 });
             }
         };
@@ -257,6 +263,7 @@ impl Tool for WebFetchTool {
                     success: false,
                     output: String::new(),
                     error: Some(format!("Failed to build HTTP client: {e}")),
+                    presentation: None,
                 });
             }
         };

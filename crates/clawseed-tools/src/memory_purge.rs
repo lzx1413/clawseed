@@ -69,6 +69,7 @@ impl Tool for MemoryPurgeTool {
                 error: Some(format!(
                     "Invalid scope '{scope}'. Expected 'visible' or 'public'."
                 )),
+                presentation: None,
             });
         };
         let session_id = args.get("session_id").and_then(|v| v.as_str());
@@ -93,6 +94,7 @@ impl Tool for MemoryPurgeTool {
                         success: false,
                         output: String::new(),
                         error: Some(format!("Failed to purge namespace: {e}")),
+                        presentation: None,
                     });
                 }
             }
@@ -109,6 +111,7 @@ impl Tool for MemoryPurgeTool {
                         success: false,
                         output: String::new(),
                         error: Some(format!("Failed to purge session: {e}")),
+                        presentation: None,
                     });
                 }
             }
@@ -122,6 +125,7 @@ impl Tool for MemoryPurgeTool {
                 output_parts.join("; ")
             },
             error: None,
+            presentation: None,
         })
     }
 }

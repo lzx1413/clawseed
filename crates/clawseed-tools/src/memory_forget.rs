@@ -69,6 +69,7 @@ impl Tool for MemoryForgetTool {
                     success: true,
                     output: format!("No public memory found with key: {key}"),
                     error: None,
+                    presentation: None,
                 });
             }
         } else if scope != "visible" {
@@ -78,6 +79,7 @@ impl Tool for MemoryForgetTool {
                 error: Some(format!(
                     "Invalid scope '{scope}'. Expected 'visible' or 'public'."
                 )),
+                presentation: None,
             });
         }
 
@@ -90,16 +92,19 @@ impl Tool for MemoryForgetTool {
                     format!("Forgot memory: {key}")
                 },
                 error: None,
+                presentation: None,
             }),
             Ok(false) => Ok(ToolResult {
                 success: true,
                 output: format!("No memory found with key: {key}"),
                 error: None,
+                presentation: None,
             }),
             Err(e) => Ok(ToolResult {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Failed to forget memory: {e}")),
+                presentation: None,
             }),
         }
     }

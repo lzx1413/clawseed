@@ -56,6 +56,7 @@ impl BackupTool {
             })
             .to_string(),
             error: None,
+            presentation: None,
         })
     }
 
@@ -121,6 +122,7 @@ impl BackupTool {
             success: true,
             output: serde_json::to_string_pretty(&items)?,
             error: None,
+            presentation: None,
         })
     }
 
@@ -135,6 +137,7 @@ impl BackupTool {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Backup not found: {backup_name}")),
+                presentation: None,
             });
         }
         let manifest_path = backup_dir.join("manifest.json");
@@ -172,6 +175,7 @@ impl BackupTool {
             } else {
                 Some("Integrity check failed".into())
             },
+            presentation: None,
         })
     }
 
@@ -187,6 +191,7 @@ impl BackupTool {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Backup not found: {backup_name}")),
+                presentation: None,
             });
         }
 
@@ -213,6 +218,7 @@ impl BackupTool {
                 })
                 .to_string(),
                 error: None,
+                presentation: None,
             });
         }
 
@@ -229,6 +235,7 @@ impl BackupTool {
             })
             .to_string(),
             error: None,
+            presentation: None,
         })
     }
 }
@@ -278,6 +285,7 @@ impl Tool for BackupTool {
                     success: false,
                     output: String::new(),
                     error: Some("Missing 'command' parameter".into()),
+                    presentation: None,
                 });
             }
         };
@@ -307,6 +315,7 @@ impl Tool for BackupTool {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Unknown command: {other}")),
+                presentation: None,
             }),
         }
     }

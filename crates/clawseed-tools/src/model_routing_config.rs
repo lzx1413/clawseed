@@ -67,6 +67,7 @@ impl Tool for ModelRoutingConfigTool {
             error: Some(format!(
                 "model_routing_config '{action}' is not yet available in this build"
             )),
+            presentation: None,
         })
     }
 }

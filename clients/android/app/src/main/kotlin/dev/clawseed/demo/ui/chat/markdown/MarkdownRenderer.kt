@@ -5,12 +5,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -18,13 +20,20 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import dev.clawseed.demo.ui.chat.rememberRichMediaImageLoader
 
 /**
  * Render a parsed [MarkdownDocument] as a Compose layout. Each block becomes one child of the
@@ -94,21 +103,97 @@ private fun HeadingBlock(block: Heading) {
 
 @Composable
 private fun ParagraphBlock(block: Paragraph) {
-    if (block.inlines.size == 1 && block.inlines[0] is Image) {
-        // Image-only paragraph: show alt text as fallback (no Coil dependency)
-        val img = block.inlines[0] as Image
+    if (block.inlines.none { it is Image }) {
+        InlineContent(
+            inlines = block.inlines,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(vertical = 2.dp),
+        )
+        return
+    }
+
+    val segments = mutableListOf<Any>()
+    var textRun = mutableListOf<InlineNode>()
+    fun flushTextRun() {
+        if (textRun.hasVisibleContent()) {
+            segments.add(textRun.toList())
+        }
+        textRun = mutableListOf()
+    }
+
+    for (inline in block.inlines) {
+        if (inline is Image) {
+            flushTextRun()
+            segments.add(inline)
+        } else {
+            textRun.add(inline)
+        }
+    }
+    flushTextRun()
+
+    for (segment in segments) {
+        when (segment) {
+            is Image -> MarkdownImageBlock(segment)
+            is List<*> -> InlineContent(
+                inlines = segment.filterIsInstance<InlineNode>(),
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(vertical = 2.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MarkdownImageBlock(image: Image) {
+    val src = image.src.takeIf { it.startsWith("https://") }
+    if (src == null) {
         Text(
-            text = img.alt,
+            text = image.alt,
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         )
         return
     }
-    InlineContent(
-        inlines = block.inlines,
-        style = MaterialTheme.typography.bodyLarge,
-        modifier = Modifier.padding(vertical = 2.dp),
+    var failed by remember(src) { mutableStateOf(false) }
+
+    if (failed) {
+        Text(
+            text = image.alt.ifBlank { src },
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        )
+        Text(
+            text = src,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+        )
+        return
+    }
+
+    AsyncImage(
+        model = src,
+        imageLoader = rememberRichMediaImageLoader(),
+        contentDescription = image.alt.takeIf { it.isNotBlank() },
+        contentScale = ContentScale.Crop,
+        onError = { failed = true },
+        onSuccess = { failed = false },
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 120.dp, max = 260.dp)
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(8.dp)),
     )
+}
+
+private fun List<InlineNode>.hasVisibleContent(): Boolean {
+    return any { inline ->
+        when (inline) {
+            is Text -> inline.value.isNotBlank()
+            LineBreak -> false
+            else -> true
+        }
+    }
 }
 
 @Composable

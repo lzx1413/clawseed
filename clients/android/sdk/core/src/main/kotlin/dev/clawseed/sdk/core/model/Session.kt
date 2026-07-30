@@ -48,6 +48,8 @@ data class SessionMessage(
      *  is a JsonObject with text/tool_calls/reasoning_content; for "tool_results"
      *  it is a JsonArray of ToolResultMessage objects. Null for legacy flat messages. */
     val data: JsonElement? = null,
+    /** UI-only rich content associated with a persisted assistant message. */
+    val presentation: JsonElement? = null,
     // Legacy fields (no longer populated by new API, kept for backward compat)
     @SerialName("tool_name") val toolName: String? = null,
     @SerialName("tool_args") val toolArgs: String? = null,

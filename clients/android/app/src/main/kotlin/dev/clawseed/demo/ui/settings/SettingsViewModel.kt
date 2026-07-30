@@ -63,7 +63,10 @@ data class SettingsUiState(
     val autoContinueOnTruncation: Boolean = true,
     val userModelAutoInfer: Boolean = false,
     val sessionTtlHours: String = "0",
-    val searchEngine: String = "",
+    // Keep the app default aligned with the selector: Bing supplies image
+    // result metadata, whereas the backend's legacy empty-provider fallback
+    // is DuckDuckGo and only returns ordinary web links.
+    val searchEngine: String = "bing",
     val tavilyApiKey: String = "",
     val tavilyApiKeyVisible: Boolean = false,
     val embeddingProvider: String = "",  // "" | "local" | "openai" | "openrouter" | "custom:URL"
@@ -701,6 +704,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             if (state.searchEngine == "tavily" && state.tavilyApiKey.isNotBlank()) {
                 toml = replaceInSection(toml, webSearchHeader, "tavily_api_key", state.tavilyApiKey)
             }
+        } else {
+            val section = buildString {
+                appendLine()
+                appendLine(webSearchHeader)
+                appendLine("enabled = true")
+                appendLine("provider = \"${state.searchEngine}\"")
+                if (state.searchEngine == "tavily" && state.tavilyApiKey.isNotBlank()) {
+                    appendLine("tavily_api_key = \"${state.tavilyApiKey}\"")
+                }
+            }
+            toml = toml.trimEnd() + section
         }
 
         // Update [agent] auto_continue_on_truncation
@@ -1259,7 +1273,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
         private fun extractSearchEngine(toml: String): String {
             val section = findSection(toml, "[web_search]")
-            return extractTomlValueInBlock(section, "provider") ?: ""
+            return extractTomlValueInBlock(section, "provider") ?: "bing"
         }
 
         private fun extractTavilyApiKey(toml: String): String {

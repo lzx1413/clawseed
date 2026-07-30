@@ -48,6 +48,7 @@ sealed class ChatEvent {
         val id: String,
         val name: String,
         val output: String,
+        val presentation: ToolPresentation? = null,
     ) : ChatEvent()
 
     /** Requests the client to execute a registered remote tool. */
@@ -107,6 +108,7 @@ sealed class ChatEvent {
                     id = obj["id"]?.jsonPrimitive?.content ?: "",
                     name = obj["name"]?.jsonPrimitive?.content ?: "",
                     output = obj["output"]?.jsonPrimitive?.content ?: "",
+                    presentation = parseToolPresentation(obj["presentation"]),
                 )
                 "tool_call_request" -> ToolCallRequested(
                     id = obj["id"]?.jsonPrimitive?.content ?: "",

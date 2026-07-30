@@ -125,6 +125,7 @@ class ChatAccumulator(private val session: ClawSeedSession) {
                     callId = event.id,
                     name = event.name,
                     output = event.output,
+                    presentation = event.presentation,
                 ))
             }
             is ChatEvent.Aborted -> {

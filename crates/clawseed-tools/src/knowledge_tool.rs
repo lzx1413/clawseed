@@ -105,6 +105,7 @@ impl Tool for KnowledgeTool {
             success: false,
             output: String::new(),
             error: Some("knowledge graph backend not available".to_string()),
+            presentation: None,
         })
     }
 }

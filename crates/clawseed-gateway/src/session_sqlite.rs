@@ -4,11 +4,11 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use clawseed_api::provider::ChatMessage;
+use clawseed_api::{provider::ChatMessage, tool::ToolPresentation};
 use parking_lot::Mutex;
 use rusqlite::{Connection, OptionalExtension, params};
 
-use super::session_backend::{SessionBackend, SessionMetadata, SessionState};
+use super::session_backend::{PersistedMessage, SessionBackend, SessionMetadata, SessionState};
 
 pub struct SqliteSessionBackend {
     conn: Arc<Mutex<Connection>>,
@@ -45,6 +45,16 @@ impl SqliteSessionBackend {
                 FOREIGN KEY (session_key) REFERENCES sessions(session_key) ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_key);
+
+            -- UI-only rich content, linked to the final assistant message.
+            -- It is intentionally not part of messages.content, which is sent
+            -- back to the LLM when a session is resumed.
+            CREATE TABLE IF NOT EXISTS message_presentations (
+                message_id      INTEGER PRIMARY KEY,
+                schema_version  INTEGER NOT NULL,
+                presentation_json TEXT NOT NULL,
+                FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+            );
 
             -- Persona↔session binding (旁路表，不碰 sessions 主表 schema).
             -- Write-once from the client's perspective; on resume the stored
@@ -157,6 +167,42 @@ impl SessionBackend for SqliteSessionBackend {
         rows.filter_map(|r| r.ok()).collect()
     }
 
+    fn load_with_presentations(&self, session_key: &str) -> Vec<PersistedMessage> {
+        let conn = self.conn.lock();
+        let mut stmt = match conn.prepare(
+            "SELECT m.role, m.content, p.presentation_json
+             FROM messages m
+             LEFT JOIN message_presentations p ON p.message_id = m.id
+             WHERE m.session_key = ?1
+             ORDER BY m.id",
+        ) {
+            Ok(stmt) => stmt,
+            Err(_) => return Vec::new(),
+        };
+        let Ok(rows) = stmt.query_map(params![session_key], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        }) else {
+            return Vec::new();
+        };
+
+        rows.filter_map(|row| {
+            let (role, content, presentation_json) = row.ok()?;
+            let presentation = presentation_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str::<ToolPresentation>(json).ok());
+            Some(PersistedMessage {
+                role,
+                content,
+                presentation,
+            })
+        })
+        .collect()
+    }
+
     fn append(&self, session_key: &str, message: &ChatMessage) -> anyhow::Result<()> {
         let conn = self.conn.lock();
         self.ensure_session(&conn, session_key)?;
@@ -195,6 +241,31 @@ impl SessionBackend for SqliteSessionBackend {
                 SELECT id FROM messages WHERE session_key = ?2 AND role = 'user' ORDER BY id DESC LIMIT 1
             )",
             params![message.content, session_key],
+        )?;
+        Ok(())
+    }
+
+    fn set_last_assistant_presentation(
+        &self,
+        session_key: &str,
+        presentation: &ToolPresentation,
+    ) -> anyhow::Result<()> {
+        let conn = self.conn.lock();
+        let message_id: i64 = conn.query_row(
+            "SELECT id FROM messages
+             WHERE session_key = ?1 AND role = 'assistant'
+             ORDER BY id DESC LIMIT 1",
+            params![session_key],
+            |row| row.get(0),
+        )?;
+        let json = serde_json::to_string(presentation)?;
+        conn.execute(
+            "INSERT INTO message_presentations (message_id, schema_version, presentation_json)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(message_id) DO UPDATE SET
+                 schema_version = excluded.schema_version,
+                 presentation_json = excluded.presentation_json",
+            params![message_id, presentation.version, json],
         )?;
         Ok(())
     }
@@ -398,6 +469,7 @@ impl SessionBackend for SqliteSessionBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clawseed_api::tool::{ContentBlock, ToolPresentation};
 
     fn fresh_backend() -> SqliteSessionBackend {
         let tmp = tempfile::tempdir().unwrap();
@@ -411,6 +483,32 @@ mod tests {
         let key = "gw_s1";
         b.set_session_persona(key, Some("nova")).unwrap();
         assert_eq!(b.get_session_persona(key).unwrap().as_deref(), Some("nova"));
+    }
+
+    #[test]
+    fn presentation_round_trip_is_kept_out_of_llm_history() {
+        let backend = fresh_backend();
+        let key = "gw_rich_content";
+        backend
+            .append(key, &ChatMessage::user("find mars resources"))
+            .unwrap();
+        backend
+            .append(key, &ChatMessage::assistant("Here are the results."))
+            .unwrap();
+        let presentation = ToolPresentation::new(vec![ContentBlock::SearchResults {
+            query: "mars".into(),
+            items: vec![],
+        }]);
+        backend
+            .set_last_assistant_presentation(key, &presentation)
+            .unwrap();
+
+        let llm_history = backend.load(key);
+        assert_eq!(llm_history[1].content, "Here are the results.");
+
+        let transcript = backend.load_with_presentations(key);
+        assert_eq!(transcript.len(), 2);
+        assert_eq!(transcript[1].presentation, Some(presentation));
     }
 
     #[test]

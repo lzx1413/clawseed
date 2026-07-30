@@ -236,7 +236,7 @@ class SessionManagerTest {
         override val tools: ToolRegistry = ToolRegistry()
         override val gateway: GatewayClient = GatewayClient("http://localhost")
 
-        override suspend fun connect(sessionId: String?) {
+        override suspend fun connect(sessionId: String?, persona: String?) {
             connectCalls += 1
             lastConnectSessionId = sessionId
             mutableConnectionState.value = ConnectionState.CONNECTED

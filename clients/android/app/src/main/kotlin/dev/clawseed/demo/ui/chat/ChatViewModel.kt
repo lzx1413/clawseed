@@ -28,6 +28,8 @@ import dev.clawseed.sdk.core.ClawSeedSession
 import dev.clawseed.sdk.core.model.ConnectionState
 import dev.clawseed.sdk.core.model.PersonaInfo
 import dev.clawseed.sdk.core.model.SessionInfo
+import dev.clawseed.sdk.core.model.ToolPresentation
+import dev.clawseed.sdk.core.model.parseToolPresentation
 import dev.clawseed.sdk.core.tool.ToolResult
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -105,50 +107,66 @@ private data class SessionSlot(
             .filterIsInstance<dev.clawseed.sdk.android.AccumulatedMessage.ToolResult>()
             .associateBy { it.callId }
 
-        // Intermediate list: ToolCallInfo for tool entries, ChatEntry for others
-        val intermediate = accumulated.mapNotNull { msg ->
+        // Presentations belong to the completed assistant turn, not to the
+        // diagnostic tool-call row. Collect them as tool results arrive and
+        // attach them to the next assistant message flushed for this turn.
+        val pendingPresentationBlocks = mutableListOf<dev.clawseed.sdk.core.model.ContentBlock>()
+        val intermediate = mutableListOf<Any>()
+        for (msg in accumulated) {
             when (msg) {
-                is dev.clawseed.sdk.android.AccumulatedMessage.User -> ChatEntry.UserMessage(
-                    id = msg.id,
-                    timestamp = msg.timestamp,
-                    content = if (stripEnrichment) stripEnrichmentPrefixes(msg.content) else msg.content,
-                )
-                is dev.clawseed.sdk.android.AccumulatedMessage.Assistant -> ChatEntry.AssistantMessage(
-                    id = msg.id,
-                    timestamp = msg.timestamp,
-                    content = msg.content,
-                )
+                is dev.clawseed.sdk.android.AccumulatedMessage.User -> {
+                    // A user boundary must never inherit media from an
+                    // interrupted or failed preceding turn.
+                    pendingPresentationBlocks.clear()
+                    intermediate.add(ChatEntry.UserMessage(
+                        id = msg.id,
+                        timestamp = msg.timestamp,
+                        content = if (stripEnrichment) stripEnrichmentPrefixes(msg.content) else msg.content,
+                    ))
+                }
+                is dev.clawseed.sdk.android.AccumulatedMessage.Assistant -> {
+                    val presentation = pendingPresentationBlocks
+                        .takeIf { it.isNotEmpty() }
+                        ?.let { ToolPresentation(version = 1, blocks = it.toList()) }
+                    pendingPresentationBlocks.clear()
+                    intermediate.add(ChatEntry.AssistantMessage(
+                        id = msg.id,
+                        timestamp = msg.timestamp,
+                        content = msg.content,
+                        presentation = presentation,
+                    ))
+                }
                 is dev.clawseed.sdk.android.AccumulatedMessage.ToolCall -> {
                     val result = resultMap[msg.callId]
-                    ToolCallInfo(
+                    intermediate.add(ToolCallInfo(
                         toolCallId = msg.callId,
                         toolName = msg.name,
                         toolArgs = msg.args,
                         toolResult = result?.output,
                         toolSuccess = if (result != null) true else null,
-                    )
+                    ))
                 }
-                // ToolResult is merged into ToolCallInfo above; skip standalone entry
-                is dev.clawseed.sdk.android.AccumulatedMessage.ToolResult -> null
-                is dev.clawseed.sdk.android.AccumulatedMessage.Thinking -> ChatEntry.Thinking(
+                is dev.clawseed.sdk.android.AccumulatedMessage.ToolResult -> {
+                    msg.presentation?.blocks?.let(pendingPresentationBlocks::addAll)
+                }
+                is dev.clawseed.sdk.android.AccumulatedMessage.Thinking -> intermediate.add(ChatEntry.Thinking(
                     id = msg.id,
                     timestamp = msg.timestamp,
                     content = msg.content,
-                )
-                is dev.clawseed.sdk.android.AccumulatedMessage.System -> ChatEntry.SystemMessage(
+                ))
+                is dev.clawseed.sdk.android.AccumulatedMessage.System -> intermediate.add(ChatEntry.SystemMessage(
                     id = msg.id,
                     timestamp = msg.timestamp,
                     content = msg.content,
-                )
-                is dev.clawseed.sdk.android.AccumulatedMessage.Debug -> ChatEntry.DebugInfo(
+                ))
+                is dev.clawseed.sdk.android.AccumulatedMessage.Debug -> intermediate.add(ChatEntry.DebugInfo(
                     id = msg.id,
                     timestamp = msg.timestamp,
                     messagesJson = msg.messagesJson,
                     estimatedTokens = msg.estimatedTokens,
-                )
+                ))
                 is dev.clawseed.sdk.android.AccumulatedMessage.Error -> {
                     errors.add(msg.message)
-                    null
                 }
             }
         }
@@ -165,34 +183,44 @@ private data class SessionSlot(
     private fun groupToolCalls(items: List<Any>): List<ChatEntry> {
         val result = mutableListOf<ChatEntry>()
         var pendingTools = mutableListOf<ToolCallInfo>()
-        var pendingToolIds = mutableListOf<String>()
+        var pendingStartIndex = -1
 
-        for (item in items) {
-            if (item is ToolCallInfo) {
-                pendingTools.add(item)
-            } else {
-                if (pendingTools.isNotEmpty()) {
-                    result.add(ChatEntry.ToolInvocations(
-                        id = "tools-${pendingToolIds.joinToString("-")}",
-                        timestamp = pendingTools.first().let { System.currentTimeMillis() },
-                        invocations = pendingTools.toList(),
-                    ))
-                    pendingTools = mutableListOf()
-                    pendingToolIds = mutableListOf()
-                }
-                result.add(item as ChatEntry)
-            }
-        }
-        // Flush remaining tool group
-        if (pendingTools.isNotEmpty()) {
+        fun flushPendingTools() {
+            if (pendingTools.isEmpty()) return
             result.add(ChatEntry.ToolInvocations(
-                id = "tools-${pendingToolIds.joinToString("-")}",
+                id = toolGroupId(pendingStartIndex, pendingTools),
                 timestamp = System.currentTimeMillis(),
                 invocations = pendingTools.toList(),
             ))
+            pendingTools = mutableListOf()
+            pendingStartIndex = -1
         }
+
+        for ((index, item) in items.withIndex()) {
+            if (item is ToolCallInfo) {
+                if (pendingTools.isEmpty()) {
+                    pendingStartIndex = index
+                }
+                pendingTools.add(item)
+            } else {
+                flushPendingTools()
+                result.add(item as ChatEntry)
+            }
+        }
+        flushPendingTools()
         return result
     }
+
+private fun toolGroupId(startIndex: Int, tools: List<ToolCallInfo>): String {
+    val suffix = tools
+        .mapIndexed { index, tool ->
+            tool.toolCallId
+                .takeIf { it.isNotBlank() }
+                ?: "${tool.toolName.ifBlank { "tool" }}-$index"
+        }
+        .joinToString("-") { it.hashCode().toUInt().toString(16) }
+    return "tools-${startIndex.coerceAtLeast(0)}-$suffix"
+}
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -554,6 +582,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                                 id = "hist-$idx",
                                 timestamp = System.currentTimeMillis(),
                                 content = msg.content ?: "",
+                                presentation = parseToolPresentation(msg.presentation),
                             ))
                             else -> {}
                         }

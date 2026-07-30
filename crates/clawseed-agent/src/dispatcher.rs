@@ -3,7 +3,7 @@
 //! Two implementations: XmlToolDispatcher (prompt-guided) and NativeToolDispatcher.
 
 use clawseed_api::provider::{ChatMessage, ChatResponse, ConversationMessage, ToolResultMessage};
-use clawseed_api::tool::ToolSpec;
+use clawseed_api::tool::{ToolPresentation, ToolSpec};
 use serde_json::Value;
 use std::fmt::Write;
 
@@ -16,6 +16,9 @@ pub struct ToolExecutionResult {
     pub output: String,
     pub success: bool,
     pub tool_call_id: Option<String>,
+    /// Client-facing structured content. It is intentionally omitted when
+    /// formatting results for the provider, which only receives `output`.
+    pub presentation: Option<ToolPresentation>,
 }
 
 /// Trait for dispatching tool calls to and from the LLM.
@@ -301,6 +304,7 @@ mod tests {
             output: "hello".into(),
             success: true,
             tool_call_id: Some("tc1".into()),
+            presentation: None,
         }]);
         match msg {
             ConversationMessage::ToolResults(results) => {
@@ -319,6 +323,7 @@ mod tests {
             output: "ok".into(),
             success: true,
             tool_call_id: None,
+            presentation: None,
         }]);
         let rendered = match msg {
             ConversationMessage::Chat(chat) => chat.content,

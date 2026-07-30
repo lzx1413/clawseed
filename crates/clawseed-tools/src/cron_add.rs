@@ -42,6 +42,7 @@ impl Tool for CronAddTool {
             success: true,
             output: format!("Cron job added: {} -> {}", schedule, prompt),
             error: None,
+            presentation: None,
         })
     }
 }
