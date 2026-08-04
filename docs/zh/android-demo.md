@@ -1,8 +1,20 @@
+---
+title: Android 端内 AI Agent 应用
+description: 下载并了解 ClawSeed Android AI Agent 应用；完整 Rust Agent 运行时直接在设备端运行，并支持远程设备工具调用。
+---
+
 # Android Demo 架构设计
 
 ## 概述
 
 ClawSeed Android Demo 是一个完整的端侧 AI Agent 应用，在 Android 设备上运行整个 Agent 栈。Rust 编译的 Gateway 二进制作为前台服务进程运行，Android 客户端通过 WebSocket 连接并注册设备端工具。
+
+## 下载 Android 应用
+
+[下载最新 Android APK](https://github.com/lzx1413/clawseed/releases/latest){ .md-button .md-button--primary }
+
+在最新 Release 页面的 **Assets** 中选择 `.apk` 文件。历史版本及其更新说明可在
+[ClawSeed Releases 页面](https://github.com/lzx1413/clawseed/releases)查看。
 
 ## 整体架构
 

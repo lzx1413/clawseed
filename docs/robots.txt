@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://lzx1413.github.io/clawseed/sitemap.xml

@@ -1,5 +1,5 @@
-site_name: ClawSeed Docs
-site_description: A Rust AI agent runtime with remote tool execution
+site_name: ClawSeed - Rust Mobile AI Agent Runtime
+site_description: Open-source Rust AI agent runtime for Android, mobile, and edge devices, with on-device execution and remote tools over WebSocket.
 site_url: https://lzx1413.github.io/clawseed/
 repo_url: https://github.com/lzx1413/clawseed
 repo_name: lzx1413/clawseed
@@ -72,6 +72,8 @@ plugins:
           default: false
           name: 中文
           link: /zh/
+          site_name: ClawSeed - Rust 移动端 AI Agent 运行时
+          site_description: 面向 Android、移动端与边缘设备的开源 Rust AI Agent 运行时，提供完整 Android 端内应用与 WebSocket 远程设备工具调用。
           nav_translations:
             Home: 首页
             Architecture: 架构

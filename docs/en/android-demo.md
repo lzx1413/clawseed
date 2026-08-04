@@ -1,8 +1,21 @@
+---
+title: Android On-Device AI Agent App
+description: Download and explore ClawSeed's Android AI agent app, which runs the complete Rust agent runtime on-device and supports remote device tools.
+---
+
 # Android Demo Architecture
 
 ## Overview
 
 The ClawSeed Android Demo is a complete on-device AI agent application. The entire agent stack runs on the Android device — the Rust-compiled Gateway binary runs as a foreground service process, while the Android client connects via WebSocket and registers device-side tools.
+
+## Download the Android App
+
+[Download the latest Android APK](https://github.com/lzx1413/clawseed/releases/latest){ .md-button .md-button--primary }
+
+Choose the `.apk` file under **Assets** on the latest release page. Previous builds
+and their release notes remain available in
+[all ClawSeed releases](https://github.com/lzx1413/clawseed/releases).
 
 ## Architecture Overview
 
