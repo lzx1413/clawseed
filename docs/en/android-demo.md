@@ -17,6 +17,23 @@ Choose the `.apk` file under **Assets** on the latest release page. Previous bui
 and their release notes remain available in
 [all ClawSeed releases](https://github.com/lzx1413/clawseed/releases).
 
+## User-Facing Agent Features
+
+- **Personas** bind each new session to a focused assistant. A persona can override
+  its Soul, model, thinking mode, memory namespace, allowed tools, and enabled or
+  blocked skills.
+- **User profiles** preserve durable preferences and context as structured items.
+  Items may be added manually or inferred after successful replies, reviewed in
+  the app, rejected so they are not learned again, and included in backups.
+- **Speech output** uses Android Text-to-Speech to read assistant replies aloud.
+  Users can enable automatic playback globally and play or stop individual replies
+  from the chat screen.
+- **Scheduled tasks** run prompts in the background and retain their own session so
+  device and CETP tools remain available during execution.
+- **Cross-app tools** are discovered through CETP and bridged into every active tool
+  registry. The [Jiucaihua integration](integrations/jiucaihua.md) demonstrates the
+  complete flow with real investment data.
+
 ## Architecture Overview
 
 ```
