@@ -35,6 +35,24 @@ class ChatAccumulatorTest {
     }
 
     @Test
+    fun doneReplacesIncompleteChunksWithAuthoritativeFullResponse() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+
+        session.emit(ChatEvent.TextChunk("second first "))
+        session.emit(ChatEvent.TextChunk("third"))
+        session.emit(ChatEvent.Done("first second third"))
+        runCurrent()
+
+        val assistantMessages = accumulator.messages.value.filterIsInstance<AccumulatedMessage.Assistant>()
+        assertEquals(1, assistantMessages.size)
+        assertEquals("first second third", assistantMessages.single().content)
+        assertEquals("", accumulator.streamingContent.value)
+    }
+
+    @Test
     fun chunkResetAndDoneDoNotDuplicateAssistantMessage() = runTest {
         val session = FakeSession()
         val accumulator = ChatAccumulator(session)

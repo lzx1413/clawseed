@@ -7,6 +7,7 @@ import dev.clawseed.sdk.core.tool.ToolResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,6 +54,8 @@ internal class ChatClient(
 
     private val _events = MutableSharedFlow<ChatEvent>(extraBufferCapacity = 32)
     val events: SharedFlow<ChatEvent> = _events.asSharedFlow()
+    // OkHttp delivers frames in order; one consumer preserves that order across suspending emits.
+    private val eventQueue = Channel<ChatEvent>(Channel.UNLIMITED)
 
     @Volatile private var webSocket: WebSocket? = null
     @Volatile private var sessionId: String? = null
@@ -64,6 +67,11 @@ internal class ChatClient(
     private val connectWaiters = mutableListOf<CancellableContinuation<Unit>>()
 
     init {
+        scope.launch {
+            for (event in eventQueue) {
+                _events.emit(event)
+            }
+        }
         toolRegistry.onToolRegistered {
             if (_connectionState.value == ConnectionState.CONNECTED) {
                 registerTools()
@@ -271,6 +279,10 @@ internal class ChatClient(
         webSocket?.send(msg)
     }
 
+    private fun publishEvent(event: ChatEvent) {
+        check(eventQueue.trySend(event).isSuccess) { "Chat event queue is closed" }
+    }
+
     private suspend fun handleReconnect() {
         val policy = reconnectPolicy
         if (policy is ReconnectPolicy.None || intentionalDisconnect) {
@@ -288,7 +300,7 @@ internal class ChatClient(
             val jitter = (baseDelay * Random.nextDouble(0.0, 0.5)).toLong()
             delay(baseDelay + jitter)
             reconnectAttempt++
-            _events.emit(ChatEvent.Error("Reconnecting (attempt $reconnectAttempt)..."))
+            publishEvent(ChatEvent.Error("Reconnecting (attempt $reconnectAttempt)..."))
             openWebSocket()
             return
         }
@@ -308,9 +320,7 @@ internal class ChatClient(
             _connectionState.value = ConnectionState.CONNECTED
             reconnectAttempt = 0
             completePendingConnects()
-            scope.launch {
-                _events.emit(ChatEvent.Connected("WebSocket connected", PROTOCOL_VERSION))
-            }
+            publishEvent(ChatEvent.Connected("WebSocket connected", PROTOCOL_VERSION))
             // Flush any queued messages
             while (pendingMessages.isNotEmpty()) {
                 val msg = pendingMessages.poll() ?: break
@@ -323,9 +333,7 @@ internal class ChatClient(
             if (event is ChatEvent.SessionStarted) {
                 sessionId = event.sessionId
             }
-            scope.launch {
-                _events.emit(event)
-            }
+            publishEvent(event)
             if (event is ChatEvent.ToolCallRequested) {
                 dispatchToolCall(event.id, event.name, event.args)
             }
@@ -343,7 +351,7 @@ internal class ChatClient(
                 return
             }
             scope.launch {
-                _events.emit(ChatEvent.Error("WebSocket closed: $code${if (reason.isNotBlank()) " ($reason)" else ""}"))
+                publishEvent(ChatEvent.Error("WebSocket closed: $code${if (reason.isNotBlank()) " ($reason)" else ""}"))
                 handleReconnect()
             }
         }
@@ -358,7 +366,7 @@ internal class ChatClient(
                 failPendingConnects(t)
             }
             scope.launch {
-                _events.emit(ChatEvent.Error(t.message ?: "WebSocket failure"))
+                publishEvent(ChatEvent.Error(t.message ?: "WebSocket failure"))
                 handleReconnect()
             }
         }

@@ -248,34 +248,42 @@ private fun ListItemRow(
 
 @Composable
 private fun TableBlock(block: Table) {
-    Column(Modifier.padding(vertical = 4.dp)) {
-        if (block.headers.any { it.isNotEmpty() }) {
-            Row {
-                block.headers.forEachIndexed { i, cell ->
-                    InlineContent(
-                        inlines = cell,
-                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                        textAlign = alignTextFor(block.alignments.getOrNull(i)),
-                        modifier = Modifier.weight(1f).padding(4.dp),
-                    )
-                }
+    Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).horizontalScroll(rememberScrollState())) {
+        Column {
+            if (block.headers.any { it.isNotEmpty() }) {
+                TableRow(block.headers, block.alignments, isHeader = true)
+                HorizontalDivider()
             }
-            HorizontalDivider()
-        }
-        for (row in block.rows) {
-            Row {
-                row.forEachIndexed { i, cell ->
-                    InlineContent(
-                        inlines = cell,
-                        style = MaterialTheme.typography.bodyLarge,
-                        textAlign = alignTextFor(block.alignments.getOrNull(i)),
-                        modifier = Modifier.weight(1f).padding(4.dp),
-                    )
-                }
+            for (row in block.rows) {
+                TableRow(row, block.alignments, isHeader = false)
             }
         }
     }
 }
+
+@Composable
+private fun TableRow(
+    cells: List<List<InlineNode>>,
+    alignments: List<ColumnAlign>,
+    isHeader: Boolean,
+) {
+    Row {
+        cells.forEachIndexed { index, cell ->
+            InlineContent(
+                inlines = cell,
+                style = if (isHeader) {
+                    MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
+                } else {
+                    MaterialTheme.typography.bodyLarge
+                },
+                textAlign = alignTextFor(alignments.getOrNull(index)),
+                modifier = Modifier.width(TABLE_CELL_WIDTH).padding(4.dp),
+            )
+        }
+    }
+}
+
+private val TABLE_CELL_WIDTH = 128.dp
 
 private fun alignTextFor(align: ColumnAlign?): TextAlign = when (align) {
     ColumnAlign.LEFT -> TextAlign.Start

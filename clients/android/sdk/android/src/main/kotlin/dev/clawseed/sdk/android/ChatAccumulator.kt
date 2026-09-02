@@ -175,12 +175,14 @@ class ChatAccumulator(private val session: ClawSeedSession) {
             ))
             _thinkingContent.value = ""
         }
-        val streaming = _streamingContent.value.ifEmpty { fullResponseFallback.orEmpty() }
-        if (streaming.isNotEmpty()) {
+        val completedContent = fullResponseFallback
+            ?.takeIf { it.isNotEmpty() }
+            ?: _streamingContent.value
+        if (completedContent.isNotEmpty()) {
             append(AccumulatedMessage.Assistant(
                 id = nextId(),
                 timestamp = System.currentTimeMillis(),
-                content = streaming,
+                content = completedContent,
             ))
             _streamingContent.value = ""
         }

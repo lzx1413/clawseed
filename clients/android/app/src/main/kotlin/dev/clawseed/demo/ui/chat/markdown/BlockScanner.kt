@@ -359,6 +359,7 @@ internal object BlockScanner {
         if (s.endsWith("|") && !s.endsWith("\\|")) s = s.substring(0, s.length - 1)
         val cells = mutableListOf<String>()
         val cur = StringBuilder()
+        var codeSpanTicks = 0
         var i = 0
         while (i < s.length) {
             val c = s[i]
@@ -367,7 +368,21 @@ internal object BlockScanner {
                 i += 2
                 continue
             }
-            if (c == '|') {
+            if (c == '`') {
+                var runLength = 1
+                while (i + runLength < s.length && s[i + runLength] == '`') {
+                    runLength++
+                }
+                cur.append(s, i, i + runLength)
+                codeSpanTicks = when {
+                    codeSpanTicks == 0 -> runLength
+                    codeSpanTicks == runLength -> 0
+                    else -> codeSpanTicks
+                }
+                i += runLength
+                continue
+            }
+            if (c == '|' && codeSpanTicks == 0) {
                 cells += cur.toString()
                 cur.clear()
                 i++
