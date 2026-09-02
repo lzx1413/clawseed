@@ -61,6 +61,15 @@ Each WebSocket connection creates its own Agent via `Agent::from_config_with_sha
 
 ### api.rs — REST Endpoints
 
+`api.rs` is the stable REST API facade. It retains bearer-token authentication,
+shared entry points, and handler re-exports. Implementations live under `api/` and
+are grouped by configuration, identity and personas, providers, skills, cron,
+integrations, memory and user profiles, sessions, system status, and hooks. Domain
+request DTOs and sensitive-config restoration stay with their handlers, while
+`api/tests/` shares common fixtures and groups regression tests by domain. Routes
+continue to reference `api::handle_*`, so the split does not change HTTP paths,
+request/response shapes, or authentication behavior.
+
 #### System
 - `GET /health` — Health check
 - `GET /api/doctor` — System diagnostics (tool count, memory health, etc.)

@@ -60,32 +60,32 @@ let agent = Agent::from_config_with_shared_components(
 
 ## Module Architecture
 
-### agent_loop.rs — Agent Loop Entry Point
+### agent.rs — Types and Runtime Assembly
 
-Provides the gateway-compatible `turn()` call interface:
+Defines `Agent`, `AgentBuilder`, `TurnEvent`, and the configuration-based constructors. Runtime behavior is split into focused child modules while the public `clawseed_agent::agent::Agent` path remains unchanged.
 
-1. Receive user message
-2. Build system prompt (calls `prompt.rs`)
-3. Send to LLM
-4. Parse response
-5. If tool calls present → enter tool loop
-6. Return final text response
+### agent/state.rs — Conversation State and Prompt Context
 
-### tool_loop.rs — Tool Loop
+Owns conversation history, memory and user-profile refresh, skill activation, prompt rebuilding, remote tool registration, and history trimming.
 
-Manages the tool loop execution flow:
+### agent/tool_execution.rs — Hook and Tool Execution
 
-1. Parse tool calls from LLM response
-2. Execute before_hook for each tool call
-3. Execute tool
-4. Execute after_hook
-5. Format results, send back to LLM
-6. Repeat until LLM returns text-only
+- Resolves before-hooks before dispatch
+- Looks up tools via `tool_registry.get_tool(name)`
+- Executes independent tool calls in parallel
+- Records observer events and fires after-hooks
 
-### tool_execution.rs — Single Tool Execution
+### agent/turn.rs — Agent Turn Orchestration
 
-- Tools are looked up via `tool_registry.get_tool(name)` (returns `Arc<dyn Tool>`, O(1) hash lookup)
-- Wraps tool execution with observer event recording, duration measurement, error handling, and cancellation support
+Implements standard and streaming turns:
+
+1. Prepare the user message and system prompt
+2. Send conversation history and tool specs to the provider
+3. Parse text and tool calls through the selected dispatcher
+4. Execute tools and append their results to history
+5. Repeat until the provider returns a final response
+
+`agent_loop.rs` and `tool_loop.rs` are compatibility shims for older gateway integrations; they do not contain the active turn implementation.
 
 ### dispatcher.rs — Tool Dispatcher
 

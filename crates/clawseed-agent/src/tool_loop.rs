@@ -1,8 +1,8 @@
-//! Tool loop execution for the agent.
+//! Backwards-compatible tool-loop cancellation symbols.
 //!
-//! Manages the iterative cycle of: provider response -> tool calls ->
-//! tool results -> next provider response, until the provider returns
-//! a final text response or the loop is cancelled.
+//! Active turn and tool execution live in `agent::turn` and
+//! `agent::tool_execution`. This module remains for callers that still use the
+//! legacy cancellation helper path.
 
 /// Error type for cancelled tool loops.
 #[derive(Debug)]

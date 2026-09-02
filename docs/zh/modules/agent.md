@@ -51,32 +51,32 @@ let agent = Agent::from_config_with_registry(&config, Some(provider_factory_regi
 
 ## 模块架构
 
-### agent_loop.rs — Agent 循环入口
+### agent.rs — 类型定义与运行时装配
 
-提供 Gateway 兼容的 `turn()` 调用接口：
+定义 `Agent`、`AgentBuilder`、`TurnEvent` 和基于配置的构造方法。运行时行为拆分到职责明确的子模块，同时保持公共路径 `clawseed_agent::agent::Agent` 不变。
 
-1. 接收用户消息
-2. 构建系统提示（调用 `prompt.rs`）
-3. 发送至 LLM
-4. 解析响应
-5. 若包含工具调用 → 进入工具循环
-6. 返回最终文本响应
+### agent/state.rs — 会话状态与提示上下文
 
-### tool_loop.rs — 工具循环
+负责会话历史、记忆和用户画像刷新、技能激活、提示词重建、远程工具注册以及历史裁剪。
 
-管理工具循环的执行流程：
+### agent/tool_execution.rs — Hook 与工具执行
 
-1. 解析 LLM 响应中的工具调用
-2. 对每个工具调用执行 before_hook
-3. 执行工具
-4. 执行 after_hook
-5. 格式化结果，发送回 LLM
-6. 重复直到 LLM 返回纯文本
+- 在调度前依次解析 before-hook
+- 通过 `tool_registry.get_tool(name)` 查找工具
+- 并行执行相互独立的工具调用
+- 记录 Observer 事件并触发 after-hook
 
-### tool_execution.rs — 单次工具执行
+### agent/turn.rs — Agent Turn 编排
 
-- 工具通过 `tool_registry.get_tool(name)` 查找（返回 `Arc<dyn Tool>`，O(1) 哈希查找）
-- 包装工具执行，附带 Observer 事件记录、耗时测量、错误处理、取消支持
+实现普通和流式 Turn：
+
+1. 准备用户消息和系统提示
+2. 将会话历史及工具描述发送给 Provider
+3. 通过选定的 Dispatcher 解析文本和工具调用
+4. 执行工具并将结果写入历史
+5. 重复上述过程，直到 Provider 返回最终响应
+
+`agent_loop.rs` 和 `tool_loop.rs` 是为旧 Gateway 集成保留的兼容 shim，不包含当前生效的 Turn 实现。
 
 ### dispatcher.rs — 工具调度器
 
