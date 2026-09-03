@@ -1,5 +1,8 @@
 # ClawSeed External Tool Protocol (CETP) v1
 
+> 状态：Stable。v1 仅用于只读工具。需要副作用控制、异步执行或大结果传输的 Provider，参见
+> [CETP v2 实验规范](external-tool-protocol-v2.md)。
+
 定义第三方 Android 应用如何向 ClawSeed 暴露只读数据的协议。
 
 ## 1. 设计目标

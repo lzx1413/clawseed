@@ -49,6 +49,7 @@ Tool Protocol（CETP）暴露自身能力；ClawSeed 发现这些工具后，将
 - [模块](modules/index.md) — 深入每个 crate 的内部机制
 - [教程](tutorials/index.md) — 扩展 ClawSeed 的实践指南
 - [Android 示例](android-demo.md) — 在设备上运行完整的 Agent 栈
+- [CETP v1](external-tool-protocol.md) / [v2 实验规范](external-tool-protocol-v2.md) — Android 跨应用工具协议
 - [九财花联动](integrations/jiucaihua.md) — 通过 CETP 调用另一个 Android App 的投资工具
 - [版本下载](https://github.com/lzx1413/clawseed/releases) — 获取最新 Android APK 与更新说明
 

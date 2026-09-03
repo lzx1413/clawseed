@@ -104,9 +104,11 @@ sdk/android/src/main/kotlin/dev/clawseed/sdk/android/
 ├── AccumulatedMessage.kt        # Accumulated message model
 ├── ClawSeedViewModel.kt         # ViewModel base for chat
 └── cetp/
-    ├── CetpConstants.kt         # CETP v1 protocol constants
+    ├── CetpConstants.kt         # CETP v1/v2 wire constants
     ├── CetpModels.kt            # Data classes (DiscoveredProvider, AuthRequiredEvent, etc.)
     ├── CetpClient.kt            # ContentResolver.call() wrapper
+    ├── CetpProtocolParser.kt    # Strict v1/v2 descriptor and response parser
+    ├── CetpV2ContentProvider.kt # Provider base class and security/idempotency contracts
     ├── ExternalToolBridge.kt    # Discovers providers, bridges tools into ToolRegistry
     └── PackageChangeReceiver.kt # BroadcastReceiver for package install/update/uninstall
 
@@ -137,9 +139,11 @@ sdk/embedded/src/main/kotlin/dev/clawseed/sdk/embedded/
   - `device_info` — device model, manufacturer, Android version
   - `get_location` — GPS location (WGS84→GCJ-02) + reverse geocoding
 - **CETP external tools** (discovered from third-party apps):
-  - Automatically discovers apps implementing the [CETP v1 protocol](../../docs/en/external-tool-protocol.md)
+  - Supports stable [CETP v1](../../docs/en/external-tool-protocol.md) and experimental [CETP v2](../../docs/en/external-tool-protocol-v2.md)
+  - Negotiates v2 capabilities while preserving v1-only Providers
   - Provider tools are namespaced (e.g., `finance__get_portfolio_holdings`) and registered as RemoteTools
-  - Supports `AUTH_REQUIRED` flow with resolution hints and authorize intents
+  - Supports Provider-owned authorization/confirmation UI and same-request resumption
+  - Supports async operation polling/cancellation and verified large results
   - Dynamic refresh on package install/update/uninstall
 - **Gateway built-in tools**: web_fetch, http_request, web_search, etc.
 

@@ -2,6 +2,7 @@ package dev.clawseed.demo.ui.chat
 
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -104,6 +106,11 @@ fun ChatScreen(
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { /* granted or denied — tool handler checks at call time */ }
+    val providerActionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) {
+        viewModel.completeProviderAction()
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -404,6 +411,40 @@ fun ChatScreen(
             onManage = {
                 showPersonaSheet = false
                 onManagePersonas()
+            },
+        )
+    }
+
+    uiState.authPrompt?.let { prompt ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissAuthPrompt,
+            title = { Text(stringResource(R.string.chat_provider_action_title)) },
+            text = { Text(prompt.hint) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val resolution = prompt.resolution
+                    val requestId = prompt.requestId
+                    if (resolution != null && requestId != null) {
+                        val launched = runCatching {
+                            viewModel.markProviderActionStarted(requestId)
+                            providerActionLauncher.launch(
+                                IntentSenderRequest.Builder(resolution.intentSender).build(),
+                            )
+                        }.isSuccess
+                        if (!launched) {
+                            viewModel.failProviderAction(requestId)
+                        }
+                    } else {
+                        viewModel.handleAuthAction()
+                    }
+                }) {
+                    Text(stringResource(R.string.chat_provider_action_open))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissAuthPrompt) {
+                    Text(stringResource(R.string.common_cancel))
+                }
             },
         )
     }

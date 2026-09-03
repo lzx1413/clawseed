@@ -5,7 +5,10 @@ import dev.clawseed.sdk.core.model.ConnectionState
 import dev.clawseed.sdk.core.tool.ToolRegistry
 import dev.clawseed.sdk.core.tool.ToolResult
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -27,6 +30,7 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
@@ -63,6 +67,7 @@ internal class ChatClient(
     @Volatile private var intentionalDisconnect = false
     @Volatile private var reconnectAttempt = 0
     private val pendingMessages = ConcurrentLinkedQueue<String>()
+    private val activeToolCalls = ConcurrentHashMap<String, Job>()
     private val connectLock = Any()
     private val connectWaiters = mutableListOf<CancellableContinuation<Unit>>()
 
@@ -114,6 +119,7 @@ internal class ChatClient(
     fun disconnect() {
         intentionalDisconnect = true
         _connectionState.value = ConnectionState.DISCONNECTED
+        cancelActiveToolCalls()
         webSocket?.close(1000, null)
         webSocket = null
         pendingMessages.clear()
@@ -137,6 +143,7 @@ internal class ChatClient(
     }
 
     fun sendAbort() {
+        cancelActiveToolCalls()
         val msg = buildJsonObject {
             put("type", "abort")
         }.toString()
@@ -249,14 +256,27 @@ internal class ChatClient(
             sendToolError(id, "Unknown tool: $name")
             return
         }
-        scope.launch {
-            val result = runCatching { tool.execute(args) }
-                .getOrElse { ToolResult.Failure(it.message ?: "Handler threw exception") }
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            val result = try {
+                tool.execute(args)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                ToolResult.Failure(error.message ?: "Handler threw exception")
+            }
             when (result) {
                 is ToolResult.Success -> sendToolResult(id, result.output)
                 is ToolResult.Failure -> sendToolError(id, result.error)
             }
         }
+        activeToolCalls.put(id, job)?.cancel()
+        job.invokeOnCompletion { activeToolCalls.remove(id, job) }
+        job.start()
+    }
+
+    private fun cancelActiveToolCalls() {
+        activeToolCalls.values.forEach { it.cancel() }
+        activeToolCalls.clear()
     }
 
     private fun sendToolResult(id: String, output: String) {

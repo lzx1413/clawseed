@@ -102,9 +102,11 @@ sdk/android/src/main/kotlin/dev/clawseed/sdk/android/
 ├── AccumulatedMessage.kt        # 累积消息模型
 ├── ClawSeedViewModel.kt         # 聊天 ViewModel 基类
 └── cetp/
-    ├── CetpConstants.kt         # CETP v1 协议常量
+    ├── CetpConstants.kt         # CETP v1/v2 线协议常量
     ├── CetpModels.kt            # 数据类（DiscoveredProvider, AuthRequiredEvent 等）
     ├── CetpClient.kt            # ContentResolver.call() 封装
+    ├── CetpProtocolParser.kt    # 严格解析 v1/v2 描述与响应
+    ├── CetpV2ContentProvider.kt # Provider 基类及安全/幂等契约
     ├── ExternalToolBridge.kt    # 发现 Provider，桥接工具到 ToolRegistry
     └── PackageChangeReceiver.kt # 监听应用安装/更新/卸载的广播接收器
 
@@ -135,9 +137,11 @@ sdk/embedded/src/main/kotlin/dev/clawseed/sdk/embedded/
   - `device_info` — 设备型号、厂商、Android 版本
   - `get_location` — GPS 定位（WGS84→GCJ-02）+ 逆地理编码
 - **CETP 外部工具**（自动发现第三方 App）：
-  - 自动发现实现了 [CETP v1 协议](../../docs/zh/external-tool-protocol.md) 的第三方应用
+  - 支持稳定版 [CETP v1](../../docs/zh/external-tool-protocol.md) 和实验版 [CETP v2](../../docs/zh/external-tool-protocol-v2.md)
+  - 协商 v2 能力，同时兼容仅支持 v1 的 Provider
   - Provider 工具自动添加命名空间前缀（如 `finance__get_portfolio_holdings`），注册为 RemoteTool
-  - 支持 `AUTH_REQUIRED` 授权流程，提供提示和授权引导
+  - 支持 Provider 自有授权/确认界面，并使用同一请求恢复执行
+  - 支持异步 operation 轮询/取消和经过校验的大结果
   - 监听应用安装/更新/卸载广播动态刷新
 - **Gateway 内置工具**：web_fetch、http_request、web_search 等
 

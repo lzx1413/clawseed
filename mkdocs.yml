@@ -67,6 +67,7 @@ plugins:
             Modules: Modules
             Tutorials: Tutorials
             Protocols: Protocols
+            CETP v2: CETP v2
             Optimization: Optimization
         - locale: zh
           default: false
@@ -81,6 +82,7 @@ plugins:
             Modules: 模块
             Tutorials: 教程
             Protocols: 协议
+            CETP v2: CETP v2
             Integrations: 集成案例
             Jiucaihua: 九财花
             Optimization: 优化
@@ -146,6 +148,7 @@ nav:
       - Testing: tutorials/testing.md
   - Protocols:
       - External Tool Protocol: external-tool-protocol.md
+      - CETP v2: external-tool-protocol-v2.md
       - Remote Tool Call: remote-tool-call.md
       - CETP Provider Tutorial: cetp-provider-tutorial.md
   - Integrations:

@@ -28,6 +28,7 @@ android {
 
 dependencies {
     api(project(":sdk:core"))
+    implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.0")
     implementation("androidx.lifecycle:lifecycle-process:2.9.0")

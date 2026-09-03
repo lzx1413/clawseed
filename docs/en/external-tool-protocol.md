@@ -1,5 +1,9 @@
 # ClawSeed External Tool Protocol (CETP) v1
 
+> Status: Stable. v1 is for read-only tools. Providers that need controlled side effects,
+> asynchronous execution, or large results should see the
+> [experimental CETP v2 specification](external-tool-protocol-v2.md).
+
 Defines how third-party Android apps expose read-only data to ClawSeed.
 
 ## 1. Design Goals

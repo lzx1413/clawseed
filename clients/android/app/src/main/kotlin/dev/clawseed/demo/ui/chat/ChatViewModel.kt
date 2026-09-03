@@ -1,6 +1,7 @@
 package dev.clawseed.demo.ui.chat
 
 import android.Manifest
+import android.app.PendingIntent
 import android.app.Application
 import android.content.Context
 import android.content.pm.PackageManager
@@ -60,8 +61,12 @@ fun stripEnrichmentPrefixes(content: String): String {
 }
 
 data class AuthPrompt(
+    val providerPackageName: String,
     val hint: String,
     val authorizeIntent: String?,
+    val resolution: PendingIntent?,
+    val requestId: String?,
+    val errorCode: String,
 )
 
 data class ChatUiState(
@@ -251,6 +256,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var accumulatorObservationJob: Job? = null
     private var sessionObservationJob: Job? = null
     private var authEventJob: Job? = null
+    private var activeProviderRequestId: String? = null
+    private val queuedAuthPrompts = ArrayDeque<AuthPrompt>()
 
     init {
         viewModelScope.launch {
@@ -280,6 +287,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        activeProviderRequestId?.let {
+            ClawSeedAndroid.externalToolBridge().cancelPendingAction(it)
+        }
+        queuedAuthPrompts.mapNotNull { it.requestId }.forEach {
+            ClawSeedAndroid.externalToolBridge().cancelPendingAction(it)
+        }
         tts.shutdown()
         super.onCleared()
     }
@@ -744,33 +757,89 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun dismissAuthPrompt() {
+        _uiState.value.authPrompt?.requestId?.let {
+            ClawSeedAndroid.externalToolBridge().cancelPendingAction(it)
+        }
         _uiState.value = _uiState.value.copy(authPrompt = null)
+        showNextAuthPrompt()
+    }
+
+    fun markProviderActionStarted(requestId: String) {
+        activeProviderRequestId = requestId
+        _uiState.value = _uiState.value.copy(authPrompt = null)
+    }
+
+    fun completeProviderAction() {
+        activeProviderRequestId?.let {
+            ClawSeedAndroid.externalToolBridge().resumePendingAction(it)
+        }
+        activeProviderRequestId = null
+        showNextAuthPrompt()
+    }
+
+    fun failProviderAction(requestId: String? = activeProviderRequestId) {
+        requestId?.let { ClawSeedAndroid.externalToolBridge().cancelPendingAction(it) }
+        activeProviderRequestId = null
+        _uiState.value = _uiState.value.copy(
+            authPrompt = null,
+            error = getApplication<Application>().getString(R.string.chat_auth_launch_failed),
+        )
+        showNextAuthPrompt()
     }
 
     fun handleAuthAction() {
         val prompt = _uiState.value.authPrompt ?: return
-        val intentStr = prompt.authorizeIntent
-        if (intentStr != null) {
-            val intent = android.content.Intent(intentStr).apply {
-                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        val launched = runCatching {
+            if (prompt.resolution != null) {
+                prompt.resolution.send()
+                true
+            } else if (prompt.authorizeIntent != null) {
+                val intent = android.content.Intent(prompt.authorizeIntent).apply {
+                    setPackage(prompt.providerPackageName)
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                getApplication<Application>().startActivity(intent)
+                true
+            } else {
+                false
             }
-            getApplication<Application>().startActivity(intent)
+        }.getOrDefault(false)
+        _uiState.value = if (launched) {
+            _uiState.value.copy(authPrompt = null)
+        } else {
+            _uiState.value.copy(
+                authPrompt = null,
+                error = getApplication<Application>().getString(R.string.chat_auth_launch_failed),
+            )
         }
-        _uiState.value = _uiState.value.copy(authPrompt = null)
+        showNextAuthPrompt()
     }
 
     private fun observeAuthEvents() {
         authEventJob?.cancel()
         authEventJob = viewModelScope.launch {
             ClawSeedAndroid.externalToolBridge().authEvents.collect { event ->
-                _uiState.value = _uiState.value.copy(
-                    authPrompt = AuthPrompt(
-                        hint = event.resolutionHint ?: getApplication<Application>().getString(R.string.chat_auth_hint, event.providerLabel),
-                        authorizeIntent = event.authorizeIntent,
-                    ),
+                val prompt = AuthPrompt(
+                    providerPackageName = event.providerPackageName,
+                    hint = event.resolutionHint ?: getApplication<Application>().getString(R.string.chat_auth_hint, event.providerLabel),
+                    authorizeIntent = event.authorizeIntent,
+                    resolution = event.resolution,
+                    requestId = event.requestId,
+                    errorCode = event.errorCode,
                 )
+                if (_uiState.value.authPrompt == null && activeProviderRequestId == null) {
+                    _uiState.value = _uiState.value.copy(authPrompt = prompt)
+                } else {
+                    queuedAuthPrompts.addLast(prompt)
+                }
             }
         }
+    }
+
+    private fun showNextAuthPrompt() {
+        if (_uiState.value.authPrompt != null || activeProviderRequestId != null) return
+        val next = queuedAuthPrompts.removeFirstOrNull() ?: return
+        _uiState.value = _uiState.value.copy(authPrompt = next)
     }
 
     private suspend fun handleScheduledTask(args: kotlinx.serialization.json.JsonObject): ToolResult {

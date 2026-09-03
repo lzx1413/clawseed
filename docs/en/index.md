@@ -53,6 +53,7 @@ and the boundary between read-only CETP v1 tools and alert-management extensions
 - [Modules](modules/index.md) — dive into each crate's internals
 - [Tutorials](tutorials/index.md) — hands-on guides for extending ClawSeed
 - [Android Demo](android-demo.md) — run the full agent stack on-device
+- [CETP v1](external-tool-protocol.md) / [experimental v2 specification](external-tool-protocol-v2.md) — Android cross-app tool protocol
 - [Jiucaihua Integration](integrations/jiucaihua.md) — use investment data from another Android app through CETP
 - [Download Releases](https://github.com/lzx1413/clawseed/releases) — get the latest Android APK and release notes
 
