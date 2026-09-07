@@ -122,6 +122,7 @@ dependencies {
 
     // kotlinx-serialization (for tool JSON building)
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.tomlj:tomlj:1.1.1")
 
     // Rich agent replies: cached images plus audio/video playback.
     implementation("io.coil-kt.coil3:coil-compose:3.3.0")
@@ -130,4 +131,5 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.7.1")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
 }

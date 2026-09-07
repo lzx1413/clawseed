@@ -27,7 +27,7 @@ import dev.clawseed.demo.scheduled.ScheduledTask
 import dev.clawseed.demo.scheduled.ScheduledTaskManager
 import dev.clawseed.demo.R
 import dev.clawseed.demo.scheduled.ScheduledTaskStore
-import dev.clawseed.demo.scheduled.TaskRepeat
+import dev.clawseed.demo.scheduled.AlarmSchedule
 import dev.clawseed.demo.scheduled.TaskStatus
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.embedded.EmbeddedGateway
@@ -35,7 +35,6 @@ import dev.clawseed.sdk.embedded.GatewayState
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import java.util.Calendar
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -73,6 +72,7 @@ class ClawseedService : Service() {
     @Volatile private var gatewayFailed = false
     private var alarmMediaPlayer: MediaPlayer? = null
     private var alarmVibrator: Vibrator? = null
+    private val ringingAlarmIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     override fun onBind(intent: Intent): IBinder {
         isBound = true
@@ -85,6 +85,11 @@ class ClawseedService : Service() {
         return true
     }
 
+    override fun onRebind(intent: Intent?) {
+        super.onRebind(intent)
+        isBound = true
+    }
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
@@ -95,9 +100,7 @@ class ClawseedService : Service() {
         // Handle alarm dismiss action
         val alarmDismissId = intent?.getStringExtra(EXTRA_ALARM_DISMISS)
         if (alarmDismissId != null) {
-            stopAlarmSound()
-            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.cancel(alarmDismissId.hashCode())
+            dismissAlarm(alarmDismissId)
             return START_NOT_STICKY
         }
 
@@ -161,6 +164,7 @@ class ClawseedService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         stopAlarmSound()
+        ringingAlarmIds.clear()
         serviceJob?.cancel()
         // IMPORTANT: stop gateway BEFORE cancelling the coroutine scope.
         // The old code did supervisorJob.cancel() first, then scope.launch { gateway.stop() }
@@ -171,14 +175,19 @@ class ClawseedService : Service() {
                 gateway.stop()
             } catch (_: Exception) {
                 // Best-effort cleanup — scope cancellation may interrupt waitFor
+            } finally {
+                supervisorJob.cancel()
             }
         }
-        supervisorJob.cancel()
         isReady = false
     }
 
-    fun dismissAlarm() {
-        stopAlarmSound()
+    @Synchronized
+    fun dismissAlarm(taskId: String) {
+        ringingAlarmIds.remove(taskId)
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(taskId.hashCode())
+        if (ringingAlarmIds.isEmpty()) stopAlarmSound()
+        unbindSignal.trySend(Unit)
     }
 
     fun onReady(callback: () -> Unit) {
@@ -198,7 +207,7 @@ class ClawseedService : Service() {
                     // Woken by unbind, fall through to shutdown check
                 }
             }
-            if (!isBound && taskChannel.isEmpty) {
+            if (!isBound && taskChannel.isEmpty && ringingAlarmIds.isEmpty()) {
                 // Signal intent to stop, but don't exit the loop.
                 // A task might arrive between isEmpty and now; the next
                 // select iteration will pick it up. The system will
@@ -375,7 +384,7 @@ class ClawseedService : Service() {
 
         session.tools.register(
             name = "set_alarm",
-            description = "在设备上设置闹钟，通过系统时钟应用创建真正的闹钟（会响铃和震动）。参数：hour（小时0-23）、minute（分钟0-59）、message（闹钟标签，可选）、repeat_days（重复的星期几1-7对应周一到周日，可选，空或null表示一次性闹钟）",
+            description = "在设备上设置应用内闹钟（会响铃和震动）。参数：hour（小时0-23）、minute（分钟0-59）、message（闹钟标签，可选）、repeat_days（重复的星期几1-7对应周一到周日，可选，空或null表示一次性闹钟）",
             parameters = """{"type":"object","properties":{"hour":{"type":"integer","description":"闹钟小时（0-23）","minimum":0,"maximum":23},"minute":{"type":"integer","description":"闹钟分钟（0-59）","minimum":0,"maximum":59},"message":{"type":"string","description":"闹钟标签/备注信息"},"repeat_days":{"type":"array","description":"重复的星期几（1=周一，2=周二，...7=周日），空数组或null表示一次性闹钟","items":{"type":"integer","minimum":1,"maximum":7}}},"required":["hour","minute"]}""",
         ) { args ->
             handleSetAlarm(args)
@@ -456,15 +465,12 @@ class ClawseedService : Service() {
         }
 
         val message = args["message"]?.jsonPrimitive?.content ?: ""
-        val repeatDays = args["repeat_days"]?.jsonArray?.mapNotNull { it.jsonPrimitive.intOrNull }
-
-        val repeat = if (repeatDays == null || repeatDays.isEmpty()) {
-            TaskRepeat.ONCE
-        } else if (repeatDays.size == 5 && repeatDays.containsAll(listOf(1, 2, 3, 4, 5))) {
-            TaskRepeat.WEEKDAY
-        } else {
-            TaskRepeat.DAILY
+        val repeatDays = try {
+            AlarmSchedule.parseDays(args["repeat_days"])
+        } catch (e: IllegalArgumentException) {
+            return dev.clawseed.sdk.core.tool.ToolResult.Failure(e.message ?: "Invalid repeat_days")
         }
+        val repeat = AlarmSchedule.repeat(repeatDays)
 
         val taskName = if (message.isNotEmpty()) getString(R.string.svc_alarm_name_with_message, message) else getString(R.string.svc_alarm_name_with_time, String.format("%02d:%02d", hour, minute))
         val alarmMessage = if (message.isNotEmpty()) message else getString(R.string.svc_alarm_message)
@@ -478,6 +484,7 @@ class ClawseedService : Service() {
             repeat = repeat,
             enabled = true,
             isAlarm = true,
+            repeatDays = repeatDays,
         )
         store.addTask(task)
         ScheduledTaskManager.scheduleAlarm(this, task)
@@ -489,6 +496,7 @@ class ClawseedService : Service() {
             put("minute", JsonPrimitive(minute))
             put("repeat", JsonPrimitive(repeat.name.lowercase()))
             put("is_alarm", JsonPrimitive(true))
+            put("repeat_days", kotlinx.serialization.json.JsonArray(repeatDays.map { JsonPrimitive(it) }))
         }
         return dev.clawseed.sdk.core.tool.ToolResult.Success(result.toString())
     }
@@ -499,6 +507,7 @@ class ClawseedService : Service() {
         }
     }
 
+    @Synchronized
     private fun showAlarmNotification(task: ScheduledTask) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -535,6 +544,14 @@ class ClawseedService : Service() {
             this, task.id.hashCode(), contentIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            this, task.id.hashCode(),
+            Intent(this, MainActivity::class.java).apply {
+                action = "dev.clawseed.demo.SHOW_ALARM"
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID_ALARM)
             .setContentTitle("⏰ ${task.name}")
@@ -544,7 +561,7 @@ class ClawseedService : Service() {
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setFullScreenIntent(contentPendingIntent, true)
+            .setFullScreenIntent(fullScreenPendingIntent, true)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.svc_dismiss_alarm), dismissPendingIntent)
             .setContentIntent(contentPendingIntent)
             .build()
@@ -552,6 +569,7 @@ class ClawseedService : Service() {
         nm.notify(task.id.hashCode(), notification)
 
         // Play alarm sound and vibration directly — bypasses notification channel restrictions
+        ringingAlarmIds.add(task.id)
         startAlarmSound()
     }
 

@@ -160,7 +160,7 @@ sdk/embedded/src/main/kotlin/dev/clawseed/sdk/embedded/
 
 ### Scheduled Tasks
 - AlarmManager-based background tasks that wake the device at specified times
-- Repeat modes: once, daily, weekday
+- Repeat modes: once, daily, weekday, or selected weekdays
 - High-priority notifications with sound/vibration
 - Tap notification to navigate to the task's chat session
 - `BootReceiver` re-schedules all tasks after device reboot

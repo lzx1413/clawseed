@@ -20,6 +20,75 @@ import kotlin.test.assertEquals
 class ChatAccumulatorTest {
 
     @Test
+    fun delayedAbortCleanupDoesNotResetTheNextTurn() {
+        val accumulator = ChatAccumulator(FakeSession())
+        accumulator.addUserMessage("first")
+        val stoppedGeneration = accumulator.generationId
+        accumulator.finishTurnIfCurrent(stoppedGeneration)
+        assertEquals(false, accumulator.isGenerating.value)
+        accumulator.addUserMessage("second")
+        accumulator.finishTurnIfCurrent(stoppedGeneration)
+        assertEquals(true, accumulator.isGenerating.value)
+    }
+
+    @Test
+    fun errorBeforeFirstChunkEndsGenerationAndRetryClearsError() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+        accumulator.addUserMessage("question")
+        assertEquals(true, accumulator.isGenerating.value)
+        session.emit(ChatEvent.Error("Unauthorized"))
+        runCurrent()
+        assertEquals(false, accumulator.isGenerating.value)
+        assertEquals("Unauthorized", accumulator.error.value)
+        accumulator.prepareRegenerate()
+        assertEquals(true, accumulator.isGenerating.value)
+        assertEquals(null, accumulator.error.value)
+        session.emit(ChatEvent.Done(""))
+        runCurrent()
+        assertEquals(false, accumulator.isGenerating.value)
+    }
+
+    @Test
+    fun stopBeforeFirstChunkAndStreamErrorBothClearBusyState() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+        accumulator.addUserMessage("question")
+        session.emit(ChatEvent.Aborted)
+        runCurrent()
+        assertEquals(false, accumulator.isGenerating.value)
+        accumulator.addUserMessage("next")
+        session.emit(ChatEvent.TextChunk("partial"))
+        session.emit(ChatEvent.ThinkingChunk("thinking"))
+        session.emit(ChatEvent.Error("Disconnected"))
+        runCurrent()
+        assertEquals(false, accumulator.isGenerating.value)
+        assertEquals("", accumulator.streamingContent.value)
+        assertEquals("", accumulator.thinkingContent.value)
+    }
+
+    @Test
+    fun regenerateHistoryAndToolOnlyTurnsStayBusyUntilDone() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+        accumulator.prepareRegenerate()
+        assertEquals(true, accumulator.isGenerating.value)
+        session.emit(ChatEvent.ToolCallStarted("id", "tool", kotlinx.serialization.json.buildJsonObject {}))
+        session.emit(ChatEvent.ChunkReset)
+        runCurrent()
+        assertEquals(true, accumulator.isGenerating.value)
+        session.emit(ChatEvent.Done("answer"))
+        runCurrent()
+        assertEquals(false, accumulator.isGenerating.value)
+    }
+
+    @Test
     fun doneUsesFullResponseFallbackWhenNoChunksWereBuffered() = runTest {
         val session = FakeSession()
         val accumulator = ChatAccumulator(session)

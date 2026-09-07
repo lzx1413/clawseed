@@ -1,6 +1,7 @@
 package dev.clawseed.demo.ui.settings
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
@@ -16,8 +17,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -26,6 +32,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -56,6 +63,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.text.KeyboardOptions
@@ -76,6 +84,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.clawseed.demo.BuildConfig
 import dev.clawseed.demo.R
+import dev.clawseed.demo.ui.theme.success
 import dev.clawseed.demo.data.LocalStore
 import kotlinx.coroutines.launch
 
@@ -105,7 +114,7 @@ private fun ExpandableSection(
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -137,7 +146,9 @@ fun SettingsScreen(
     val viewModel: SettingsViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var llmExpanded by remember { mutableStateOf(false) }
+    var llmExpanded by rememberSaveable { mutableStateOf(false) }
+    val settingsListState = rememberLazyListState()
+    val providerScrollState = rememberScrollState()
     var memoryExpanded by remember { mutableStateOf(false) }
     var userModelExpanded by remember { mutableStateOf(false) }
     var searchEngineExpanded by remember { mutableStateOf(false) }
@@ -161,6 +172,53 @@ fun SettingsScreen(
             snackbarHostState.showSnackbar(it)
             viewModel.clearSuccess()
         }
+    }
+
+    BackHandler(enabled = llmExpanded) { llmExpanded = false }
+    if (llmExpanded) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(stringResource(R.string.settings_llm_config)) },
+                    navigationIcon = {
+                        IconButton(onClick = { llmExpanded = false }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
+                        }
+                    },
+                )
+            },
+            bottomBar = {
+                Column(Modifier.navigationBarsPadding().imePadding()) {
+                    HorizontalDivider()
+                    Button(
+                        onClick = viewModel::saveConfig,
+                        enabled = !uiState.isSaving && !uiState.isLoading && uiState.selectedModel.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        if (uiState.isSaving) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.Default.Check, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(if (uiState.isSaving) R.string.common_saving else R.string.settings_save_config))
+                    }
+                }
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+        ) { padding ->
+            Column(Modifier.fillMaxSize().padding(padding).verticalScroll(providerScrollState).padding(16.dp)) {
+                ProviderFormEditor(
+                    state = uiState,
+                    onSelectProvider = viewModel::selectProvider,
+                    onBaseUrlChange = viewModel::updateBaseUrl,
+                    onApiKeyChange = viewModel::updateApiKey,
+                    onFetchModels = viewModel::fetchModels,
+                    onSelectModel = viewModel::selectModel,
+                    onToggleThinking = viewModel::toggleThinking,
+                    onUpdateMaxTokens = viewModel::updateMaxTokens,
+                    onToggleAutoContinue = viewModel::toggleAutoContinueOnTruncation,
+                )
+            }
+        }
+        return
     }
 
     Scaffold(
@@ -190,6 +248,7 @@ fun SettingsScreen(
             }
         } else {
             LazyColumn(
+                state = settingsListState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
@@ -263,38 +322,12 @@ fun SettingsScreen(
                 item {
                     ExpandableSection(
                         title = stringResource(R.string.settings_llm_config),
-                        expanded = llmExpanded,
-                        onToggle = { llmExpanded = !llmExpanded },
+                        expanded = false,
+                        onToggle = { llmExpanded = true },
                         subtitle = if (!llmExpanded && uiState.selectedModel.isNotBlank())
                             "${stringResource(PROVIDER_PRESETS[uiState.selectedPresetIndex].displayNameRes)} / ${uiState.selectedModel}"
                         else if (!llmExpanded) stringResource(R.string.settings_not_configured) else null,
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            ProviderFormEditor(
-                                state = uiState,
-                                onSelectProvider = viewModel::selectProvider,
-                                onBaseUrlChange = viewModel::updateBaseUrl,
-                                onApiKeyChange = viewModel::updateApiKey,
-                                onFetchModels = viewModel::fetchModels,
-                                onSelectModel = viewModel::selectModel,
-                                onToggleThinking = viewModel::toggleThinking,
-                                onUpdateMaxTokens = viewModel::updateMaxTokens,
-                                onToggleAutoContinue = viewModel::toggleAutoContinueOnTruncation,
-                            )
-
-                            Button(
-                                onClick = { viewModel.saveConfig() },
-                                enabled = !uiState.isSaving && uiState.selectedModel.isNotBlank(),
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                if (uiState.isSaving) {
-                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                }
-                                Text(if (uiState.isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_config))
-                            }
-                        }
-                    }
+                    ) {}
                 }
 
                 // Search Engine section
@@ -567,7 +600,7 @@ fun SettingsScreen(
                                         Text(
                                             text = stringResource(R.string.settings_global_config_desc),
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                         TomlEditor(
                                             toml = uiState.configToml,
@@ -636,7 +669,7 @@ private fun UserModelCard(
                 Text(
                     text = stringResource(R.string.settings_user_model_auto_infer_desc),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Spacer(modifier = Modifier.width(12.dp))
@@ -717,7 +750,7 @@ private fun AppearanceCard(localStore: LocalStore) {
                     Text(
                         stringResource(R.string.settings_speech_output_desc),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Switch(
@@ -737,7 +770,7 @@ private fun AppearanceCard(localStore: LocalStore) {
                         Text(
                             stringResource(R.string.settings_oled_mode_desc),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     Switch(
@@ -780,7 +813,7 @@ private fun DeveloperOptionsCard(localStore: LocalStore) {
             Text(
                 text = stringResource(R.string.settings_debug_desc),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -833,7 +866,7 @@ private fun SoulEditor(
             Text(
                 text = stringResource(R.string.settings_soul_desc),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -844,34 +877,38 @@ private fun StatusCard(
     status: dev.clawseed.sdk.core.model.GatewayStatus?,
     downloadProgress: dev.clawseed.sdk.core.model.EmbeddingDownloadProgress?,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-        ),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(stringResource(R.string.settings_gateway_status), style = MaterialTheme.typography.titleSmall)
-            Spacer(modifier = Modifier.height(8.dp))
-            if (status != null) {
-                StatusRow("Provider", status.provider ?: stringResource(R.string.settings_gateway_unknown))
-                StatusRow("Model", status.model)
-                val mem = status.memory
-                if (mem != null) {
-                    StatusRow("Memory", mem.backend)
-                    if (mem.embeddingProvider != "none") {
-                        StatusRow("Embedding", "${mem.embeddingProvider}/${mem.embeddingModel}")
-                        StatusRow("Dimensions", mem.embeddingDims.toString())
-                        StatusRow("Search", mem.searchMode)
+    var expanded by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth()) {
+        ExpandableSection(
+            title = stringResource(R.string.settings_gateway_status),
+            expanded = expanded,
+            onToggle = { expanded = !expanded },
+            subtitle = if (status != null) stringResource(R.string.settings_gateway_ready, status.model) else null,
+        ) {
+            Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                if (status != null) {
+                    StatusRow("Provider", status.provider ?: stringResource(R.string.settings_gateway_unknown))
+                    StatusRow("Model", status.model)
+                    val mem = status.memory
+                    if (mem != null) {
+                        StatusRow("Memory", mem.backend)
+                        if (mem.embeddingProvider != "none") {
+                            StatusRow("Embedding", "${mem.embeddingProvider}/${mem.embeddingModel}")
+                            StatusRow("Dimensions", mem.embeddingDims.toString())
+                            StatusRow("Search", mem.searchMode)
+                        }
+                        StatusRow("Memories", mem.count.toString())
+                    } else {
+                        StatusRow("Memory", status.memoryBackend ?: "none")
                     }
-                    StatusRow("Memories", mem.count.toString())
-                } else {
-                    StatusRow("Memory", status.memoryBackend ?: "none")
                 }
-            } else if (downloadProgress != null && !downloadProgress.isComplete) {
+            }
+        }
+        if (status == null) {
+            if (downloadProgress != null && !downloadProgress.isComplete) {
                 Text(
                     stringResource(R.string.settings_gateway_starting_download),
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -880,6 +917,7 @@ private fun StatusCard(
                 Text(stringResource(R.string.settings_gateway_unreachable), color = MaterialTheme.colorScheme.error)
             }
         }
+        HorizontalDivider(Modifier.padding(top = 8.dp))
     }
 }
 
@@ -892,12 +930,12 @@ private fun StatusRow(label: String, value: String) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false).padding(start = 12.dp),
@@ -998,7 +1036,7 @@ private fun ProviderFormEditor(
                     }
                 } else null,
                 supportingText = if (isPlaceholderKey && state.hasServerApiKey) {
-                    { Text(stringResource(R.string.settings_server_has_key), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) }
+                    { Text(stringResource(R.string.settings_server_has_key), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 } else null,
             )
 
@@ -1023,13 +1061,13 @@ private fun ProviderFormEditor(
                         Icon(
                             Icons.Default.Check,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.colorScheme.success,
                             modifier = Modifier.size(20.dp),
                         )
                         Text(
                             stringResource(R.string.settings_model_count, state.availableModels.size),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = MaterialTheme.colorScheme.success,
                         )
                     }
                     false -> {
@@ -1101,7 +1139,7 @@ private fun ProviderFormEditor(
                     Text(
                         stringResource(R.string.settings_thinking_desc),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Switch(
@@ -1141,7 +1179,7 @@ private fun ProviderFormEditor(
                     Text(
                         stringResource(R.string.settings_auto_continue_desc),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Switch(
@@ -1190,8 +1228,7 @@ private fun ToolCard(
                 Text(
                     text = tool.name,
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (tool.enabled) MaterialTheme.colorScheme.onSurfaceVariant
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f, fill = false),
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1221,8 +1258,7 @@ private fun ToolCard(
             Text(
                 text = tool.description,
                 style = MaterialTheme.typography.bodySmall,
-                color = if (tool.enabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -1251,8 +1287,7 @@ private fun SkillCard(
                 Text(
                     text = if (skill.version.isNotBlank()) "${skill.name}  v${skill.version}" else skill.name,
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (skill.enabled) MaterialTheme.colorScheme.onSurfaceVariant
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f, fill = false),
                 )
                 Switch(
@@ -1266,8 +1301,7 @@ private fun SkillCard(
                 Text(
                     text = skill.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (skill.enabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1388,7 +1422,7 @@ private fun SkillEditor(
             Text(
                 text = stringResource(R.string.settings_skill_editor_desc),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -1539,7 +1573,7 @@ private fun EmbeddingCard(
                     Text(
                         text = stringResource(R.string.settings_embedding_local_hint),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
                     OutlinedTextField(
@@ -1657,7 +1691,7 @@ private fun SearchEngineCard(
                         }
                     },
                     style = MaterialTheme.typography.bodySmall.copy(
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     ),
                 ) { offset ->
                     val urlStart = freeApiKeyPrefix.length

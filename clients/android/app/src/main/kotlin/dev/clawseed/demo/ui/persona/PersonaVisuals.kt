@@ -5,7 +5,6 @@ import android.media.ThumbnailUtils
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -20,6 +19,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -51,14 +52,33 @@ fun personaAccentColor(name: String, colorOverride: String?): Color {
 
 @Composable
 fun personaContainerColor(name: String, colorOverride: String? = null): Color {
-    val alpha = if (isSystemInDarkTheme()) 0.18f else 0.11f
-    return personaAccentColor(name, colorOverride).copy(alpha = alpha)
+    return personaAccentColor(name, colorOverride).copy(alpha = 0.12f)
+        .compositeOver(MaterialTheme.colorScheme.surfaceContainerLow)
 }
 
 @Composable
 fun personaContentColor(name: String, colorOverride: String? = null): Color {
-    return personaAccentColor(name, colorOverride)
+    return readablePersonaColor(personaAccentColor(name, colorOverride), personaContainerColor(name, colorOverride))
 }
+
+@Composable
+fun personaCardColor(name: String, colorOverride: String? = null): Color =
+    personaAccentColor(name, colorOverride).copy(alpha = 0.035f)
+        .compositeOver(MaterialTheme.colorScheme.surfaceContainerLow)
+
+internal fun readablePersonaColor(accent: Color, background: Color): Color {
+    val target = personaInitialColor(background)
+    for (step in 0..20) {
+        val candidate = lerp(accent, target, step / 20f)
+        val lighter = maxOf(candidate.luminance(), background.luminance())
+        val darker = minOf(candidate.luminance(), background.luminance())
+        if ((lighter + 0.05f) / (darker + 0.05f) >= 4.5f) return candidate
+    }
+    return target
+}
+
+internal fun personaInitialColor(background: Color): Color =
+    if (background.luminance() > 0.179f) Color.Black else Color.White
 
 @Composable
 fun PersonaDot(
@@ -69,7 +89,7 @@ fun PersonaDot(
     color: String? = null,
 ) {
     val accentColor = personaAccentColor(name, color)
-    val contentColor = if (accentColor.luminance() > 0.55f) Color(0xFF1C1B1F) else Color.White
+    val contentColor = personaInitialColor(accentColor)
     val avatarImage = rememberPersonaAvatarBitmap(avatar)
     Box(
         modifier = modifier

@@ -1,6 +1,7 @@
 package dev.clawseed.demo.ui.drawer
 
 import android.app.Application
+import dev.clawseed.demo.R
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.clawseed.sdk.android.ClawSeedAndroid
@@ -10,11 +11,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class SessionsUiState(
     val sessions: List<SessionSummary> = emptyList(),
     val personaVisuals: Map<String, PersonaInfo> = emptyMap(),
-    val isLoading: Boolean = false,
+    val isLoading: Boolean = true,
     val error: String? = null,
 )
 
@@ -22,16 +25,25 @@ class SessionsViewModel(application: Application) : AndroidViewModel(application
 
     private val _uiState = MutableStateFlow(SessionsUiState())
     val uiState: StateFlow<SessionsUiState> = _uiState.asStateFlow()
+    private var loadJob: Job? = null
 
     private fun gatewayClient(): dev.clawseed.sdk.core.client.GatewayClient {
         return ClawSeedAndroid.gatewayClient()
     }
 
     fun loadSessions() {
-        viewModelScope.launch {
-            if (!ClawSeedAndroid.isInitialized) return@launch
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             val showLoading = _uiState.value.sessions.isEmpty()
             _uiState.value = _uiState.value.copy(isLoading = showLoading, error = null)
+            val ready = withTimeoutOrNull(15_000) { ClawSeedAndroid.awaitInit(); true } ?: false
+            if (!ready) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = getApplication<Application>().getString(R.string.drawer_gateway_wait_failed),
+                )
+                return@launch
+            }
             val sessionsResult = gatewayClient().sessions()
             val personasResult = gatewayClient().personas()
             if (sessionsResult.isSuccess) {
@@ -46,7 +58,8 @@ class SessionsViewModel(application: Application) : AndroidViewModel(application
             } else {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = sessionsResult.exceptionOrNull()?.message,
+                    error = sessionsResult.exceptionOrNull()?.message
+                        ?: getApplication<Application>().getString(R.string.drawer_gateway_wait_failed),
                 )
             }
         }

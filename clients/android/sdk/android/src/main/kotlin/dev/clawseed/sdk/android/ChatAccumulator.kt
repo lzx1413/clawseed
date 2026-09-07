@@ -22,6 +22,12 @@ class ChatAccumulator(private val session: ClawSeedSession) {
     /** Streaming reasoning text for the current turn. */
     val thinkingContent: StateFlow<String> = _thinkingContent.asStateFlow()
 
+    private val _isGenerating = MutableStateFlow(false)
+    val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
+
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+
     private val _messages = MutableStateFlow<List<AccumulatedMessage>>(emptyList())
     /** Completed message history accumulated from chat events. */
     val messages: StateFlow<List<AccumulatedMessage>> = _messages.asStateFlow()
@@ -34,6 +40,8 @@ class ChatAccumulator(private val session: ClawSeedSession) {
     private var collectionJob: kotlinx.coroutines.Job? = null
     private var currentTurnFlushed = false
     private var regenerating = false
+    var generationId: Long = 0
+        private set
 
     /** Starts collecting [session] events inside [scope]. */
     fun startIn(scope: CoroutineScope) {
@@ -47,9 +55,7 @@ class ChatAccumulator(private val session: ClawSeedSession) {
      *  Clears streaming buffers defensively — a new user turn always starts fresh,
      *  preventing any residual content from a previous turn leaking into the next. */
     fun addUserMessage(content: String) {
-        _streamingContent.value = ""
-        _thinkingContent.value = ""
-        currentTurnFlushed = false
+        beginTurn()
         append(AccumulatedMessage.User(
             id = nextId(),
             timestamp = System.currentTimeMillis(),
@@ -60,6 +66,7 @@ class ChatAccumulator(private val session: ClawSeedSession) {
     /** Prepares the accumulator for a regenerate: clears the last assistant turn but keeps the user message.
      *  Also clears streaming buffers so the regenerated response starts fresh. */
     fun prepareRegenerate() {
+        beginTurn()
         val messages = _messages.value
         val lastUserIndex = messages.indexOfLast { it is AccumulatedMessage.User }
         if (lastUserIndex < 0) return
@@ -74,6 +81,8 @@ class ChatAccumulator(private val session: ClawSeedSession) {
 
     /** Clears all accumulated state for session switching or full reset. */
     fun reset() {
+        finishTurn()
+        clearError()
         _streamingContent.value = ""
         _thinkingContent.value = ""
         _messages.value = emptyList()
@@ -83,13 +92,43 @@ class ChatAccumulator(private val session: ClawSeedSession) {
         regenerating = false
     }
 
+    private fun beginTurn() {
+        generationId++
+        _streamingContent.value = ""
+        _thinkingContent.value = ""
+        currentTurnFlushed = false
+        clearError()
+        _isGenerating.value = true
+    }
+
+    fun finishTurn() {
+        _streamingContent.value = ""
+        _thinkingContent.value = ""
+        _isGenerating.value = false
+    }
+
+    fun finishTurnIfCurrent(id: Long) {
+        if (id == generationId) finishTurn()
+    }
+
+    fun clearError() {
+        _error.value = null
+    }
+
+    fun failTurn(message: String) {
+        finishTurn()
+        _error.value = message
+    }
+
     private fun handleEvent(event: ChatEvent) {
         when (event) {
             is ChatEvent.TextChunk -> {
+                _isGenerating.value = true
                 currentTurnFlushed = false
                 _streamingContent.value += event.content
             }
             is ChatEvent.ThinkingChunk -> {
+                _isGenerating.value = true
                 currentTurnFlushed = false
                 _thinkingContent.value += event.content
             }
@@ -108,8 +147,10 @@ class ChatAccumulator(private val session: ClawSeedSession) {
                     reconcileCompletedAssistantMessage(event.fullResponse)
                 }
                 currentTurnFlushed = true
+                _isGenerating.value = false
             }
             is ChatEvent.ToolCallStarted -> {
+                _isGenerating.value = true
                 append(AccumulatedMessage.ToolCall(
                     id = nextId(),
                     timestamp = System.currentTimeMillis(),
@@ -129,8 +170,7 @@ class ChatAccumulator(private val session: ClawSeedSession) {
                 ))
             }
             is ChatEvent.Aborted -> {
-                _streamingContent.value = ""
-                _thinkingContent.value = ""
+                finishTurn()
                 append(AccumulatedMessage.System(
                     id = nextId(),
                     timestamp = System.currentTimeMillis(),
@@ -142,6 +182,7 @@ class ChatAccumulator(private val session: ClawSeedSession) {
                 _sessionTitle.value = event.title
             }
             is ChatEvent.Error -> {
+                failTurn(event.message)
                 append(AccumulatedMessage.Error(
                     id = nextId(),
                     timestamp = System.currentTimeMillis(),

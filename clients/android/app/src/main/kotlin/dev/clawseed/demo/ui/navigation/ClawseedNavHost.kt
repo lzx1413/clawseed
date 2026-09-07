@@ -41,6 +41,7 @@ fun ClawseedNavHost(
     pendingAutoMessage: String? = null,
     onAutoMessageSent: () -> Unit = {},
     onRunTask: (ScheduledTask) -> Unit = {},
+    onOpenTaskSession: (String) -> Unit = {},
 ) {
     NavHost(
         navController = navController,
@@ -77,6 +78,8 @@ fun ClawseedNavHost(
             ScheduledTasksScreen(
                 onBack = { navController.popBackStack() },
                 onRunTask = onRunTask,
+                onSettings = { navController.navigate(Routes.SETTINGS) },
+                onOpenSession = onOpenTaskSession,
             )
         }
         composable(Routes.PERSONAS) {

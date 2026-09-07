@@ -43,7 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.clawseed.demo.R
 import dev.clawseed.demo.ui.persona.PersonaDot
-import dev.clawseed.demo.ui.persona.personaContainerColor
+import dev.clawseed.demo.ui.persona.personaCardColor
 import dev.clawseed.demo.ui.persona.personaSummary
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.core.model.PersonaInfo
@@ -116,9 +116,8 @@ fun PersonaPickerSheet(
                     items(entries) { entry ->
                         val isSelected = selected == entry.name
                         val persona = personas.find { it.name == entry.name }
-                        val rowBackground = persona
-                            ?.let { personaContainerColor(it.name, it.color) }
-                            ?: if (isSelected) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f) else Color.Transparent
+                        val rowBackground = if (isSelected) MaterialTheme.colorScheme.secondaryContainer
+                            else persona?.let { personaCardColor(it.name, it.color) } ?: Color.Transparent
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

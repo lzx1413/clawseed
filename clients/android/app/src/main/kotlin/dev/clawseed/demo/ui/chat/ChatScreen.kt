@@ -45,7 +45,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -90,12 +89,13 @@ fun ChatScreen(
     val activity = checkNotNull(LocalActivity.current as? ComponentActivity)
     val viewModel: ChatViewModel = viewModel(activity)
     val uiState by viewModel.uiState.collectAsState()
+    val drafts by viewModel.drafts.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
-    var input by remember { mutableStateOf("") }
+    val draftKey = uiState.currentSessionId ?: sessionId ?: "__new__"
+    val input = drafts[draftKey].orEmpty()
     val density = LocalDensity.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    var bottomBarHeightPx by remember { mutableStateOf(0) }
     var showPersonaSheet by remember { mutableStateOf(false) }
 
     fun dismissInput() {
@@ -134,19 +134,12 @@ fun ChatScreen(
     }
 
     val listState = rememberLazyListState()
-    val isStreaming = uiState.streamingContent.isNotEmpty() || uiState.thinkingContent.isNotEmpty()
     val displayedItemCount = uiState.messages.size +
         (if (uiState.thinkingContent.isNotEmpty()) 1 else 0) +
         (if (uiState.streamingContent.isNotEmpty()) 1 else 0)
     val bottomAnchorIndex = displayedItemCount
-    // Track whether user just sent a message — isStreaming arrives asynchronously
-    // (one composition frame late), causing a blank gap between send→stop button.
-    // This local flag bridges that gap and clears itself once isStreaming arrives.
-    var justSent by remember { mutableStateOf(false) }
-    if (isStreaming) justSent = false
-    val isLoading = isStreaming || justSent
+    val isLoading = uiState.isGenerating
     val imeBottom = WindowInsets.ime.getBottom(density)
-    val bottomContentPadding = with(density) { bottomBarHeightPx.toDp() + 8.dp }
 
     // Only auto-scroll if user is near the bottom
     val isNearBottom by remember {
@@ -157,33 +150,40 @@ fun ChatScreen(
         }
     }
 
-    // Auto-send pending message from scheduled task "Run Now"
-    LaunchedEffect(autoSendMessage) {
-        if (autoSendMessage != null) {
-            // Wait for connection before sending
-            while (uiState.connState != ConnectionState.CONNECTED) {
-                kotlinx.coroutines.delay(200)
-            }
-            viewModel.sendMessage(autoSendMessage)
-            onAutoMessageSent()
-        }
-    }
-
     // Switch session only on explicit user action (version bump).
     // When starting a new session, App may carry a one-shot persona request.
     // Resume from the drawer leaves hasNewSessionPersona=false so the gateway's
     // stored binding is authoritative.
     var scrollToLatestAfterSessionSwitch by remember { mutableStateOf(false) }
+    var switchedVersion by remember { mutableStateOf<Int?>(null) }
+    val sessionSwitchReady = switchedVersion == sessionVersion &&
+        uiState.connState == ConnectionState.CONNECTED && uiState.currentSessionId != null &&
+        (sessionId == null || uiState.currentSessionId == sessionId)
     LaunchedEffect(sessionVersion) {
+        switchedVersion = null
         scrollToLatestAfterSessionSwitch = true
         val persona = if (hasNewSessionPersona) newSessionPersona else null
         viewModel.switchToSession(sessionId, persona)
+        switchedVersion = sessionVersion
         if (hasNewSessionPersona) onNewSessionPersonaConsumed()
+        val ready = kotlinx.coroutines.withTimeoutOrNull(20_000) {
+            viewModel.awaitSessionReady(sessionId)
+            true
+        } ?: false
+        if (!ready) {
+            viewModel.reportConnectionTimeout()
+        }
+    }
+
+    LaunchedEffect(sessionSwitchReady, autoSendMessage, uiState.isGenerating, uiState.currentSessionId) {
+        if (sessionSwitchReady && autoSendMessage != null && !uiState.isGenerating && viewModel.sendMessage(autoSendMessage, uiState.currentSessionId)) {
+            onAutoMessageSent()
+        }
     }
 
     // Propagate session ID changes
-    LaunchedEffect(uiState.currentSessionId) {
-        if (uiState.currentSessionId != null && uiState.currentSessionId != sessionId) {
+    LaunchedEffect(uiState.currentSessionId, sessionSwitchReady) {
+        if (sessionSwitchReady && uiState.currentSessionId != null && uiState.currentSessionId != sessionId) {
             onSessionIdChanged(uiState.currentSessionId)
             onSessionEstablished()
         }
@@ -312,7 +312,7 @@ fun ChatScreen(
                     .fillMaxWidth(),
                 contentPadding = PaddingValues(
                     top = 8.dp,
-                    bottom = bottomContentPadding,
+                    bottom = 8.dp,
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -329,7 +329,7 @@ fun ChatScreen(
                     val canSpeak = entry is ChatEntry.AssistantMessage && !entry.isStreaming
                     MessageBubble(
                         entry = entry,
-                        onRegenerate = if (isLastAssistant) ({ viewModel.regenerateLastResponse() }) else null,
+                        onRegenerate = if (isLastAssistant && !isLoading) ({ viewModel.regenerateLastResponse() }) else null,
                         onSpeak = if (canSpeak) ({ viewModel.speakMessage(entry.content, entry.id) }) else null,
                         onStop = if (canSpeak) ({ viewModel.stopSpeech() }) else null,
                         isSpeakingThis = canSpeak && uiState.speakingMessageId == entry.id,
@@ -368,7 +368,7 @@ fun ChatScreen(
                 Snackbar(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     action = {
-                        TextButton(onClick = { viewModel.switchToSession(sessionId) }) {
+                        TextButton(onClick = { viewModel.retryLastRequest() }) {
                             Text(stringResource(R.string.common_retry))
                         }
                     },
@@ -384,18 +384,15 @@ fun ChatScreen(
 
             ChatBottomBar(
                 input = input,
-                onInputChange = { input = it },
+                onInputChange = { viewModel.updateDraft(draftKey, it) },
                 onSend = {
                     val text = input
                     dismissInput()
-                    justSent = true
-                    input = ""
-                    viewModel.sendMessage(text)
+                    if (viewModel.sendMessage(text, uiState.currentSessionId)) viewModel.updateDraft(draftKey, "")
                 },
                 onStop = { viewModel.abortGeneration() },
                 isLoading = isLoading,
-                canSend = uiState.connState == ConnectionState.CONNECTED,
-                modifier = Modifier.onSizeChanged { bottomBarHeightPx = it.height },
+                canSend = sessionSwitchReady,
             )
         }
     }
@@ -406,7 +403,7 @@ fun ChatScreen(
             onDismiss = { showPersonaSheet = false },
             onStart = { persona ->
                 showPersonaSheet = false
-                viewModel.startNewSession(persona)
+                onNewSession(persona)
             },
             onManage = {
                 showPersonaSheet = false

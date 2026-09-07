@@ -31,14 +31,16 @@ fun ClawseedApp(localStore: LocalStore, notificationSessionId: androidx.compose.
     var refreshKey by remember { mutableStateOf(0) }
 
     // Auto-send message state for "Run Now" from scheduled tasks
-    var pendingAutoMessage by remember { mutableStateOf<String?>(null) }
-    var pendingAutoTaskId by remember { mutableStateOf<String?>(null) }
+    var pendingAutoMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingAutoTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
     // Navigate to session from notification tap
     val notifSessionId = notificationSessionId.value
     LaunchedEffect(notifSessionId) {
         val target = notifSessionId ?: return@LaunchedEffect
+        pendingAutoMessage = null
+        pendingAutoTaskId = null
         notificationSessionId.value = null
         currentSessionId = target
         pendingNewSessionPersona = null
@@ -59,6 +61,8 @@ fun ClawseedApp(localStore: LocalStore, notificationSessionId: androidx.compose.
     }
 
     fun switchSession(sessionId: String?, persona: String? = null, hasPersona: Boolean = false) {
+        pendingAutoMessage = null
+        pendingAutoTaskId = null
         currentSessionId = sessionId
         pendingNewSessionPersona = persona
         hasPendingNewSessionPersona = hasPersona
@@ -75,9 +79,9 @@ fun ClawseedApp(localStore: LocalStore, notificationSessionId: androidx.compose.
     }
 
     fun onRunTask(task: ScheduledTask) {
+        switchSession(task.sessionId)
         pendingAutoMessage = task.message
         pendingAutoTaskId = task.id
-        switchSession(task.sessionId)
     }
 
     fun onAutoMessageSent() {
@@ -143,6 +147,7 @@ fun ClawseedApp(localStore: LocalStore, notificationSessionId: androidx.compose.
             pendingAutoMessage = pendingAutoMessage,
             onAutoMessageSent = { onAutoMessageSent() },
             onRunTask = { task -> onRunTask(task) },
+            onOpenTaskSession = { sessionId -> switchSession(sessionId) },
         )
     }
 }

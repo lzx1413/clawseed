@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.clawseed.demo.R
+import dev.clawseed.demo.ui.theme.success
 import dev.clawseed.demo.data.ChatEntry
 import dev.clawseed.demo.data.ToolCallInfo
 import dev.clawseed.demo.ui.chat.rememberRichMediaImageLoader
@@ -107,18 +108,18 @@ private fun UserBubble(content: String, modifier: Modifier = Modifier) {
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp))
-                .background(MaterialTheme.colorScheme.primary)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
         ) {
             val selectionColors = TextSelectionColors(
-                handleColor = MaterialTheme.colorScheme.onPrimary,
-                backgroundColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.3f),
+                handleColor = MaterialTheme.colorScheme.primary,
+                backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
             )
             CompositionLocalProvider(LocalTextSelectionColors provides selectionColors) {
                 SelectionContainer {
                     Text(
                         text = content,
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
@@ -206,7 +207,7 @@ private fun SpeakButton(
             contentDescription = stringResource(if (isSpeaking) R.string.msg_stop_speaking else R.string.msg_speak),
             modifier = Modifier.size(14.dp),
             tint = if (isSpeaking) MaterialTheme.colorScheme.primary
-                   else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                   else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -239,14 +240,14 @@ private fun CopyButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
             imageVector = CopyIcon,
             contentDescription = stringResource(R.string.msg_copy),
             modifier = Modifier.size(14.dp),
-            tint = if (copied) MaterialTheme.colorScheme.primary
-                   else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            tint = if (copied) MaterialTheme.colorScheme.success
+                   else MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (copied) {
             Text(
                 text = stringResource(R.string.msg_copied),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.success,
             )
         }
     }
@@ -266,7 +267,7 @@ private fun RegenerateButton(onClick: () -> Unit, modifier: Modifier = Modifier)
             imageVector = RefreshIcon,
             contentDescription = stringResource(R.string.msg_regenerate),
             modifier = Modifier.size(14.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -766,7 +767,7 @@ private fun SearchResultsCard(block: ContentBlock.SearchResults, modifier: Modif
                         Text(
                             text = source,
                             style = MaterialTheme.typography.labelSmall,
-                            color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            color = colorScheme.onSurfaceVariant,
                         )
                     }
                     item.description?.let { description ->
@@ -785,7 +786,7 @@ private fun SearchResultsCard(block: ContentBlock.SearchResults, modifier: Modif
             Text(
                 text = "另有 ${block.items.size - 3} 条结果，可展开工具详情查看。",
                 style = MaterialTheme.typography.labelSmall,
-                color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                color = colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -812,7 +813,7 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
             Text(
                 text = if (detailExpanded) "▼" else "▶",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (isCalling) {
                 CircularProgressIndicator(
@@ -828,7 +829,7 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
                 Text(
                     text = stringResource(R.string.msg_calling),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
                 Text(
@@ -844,7 +845,7 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
                     Text(
                         text = inv.toolResult.take(50) + "…",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
@@ -857,12 +858,12 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
                 Text(
                     text = stringResource(R.string.msg_parameters),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     text = formatJson(inv.toolArgs),
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 2.dp),
                 )
                 if (inv.toolResult != null) {
@@ -870,13 +871,13 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
                     Text(
                         text = stringResource(R.string.msg_result),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     SelectionContainer {
                         Text(
                             text = inv.toolResult,
                             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 2.dp),
                         )
                     }
@@ -915,7 +916,7 @@ private fun ThinkingCard(content: String, modifier: Modifier = Modifier) {
             SelectionContainer {
                 MarkdownContent(
                     content = content,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }

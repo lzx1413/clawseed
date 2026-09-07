@@ -6,9 +6,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,21 +23,15 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -56,9 +48,6 @@ fun ChatBottomBar(
     modifier: Modifier = Modifier,
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    val gradientBrush = remember(colorScheme.primary, colorScheme.tertiary) {
-        Brush.horizontalGradient(listOf(colorScheme.primary, colorScheme.tertiary))
-    }
 
     fun submitQuestion() {
         if (input.isNotBlank() && canSend) {
@@ -66,30 +55,20 @@ fun ChatBottomBar(
         }
     }
 
-    val focusRequester = remember { FocusRequester() }
-    val inInspection = LocalInspectionMode.current
-
     Column(modifier = modifier) {
         OutlinedTextField(
             value = input,
             onValueChange = onInputChange,
             modifier = Modifier
-                .focusRequester(focusRequester)
                 .padding(16.dp)
                 .heightIn(max = 120.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(28.dp))
-                .background(colorScheme.background)
-                .border(
-                    BorderStroke(width = 2.dp, brush = gradientBrush),
-                    shape = RoundedCornerShape(28.dp),
-                ),
+                .fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Color.Transparent,
-                unfocusedBorderColor = Color.Transparent,
-                disabledBorderColor = Color.Transparent,
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
+                focusedBorderColor = colorScheme.primary,
+                unfocusedBorderColor = colorScheme.outline,
+                focusedContainerColor = colorScheme.surfaceContainerLow,
+                unfocusedContainerColor = colorScheme.surfaceContainerLow,
+                cursorColor = colorScheme.primary,
             ),
             placeholder = {
                 Text(
@@ -104,18 +83,16 @@ fun ChatBottomBar(
                     horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
                 ) {
                     if (isLoading) {
-                        GradientCircleButton(
+                        ComposerCircleButton(
                             icon = StopIcon,
                             onClick = onStop,
-                            gradientBrush = gradientBrush,
                             contentDescription = stringResource(R.string.chat_stop_generating),
                             isPulsing = true,
                         )
                     } else if (input.isNotBlank() && canSend) {
-                        GradientCircleButton(
+                        ComposerCircleButton(
                             icon = SendIcon,
                             onClick = { submitQuestion() },
-                            gradientBrush = gradientBrush,
                             contentDescription = stringResource(R.string.chat_send),
                         )
                     }
@@ -126,18 +103,13 @@ fun ChatBottomBar(
             shape = RoundedCornerShape(28.dp),
         )
 
-        // Auto-focus on first composition (opens keyboard on chat entry)
-        LaunchedEffect(Unit) {
-            if (!inInspection) focusRequester.requestFocus()
-        }
     }
 }
 
 @Composable
-private fun GradientCircleButton(
+private fun ComposerCircleButton(
     icon: ImageVector,
     onClick: () -> Unit,
-    gradientBrush: Brush,
     contentDescription: String,
     modifier: Modifier = Modifier,
     isPulsing: Boolean = false,
@@ -173,7 +145,7 @@ private fun GradientCircleButton(
         modifier = modifier
             .size(42.dp)
             .clip(CircleShape)
-            .background(brush = gradientBrush, shape = CircleShape)
+            .background(MaterialTheme.colorScheme.primary, shape = CircleShape)
             .clickable { onClick() },
         contentAlignment = Alignment.Center,
     ) {
@@ -181,7 +153,7 @@ private fun GradientCircleButton(
             imageVector = icon,
             modifier = Modifier.size(32.dp).then(pulseModifier),
             contentDescription = contentDescription,
-            tint = Color.White,
+            tint = MaterialTheme.colorScheme.onPrimary,
         )
     }
 }

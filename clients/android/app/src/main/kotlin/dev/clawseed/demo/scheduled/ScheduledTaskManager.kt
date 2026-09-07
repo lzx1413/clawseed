@@ -95,9 +95,10 @@ object ScheduledTaskManager {
         }
     }
 
-    fun nextTriggerMillis(task: ScheduledTask): Long {
-        val now = Calendar.getInstance()
-        val target = Calendar.getInstance().apply {
+    fun nextTriggerMillis(task: ScheduledTask, nowMillis: Long = System.currentTimeMillis()): Long {
+        require(task.hour in 0..23 && task.minute in 0..59)
+        val now = Calendar.getInstance().apply { timeInMillis = nowMillis }
+        val target = (now.clone() as Calendar).apply {
             set(Calendar.HOUR_OF_DAY, task.hour)
             set(Calendar.MINUTE, task.minute)
             set(Calendar.SECOND, 0)
@@ -112,6 +113,12 @@ object ScheduledTaskManager {
             }
             TaskRepeat.WEEKDAY -> {
                 while (target.before(now) || target == now || isWeekend(target)) {
+                    target.add(Calendar.DAY_OF_YEAR, 1)
+                }
+            }
+            TaskRepeat.CUSTOM -> {
+                require(task.repeatDays.isNotEmpty() && task.repeatDays.all { it in 1..7 })
+                while (!target.after(now) || ((target.get(Calendar.DAY_OF_WEEK) + 5) % 7 + 1) !in task.repeatDays) {
                     target.add(Calendar.DAY_OF_YEAR, 1)
                 }
             }

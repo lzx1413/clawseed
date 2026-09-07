@@ -466,10 +466,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         )
     }
 
-    private fun saveToLocalConfig(toml: String) {
-        val configManager = GatewayConfigManager(getApplication())
-        val file = configManager.ensureConfig()
-        file.writeText(toml)
+    private suspend fun saveToLocalConfig(toml: String) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            ConfigPersistence.save(toml, null) { GatewayConfigManager(getApplication()).ensureConfig() }
+        }
     }
 
     fun saveConfig() {
@@ -481,7 +481,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
             if (!ClawSeedAndroid.isInitialized) {
                 // Gateway not running — save directly to local config file
-                saveToLocalConfig(toml)
+                try {
+                    saveToLocalConfig(toml)
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    showConfigSaveError(e)
+                    return@launch
+                }
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
                     successMessage = getApplication<Application>().getString(R.string.settings_save_config_local),
@@ -497,7 +503,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 return@launch
             }
 
-            client().updateConfig(toml)
+            saveThroughGateway(toml)
                 .onSuccess {
                     _uiState.value = _uiState.value.copy(isSaving = false, successMessage = getApplication<Application>().getString(R.string.settings_save_config_gateway))
                     saveCurrentDraft()
@@ -515,13 +521,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
                 .onFailure { e ->
-                    // API failed (gateway might have crashed during save) — save to local file
-                    saveToLocalConfig(toml)
-                    _uiState.value = _uiState.value.copy(
-                        isSaving = false,
-                        successMessage = getApplication<Application>().getString(R.string.settings_save_config_local),
-                        configToml = toml,
-                    )
+                    showConfigSaveError(e)
                 }
         }
     }
@@ -534,7 +534,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val toml = state.configToml
 
             if (!ClawSeedAndroid.isInitialized) {
-                saveToLocalConfig(toml)
+                try {
+                    saveToLocalConfig(toml)
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    showConfigSaveError(e)
+                    return@launch
+                }
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
                     successMessage = getApplication<Application>().getString(R.string.settings_global_config_saved_local),
@@ -543,7 +549,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 return@launch
             }
 
-            client().updateConfig(toml)
+            saveThroughGateway(toml)
                 .onSuccess {
                     _uiState.value = _uiState.value.copy(isSaving = false, successMessage = getApplication<Application>().getString(R.string.settings_global_config_saved_gateway))
                     viewModelScope.launch {
@@ -552,13 +558,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
                 .onFailure { e ->
-                    saveToLocalConfig(toml)
-                    _uiState.value = _uiState.value.copy(
-                        isSaving = false,
-                        successMessage = getApplication<Application>().getString(R.string.settings_global_config_saved_local),
-                        configToml = toml,
-                        error = getApplication<Application>().getString(R.string.settings_save_failed_gateway, e.message?.take(100) ?: ""),
-                    )
+                    showConfigSaveError(e)
                 }
         }
     }
@@ -603,7 +603,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 return@launch
             }
 
-            client().updateConfig(toml)
+            saveThroughGateway(toml)
                 .onSuccess {
                     _uiState.value = _uiState.value.copy(
                         isSaving = false,
@@ -618,31 +618,22 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
                 .onFailure { gatewayError ->
-                    runCatching { saveToLocalConfig(toml) }
-                        .onSuccess {
-                            _uiState.value = _uiState.value.copy(
-                                isSaving = false,
-                                configToml = toml,
-                                successMessage = getApplication<Application>().getString(
-                                    R.string.settings_save_config_local,
-                                ),
-                                error = getApplication<Application>().getString(
-                                    R.string.settings_save_failed_gateway,
-                                    gatewayError.message?.take(100) ?: "",
-                                ),
-                            )
-                        }
-                        .onFailure { localError ->
-                            _uiState.value = _uiState.value.copy(
-                                isSaving = false,
-                                error = getApplication<Application>().getString(
-                                    R.string.settings_save_failed,
-                                    localError.message?.take(100) ?: "",
-                                ),
-                            )
-                        }
+                    showConfigSaveError(gatewayError)
                 }
         }
+    }
+
+    private suspend fun saveThroughGateway(toml: String): Result<Unit> = runCatching {
+        ConfigPersistence.save(toml, client()::updateConfig) { GatewayConfigManager(getApplication()).configFile() }
+    }
+
+    private fun showConfigSaveError(error: Throwable) {
+        if (error is kotlinx.coroutines.CancellationException) throw error
+        _uiState.value = _uiState.value.copy(
+            isSaving = false,
+            successMessage = null,
+            error = getApplication<Application>().getString(R.string.settings_save_failed, error.message?.take(100) ?: ""),
+        )
     }
 
     private fun buildConfigToml(state: SettingsUiState): String {

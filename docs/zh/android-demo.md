@@ -363,6 +363,8 @@ private suspend fun waitUntilReady() {
 
 ## 定时后台任务
 
+任务列表分别显示下次计划执行时间与上次执行时间；点击任务或详情图标可查看完整提示词、已保存的执行结果和错误。失败详情提供设置入口，不会自动重跑任务。编辑任务时，时间选择器按需弹出，重复模式与指定星期保留在紧凑表单内。
+
 应用支持基于 AlarmManager 的定时任务，可在指定时间唤醒设备、通过 WebSocket 执行 AI 提示，并通知用户结果。
 
 ### 架构
@@ -380,7 +382,8 @@ private suspend fun waitUntilReady() {
 | `name` | String | 显示名称 |
 | `message` | String | 发送给 AI 的提示 |
 | `hour` / `minute` | Int | 定时时间（24 小时制） |
-| `repeat` | Enum | `ONCE`（一次）、`DAILY`（每天）、`WEEKDAY`（工作日） |
+| `repeat` | Enum | `ONCE`（一次）、`DAILY`（每天）、`WEEKDAY`（工作日）、`CUSTOM`（指定星期） |
+| `repeatDays` | List<Int> | `CUSTOM` 模式选中的星期，1 为周一，7 为周日 |
 | `enabled` | Boolean | 启用/禁用（不删除） |
 | `sessionId` | String? | 可选的目标会话 |
 
@@ -389,6 +392,7 @@ private suspend fun waitUntilReady() {
 - **ONCE** — 触发一次后自动禁用
 - **DAILY** — 每天在指定时间触发
 - **WEEKDAY** — 仅周一至周五触发
+- **CUSTOM**：仅在选中的星期触发，编辑和重启后保留选择。
 
 ### 执行流程
 
@@ -402,7 +406,11 @@ private suspend fun waitUntilReady() {
 
 ## 外观设置
 
+聊天输入框仅在用户点击时获取焦点，打开历史会话不会自动弹出键盘。历史抽屉支持按标题、分身和会话 ID 搜索，并按本地日期分组；加载失败与空列表分别展示。LLM 配置使用独立视图和固定保存栏，服务技术详情默认折叠。分身详情按类别折叠工具权限，仅改变展示，不改变授权规则。
+
 应用支持浅色/深色/跟随系统主题选择，以及 OLED 模式选项：
+
+配色集中在 `ui/theme/AppColors.kt`：中性灰背景搭配暖金色操作与选中态，成功使用绿色，错误和删除使用红色。聊天输入框默认显示中性细描边，聚焦时强调为金色。分身自定义色保留在头像与标签中，大面积背景仅作轻微着色；标签文字按应用当前主题调整对比度。
 
 - **跟随系统** — 跟随 Android 系统设置（默认）
 - **浅色** — 始终使用浅色主题

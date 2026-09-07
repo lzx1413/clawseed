@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -41,6 +42,7 @@ import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -144,6 +146,7 @@ fun PersonaManagerScreen(
 
                 uiState.viewing != null -> PersonaDetailView(
                     detail = uiState.viewing!!,
+                    tools = uiState.tools,
                     skills = uiState.skills,
                     onStart = onStartChat,
                     onEdit = { viewModel.edit(uiState.viewing!!.name) },
@@ -211,7 +214,7 @@ private fun PersonaList(
                     text = { Text(stringResource(R.string.persona_delete_desc)) },
                     confirmButton = {
                         TextButton(onClick = { confirmDelete = false; onDelete(persona.name) }) {
-                            Text(stringResource(R.string.common_delete))
+                            Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error)
                         }
                     },
                     dismissButton = {
@@ -226,7 +229,7 @@ private fun PersonaList(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onView(persona.name) },
-                colors = CardDefaults.cardColors(containerColor = personaContainerColor(persona.name, persona.color)),
+                colors = CardDefaults.cardColors(containerColor = personaCardColor(persona.name, persona.color)),
             ) {
                 Row(
                     modifier = Modifier.padding(12.dp),
@@ -265,7 +268,7 @@ private fun PersonaList(
                         Icon(Icons.Default.Add, contentDescription = stringResource(R.string.persona_duplicate))
                     }
                     IconButton(onClick = { confirmDelete = true }) {
-                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.common_delete))
+                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.error)
                     }
                 }
             }
@@ -276,6 +279,7 @@ private fun PersonaList(
 @Composable
 private fun PersonaDetailView(
     detail: PersonaDetail,
+    tools: List<ToolInfo>,
     skills: List<SkillInfo>,
     onStart: (String) -> Unit,
     onEdit: () -> Unit,
@@ -288,6 +292,21 @@ private fun PersonaDetailView(
     ) {
         item {
             PersonaIdentityHeader(detail)
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button(onClick = { onStart(detail.name) }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.persona_start))
+                }
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.persona_edit))
+                }
+                IconButton(onClick = onDuplicate) {
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.persona_duplicate))
+                }
+            }
         }
         item {
             PersonaSection(title = stringResource(R.string.persona_llm_section)) {
@@ -316,13 +335,19 @@ private fun PersonaDetailView(
             }
         }
         item {
-            PersonaSection(title = stringResource(R.string.persona_tools_section)) {
-                SettingLine(
-                    label = stringResource(R.string.persona_tools_section),
-                    value = detail.allowedTools.takeIf { it.isNotEmpty() }
-                        ?.joinToString(", ")
-                        ?: stringResource(R.string.persona_tools_inherit),
-                )
+            Text(stringResource(R.string.persona_tools_section), style = MaterialTheme.typography.titleMedium)
+            if (detail.allowedTools.isEmpty()) {
+                Text(stringResource(R.string.persona_tools_inherit), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        groupToolNames(detail.allowedTools).forEach { (group, names) ->
+            item(key = "allowed:$group") {
+                ToolPermissionGroup(stringResource(group.labelRes), names, tools)
+            }
+        }
+        if (detail.deniedTools.isNotEmpty()) {
+            item(key = "denied") {
+                ToolPermissionGroup(stringResource(R.string.tools_blocked), detail.deniedTools, tools)
             }
         }
         item {
@@ -338,28 +363,29 @@ private fun PersonaDetailView(
                 )
             }
         }
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedButton(onClick = onDuplicate, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.persona_duplicate), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Edit, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.persona_edit), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Button(onClick = { onStart(detail.name) }, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.persona_start), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun ToolPermissionGroup(title: String, names: List<String>, tools: List<ToolInfo>) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.tools_group_count, title, names.size), modifier = Modifier.weight(1f))
+            Icon(
+                if (expanded) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = stringResource(if (expanded) R.string.common_collapse else R.string.common_expand),
+            )
+        }
+        if (expanded) names.forEach { name ->
+            Column(Modifier.padding(vertical = 6.dp)) {
+                Text(name, style = MaterialTheme.typography.bodyMedium)
+                tools.find { it.name == name }?.description?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
+        HorizontalDivider()
     }
 }
 
@@ -367,7 +393,7 @@ private fun PersonaDetailView(
 private fun PersonaIdentityHeader(detail: PersonaDetail) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = personaContainerColor(detail.name, detail.color)),
+        colors = CardDefaults.cardColors(containerColor = personaCardColor(detail.name, detail.color)),
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -920,8 +946,7 @@ private fun PersonaToolCard(
                 Text(
                     text = tool.name,
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f, fill = false),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -954,8 +979,7 @@ private fun PersonaToolCard(
                 Text(
                     text = tool.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1010,8 +1034,7 @@ private fun PersonaSkillCard(
                 Text(
                     text = if (skill.version.isNotBlank()) "${skill.name}  v${skill.version}" else skill.name,
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f, fill = false),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1027,8 +1050,7 @@ private fun PersonaSkillCard(
                 Text(
                     text = skill.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )

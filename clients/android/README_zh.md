@@ -158,7 +158,7 @@ sdk/embedded/src/main/kotlin/dev/clawseed/sdk/embedded/
 
 ### 定时任务
 - 基于 AlarmManager 的后台任务，在指定时间唤醒设备
-- 重复模式：单次、每天、工作日
+- 重复模式：单次、每天、工作日、指定星期
 - 高优先级通知，带声音/振动
 - 点击通知跳转到任务对应的聊天会话
 - `BootReceiver` 在设备重启后重新调度所有任务

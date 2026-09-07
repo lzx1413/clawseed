@@ -20,6 +20,7 @@ data class ScheduledTask(
     val lastResult: String? = null,
     val lastError: String? = null,
     val isAlarm: Boolean = false,
+    val repeatDays: List<Int> = emptyList(),
 )
 
 @Serializable
@@ -27,6 +28,7 @@ enum class TaskRepeat(@StringRes val labelRes: Int) {
     ONCE(R.string.enum_task_repeat_once),
     DAILY(R.string.enum_task_repeat_daily),
     WEEKDAY(R.string.enum_task_repeat_weekday),
+    CUSTOM(R.string.enum_task_repeat_custom),
 }
 
 @Serializable

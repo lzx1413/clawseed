@@ -369,6 +369,8 @@ Only localhost cleartext connections are allowed (Gateway runs locally on port 4
 
 ## Scheduled Background Tasks
 
+The task list distinguishes the next planned run from the previous execution. Open a task or its details icon to inspect the full prompt, stored result, and error. Failure details link to settings without automatically rerunning the task. The time picker opens on demand, keeping repeat modes and selected weekdays in a compact editor.
+
 The app supports AlarmManager-based scheduled tasks that wake the device at specified times, execute AI prompts via WebSocket, and notify the user of results.
 
 ### Architecture
@@ -386,7 +388,8 @@ The app supports AlarmManager-based scheduled tasks that wake the device at spec
 | `name` | String | Display name |
 | `message` | String | AI prompt to send |
 | `hour` / `minute` | Int | Scheduled time (24-hour format) |
-| `repeat` | Enum | `ONCE`, `DAILY`, or `WEEKDAY` |
+| `repeat` | Enum | `ONCE`, `DAILY`, `WEEKDAY`, or `CUSTOM` |
+| `repeatDays` | List<Int> | Selected weekdays for `CUSTOM`: 1 = Monday through 7 = Sunday |
 | `enabled` | Boolean | Enable/disable without deletion |
 | `sessionId` | String? | Optional session target |
 
@@ -395,6 +398,7 @@ The app supports AlarmManager-based scheduled tasks that wake the device at spec
 - **ONCE** — Fires once, then auto-disables
 - **DAILY** — Fires every day at the specified time
 - **WEEKDAY** — Fires Monday–Friday only
+- **CUSTOM**: Fires only on the selected weekdays; selections persist across edits and restarts.
 
 ### Execution Flow
 
@@ -408,7 +412,11 @@ The app supports AlarmManager-based scheduled tasks that wake the device at spec
 
 ## Appearance Settings
 
+The chat composer only takes focus on user interaction, so opening history does not open the keyboard. The history drawer searches titles, personas, and session IDs, groups entries by local date, and distinguishes loading failures from an empty list. LLM configuration uses a dedicated view with a persistent save bar; service diagnostics are collapsed by default. Persona tool permissions are grouped and expandable without changing authorization rules.
+
 The app supports light/dark/system theme selection with an OLED mode option:
+
+Colors are centralized in `ui/theme/AppColors.kt`: neutral gray surfaces, warm gold actions and selections, green success states, and red errors and destructive actions. The composer uses a neutral outline that turns gold on focus. Persona colors remain in avatars and labels with only a subtle tint on large surfaces; label contrast follows the selected app theme.
 
 - **System** — Follows Android system setting (default)
 - **Light** — Always light theme

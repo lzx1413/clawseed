@@ -1,5 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="task_result_summary">Stored result summary</string>
+    <string name="task_open_session">View linked conversation</string>
+    <string name="task_clock_time">%1$02d:%2$02d</string>
+    <string name="drawer_search">Search conversations</string>
+    <string name="drawer_clear_search">Clear search</string>
+    <string name="drawer_no_matches">No matching conversations</string>
+    <string name="drawer_today">Today</string>
+    <string name="drawer_yesterday">Yesterday</string>
+    <string name="drawer_older">Unknown date</string>
+    <string name="drawer_gateway_wait_failed">Service is not ready. Please retry.</string>
+    <string name="drawer_session_actions">Conversation actions</string>
+    <string name="drawer_delete_confirm">Delete conversation %1$s?</string>
+    <string name="task_next_run">Next: %1$s</string>
+    <string name="task_last_run">Last run: %1$s</string>
+    <string name="task_paused">Schedule paused</string>
+    <string name="task_invalid_schedule">Invalid schedule; edit this task</string>
+    <string name="task_details">Execution details</string>
+    <string name="task_succeeded">Last run succeeded</string>
+    <string name="task_failed">Last run failed</string>
+    <string name="task_not_run">Not run yet</string>
+    <string name="task_failure_recovery">Check the service status, model configuration and network before running this task again. Retrying may repeat actions already completed.</string>
+    <string name="settings_gateway_ready">Available · %1$s</string>
+    <string name="tools_group_files">Files and commands</string>
+    <string name="tools_group_network">Network</string>
+    <string name="tools_group_memory">Memory and knowledge</string>
+    <string name="tools_group_tasks">Scheduled tasks</string>
+    <string name="tools_group_device">Device and apps</string>
+    <string name="tools_group_other">Other tools</string>
+    <string name="tools_blocked">Blocked tools</string>
+    <string name="tools_group_count">%1$s (%2$d)</string>
+    <string name="enum_task_repeat_custom">Selected days</string>
+    <string name="chat_connection_interrupted">Connection interrupted. Please retry.</string>
     <!-- ========== Common ========== -->
     <string name="app_name">ClawSeed</string>
     <string name="common_confirm">Confirm</string>

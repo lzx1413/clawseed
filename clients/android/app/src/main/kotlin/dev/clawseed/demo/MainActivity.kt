@@ -11,13 +11,11 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import dev.clawseed.demo.ui.theme.appColorScheme
 import androidx.core.content.ContextCompat
 import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.demo.i18n.LocaleHelper
@@ -32,10 +30,13 @@ class MainActivity : ComponentActivity() {
     private val serviceRef = mutableStateOf<ClawseedService?>(null)
     private lateinit var localStore: LocalStore
     private val pendingSessionId = mutableStateOf<String?>(null)
+    private var pendingAlarmDismissId: String? = null
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
             serviceRef.value = (binder as ClawseedService.LocalBinder).service
+            pendingAlarmDismissId?.let { serviceRef.value?.dismissAlarm(it) }
+            pendingAlarmDismissId = null
         }
         override fun onServiceDisconnected(name: ComponentName) {
             serviceRef.value = null
@@ -63,6 +64,7 @@ class MainActivity : ComponentActivity() {
 
         // Handle session ID from notification tap
         handleIntentSession(intent)
+        handleAlarmDismiss(intent)
 
         setContent {
             val themeMode by localStore.themeMode.collectAsState(initial = "system")
@@ -72,38 +74,7 @@ class MainActivity : ComponentActivity() {
                 "dark" -> true
                 else -> isSystemInDarkTheme()
             }
-            val colorScheme = when {
-                useDarkTheme && oledMode -> darkColorScheme(
-                    primary = Color(0xFFE8A44A),
-                    onPrimary = Color(0xFF432800),
-                    primaryContainer = Color(0xFF5F3A00),
-                    onPrimaryContainer = Color(0xFFFFDDB3),
-                    secondary = Color(0xFFD4914A),
-                    onSecondary = Color(0xFF3B1E00),
-                    background = Color.Black,
-                    onBackground = Color.White,
-                    surface = Color.Black,
-                    onSurface = Color.White,
-                    surfaceVariant = Color(0xFF1C1C1C),
-                    onSurfaceVariant = Color(0xFFBFBFBF),
-                )
-                useDarkTheme -> darkColorScheme(
-                    primary = Color(0xFFE8A44A),
-                    onPrimary = Color(0xFF432800),
-                    primaryContainer = Color(0xFF5F3A00),
-                    onPrimaryContainer = Color(0xFFFFDDB3),
-                    secondary = Color(0xFFD4914A),
-                    onSecondary = Color(0xFF3B1E00),
-                )
-                else -> lightColorScheme(
-                    primary = Color(0xFFB0722A),
-                    onPrimary = Color(0xFFFFFFFF),
-                    primaryContainer = Color(0xFFFFDDB3),
-                    onPrimaryContainer = Color(0xFF3B1E00),
-                    secondary = Color(0xFF9A6324),
-                    onSecondary = Color(0xFFFFFFFF),
-                )
-            }
+            val colorScheme = appColorScheme(useDarkTheme, oledMode)
             MaterialTheme(colorScheme = colorScheme) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     ClawseedApp(
@@ -122,11 +93,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleAlarmDismiss(intent: Intent?) {
-        if (intent?.getStringExtra(EXTRA_ALARM_DISMISS) != null) {
-            serviceRef.value?.dismissAlarm()
-            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-            nm.cancel(intent.getStringExtra(EXTRA_ALARM_DISMISS)!!.hashCode())
-        }
+        val taskId = intent?.getStringExtra(EXTRA_ALARM_DISMISS) ?: return
+        intent.removeExtra(EXTRA_ALARM_DISMISS)
+        val service = serviceRef.value
+        if (service != null) service.dismissAlarm(taskId) else pendingAlarmDismissId = taskId
     }
 
     private fun handleIntentSession(intent: Intent?) {
