@@ -43,6 +43,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
@@ -70,6 +71,7 @@ class ClawseedService : Service() {
     private val unbindSignal = Channel<Unit>(capacity = 1)
     @Volatile private var serviceJob: Job? = null
     @Volatile private var gatewayFailed = false
+    @Volatile private var latestStartId = 0
     private var alarmMediaPlayer: MediaPlayer? = null
     private var alarmVibrator: Vibrator? = null
     private val ringingAlarmIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -97,6 +99,8 @@ class ClawseedService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        latestStartId = startId
+
         // Handle alarm dismiss action
         val alarmDismissId = intent?.getStringExtra(EXTRA_ALARM_DISMISS)
         if (alarmDismissId != null) {
@@ -208,12 +212,16 @@ class ClawseedService : Service() {
                 }
             }
             if (!isBound && taskChannel.isEmpty && ringingAlarmIds.isEmpty()) {
+                val stopCandidateId = latestStartId
+                delay(REBIND_GRACE_PERIOD_MS)
+                if (isBound || !taskChannel.isEmpty || ringingAlarmIds.isNotEmpty()) {
+                    continue
+                }
                 // Signal intent to stop, but don't exit the loop.
                 // A task might arrive between isEmpty and now; the next
-                // select iteration will pick it up. The system will
-                // destroy the service via onDestroy() which cancels
-                // this coroutine when it's safe to do so.
-                stopSelf()
+                // select iteration will pick it up. stopSelfResult prevents
+                // an old unbind from stopping a newer Activity start request.
+                stopSelfResult(stopCandidateId)
             }
         }
     }
@@ -752,6 +760,7 @@ class ClawseedService : Service() {
     }
 
     companion object {
+        private const val REBIND_GRACE_PERIOD_MS = 1_000L
         const val EXTRA_TASK_ID = "task_id"
         const val EXTRA_ALARM_DISMISS = "alarm_dismiss"
         private const val CHANNEL_ID = "clawseed_gateway"

@@ -76,6 +76,14 @@ class SessionSlotTest {
         assertNull(acc.error.value)
     }
 
+    @Test fun sessionSwitchVersionIsHandledOnlyOnceAcrossScreenRecreation() {
+        val gate = SessionSwitchVersionGate()
+
+        assertTrue(gate.tryAcquire(7))
+        assertFalse(gate.tryAcquire(7))
+        assertTrue(gate.tryAcquire(8))
+    }
+
     private class FakeSession : ClawSeedSession {
         val sentMessages = mutableListOf<String>()
         var regenerationCount = 0

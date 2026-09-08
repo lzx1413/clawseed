@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.size
@@ -139,7 +138,7 @@ fun ChatScreen(
         (if (uiState.streamingContent.isNotEmpty()) 1 else 0)
     val bottomAnchorIndex = displayedItemCount
     val isLoading = uiState.isGenerating
-    val imeBottom = WindowInsets.ime.getBottom(density)
+    val isImeVisible = WindowInsets.ime.getBottom(density) > 0
 
     // Only auto-scroll if user is near the bottom
     val isNearBottom by remember {
@@ -163,7 +162,7 @@ fun ChatScreen(
         switchedVersion = null
         scrollToLatestAfterSessionSwitch = true
         val persona = if (hasNewSessionPersona) newSessionPersona else null
-        viewModel.switchToSession(sessionId, persona)
+        viewModel.switchToSession(sessionId, persona, sessionVersion)
         switchedVersion = sessionVersion
         if (hasNewSessionPersona) onNewSessionPersonaConsumed()
         val ready = kotlinx.coroutines.withTimeoutOrNull(20_000) {
@@ -220,13 +219,13 @@ fun ChatScreen(
         }
     }
 
-    LaunchedEffect(imeBottom) {
-        if (!isNearBottom || imeBottom <= 0) {
+    LaunchedEffect(isImeVisible) {
+        if (!isNearBottom || !isImeVisible) {
             return@LaunchedEffect
         }
 
         if (displayedItemCount > 0) {
-            listState.animateScrollToItem(bottomAnchorIndex)
+            listState.scrollToItem(bottomAnchorIndex)
         }
     }
 
@@ -302,8 +301,7 @@ fun ChatScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .imePadding(),
+                .padding(innerPadding),
         ) {
             LazyColumn(
                 state = listState,

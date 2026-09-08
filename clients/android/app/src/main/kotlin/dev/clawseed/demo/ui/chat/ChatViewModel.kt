@@ -274,6 +274,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
     private var debugEnabled = false
     private var currentSlot: SessionSlot? = null
     private var migrateNewDraft = false
+    private val sessionSwitchVersions = SessionSwitchVersionGate()
 
     /** Speech output engine. Lives for the ViewModel lifetime; released in onCleared. */
     val tts = TtsController(application)
@@ -389,7 +390,14 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
         }
     }
 
-    fun switchToSession(sessionId: String?, persona: String? = null) {
+    fun switchToSession(
+        sessionId: String?,
+        persona: String? = null,
+        requestVersion: Int? = null,
+    ) {
+        if (requestVersion != null && !sessionSwitchVersions.tryAcquire(requestVersion)) {
+            return
+        }
         refreshPersonaVisuals()
         // If already connected to the same session, skip reconnection
         val currentSid = currentSession?.sessionInfo?.value?.sessionId
@@ -1129,5 +1137,15 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
         }
 
         return ToolResult.Success(result.toString())
+    }
+}
+
+internal class SessionSwitchVersionGate {
+    private var lastVersion: Int? = null
+
+    fun tryAcquire(version: Int): Boolean {
+        if (lastVersion == version) return false
+        lastVersion = version
+        return true
     }
 }
