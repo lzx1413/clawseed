@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -40,6 +41,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -69,10 +72,6 @@ fun UserProfileScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var deleteTarget by remember { mutableStateOf<UserProfileItem?>(null) }
-    var rejectTarget by remember { mutableStateOf<UserProfileItem?>(null) }
-    var confirmClear by remember { mutableStateOf(false) }
-
     LaunchedEffect(Unit) { viewModel.load() }
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
@@ -81,42 +80,6 @@ fun UserProfileScreen(
         }
     }
 
-    deleteTarget?.let { item ->
-        ConfirmationDialog(
-            title = stringResource(R.string.profile_delete_title),
-            message = stringResource(R.string.profile_delete_desc, item.key),
-            confirmLabel = stringResource(R.string.common_delete),
-            onDismiss = { deleteTarget = null },
-            onConfirm = {
-                deleteTarget = null
-                viewModel.delete(item)
-            },
-        )
-    }
-    rejectTarget?.let { item ->
-        ConfirmationDialog(
-            title = stringResource(R.string.profile_reject_title),
-            message = stringResource(R.string.profile_reject_desc, item.key),
-            confirmLabel = stringResource(R.string.profile_reject),
-            onDismiss = { rejectTarget = null },
-            onConfirm = {
-                rejectTarget = null
-                viewModel.reject(item)
-            },
-        )
-    }
-    if (confirmClear) {
-        ConfirmationDialog(
-            title = stringResource(R.string.profile_clear_title),
-            message = stringResource(R.string.profile_clear_desc),
-            confirmLabel = stringResource(R.string.profile_clear),
-            onDismiss = { confirmClear = false },
-            onConfirm = {
-                confirmClear = false
-                viewModel.clear()
-            },
-        )
-    }
     uiState.editing?.let { draft ->
         UserProfileEditorDialog(
             draft = draft,
@@ -130,7 +93,7 @@ fun UserProfileScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.profile_title)) },
+                title = { Text(stringResource(R.string.knowledge_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -140,11 +103,16 @@ fun UserProfileScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = viewModel::load, enabled = !uiState.isLoading && !uiState.isSaving) {
+                    IconButton(
+                        onClick = {
+                            if (uiState.tab == KnowledgeTab.MEMORY) viewModel.loadMemories() else viewModel.load()
+                        },
+                        enabled = !uiState.isLoading && !uiState.isSaving,
+                    ) {
                         Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.common_refresh))
                     }
-                    if (uiState.items.isNotEmpty()) {
-                        IconButton(onClick = { confirmClear = true }, enabled = !uiState.isSaving) {
+                    if (uiState.tab == KnowledgeTab.ABOUT_ME && uiState.items.isNotEmpty()) {
+                        IconButton(onClick = viewModel::clear, enabled = !uiState.isSaving) {
                             Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.profile_clear))
                         }
                     }
@@ -152,7 +120,7 @@ fun UserProfileScreen(
             )
         },
         floatingActionButton = {
-            if (!uiState.isSaving) {
+            if (!uiState.isSaving && uiState.tab == KnowledgeTab.ABOUT_ME) {
                 FloatingActionButton(onClick = viewModel::create) {
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.profile_add))
                 }
@@ -160,37 +128,126 @@ fun UserProfileScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
         ) {
+            TabRow(selectedTabIndex = uiState.tab.ordinal) {
+                Tab(
+                    selected = uiState.tab == KnowledgeTab.ABOUT_ME,
+                    onClick = { viewModel.selectTab(KnowledgeTab.ABOUT_ME) },
+                    text = { Text(stringResource(R.string.knowledge_about_me)) },
+                )
+                Tab(
+                    selected = uiState.tab == KnowledgeTab.MEMORY,
+                    onClick = { viewModel.selectTab(KnowledgeTab.MEMORY) },
+                    text = { Text(stringResource(R.string.knowledge_memory)) },
+                )
+            }
+            if (uiState.tab == KnowledgeTab.ABOUT_ME) {
+                ProfileFilters(uiState, viewModel)
+                if (uiState.selectedIds.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Button(onClick = viewModel::deleteSelected) {
+                            Text(stringResource(R.string.profile_delete_selected, uiState.selectedIds.size))
+                        }
+                        TextButton(onClick = viewModel::rejectSelected) {
+                            Text(stringResource(R.string.profile_reject_selected))
+                        }
+                        IconButton(onClick = viewModel::clearSelection) {
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_cancel))
+                        }
+                    }
+                }
+            }
+            val filteredItems = uiState.items.filter { item ->
+                uiState.categoryFilter?.let { item.category == it } ?: true
+            }.filter { item ->
+                uiState.sourceFilter?.let { item.source == it } ?: true
+            }.filter { item ->
+                uiState.statusFilter?.let { item.status == it } ?: true
+            }
             when {
-                uiState.isLoading && uiState.items.isEmpty() -> CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center),
+                uiState.isLoading && uiState.items.isEmpty() && uiState.memories.isEmpty() -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) { CircularProgressIndicator() }
+
+                uiState.tab == KnowledgeTab.MEMORY -> MemoryList(
+                    memories = uiState.memories,
+                    modifier = Modifier.weight(1f),
                 )
 
-                uiState.items.isEmpty() -> EmptyProfileState(
+                filteredItems.isEmpty() -> EmptyProfileState(
                     onAdd = viewModel::create,
-                    modifier = Modifier.align(Alignment.Center),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
 
                 else -> UserProfileList(
-                    items = uiState.items,
+                    items = filteredItems,
+                    selectedIds = uiState.selectedIds,
                     enabled = !uiState.isSaving,
+                    modifier = Modifier.weight(1f),
+                    onToggleSelection = viewModel::toggleSelection,
                     onEdit = viewModel::edit,
-                    onReject = { rejectTarget = it },
-                    onDelete = { deleteTarget = it },
+                    onReject = viewModel::reject,
+                    onDelete = viewModel::delete,
                 )
             }
 
             if (uiState.isSaving) {
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(24.dp)
-                        .size(28.dp),
+                Box(modifier = Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileFilters(uiState: UserProfileUiState, viewModel: UserProfileViewModel) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        FilterChip(
+            selected = uiState.categoryFilter == null,
+            onClick = { viewModel.setCategoryFilter(null) },
+            label = { Text(stringResource(R.string.profile_filter_all)) },
+        )
+        ProfileCategory.entries.forEach { category ->
+            FilterChip(
+                selected = uiState.categoryFilter == category,
+                onClick = { viewModel.setCategoryFilter(category) },
+                label = { Text(category.label()) },
+            )
+        }
+        FilterChip(
+            selected = uiState.sourceFilter == ProfileSource.INFERRED,
+            onClick = {
+                viewModel.setSourceFilter(
+                    ProfileSource.INFERRED.takeUnless { uiState.sourceFilter == it },
                 )
+            },
+            label = { Text(stringResource(R.string.profile_source_inferred)) },
+        )
+        FilterChip(
+            selected = uiState.statusFilter == ProfileStatus.REJECTED,
+            onClick = {
+                viewModel.setStatusFilter(
+                    ProfileStatus.REJECTED.takeUnless { uiState.statusFilter == it },
+                )
+            },
+            label = { Text(stringResource(R.string.profile_status_rejected)) },
+        )
+        if (uiState.items.any { it.source == ProfileSource.INFERRED }) {
+            TextButton(onClick = viewModel::deleteAllInferred) {
+                Text(stringResource(R.string.profile_delete_inferred))
             }
         }
     }
@@ -199,14 +256,17 @@ fun UserProfileScreen(
 @Composable
 private fun UserProfileList(
     items: List<UserProfileItem>,
+    selectedIds: Set<String>,
     enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onToggleSelection: (String) -> Unit,
     onEdit: (UserProfileItem) -> Unit,
     onReject: (UserProfileItem) -> Unit,
     onDelete: (UserProfileItem) -> Unit,
 ) {
     val grouped = items.groupBy { it.category }
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -223,7 +283,9 @@ private fun UserProfileList(
                 items(categoryItems, key = { it.id }) { item ->
                     UserProfileItemCard(
                         item = item,
+                        selected = item.id in selectedIds,
                         enabled = enabled,
+                        onToggleSelection = { onToggleSelection(item.id) },
                         onEdit = { onEdit(item) },
                         onReject = { onReject(item) },
                         onDelete = { onDelete(item) },
@@ -237,7 +299,9 @@ private fun UserProfileList(
 @Composable
 private fun UserProfileItemCard(
     item: UserProfileItem,
+    selected: Boolean,
     enabled: Boolean,
+    onToggleSelection: () -> Unit,
     onEdit: () -> Unit,
     onReject: () -> Unit,
     onDelete: () -> Unit,
@@ -257,6 +321,11 @@ private fun UserProfileItemCard(
             verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = selected,
+                    onCheckedChange = { onToggleSelection() },
+                    enabled = enabled,
+                )
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.key,
@@ -292,6 +361,35 @@ private fun UserProfileItemCard(
                 ProfileBadge(item.status.label())
                 ProfileBadge(stringResource(R.string.profile_confidence, (item.confidence * 100).roundToInt()))
                 ProfileBadge(stringResource(R.string.profile_updated, item.updatedAt.take(10)))
+            }
+        }
+    }
+}
+
+@Composable
+private fun MemoryList(memories: List<dev.clawseed.sdk.core.model.MemoryEntry>, modifier: Modifier = Modifier) {
+    if (memories.isEmpty()) {
+        Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Text(stringResource(R.string.memory_empty))
+        }
+        return
+    }
+    LazyColumn(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(memories, key = { it.id }) { memory ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(memory.key, style = MaterialTheme.typography.labelLarge, fontFamily = FontFamily.Monospace)
+                    Text(memory.content, style = MaterialTheme.typography.bodyMedium, maxLines = 5, overflow = TextOverflow.Ellipsis)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ProfileBadge(memory.category)
+                        ProfileBadge(memory.namespace)
+                        ProfileBadge(memory.timestamp.take(10))
+                    }
+                }
             }
         }
     }
@@ -405,27 +503,6 @@ private fun UserProfileEditorDialog(
             TextButton(onClick = onDismiss, enabled = !isSaving) {
                 Text(stringResource(R.string.common_cancel))
             }
-        },
-    )
-}
-
-@Composable
-private fun ConfirmationDialog(
-    title: String,
-    message: String,
-    confirmLabel: String,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(message) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) { Text(confirmLabel) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }

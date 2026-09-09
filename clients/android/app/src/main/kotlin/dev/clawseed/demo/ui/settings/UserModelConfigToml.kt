@@ -32,6 +32,10 @@ internal object UserModelConfigToml {
                 appendLine("auto_infer = $autoInfer")
                 appendLine("inference_min_confidence = 0.8")
                 appendLine("max_inferred_items_per_turn = 3")
+                appendLine("max_active_items_per_category = 20")
+                appendLine("min_observations_for_implicit_fact = 2")
+                appendLine("change_plan_ttl_minutes = 10")
+                appendLine("undo_retention_hours = 24")
             }
         }
 

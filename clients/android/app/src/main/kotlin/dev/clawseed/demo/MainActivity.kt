@@ -1,12 +1,16 @@
 package dev.clawseed.demo
 
+import android.Manifest
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.IBinder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +35,13 @@ class MainActivity : ComponentActivity() {
     private lateinit var localStore: LocalStore
     private val pendingSessionId = mutableStateOf<String?>(null)
     private var pendingAlarmDismissId: String? = null
+    private var gatewayServiceStarted = false
+
+    private val nearbyWifiPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {
+        startGatewayService()
+    }
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
@@ -51,9 +62,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         localStore = LocalStore(this)
 
-        val serviceIntent = Intent(this, ClawseedService::class.java)
-        ContextCompat.startForegroundService(this, serviceIntent)
-        bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
+        if (requiresNearbyWifiPermission() &&
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.NEARBY_WIFI_DEVICES,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            nearbyWifiPermissionLauncher.launch(Manifest.permission.NEARBY_WIFI_DEVICES)
+        } else {
+            startGatewayService()
+        }
 
         CoroutineScope(Dispatchers.IO).launch {
             ScheduledTaskManager.rescheduleAll(this@MainActivity)
@@ -108,8 +126,23 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        unbindService(serviceConnection)
+        if (gatewayServiceStarted) {
+            unbindService(serviceConnection)
+        }
     }
+
+    private fun startGatewayService() {
+        if (gatewayServiceStarted) return
+        val serviceIntent = Intent(this, ClawseedService::class.java)
+        ContextCompat.startForegroundService(this, serviceIntent)
+        gatewayServiceStarted = bindService(
+            serviceIntent,
+            serviceConnection,
+            Context.BIND_AUTO_CREATE,
+        )
+    }
+
+    private fun requiresNearbyWifiPermission(): Boolean = Build.VERSION.SDK_INT == 36
 
     companion object {
         const val EXTRA_SESSION_ID = "session_id"

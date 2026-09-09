@@ -17,6 +17,12 @@ import dev.clawseed.sdk.core.model.UserProfileImportResult
 import dev.clawseed.sdk.core.model.UserProfileItem
 import dev.clawseed.sdk.core.model.UserProfilePatch
 import dev.clawseed.sdk.core.model.UserProfileUpsert
+import dev.clawseed.sdk.core.model.UserProfileSearchRequest
+import dev.clawseed.sdk.core.model.UserProfileSearchResult
+import dev.clawseed.sdk.core.model.UserProfileChangePlanRequest
+import dev.clawseed.sdk.core.model.UserProfileChangePlan
+import dev.clawseed.sdk.core.model.UserProfileMutationResult
+import dev.clawseed.sdk.core.model.MemoryEntries
 import dev.clawseed.sdk.core.model.ProfileImportStrategy
 import dev.clawseed.sdk.core.model.WebhookResponse
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +34,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -232,6 +239,71 @@ class GatewayClient(
             .put(payload.toRequestBody(JSON_MEDIA_TYPE))
             .build()
         return execute(req).mapCatching { json.decodeFromString<UserProfileImportResult>(it) }
+    }
+
+    suspend fun searchUserProfile(request: UserProfileSearchRequest): Result<List<UserProfileItem>> {
+        val payload = json.encodeToString(UserProfileSearchRequest.serializer(), request)
+        val req = Request.Builder()
+            .url("$baseUrl/api/users/me/profile/search")
+            .addAuth()
+            .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        return execute(req).mapCatching {
+            json.decodeFromString<UserProfileSearchResult>(it).items
+        }
+    }
+
+    suspend fun createUserProfileChangePlan(
+        request: UserProfileChangePlanRequest,
+    ): Result<UserProfileChangePlan> {
+        val payload = json.encodeToString(UserProfileChangePlanRequest.serializer(), request)
+        val req = Request.Builder()
+            .url("$baseUrl/api/users/me/profile/change-plans")
+            .addAuth()
+            .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        return execute(req).mapCatching { json.decodeFromString<UserProfileChangePlan>(it) }
+    }
+
+    suspend fun applyUserProfileChangePlan(planId: String): Result<UserProfileMutationResult> {
+        val encoded = java.net.URLEncoder.encode(planId, "UTF-8")
+        val req = Request.Builder()
+            .url("$baseUrl/api/users/me/profile/change-plans/$encoded/apply")
+            .addAuth()
+            .post(ByteArray(0).toRequestBody(null))
+            .build()
+        return execute(req).mapCatching { json.decodeFromString<UserProfileMutationResult>(it) }
+    }
+
+    suspend fun undoUserProfileOperation(operationId: String): Result<UserProfileMutationResult> {
+        val encoded = java.net.URLEncoder.encode(operationId, "UTF-8")
+        val req = Request.Builder()
+            .url("$baseUrl/api/users/me/profile/operations/$encoded/undo")
+            .addAuth()
+            .post(ByteArray(0).toRequestBody(null))
+            .build()
+        return execute(req).mapCatching { json.decodeFromString<UserProfileMutationResult>(it) }
+    }
+
+    suspend fun memories(
+        query: String? = null,
+        category: String? = null,
+        namespace: String? = null,
+        persona: String? = null,
+    ): Result<MemoryEntries> = withContext(Dispatchers.IO) {
+        runCatching {
+            val url = baseUrl.toHttpUrl().newBuilder()
+                .addPathSegments("api/memory")
+                .apply {
+                    query?.takeIf(String::isNotBlank)?.let { addQueryParameter("query", it) }
+                    category?.let { addQueryParameter("category", it) }
+                    namespace?.let { addQueryParameter("namespace", it) }
+                    persona?.let { addQueryParameter("persona", it) }
+                }
+                .build()
+            val body = execute(Request.Builder().url(url).addAuth().build()).getOrThrow()
+            json.decodeFromString<MemoryEntries>(body)
+        }
     }
 
     /** Retrieves personality files (SOUL.md, etc.) from the gateway. */

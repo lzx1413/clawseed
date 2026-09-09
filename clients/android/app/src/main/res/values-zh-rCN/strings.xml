@@ -122,7 +122,7 @@
     <string name="data_export">导出数据</string>
     <string name="data_import">导入数据</string>
     <string name="data_exclude_sensitive">排除敏感数据</string>
-    <string name="data_exclude_sensitive_desc">不导出 API 密钥和认证令牌</string>
+    <string name="data_exclude_sensitive_desc">排除 API 密钥、认证令牌、用户画像和长期记忆。仅在需要可能包含个人数据的完整归档时关闭。</string>
     <string name="data_exporting">导出中…</string>
     <string name="data_export_btn">导出</string>
     <string name="data_importing">导入中…</string>
@@ -233,7 +233,7 @@
     <string name="settings_user_model_auto_infer_desc">在成功回复后保存稳定偏好；系统会过滤敏感数据，并保留用户手动设置的画像。</string>
     <string name="settings_save_user_model">保存用户建模设置</string>
     <string name="settings_user_model_config_unavailable">Gateway 配置成功加载后才能修改用户建模设置。</string>
-    <string name="settings_manage_user_profile">管理用户画像</string>
+    <string name="settings_manage_user_profile">助手记得什么</string>
 
     <!-- ========== User Profile ========== -->
     <string name="profile_title">我的用户画像</string>
@@ -267,6 +267,18 @@
     <string name="profile_status_active">生效中</string>
     <string name="profile_status_superseded">已替代</string>
     <string name="profile_status_rejected">已拒绝</string>
+    <string name="knowledge_title">助手记得什么</string>
+    <string name="knowledge_about_me">关于我</string>
+    <string name="knowledge_memory">经历与知识</string>
+    <string name="profile_filter_all">全部</string>
+    <string name="profile_delete_selected">删除 %1$d 项</string>
+    <string name="profile_reject_selected">拒绝所选项</string>
+    <string name="profile_delete_inferred">删除全部自动推断</string>
+    <string name="profile_plan_title">执行画像变更？</string>
+    <string name="profile_plan_desc">该计划影响 %1$d 项，将于 %2$s 过期。</string>
+    <string name="profile_plan_apply">确认并执行</string>
+    <string name="profile_undo">撤销上次画像变更</string>
+    <string name="memory_empty">暂无可见的长期记忆</string>
 
     <string name="settings_soul_load_failed">Soul 内容加载失败，请刷新重试</string>
     <string name="settings_soul_not_customized">未自定义</string>

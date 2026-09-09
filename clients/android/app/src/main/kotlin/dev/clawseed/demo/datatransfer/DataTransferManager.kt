@@ -45,12 +45,17 @@ class DataTransferManager(private val context: Context) {
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val zipOut = ZipOutputStream(outputStream)
+            val effectiveCategories = if (excludeSensitive) {
+                categories - setOf(DataCategory.MEMORY, DataCategory.USER_PROFILE)
+            } else {
+                categories
+            }
 
             // Write manifest
             val manifest = ExportManifest(
                 timestamp = System.currentTimeMillis(),
                 appVersion = BuildConfig.VERSION_NAME,
-                categories = categories.map { it.name },
+                categories = effectiveCategories.map { it.name },
                 excludeSensitive = excludeSensitive,
             )
             zipOut.putNextEntry(ZipEntry("manifest.json"))
@@ -61,7 +66,7 @@ class DataTransferManager(private val context: Context) {
             val prefs = localStore.exportAllPreferences()
             val tasks = taskStore.tasksAsList()
 
-            for (category in categories) {
+            for (category in effectiveCategories) {
                 when (category) {
                     DataCategory.CONFIG -> exportConfig(zipOut, excludeSensitive, prefs, tasks)
                     DataCategory.MEMORY -> exportMemory(zipOut)
@@ -73,7 +78,7 @@ class DataTransferManager(private val context: Context) {
             }
 
             zipOut.finish()
-            Log.i(TAG, "Export completed: ${categories.map { it.name }}")
+            Log.i(TAG, "Export completed: ${effectiveCategories.map { it.name }}")
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

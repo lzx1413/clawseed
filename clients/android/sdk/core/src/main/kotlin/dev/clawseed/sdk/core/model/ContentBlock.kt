@@ -4,6 +4,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -28,6 +30,16 @@ sealed interface ContentBlock {
         val thumbnail: MediaReference?,
     ) : ContentBlock
     data class SearchResults(val query: String, val items: List<SearchResultItem>) : ContentBlock
+    data class Profile(
+        val title: String,
+        val summary: String,
+        val planId: String?,
+        val operationId: String?,
+        val profileVersion: Long,
+        val requiresConfirmation: Boolean,
+        val items: List<ProfilePresentationItem>,
+        val actions: List<PresentationAction>,
+    ) : ContentBlock
 
     /** Preserves forward-compatible blocks that this SDK version cannot render yet. */
     data class Unsupported(val type: String, val raw: JsonObject) : ContentBlock
@@ -50,6 +62,22 @@ data class SearchResultItem(
     val description: String?,
     val source: String?,
     val thumbnail: MediaReference?,
+)
+
+data class ProfilePresentationItem(
+    val id: String,
+    val key: String,
+    val before: JsonElement?,
+    val after: JsonElement?,
+    val source: String?,
+    val status: String?,
+)
+
+data class PresentationAction(
+    val id: String,
+    val label: String,
+    val command: String,
+    val destructive: Boolean,
 )
 
 /** Parses a gateway presentation while preserving unsupported block types. */
@@ -84,6 +112,32 @@ private fun parseContentBlock(block: JsonObject): ContentBlock {
                     description = item.string("description"),
                     source = item.string("source"),
                     thumbnail = item["thumbnail"]?.let(::parseMedia),
+                )
+            },
+        )
+        "profile" -> ContentBlock.Profile(
+            title = block.string("title").orEmpty(),
+            summary = block.string("summary").orEmpty(),
+            planId = block.string("plan_id"),
+            operationId = block.string("operation_id"),
+            profileVersion = block["profile_version"]?.jsonPrimitive?.longOrNull ?: 0,
+            requiresConfirmation = block["requires_confirmation"]?.jsonPrimitive?.booleanOrNull ?: false,
+            items = block["items"]?.jsonArray.orEmpty().mapNotNull { it as? JsonObject }.map { item ->
+                ProfilePresentationItem(
+                    id = item.string("id").orEmpty(),
+                    key = item.string("key").orEmpty(),
+                    before = item["before"],
+                    after = item["after"],
+                    source = item.string("source"),
+                    status = item.string("status"),
+                )
+            },
+            actions = block["actions"]?.jsonArray.orEmpty().mapNotNull { it as? JsonObject }.map { action ->
+                PresentationAction(
+                    id = action.string("id").orEmpty(),
+                    label = action.string("label").orEmpty(),
+                    command = action.string("command").orEmpty(),
+                    destructive = action["destructive"]?.jsonPrimitive?.booleanOrNull ?: false,
                 )
             },
         )

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.size
@@ -330,6 +331,9 @@ fun ChatScreen(
                         onRegenerate = if (isLastAssistant && !isLoading) ({ viewModel.regenerateLastResponse() }) else null,
                         onSpeak = if (canSpeak) ({ viewModel.speakMessage(entry.content, entry.id) }) else null,
                         onStop = if (canSpeak) ({ viewModel.stopSpeech() }) else null,
+                        onPresentationAction = if (!isLoading) ({ command ->
+                            viewModel.sendMessage(command, uiState.currentSessionId)
+                        }) else null,
                         isSpeakingThis = canSpeak && uiState.speakingMessageId == entry.id,
                     )
                 }
@@ -391,6 +395,7 @@ fun ChatScreen(
                 onStop = { viewModel.abortGeneration() },
                 isLoading = isLoading,
                 canSend = sessionSwitchReady,
+                modifier = Modifier.imePadding(),
             )
         }
     }

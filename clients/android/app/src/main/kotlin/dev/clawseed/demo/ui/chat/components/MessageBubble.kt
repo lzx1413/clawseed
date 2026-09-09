@@ -24,6 +24,9 @@ import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -76,6 +79,7 @@ fun MessageBubble(
     onRegenerate: (() -> Unit)? = null,
     onSpeak: ((String) -> Unit)? = null,
     onStop: (() -> Unit)? = null,
+    onPresentationAction: ((String) -> Unit)? = null,
     isSpeakingThis: Boolean = false,
 ) {
     when (entry) {
@@ -87,6 +91,7 @@ fun MessageBubble(
             onRegenerate = onRegenerate,
             onSpeak = onSpeak,
             onStop = onStop,
+            onPresentationAction = onPresentationAction,
             isSpeakingThis = isSpeakingThis,
             modifier = modifier,
         )
@@ -136,6 +141,7 @@ private fun AssistantBubble(
     onRegenerate: (() -> Unit)?,
     onSpeak: ((String) -> Unit)?,
     onStop: (() -> Unit)?,
+    onPresentationAction: ((String) -> Unit)?,
     isSpeakingThis: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -147,7 +153,7 @@ private fun AssistantBubble(
         SelectionContainer {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 MarkdownContent(content = content)
-                presentation?.let { RichContentBlocks(it) }
+                presentation?.let { RichContentBlocks(it, onPresentationAction) }
                 if (isStreaming) {
                     Text(
                         text = "█",
@@ -490,7 +496,11 @@ private fun ToolInvocationsCard(entry: ChatEntry.ToolInvocations, modifier: Modi
 }
 
 @Composable
-private fun RichContentBlocks(presentation: ToolPresentation, modifier: Modifier = Modifier) {
+private fun RichContentBlocks(
+    presentation: ToolPresentation,
+    onAction: ((String) -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -503,7 +513,60 @@ private fun RichContentBlocks(presentation: ToolPresentation, modifier: Modifier
                 is ContentBlock.Audio -> AudioContentCard(block.media, block.title)
                 is ContentBlock.Video -> VideoContentCard(block.media, block.title)
                 is ContentBlock.Link -> LinkContentCard(block)
+                is ContentBlock.Profile -> ProfileContentCard(block, onAction)
                 is ContentBlock.Unsupported -> Unit
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileContentCard(
+    block: ContentBlock.Profile,
+    onAction: ((String) -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(block.title, style = MaterialTheme.typography.titleSmall)
+            Text(block.summary, style = MaterialTheme.typography.bodyMedium)
+            block.items.take(8).forEach { item ->
+                Column {
+                    Text(
+                        item.key,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    val before = item.before?.toString()?.take(160)
+                    val after = item.after?.toString()?.take(160)
+                    if (before != null) Text(before, style = MaterialTheme.typography.bodySmall)
+                    if (after != null && after != before) {
+                        Text("→ $after", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            if (block.items.size > 8) {
+                Text("+${block.items.size - 8}", style = MaterialTheme.typography.labelSmall)
+            }
+            if (onAction != null && block.actions.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    block.actions.forEach { action ->
+                        if (action.destructive) {
+                            Button(onClick = { onAction(action.command) }) { Text(action.label) }
+                        } else {
+                            TextButton(onClick = { onAction(action.command) }) { Text(action.label) }
+                        }
+                    }
+                }
             }
         }
     }

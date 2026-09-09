@@ -122,7 +122,7 @@
     <string name="data_export">Export Data</string>
     <string name="data_import">Import Data</string>
     <string name="data_exclude_sensitive">Exclude sensitive data</string>
-    <string name="data_exclude_sensitive_desc">Don\'t export API keys and auth tokens</string>
+    <string name="data_exclude_sensitive_desc">Exclude API keys, auth tokens, user profile, and long-term memory. Turn this off only for a complete archive that may contain personal data.</string>
     <string name="data_exporting">Exporting…</string>
     <string name="data_export_btn">Export</string>
     <string name="data_importing">Importing…</string>
@@ -233,7 +233,7 @@
     <string name="settings_user_model_auto_infer_desc">Save durable preferences after successful replies. Sensitive data is filtered and manual profile choices are preserved.</string>
     <string name="settings_save_user_model">Save User Modeling</string>
     <string name="settings_user_model_config_unavailable">User modeling settings are unavailable until the Gateway config loads successfully.</string>
-    <string name="settings_manage_user_profile">Manage Profile</string>
+    <string name="settings_manage_user_profile">What the assistant remembers</string>
 
     <!-- ========== User Profile ========== -->
     <string name="profile_title">Your Profile</string>
@@ -267,6 +267,18 @@
     <string name="profile_status_active">Active</string>
     <string name="profile_status_superseded">Superseded</string>
     <string name="profile_status_rejected">Rejected</string>
+    <string name="knowledge_title">What the assistant remembers</string>
+    <string name="knowledge_about_me">About me</string>
+    <string name="knowledge_memory">Experience &amp; knowledge</string>
+    <string name="profile_filter_all">All</string>
+    <string name="profile_delete_selected">Delete %1$d</string>
+    <string name="profile_reject_selected">Reject selected</string>
+    <string name="profile_delete_inferred">Delete all inferred</string>
+    <string name="profile_plan_title">Apply profile changes?</string>
+    <string name="profile_plan_desc">This plan affects %1$d items and expires at %2$s.</string>
+    <string name="profile_plan_apply">Confirm and apply</string>
+    <string name="profile_undo">Undo last profile change</string>
+    <string name="memory_empty">No visible long-term memories</string>
 
     <string name="settings_soul_load_failed">Soul content load failed, please refresh</string>
     <string name="settings_soul_not_customized">Not customized</string>

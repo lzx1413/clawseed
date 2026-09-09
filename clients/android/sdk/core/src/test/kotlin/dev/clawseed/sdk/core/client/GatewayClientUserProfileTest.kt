@@ -6,6 +6,9 @@ import dev.clawseed.sdk.core.model.ProfileStatus
 import dev.clawseed.sdk.core.model.UserProfileImportItem
 import dev.clawseed.sdk.core.model.UserProfilePatch
 import dev.clawseed.sdk.core.model.UserProfileUpsert
+import dev.clawseed.sdk.core.model.UserProfileChangePlanRequest
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
@@ -108,6 +111,46 @@ class GatewayClientUserProfileTest {
             assertTrue(importPayload.contains("\"strategy\":\"append\""))
             assertTrue(importPayload.contains("\"status\":\"rejected\""))
             assertTrue(!importPayload.contains("\"source\""))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun createsAppliesAndUndoesChangePlansAndScopesMemoryQuery() = runTest {
+        val server = MockWebServer()
+        server.start()
+        try {
+            server.enqueue(
+                MockResponse().setBody(
+                    """{"plan_id":"plan-1","expected_profile_version":1,"affected_items":[$itemJson],"actions":[],"summary":"Delete one item","requires_confirmation":true,"expires_at":"2026-07-16T00:10:00Z"}""",
+                ),
+            )
+            server.enqueue(MockResponse().setBody("""{"profile_version":2,"operation_id":"op-1","affected":1,"skipped":0}"""))
+            server.enqueue(MockResponse().setBody("""{"profile_version":3,"operation_id":"undo-1","affected":1,"skipped":0}"""))
+            server.enqueue(MockResponse().setBody("""{"entries":[]}"""))
+            val client = GatewayClient(server.url("").toString().trimEnd('/'), "token-1")
+
+            val action = buildJsonObject {
+                put("action", "delete")
+                put("item_id", "item-1")
+            }
+            val plan = client.createUserProfileChangePlan(
+                UserProfileChangePlanRequest(listOf(action)),
+            ).getOrThrow()
+            assertEquals("plan-1", plan.planId)
+            assertTrue(server.takeRequest().body.readUtf8().contains("\"item_id\":\"item-1\""))
+
+            assertEquals("op-1", client.applyUserProfileChangePlan("plan-1").getOrThrow().operationId)
+            assertEquals("/api/users/me/profile/change-plans/plan-1/apply", server.takeRequest().path)
+            assertEquals(3, client.undoUserProfileOperation("op-1").getOrThrow().profileVersion)
+            assertEquals("/api/users/me/profile/operations/op-1/undo", server.takeRequest().path)
+
+            client.memories(query = "Rust language", namespace = "persona-a").getOrThrow()
+            assertEquals(
+                "/api/memory?query=Rust%20language&namespace=persona-a",
+                server.takeRequest().path,
+            )
         } finally {
             server.shutdown()
         }

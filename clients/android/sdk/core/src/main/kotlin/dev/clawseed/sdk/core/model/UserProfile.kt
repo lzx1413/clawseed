@@ -3,6 +3,7 @@ package dev.clawseed.sdk.core.model
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 
 @Serializable
 enum class ProfileCategory {
@@ -134,5 +135,41 @@ data class UserProfileImportRequest(
 @Serializable
 data class UserProfileImportResult(
     val imported: Int,
+    val skipped: Int,
+)
+
+@Serializable
+data class UserProfileSearchRequest(
+    val category: ProfileCategory? = null,
+    val source: ProfileSource? = null,
+    val status: ProfileStatus? = null,
+    val key: String? = null,
+    val text: String? = null,
+    @SerialName("updated_since") val updatedSince: String? = null,
+    @SerialName("updated_until") val updatedUntil: String? = null,
+)
+
+@Serializable
+data class UserProfileSearchResult(val items: List<UserProfileItem> = emptyList())
+
+@Serializable
+data class UserProfileChangePlanRequest(val actions: List<JsonObject>)
+
+@Serializable
+data class UserProfileChangePlan(
+    @SerialName("plan_id") val planId: String,
+    @SerialName("expected_profile_version") val expectedProfileVersion: Long,
+    @SerialName("affected_items") val affectedItems: List<UserProfileItem> = emptyList(),
+    val actions: List<JsonObject> = emptyList(),
+    val summary: String,
+    @SerialName("requires_confirmation") val requiresConfirmation: Boolean,
+    @SerialName("expires_at") val expiresAt: String,
+)
+
+@Serializable
+data class UserProfileMutationResult(
+    @SerialName("profile_version") val profileVersion: Long,
+    @SerialName("operation_id") val operationId: String,
+    val affected: Int,
     val skipped: Int,
 )

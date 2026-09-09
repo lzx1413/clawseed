@@ -10,6 +10,8 @@ import dev.clawseed.sdk.core.model.ProfileStatus
 import dev.clawseed.sdk.core.model.UserProfileItem
 import dev.clawseed.sdk.core.model.UserProfilePatch
 import dev.clawseed.sdk.core.model.UserProfileUpsert
+import dev.clawseed.sdk.core.model.MemoryEntry
+import dev.clawseed.sdk.core.model.ProfileSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,7 +31,15 @@ data class UserProfileUiState(
     val isSaving: Boolean = false,
     val editing: UserProfileDraft? = null,
     val error: String? = null,
+    val tab: KnowledgeTab = KnowledgeTab.ABOUT_ME,
+    val memories: List<MemoryEntry> = emptyList(),
+    val selectedIds: Set<String> = emptySet(),
+    val categoryFilter: ProfileCategory? = null,
+    val sourceFilter: ProfileSource? = null,
+    val statusFilter: ProfileStatus? = null,
 )
+
+enum class KnowledgeTab { ABOUT_ME, MEMORY }
 
 class UserProfileViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(UserProfileUiState())
@@ -53,6 +63,81 @@ class UserProfileViewModel(application: Application) : AndroidViewModel(applicat
                         error = error.message,
                     )
                 }
+        }
+    }
+
+    fun selectTab(tab: KnowledgeTab) {
+        _uiState.value = _uiState.value.copy(tab = tab, selectedIds = emptySet())
+        if (tab == KnowledgeTab.MEMORY) loadMemories()
+    }
+
+    fun loadMemories() {
+        viewModelScope.launch {
+            if (!ClawSeedAndroid.isInitialized) return@launch
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            ClawSeedAndroid.gatewayClient().memories()
+                .onSuccess { result ->
+                    _uiState.value = _uiState.value.copy(
+                        memories = result.entries,
+                        isLoading = false,
+                    )
+                }
+                .onFailure { error ->
+                    _uiState.value = _uiState.value.copy(isLoading = false, error = error.message)
+                }
+        }
+    }
+
+    fun setCategoryFilter(value: ProfileCategory?) {
+        _uiState.value = _uiState.value.copy(categoryFilter = value, selectedIds = emptySet())
+    }
+
+    fun setSourceFilter(value: ProfileSource?) {
+        _uiState.value = _uiState.value.copy(sourceFilter = value, selectedIds = emptySet())
+    }
+
+    fun setStatusFilter(value: ProfileStatus?) {
+        _uiState.value = _uiState.value.copy(statusFilter = value, selectedIds = emptySet())
+    }
+
+    fun toggleSelection(itemId: String) {
+        val selected = _uiState.value.selectedIds.toMutableSet()
+        if (!selected.add(itemId)) selected.remove(itemId)
+        _uiState.value = _uiState.value.copy(selectedIds = selected)
+    }
+
+    fun clearSelection() {
+        _uiState.value = _uiState.value.copy(selectedIds = emptySet())
+    }
+
+    fun deleteSelected() = deleteItems(_uiState.value.selectedIds)
+
+    fun rejectSelected() = rejectItems(_uiState.value.selectedIds)
+
+    fun deleteAllInferred() {
+        val ids = _uiState.value.items
+            .filter { it.source == ProfileSource.INFERRED }
+            .map { it.id }
+        deleteItems(ids)
+    }
+
+    private fun deleteItems(itemIds: Collection<String>) {
+        if (itemIds.isEmpty()) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isSaving = true, error = null)
+            val deleted = mutableSetOf<String>()
+            var failure: Throwable? = null
+            for (itemId in itemIds.sorted()) {
+                ClawSeedAndroid.gatewayClient().deleteUserProfileItem(itemId)
+                    .onSuccess { deleted += itemId }
+                    .onFailure { error -> if (failure == null) failure = error }
+            }
+            _uiState.value = _uiState.value.copy(
+                items = _uiState.value.items.filterNot { it.id in deleted },
+                selectedIds = emptySet(),
+                isSaving = false,
+                error = failure?.message,
+            )
         }
     }
 
@@ -121,28 +206,36 @@ class UserProfileViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun reject(item: UserProfileItem) {
-        mutateItem(item.id) {
-            ClawSeedAndroid.gatewayClient().patchUserProfileItem(
-                item.id,
-                UserProfilePatch(status = ProfileStatus.REJECTED),
+        rejectItems(listOf(item.id))
+    }
+
+    private fun rejectItems(itemIds: Collection<String>) {
+        if (itemIds.isEmpty()) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isSaving = true, error = null)
+            val updates = mutableMapOf<String, UserProfileItem>()
+            var failure: Throwable? = null
+            for (itemId in itemIds.sorted()) {
+                ClawSeedAndroid.gatewayClient().patchUserProfileItem(
+                    itemId,
+                    UserProfilePatch(status = ProfileStatus.REJECTED),
+                ).onSuccess { updated -> updates[itemId] = updated }
+                    .onFailure { error -> if (failure == null) failure = error }
+            }
+            _uiState.value = _uiState.value.copy(
+                items = _uiState.value.items
+                    .map { updates[it.id] ?: it }
+                    .sortedProfileItems(),
+                version = maxOf(_uiState.value.version, updates.values.maxOfOrNull { it.version } ?: 0),
+                selectedIds = emptySet(),
+                isSaving = false,
+                error = failure?.message,
             )
         }
     }
 
     fun delete(item: UserProfileItem) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isSaving = true, error = null)
-            ClawSeedAndroid.gatewayClient().deleteUserProfileItem(item.id)
-                .onSuccess {
-                    _uiState.value = _uiState.value.copy(
-                        items = _uiState.value.items.filterNot { it.id == item.id },
-                        isSaving = false,
-                    )
-                }
-                .onFailure { error ->
-                    _uiState.value = _uiState.value.copy(isSaving = false, error = error.message)
-                }
-        }
+        deleteItems(listOf(item.id))
     }
 
     fun clear() {
@@ -166,27 +259,6 @@ class UserProfileViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.value = _uiState.value.copy(error = null)
     }
 
-    private fun mutateItem(
-        itemId: String,
-        operation: suspend () -> Result<UserProfileItem>,
-    ) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isSaving = true, error = null)
-            operation()
-                .onSuccess { updated ->
-                    _uiState.value = _uiState.value.copy(
-                        items = _uiState.value.items
-                            .map { if (it.id == itemId) updated else it }
-                            .sortedProfileItems(),
-                        version = maxOf(_uiState.value.version, updated.version),
-                        isSaving = false,
-                    )
-                }
-                .onFailure { error ->
-                    _uiState.value = _uiState.value.copy(isSaving = false, error = error.message)
-                }
-        }
-    }
 }
 
 fun isUserProfileKeyValid(key: String): Boolean =
