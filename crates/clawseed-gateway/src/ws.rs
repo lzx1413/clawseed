@@ -352,7 +352,19 @@ async fn handle_socket(
     let mut message_count: usize = 0;
     let mut effective_name: Option<String> = None;
     if let Some(ref backend) = state.session_backend {
-        let messages = backend.load(&session_key);
+        let mut messages = backend.load(&session_key);
+        for message in &mut messages {
+            let ids = message
+                .attachments
+                .iter()
+                .map(|image| image.id.clone())
+                .collect::<Vec<_>>();
+            if let Ok(images) =
+                backend.resolve_images(&session_key, crate::LOCAL_OWNER_USER_ID, &ids)
+            {
+                message.attachments = images;
+            }
+        }
         if !messages.is_empty() {
             message_count = messages.len();
             agent.seed_history(&messages);
@@ -374,6 +386,7 @@ async fn handle_socket(
     // Send session_start message to client
     let mut session_start = serde_json::json!({
         "type": "session_start",
+        "image_attachments_supported": state.session_backend.is_some(),
         "v": MSG_PROTOCOL_VERSION,
         "session_id": session_id,
         "resumed": resumed,
@@ -452,8 +465,21 @@ async fn handle_socket(
         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(text) {
             let msg_type = parsed["type"].as_str().unwrap_or("unknown");
             if msg_type == "message" {
-                let content = parsed["content"].as_str().unwrap_or("").to_string();
-                if !content.is_empty() {
+                let user_message = match resolve_image_message(
+                    &state,
+                    &agent,
+                    &session_key,
+                    &parsed,
+                ) {
+                    Ok(message) => message,
+                    Err(error) => {
+                        let event = serde_json::json!({"type":"error", "code":"INVALID_IMAGE_MESSAGE", "message":error.to_string()});
+                        let _ = sender.send(Message::Text(event.to_string().into())).await;
+                        return;
+                    }
+                };
+                let content = user_message.content.clone();
+                if !content.is_empty() || !user_message.attachments.is_empty() {
                     let debug = parsed["debug"].as_bool().unwrap_or(false);
                     // Inject remote tools into agent before processing
                     {
@@ -465,7 +491,7 @@ async fn handle_socket(
                     }
                     // Persist user message
                     if let Some(ref backend) = state.session_backend {
-                        let user_msg = clawseed_api::provider::ChatMessage::user(&content);
+                        let user_msg = user_message.clone();
                         let _ = backend.append(&session_key, &user_msg);
                     }
                     process_chat_message(
@@ -476,6 +502,7 @@ async fn handle_socket(
                         &mut remote_request_rx,
                         pending_remote_calls.clone(),
                         &content,
+                        user_message.attachments.clone(),
                         &session_key,
                         debug,
                     )
@@ -658,6 +685,12 @@ async fn handle_socket(
 
                 if msg_type == "regenerate" {
                     // Remove the last assistant turn + user message from agent history
+                    if let Err(error) = agent.validate_image_model(false) {
+                        let event = serde_json::json!({"type":"error", "code":"IMAGE_MODEL_UNSUPPORTED", "message":error.to_string()});
+                        let _ = sender.send(Message::Text(event.to_string().into())).await;
+                        continue;
+                    }
+                    let attachments = agent.last_user_attachments();
                     let user_content = agent.remove_last_assistant_turn();
                     let Some(content) = user_content else {
                         let err = serde_json::json!({
@@ -697,11 +730,8 @@ async fn handle_socket(
                         }
                     };
 
-                    // Persist user message (it was removed from backend too)
-                    if let Some(ref backend) = state.session_backend {
-                        let user_msg = clawseed_api::provider::ChatMessage::user(&content);
-                        let _ = backend.append(&session_key, &user_msg);
-                    }
+                    let mut user_message = clawseed_api::provider::ChatMessage::user(&content);
+                    user_message.attachments = attachments;
 
                     process_chat_message(
                         &state,
@@ -711,6 +741,7 @@ async fn handle_socket(
                         &mut remote_request_rx,
                         pending_remote_calls.clone(),
                         &content,
+                        user_message.attachments.clone(),
                         &session_key,
                         parsed["debug"].as_bool().unwrap_or(false),
                     )
@@ -730,9 +761,17 @@ async fn handle_socket(
                     continue;
                 }
 
-                let content = parsed["content"].as_str().unwrap_or("").to_string();
+                let user_message = match resolve_image_message(&state, &agent, &session_key, &parsed) {
+                    Ok(message) => message,
+                    Err(error) => {
+                        let event = serde_json::json!({"type":"error", "code":"INVALID_IMAGE_MESSAGE", "message":error.to_string()});
+                        let _ = sender.send(Message::Text(event.to_string().into())).await;
+                        continue;
+                    }
+                };
+                let content = user_message.content.clone();
                 let debug = parsed["debug"].as_bool().unwrap_or(false);
-                if content.is_empty() {
+                if content.is_empty() && user_message.attachments.is_empty() {
                     let err = serde_json::json!({
                         "type": "error",
                         "message": "Message content cannot be empty",
@@ -767,7 +806,7 @@ async fn handle_socket(
 
                 // Persist user message
                 if let Some(ref backend) = state.session_backend {
-                    let user_msg = clawseed_api::provider::ChatMessage::user(&content);
+                    let user_msg = user_message.clone();
                     let _ = backend.append(&session_key, &user_msg);
                 }
 
@@ -779,6 +818,7 @@ async fn handle_socket(
                     &mut remote_request_rx,
                     pending_remote_calls.clone(),
                     &content,
+                    user_message.attachments.clone(),
                     &session_key,
                     debug,
                 )
@@ -911,6 +951,7 @@ async fn process_chat_message(
     remote_request_rx: &mut tokio::sync::mpsc::Receiver<RemoteToolRequest>,
     pending_remote_calls: std::sync::Arc<tokio::sync::RwLock<PendingRemoteCalls>>,
     content: &str,
+    attachments: Vec<clawseed_api::provider::ImageAttachment>,
     session_key: &str,
     debug: bool,
 ) {
@@ -923,6 +964,23 @@ async fn process_chat_message(
         .fallback
         .clone()
         .unwrap_or_else(|| "unknown".to_string());
+
+    let mut image_history = agent
+        .history()
+        .iter()
+        .filter_map(|message| match message {
+            clawseed_api::provider::ConversationMessage::Chat(chat) => Some(chat.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let mut new_message = clawseed_api::provider::ChatMessage::user(content);
+    new_message.attachments = attachments.clone();
+    image_history.push(new_message);
+    let (_, omitted_ids) = clawseed_providers::multimodal::budget_image_attachments(&image_history);
+    let image_context = serde_json::json!({"type":"image_context", "omitted_ids":omitted_ids});
+    let _ = sender
+        .send(Message::Text(image_context.to_string().into()))
+        .await;
 
     // Broadcast agent_start event
     let _ = state.event_tx.send(serde_json::json!({
@@ -961,7 +1019,13 @@ async fn process_chat_message(
     let content_owned = content.to_string();
     let turn_fut = async {
         agent
-            .turn_streamed(&content_owned, event_tx, Some(cancel_token.clone()), debug)
+            .turn_streamed_with_attachments(
+                &content_owned,
+                attachments,
+                event_tx,
+                Some(cancel_token.clone()),
+                debug,
+            )
             .await
     };
 
@@ -1514,4 +1578,50 @@ mod mid_turn_tests {
         let (_call_id, result, _ack) = parse_mid_turn_message(&parsed).unwrap();
         assert!(result.success);
     }
+}
+
+/// Client IDs are resolved against durable server metadata; supplied paths and
+/// metadata never enter the model request.
+fn resolve_image_message(
+    state: &AppState,
+    agent: &clawseed_agent::agent::Agent,
+    session_key: &str,
+    parsed: &serde_json::Value,
+) -> anyhow::Result<clawseed_api::provider::ChatMessage> {
+    let mut message =
+        clawseed_api::provider::ChatMessage::user(parsed["content"].as_str().unwrap_or(""));
+    let mut ids = Vec::new();
+    if let Some(attachments) = parsed.get("attachments") {
+        let attachments = attachments
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("attachments must be an array"))?;
+        anyhow::ensure!(
+            attachments.len() <= crate::session_attachments::MAX_MESSAGE_IMAGES,
+            "At most 4 images may be attached to a message"
+        );
+        for attachment in attachments {
+            anyhow::ensure!(
+                attachment["type"].as_str() == Some("image"),
+                "Unsupported attachment type"
+            );
+            let id = attachment["id"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("Image attachment ID is required"))?;
+            anyhow::ensure!(
+                !ids.iter().any(|existing| existing == id),
+                "Duplicate attachment ID"
+            );
+            ids.push(id.to_string());
+        }
+    }
+    agent.validate_image_model(!ids.is_empty())?;
+    if !ids.is_empty() {
+        let backend = state
+            .session_backend
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Image attachments require session persistence"))?;
+        message.attachments =
+            backend.resolve_images(session_key, crate::LOCAL_OWNER_USER_ID, &ids)?;
+    }
+    Ok(message)
 }

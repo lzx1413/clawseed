@@ -315,6 +315,15 @@ fn compact_error_detail(err: &anyhow::Error) -> String {
 /// Returns the number of messages dropped. Keeps at least the system message
 /// (if any) and the most recent user message.
 fn truncate_for_context(messages: &mut Vec<ChatMessage>) -> usize {
+    // Image eviction has its own explicit budget and client notification.
+    // Do not silently remove referenced images when retrying a context error.
+    if messages
+        .iter()
+        .any(|message| !message.attachments.is_empty())
+    {
+        return 0;
+    }
+
     // Find all non-system message indices
     let non_system: Vec<usize> = messages
         .iter()
@@ -435,6 +444,12 @@ impl ReliableProvider {
 
 #[async_trait]
 impl Provider for ReliableProvider {
+    fn supports_image_attachments(&self, model: &str) -> bool {
+        self.providers
+            .first()
+            .is_some_and(|(_, provider)| provider.supports_image_attachments(model))
+    }
+
     async fn warmup(&self) -> anyhow::Result<()> {
         for (name, provider) in &self.providers {
             tracing::info!(provider = name, "Warming up provider connection pool");
@@ -610,6 +625,16 @@ impl Provider for ReliableProvider {
 
         for current_model in &models {
             for (provider_name, provider) in &self.providers {
+                if messages
+                    .iter()
+                    .any(|message| !message.attachments.is_empty())
+                    && !provider.supports_image_attachments(current_model)
+                {
+                    failures.push(format!(
+                        "{provider_name}/{current_model} does not support image attachments"
+                    ));
+                    continue;
+                }
                 let mut backoff_ms = self.base_backoff_ms;
 
                 for attempt in 0..=self.max_retries {
@@ -781,6 +806,16 @@ impl Provider for ReliableProvider {
 
         for current_model in &models {
             for (provider_name, provider) in &self.providers {
+                if messages
+                    .iter()
+                    .any(|message| !message.attachments.is_empty())
+                    && !provider.supports_image_attachments(current_model)
+                {
+                    failures.push(format!(
+                        "{provider_name}/{current_model} does not support image attachments"
+                    ));
+                    continue;
+                }
                 let mut backoff_ms = self.base_backoff_ms;
 
                 for attempt in 0..=self.max_retries {
@@ -938,6 +973,17 @@ impl Provider for ReliableProvider {
 
         for current_model in &models {
             for (provider_name, provider) in &self.providers {
+                if request
+                    .messages
+                    .iter()
+                    .any(|message| !message.attachments.is_empty())
+                    && !provider.supports_image_attachments(current_model)
+                {
+                    failures.push(format!(
+                        "{provider_name}/{current_model} does not support image attachments"
+                    ));
+                    continue;
+                }
                 let mut backoff_ms = self.base_backoff_ms;
 
                 for attempt in 0..=self.max_retries {
@@ -1112,6 +1158,14 @@ impl Provider for ReliableProvider {
         let needs_tool_events = request.tools.is_some_and(|tools| !tools.is_empty());
 
         for (provider_name, provider) in &self.providers {
+            if request
+                .messages
+                .iter()
+                .any(|message| !message.attachments.is_empty())
+                && !provider.supports_image_attachments(model)
+            {
+                continue;
+            }
             if !provider.supports_streaming() || !options.enabled {
                 continue;
             }
@@ -1247,6 +1301,13 @@ impl Provider for ReliableProvider {
         // Mirrors stream_chat_with_system but delegates to the underlying
         // provider's stream_chat_with_history, preserving the full conversation.
         for (provider_name, provider) in &self.providers {
+            if messages
+                .iter()
+                .any(|message| !message.attachments.is_empty())
+                && !provider.supports_image_attachments(model)
+            {
+                continue;
+            }
             if !provider.supports_streaming() || !options.enabled {
                 continue;
             }

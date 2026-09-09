@@ -66,6 +66,18 @@ pub async fn handle_api_session_messages(
     };
 
     let session_key = format!("gw_{id}");
+    if backend
+        .get_session_user(&session_key)
+        .ok()
+        .flatten()
+        .is_some_and(|owner| owner != crate::LOCAL_OWNER_USER_ID)
+    {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"error":"Session belongs to another user"})),
+        )
+            .into_response();
+    }
     let msgs = backend.load_with_presentations(&session_key);
     let messages: Vec<serde_json::Value> = msgs
         .into_iter()
@@ -74,6 +86,7 @@ pub async fn handle_api_session_messages(
                 "role": m.role,
                 "content": m.content,
                 "presentation": m.presentation,
+                "attachments": m.attachments,
             })
         })
         .collect();
@@ -106,7 +119,12 @@ pub async fn handle_api_session_delete(
 
     let session_key = format!("gw_{id}");
     match backend.delete_session(&session_key) {
-        Ok(true) => Json(serde_json::json!({"deleted": true, "session_id": id})).into_response(),
+        Ok(true) => {
+            if let Err(error) = backend.cleanup_images() {
+                tracing::warn!(%error, "Image cleanup failed");
+            }
+            Json(serde_json::json!({"deleted": true, "session_id": id})).into_response()
+        }
         Ok(false) => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": "Session not found"})),

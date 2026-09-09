@@ -15,6 +15,7 @@ data class SessionInfo(
      *  Null means the default (global) agent. Write-once: on resume this
      *  reflects the stored binding, not anything the client requested. */
     val persona: String? = null,
+    val imageAttachmentsSupported: Boolean = false,
 )
 
 /** Summary information returned by the gateway session list API. */
@@ -55,6 +56,7 @@ data class SessionMessage(
     @SerialName("tool_args") val toolArgs: String? = null,
     @SerialName("tool_result") val toolResult: String? = null,
     val success: Boolean? = null,
+    val attachments: List<ImageAttachment> = emptyList(),
 )
 
 internal fun parseIsoToEpochMillis(iso: String): Long {

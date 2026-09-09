@@ -184,3 +184,16 @@ impl Tool for RemoteTool {
 | `MAX_BODY_SIZE` | 64KB | 请求体大小限制 |
 | `REQUEST_TIMEOUT_SECS` | 30 | 请求超时（可通过 `CLAWSEED_GATEWAY_TIMEOUT_SECS` 环境变量覆盖；Android 默认：300s） |
 | `REMOTE_TOOL_TIMEOUT` | 30s | 远程工具执行超时 |
+
+## 图片附件协议
+
+启用会话持久化后，`/api/status.image_attachments` 声明附件能力和限制；`session_start.image_attachments_supported` 同样声明协议支持，缺少字段表示旧 Gateway。上传前先建立 WebSocket 会话。
+
+- `POST /api/sessions/{id}/attachments`：请求体为图片原始字节，不使用 JSON 或 multipart；HTTP 201 返回持久附件元数据。
+- `GET /api/sessions/{id}/attachments/{attachment_id}`：认证读取图片及校验后的 MIME。
+- WebSocket：`{"type":"message","content":"","attachments":[{"type":"image","id":"att_..."}]}`；有图片时正文允许为空。
+- 历史消息包含 `attachments`，不包含图片编码内容。
+
+上传、引用和读取均复用 Gateway 认证并校验会话归属。当前 Gateway 将认证客户端映射到本地 owner，并非多用户身份服务。服务端生成附件 ID，客户端不能通过路径读取任意文件。独立解码校验 JPEG、PNG、GIF、WebP，单图最多 5 MiB、单边最多 8192 像素，解码内存有上限；每条消息最多 4 张。
+
+元数据位于 `gateway/sessions.db`，持久图片位于 `gateway/images`。未发送附件 24 小时后可回收，后台每 5 分钟及上传、删除会话时触发清理；仍被消息引用的文件不会被清理。附件失效明确报错。`image_context` WebSocket 事件通过 `omitted_ids` 通知本轮预算排除的历史图片，历史预览仍可读取。

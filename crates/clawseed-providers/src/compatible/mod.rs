@@ -1729,6 +1729,7 @@ mod tests {
         let messages = vec![ChatMessage {
             role: "user".to_string(),
             content: "hello".to_string(),
+            attachments: Vec::new(),
             stable_prefix: None,
         }];
         let tools = vec![serde_json::json!({
@@ -2375,5 +2376,44 @@ mod tests {
             vec!["user", "assistant"]
         );
         assert_eq!(stripped[1].content, "Here are the results");
+    }
+}
+
+#[cfg(test)]
+mod attachment_capability_tests {
+    use super::*;
+    use clawseed_api::provider::Provider;
+
+    fn make_provider(name: &str, url: &str, key: Option<&str>) -> OpenAiCompatibleProvider {
+        OpenAiCompatibleProvider::new(name, url, key, AuthStyle::Bearer)
+    }
+
+    #[test]
+    fn android_custom_deepseek_endpoint_supports_only_the_vision_model() {
+        for url in ["https://api.deepseek.com", "https://api.deepseek.com/v1"] {
+            let provider = make_provider(&format!("custom:{url}"), url, None);
+            assert!(provider.supports_image_attachments("deepseek-v4-flash-vision-exp"));
+            assert!(!provider.supports_image_attachments("deepseek-chat"));
+            assert!(!provider.supports_image_attachments("deepseek-v4-flash"));
+            let runtime = crate::create_resilient_provider_with_options(
+                &format!("custom:{url}"),
+                Some("test-key"),
+                Some(url),
+                &clawseed_config::schema::ReliabilityConfig::default(),
+                &crate::ProviderRuntimeOptions::default(),
+            )
+            .unwrap();
+            assert!(runtime.supports_image_attachments("deepseek-v4-flash-vision-exp"));
+            assert!(!runtime.supports_image_attachments("deepseek-chat"));
+        }
+        let impostor = make_provider(
+            "custom:https://api.deepseek.com.example.org/v1",
+            "https://api.deepseek.com.example.org/v1",
+            None,
+        );
+        assert!(!impostor.supports_image_attachments("deepseek-v4-flash-vision-exp"));
+        let merged = make_provider("custom", "https://api.deepseek.com/v1", None)
+            .with_merge_system_into_user();
+        assert!(!merged.supports_image_attachments("deepseek-v4-flash-vision-exp"));
     }
 }

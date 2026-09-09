@@ -34,6 +34,8 @@ import dev.clawseed.sdk.core.model.SessionInfo
 import dev.clawseed.sdk.core.model.ToolPresentation
 import dev.clawseed.sdk.core.model.parseToolPresentation
 import dev.clawseed.sdk.core.tool.ToolResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
@@ -104,11 +106,11 @@ internal data class SessionSlot(
 ) {
     fun messages(): List<ChatEntry> = history + mapAccumulatedToEntries(accumulator.messages.value).first
 
-    fun sendMessage(content: String, debug: Boolean = false, expectedSessionId: String? = null): Boolean {
-        if (content.isBlank() || accumulator.isGenerating.value || session.connectionState.value != ConnectionState.CONNECTED) return false
+    fun sendMessage(content: String, debug: Boolean = false, expectedSessionId: String? = null, attachments: List<dev.clawseed.sdk.core.model.ImageAttachment> = emptyList()): Boolean {
+        if ((content.isBlank() && attachments.isEmpty()) || accumulator.isGenerating.value || session.connectionState.value != ConnectionState.CONNECTED) return false
         if (expectedSessionId != null && session.sessionInfo.value?.sessionId != expectedSessionId) return false
-        accumulator.addUserMessage(content)
-        return runCatching { session.sendMessage(content, debug) }
+        accumulator.addUserMessage(content, attachments)
+        return runCatching { session.sendMessage(content, debug, attachments) }
             .onFailure { accumulator.failTurn(it.message ?: "Failed to send message") }
             .isSuccess
     }
@@ -159,6 +161,7 @@ internal data class SessionSlot(
                         id = msg.id,
                         timestamp = msg.timestamp,
                         content = if (stripEnrichment) stripEnrichmentPrefixes(msg.content) else msg.content,
+                        attachments = msg.attachments,
                     ))
                 }
                 is dev.clawseed.sdk.android.AccumulatedMessage.Assistant -> {
@@ -268,6 +271,98 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
 
     fun updateDraft(key: String, text: String) {
         draftStore.update(key, text)
+    }
+
+    private val imageDraftStore = ChatImageDrafts(application)
+    internal val imageDrafts = imageDraftStore.drafts
+    private val imageOperations = mutableSetOf<String>()
+
+    internal fun imageDraftTarget(): ImageDraftTarget? {
+        val session = currentSlot?.session ?: return null
+        val id = session.sessionInfo.value?.sessionId ?: return null
+        return ImageDraftTarget(ChatImageDrafts.key(session.gateway, id), id, session.gateway)
+    }
+
+    internal fun imageDraftText(key: String): String =
+        if (imageDrafts.value[key].orEmpty().any { it.awaitingReply }) ""
+        else imageDraftStore.savedText(key)
+
+    internal fun imageDraftFile(id: String) = imageDraftStore.file(id)
+
+    internal fun removeImage(target: ImageDraftTarget, id: String) {
+        imageDraftStore.remove(target.key, id)
+    }
+
+    internal fun addImages(target: ImageDraftTarget, uris: List<android.net.Uri>) {
+        if (!imageOperations.add(target.key)) return
+        viewModelScope.launch {
+            try {
+                val capability = target.gateway.status().getOrThrow().imageAttachments
+                check(capability.supported) { "当前 Gateway 不支持图片，请升级 Gateway" }
+                check(imageDrafts.value[target.key].orEmpty().size + uris.size <= capability.maxImagesPerMessage) { "每条消息最多选择 4 张图片" }
+                for (uri in uris) {
+                    val image = imageDraftStore.copyImage(uri)
+                    imageDraftStore.update(target.key, imageDrafts.value[target.key].orEmpty() + image)
+                    uploadDraft(target, image)
+                }
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                _uiState.value = _uiState.value.copy(error = error.message ?: "图片处理失败")
+            } finally { imageOperations.remove(target.key) }
+        }
+    }
+
+    internal fun retryImage(target: ImageDraftTarget, id: String) {
+        val image = imageDrafts.value[target.key].orEmpty().find { it.id == id } ?: return
+        if (image.uploading) return
+        viewModelScope.launch { uploadDraft(target, image) }
+    }
+
+    private suspend fun uploadDraft(target: ImageDraftTarget, image: ChatImageDraft) {
+        imageDraftStore.replace(target.key, image.copy(uploading = true, error = null))
+        try {
+            val bytes = withContext(Dispatchers.IO) { imageDraftStore.file(image.id).readBytes() }
+            val attachment = target.gateway.uploadImage(target.sessionId, bytes).getOrThrow()
+            imageDraftStore.replace(target.key, image.copy(attachment = attachment, uploading = false))
+        } catch (error: Exception) {
+            imageDraftStore.replace(target.key, image.copy(uploading = false, error = error.message ?: "上传失败"))
+            if (error is kotlinx.coroutines.CancellationException) throw error
+        }
+    }
+
+    internal fun sendImageDraft(content: String, target: ImageDraftTarget): Boolean {
+        val slot = currentSlot ?: return false
+        if (imageDraftTarget()?.key != target.key || target.key in imageOperations) return false
+        val images = imageDrafts.value[target.key].orEmpty().filterNot { it.awaitingReply }
+        if (images.isEmpty()) return sendMessage(content, target.sessionId)
+        if (images.any { it.uploading || it.attachment == null || it.error != null }) return false
+        imageDraftStore.saveText(target.key, content)
+        val sent = slot.sendMessage(content, debugEnabled, target.sessionId, images.mapNotNull { it.attachment })
+        if (sent) {
+            // Clear the composer immediately, keeping durable copies for failure
+            // recovery until the gateway confirms the completed turn.
+            images.forEach { imageDraftStore.replace(target.key, it.copy(awaitingReply = true)) }
+            draftStore.update(target.sessionId, "")
+        }
+        if (sent) viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            val event = slot.session.events.first { it is dev.clawseed.sdk.core.model.ChatEvent.Done || it is dev.clawseed.sdk.core.model.ChatEvent.Error || it is dev.clawseed.sdk.core.model.ChatEvent.Aborted }
+            if (event is dev.clawseed.sdk.core.model.ChatEvent.Done) {
+                images.forEach { imageDraftStore.remove(target.key, it.id) }
+                imageDraftStore.saveText(target.key, "")
+                if (drafts.value[target.sessionId] == content) draftStore.update(target.sessionId, "")
+            } else if (event is dev.clawseed.sdk.core.model.ChatEvent.Error) {
+                images.forEach { image -> imageDraftStore.replace(target.key, image.copy(error = event.message)) }
+            } else {
+                images.forEach { imageDraftStore.replace(target.key, it.copy(awaitingReply = false)) }
+            }
+        }
+        return sent
+    }
+
+    internal suspend fun readImage(sessionId: String, id: String): Result<ByteArray> {
+        val session = currentSlot?.session ?: return Result.failure(IllegalStateException("会话未连接"))
+        if (session.sessionInfo.value?.sessionId != sessionId) return Result.failure(IllegalStateException("会话已切换"))
+        return session.gateway.readImage(sessionId, id)
     }
 
     private val localStore = LocalStore(application)
@@ -637,6 +732,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                                     id = "hist-$idx",
                                     timestamp = System.currentTimeMillis(),
                                     content = stripEnrichmentPrefixes(msg.content ?: ""),
+                                    attachments = msg.attachments,
                                 ))
                                 // Insert consolidated Thinking right after UserMessage
                                 turnThinkingMap[idx]?.let { reasoning ->

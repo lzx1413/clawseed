@@ -73,6 +73,37 @@ class GatewayClient(
         }
     }
 
+    private fun imageUrl(sessionId: String, attachmentId: String? = null): okhttp3.HttpUrl {
+        val builder = baseUrl.trimEnd('/').toHttpUrl().newBuilder()
+            .addPathSegment("api").addPathSegment("sessions").addPathSegment(sessionId)
+            .addPathSegment("attachments")
+        attachmentId?.let(builder::addPathSegment)
+        return builder.build()
+    }
+
+    suspend fun uploadImage(sessionId: String, bytes: ByteArray): Result<dev.clawseed.sdk.core.model.ImageAttachment> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(bytes.isNotEmpty() && bytes.size <= 5 * 1024 * 1024) { "Image must not exceed 5 MiB" }
+            val request = Request.Builder().url(imageUrl(sessionId)).addAuth()
+                .post(bytes.toRequestBody("application/octet-stream".toMediaType())).build()
+            json.decodeFromString<dev.clawseed.sdk.core.model.ImageAttachment>(execute(request).getOrThrow())
+        }
+    }
+
+    suspend fun readImage(sessionId: String, attachmentId: String): Result<ByteArray> = withContext(Dispatchers.IO) {
+        runCatching {
+            val request = Request.Builder().url(imageUrl(sessionId, attachmentId)).addAuth().build()
+            client.newCall(request).execute().use { response ->
+                check(response.isSuccessful) { "Image unavailable (HTTP ${response.code})" }
+                val body = checkNotNull(response.body) { "Image response is empty" }
+                require(body.contentLength() <= 5 * 1024 * 1024) { "Image response is too large" }
+                val bytes = body.byteStream().readNBytes(5 * 1024 * 1024 + 1)
+                require(bytes.size <= 5 * 1024 * 1024) { "Image response is too large" }
+                bytes
+            }
+        }
+    }
+
     /** Calls the unauthenticated `/health` endpoint. */
     suspend fun health(): Result<HealthInfo> = withContext(Dispatchers.IO) {
         runCatching {

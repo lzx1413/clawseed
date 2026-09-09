@@ -222,6 +222,19 @@ impl Agent {
         cancel_token: Option<tokio_util::sync::CancellationToken>,
         debug: bool,
     ) -> Result<String> {
+        self.turn_streamed_with_attachments(user_message, Vec::new(), event_tx, cancel_token, debug)
+            .await
+    }
+
+    pub async fn turn_streamed_with_attachments(
+        &mut self,
+        user_message: &str,
+        attachments: Vec<clawseed_api::provider::ImageAttachment>,
+        event_tx: tokio::sync::mpsc::Sender<TurnEvent>,
+        cancel_token: Option<tokio_util::sync::CancellationToken>,
+        debug: bool,
+    ) -> Result<String> {
+        self.validate_image_model(!attachments.is_empty())?;
         if self.refresh_user_profile().await && !self.history.is_empty() {
             self.rebuild_system_prompt()?;
         }
@@ -230,6 +243,10 @@ impl Agent {
             self.rebuild_system_prompt()?;
         }
         self.prepare_turn(user_message)?;
+
+        if let Some(ConversationMessage::Chat(message)) = self.history.last_mut() {
+            message.attachments = attachments;
+        }
 
         // Auto-recall relevant memories and prepend context to user message.
         // Only Core memories are recalled — Daily and Conversation are excluded

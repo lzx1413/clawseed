@@ -209,6 +209,7 @@ pub async fn prepare_messages_for_provider(
         normalized_messages.push(ChatMessage {
             role: message.role.clone(),
             content,
+            attachments: message.attachments.clone(),
             stable_prefix: None,
         });
     }
@@ -261,6 +262,7 @@ fn trim_old_images(messages: &[ChatMessage], max_images: usize) -> Vec<ChatMessa
                 ChatMessage {
                     role: m.role.clone(),
                     content: text,
+                    attachments: m.attachments.clone(),
                     stable_prefix: m.stable_prefix.clone(),
                 }
             } else {
@@ -705,6 +707,7 @@ mod tests {
             ChatMessage {
                 role: "assistant".to_string(),
                 content: "[IMAGE:/tmp/assistant.png]\nAssistant generated".to_string(),
+                attachments: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage::user("[IMAGE:/tmp/user1.png]\nFirst".to_string()),
@@ -763,12 +766,14 @@ mod tests {
             ChatMessage {
                 role: "assistant".to_string(),
                 content: "I see a photo.".to_string(),
+                attachments: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage::user("[IMAGE:/tmp/2.png]\nWhat about this?".to_string()),
             ChatMessage {
                 role: "assistant".to_string(),
                 content: "That's a chart.".to_string(),
+                attachments: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage::user("[IMAGE:/tmp/3.png]\nAnd this one".to_string()),
@@ -934,5 +939,154 @@ mod tests {
             "expected empty string, got: {cleaned:?}"
         );
         assert_eq!(refs.len(), 1);
+    }
+}
+
+/// Product limits, separate from provider-specific text token estimates.
+pub const IMAGE_HISTORY_COUNT: usize = 8;
+pub const IMAGE_HISTORY_BYTES: u64 = 20 * 1024 * 1024;
+pub const IMAGE_REQUEST_BYTES: usize = 32 * 1024 * 1024;
+
+/// Select recent complete image messages; never mutate persisted history.
+pub fn budget_image_attachments(messages: &[ChatMessage]) -> (Vec<ChatMessage>, Vec<String>) {
+    let mut selected = messages.to_vec();
+    let mut count = 0;
+    let mut bytes = 0u64;
+    let mut omitted = Vec::new();
+    for message in selected.iter_mut().rev() {
+        let message_bytes = message
+            .attachments
+            .iter()
+            .map(|image| image.size_bytes)
+            .sum::<u64>();
+        if count + message.attachments.len() > IMAGE_HISTORY_COUNT
+            || bytes.saturating_add(message_bytes) > IMAGE_HISTORY_BYTES
+        {
+            omitted.extend(message.attachments.iter().map(|image| image.id.clone()));
+            message.attachments.clear();
+            message.content.push_str("\n[Earlier images are outside the current image context; ask the user to attach them again if needed.]");
+        } else {
+            count += message.attachments.len();
+            bytes += message_bytes;
+        }
+    }
+    (selected, omitted)
+}
+
+/// Resolve only server-authorized structured references. Text markers never
+/// grant filesystem access. This copy exists exclusively at the request boundary.
+pub fn prepare_image_attachments(
+    messages: &[ChatMessage],
+    supported: bool,
+) -> anyhow::Result<Vec<ChatMessage>> {
+    if messages
+        .iter()
+        .all(|message| message.attachments.is_empty())
+    {
+        return Ok(messages.to_vec());
+    }
+    anyhow::ensure!(
+        supported,
+        "This provider/model does not support image attachments"
+    );
+    let (mut prepared, _) = budget_image_attachments(messages);
+    for message in &mut prepared {
+        if message.attachments.is_empty() {
+            continue;
+        }
+        anyhow::ensure!(
+            message.role == "user",
+            "Images are only supported in user messages"
+        );
+        let mut refs = Vec::new();
+        for image in &message.attachments {
+            let path = image.resolved_path.as_ref().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Image attachment {} is unavailable; attach it again",
+                    image.id
+                )
+            })?;
+            let file = std::fs::File::open(path)
+                .map_err(|_| anyhow::anyhow!("Image attachment {} is unavailable", image.id))?;
+            anyhow::ensure!(
+                file.metadata()?.len() == image.size_bytes && image.size_bytes <= 5 * 1024 * 1024,
+                "Image attachment size is invalid"
+            );
+            use std::io::Read;
+            let mut bytes = Vec::new();
+            file.take(5 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
+            anyhow::ensure!(
+                bytes.len() as u64 == image.size_bytes,
+                "Image attachment changed while reading"
+            );
+            refs.push(format!(
+                "data:{};base64,{}",
+                image.mime_type,
+                STANDARD.encode(bytes)
+            ));
+        }
+        message.content = compose_multimodal_message(&message.content, &refs);
+        message.attachments.clear();
+    }
+    anyhow::ensure!(
+        serde_json::to_vec(&prepared)?.len() <= IMAGE_REQUEST_BYTES,
+        "Image request exceeds the 32 MiB request budget"
+    );
+    Ok(prepared)
+}
+
+#[cfg(test)]
+mod attachment_tests {
+    use super::*;
+    use clawseed_api::provider::ImageAttachment;
+
+    fn message(id: &str, size: u64) -> ChatMessage {
+        let mut message = ChatMessage::user("describe");
+        message.attachments.push(ImageAttachment {
+            id: id.into(),
+            mime_type: "image/png".into(),
+            size_bytes: size,
+            width: 1,
+            height: 1,
+            resolved_path: None,
+        });
+        message
+    }
+
+    #[test]
+    fn images_have_a_separate_recent_history_budget() {
+        let history = (0..9)
+            .map(|n| message(&n.to_string(), 5 * 1024 * 1024))
+            .collect::<Vec<_>>();
+        let (selected, omitted) = budget_image_attachments(&history);
+        assert_eq!(omitted.len(), 5);
+        assert!(selected[..5].iter().all(|m| m.attachments.is_empty()));
+        assert!(selected[5..].iter().all(|m| m.attachments.len() == 1));
+        assert!(history.iter().all(|m| m.attachments.len() == 1));
+    }
+
+    #[test]
+    fn untrusted_sources_and_unsupported_models_fail_explicitly() {
+        assert!(prepare_image_attachments(&[message("att_a", 4)], false).is_err());
+        assert!(prepare_image_attachments(&[message("att_a", 4)], true).is_err());
+        let text = ChatMessage::user("[IMAGE:/etc/passwd]");
+        let prepared = prepare_image_attachments(std::slice::from_ref(&text), true).unwrap();
+        assert_eq!(prepared[0].content, text.content);
+    }
+
+    #[test]
+    fn request_copy_contains_data_while_original_history_only_has_references() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("image.png");
+        std::fs::write(&path, b"test").unwrap();
+        let mut original = message("att_a", 4);
+        original.attachments[0].resolved_path = Some(path);
+        let prepared = prepare_image_attachments(std::slice::from_ref(&original), true).unwrap();
+        let (_, refs) = parse_image_markers(&prepared[0].content);
+        assert_eq!(refs, vec!["data:image/png;base64,dGVzdA=="]);
+        let stored = serde_json::to_string(&original).unwrap();
+        assert!(!stored.contains("base64"));
+        assert!(!stored.contains("resolved_path"));
+        assert_eq!(original.content, "describe");
     }
 }

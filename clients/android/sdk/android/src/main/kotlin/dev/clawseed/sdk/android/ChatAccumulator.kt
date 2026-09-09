@@ -54,12 +54,13 @@ class ChatAccumulator(private val session: ClawSeedSession) {
     /** Records a local user message so UI state stays aligned with sent input.
      *  Clears streaming buffers defensively — a new user turn always starts fresh,
      *  preventing any residual content from a previous turn leaking into the next. */
-    fun addUserMessage(content: String) {
+    fun addUserMessage(content: String, attachments: List<dev.clawseed.sdk.core.model.ImageAttachment> = emptyList()) {
         beginTurn()
         append(AccumulatedMessage.User(
             id = nextId(),
             timestamp = System.currentTimeMillis(),
             content = content,
+            attachments = attachments,
         ))
     }
 
@@ -122,6 +123,12 @@ class ChatAccumulator(private val session: ClawSeedSession) {
 
     private fun handleEvent(event: ChatEvent) {
         when (event) {
+            is ChatEvent.ImageContext -> {
+                if (event.omittedIds.isNotEmpty()) append(AccumulatedMessage.System(
+                    id = nextId(), timestamp = System.currentTimeMillis(),
+                    content = "部分历史图片已超出本轮图片上下文，仍可查看；如需继续询问这些图片，请重新附图。",
+                ))
+            }
             is ChatEvent.TextChunk -> {
                 _isGenerating.value = true
                 currentTurnFlushed = false

@@ -15,6 +15,7 @@ data class GatewayStatus(
     val paired: Boolean = false,
     @SerialName("gateway_port") val gatewayPort: Int = 0,
     val memory: MemoryStatus? = null,
+    @SerialName("image_attachments") val imageAttachments: ImageAttachmentCapability = ImageAttachmentCapability(),
 )
 
 /** Memory subsystem status from the gateway. */

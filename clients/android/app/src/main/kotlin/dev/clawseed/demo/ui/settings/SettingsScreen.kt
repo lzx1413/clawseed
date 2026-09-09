@@ -1127,6 +1127,12 @@ private fun ProviderFormEditor(
                 )
             }
 
+            Text(
+                text = if (state.selectedModel == "deepseek-v4-flash-vision-exp") "此模型支持图片对话（实验模型）" else "图片对话目前支持 DeepSeek deepseek-v4-flash-vision-exp；其他模型将拒绝图片输入。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
             Spacer(modifier = Modifier.height(8.dp))
 
             Row(

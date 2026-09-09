@@ -11,6 +11,19 @@ use async_trait::async_trait;
 use futures_util::{StreamExt, stream};
 
 impl OpenAiCompatibleProvider {
+    fn checked_payload<T: serde::Serialize>(
+        &self,
+        request: &T,
+        extra: Option<&serde_json::Value>,
+    ) -> anyhow::Result<serde_json::Value> {
+        let payload = self.merge_extra_with_request(request, extra);
+        anyhow::ensure!(
+            serde_json::to_vec(&payload)?.len() <= multimodal::IMAGE_REQUEST_BYTES,
+            "Request exceeds the 32 MiB request budget"
+        );
+        Ok(payload)
+    }
+
     fn apply_auth_header(
         &self,
         req: reqwest::RequestBuilder,
@@ -25,6 +38,10 @@ impl OpenAiCompatibleProvider {
         messages: &[ChatMessage],
         model: &str,
     ) -> anyhow::Result<String> {
+        anyhow::ensure!(
+            !multimodal::contains_image_markers(messages),
+            "Images cannot fall back to this Responses API adapter"
+        );
         let (instructions, input) = build_responses_prompt(messages);
         if input.is_empty() {
             anyhow::bail!(
@@ -46,7 +63,7 @@ impl OpenAiCompatibleProvider {
             .apply_auth_header(
                 self.http_client()
                     .post(&url)
-                    .json(&self.merge_extra(&request)),
+                    .json(&self.checked_payload(&request, None)?),
                 credential,
             )
             .send()
@@ -364,6 +381,18 @@ impl OpenAiCompatibleProvider {
 
 #[async_trait]
 impl Provider for OpenAiCompatibleProvider {
+    fn supports_image_attachments(&self, model: &str) -> bool {
+        // Android settings persist providers as custom:<base_url>, so the
+        // display name alone cannot identify the DeepSeek protocol endpoint.
+        let is_deepseek = self.name.eq_ignore_ascii_case("deepseek")
+            || reqwest::Url::parse(&self.base_url).is_ok_and(|url| {
+                url.scheme() == "https" && url.host_str() == Some("api.deepseek.com")
+            });
+        is_deepseek
+            && model == "deepseek-v4-flash-vision-exp"
+            && !self.effective_merge_system(model)
+    }
+
     fn capabilities(&self) -> clawseed_api::provider::ProviderCapabilities {
         clawseed_api::provider::ProviderCapabilities {
             native_tool_calling: self.native_tool_calling,
@@ -432,7 +461,7 @@ impl Provider for OpenAiCompatibleProvider {
             .apply_auth_header(
                 self.http_client()
                     .post(&url)
-                    .json(&self.merge_extra(&request)),
+                    .json(&self.checked_payload(&request, None)?),
                 credential,
             )
             .send()
@@ -509,8 +538,12 @@ impl Provider for OpenAiCompatibleProvider {
         let temperature = temperature.unwrap_or(self.default_temperature());
         let credential = self.credential.as_deref();
 
+        let prepared = multimodal::prepare_image_attachments(
+            messages,
+            self.supports_image_attachments(model),
+        )?;
         let merge = self.effective_merge_system(model);
-        let effective_messages = Self::flatten_system_messages(messages, merge);
+        let effective_messages = Self::flatten_system_messages(&prepared, merge);
         // Strip native tool constructs for non-native-tool providers (#5743).
         let effective_messages = self.strip_native_tool_messages(&effective_messages);
         let api_messages: Vec<Message> = effective_messages
@@ -538,7 +571,7 @@ impl Provider for OpenAiCompatibleProvider {
             .apply_auth_header(
                 self.http_client()
                     .post(&url)
-                    .json(&self.merge_extra(&request)),
+                    .json(&self.checked_payload(&request, None)?),
                 credential,
             )
             .send()
@@ -615,8 +648,12 @@ impl Provider for OpenAiCompatibleProvider {
         let temperature = temperature.unwrap_or(self.default_temperature());
         let credential = self.credential.as_deref();
 
+        let prepared = multimodal::prepare_image_attachments(
+            messages,
+            self.supports_image_attachments(model),
+        )?;
         let merge = self.effective_merge_system(model);
-        let effective_messages = Self::flatten_system_messages(messages, merge);
+        let effective_messages = Self::flatten_system_messages(&prepared, merge);
         let effective_messages = self.strip_native_tool_messages(&effective_messages);
         let api_messages: Vec<Message> = effective_messages
             .iter()
@@ -651,7 +688,7 @@ impl Provider for OpenAiCompatibleProvider {
             .apply_auth_header(
                 self.http_client()
                     .post(&url)
-                    .json(&self.merge_extra(&request)),
+                    .json(&self.checked_payload(&request, None)?),
                 credential,
             )
             .send()
@@ -730,9 +767,13 @@ impl Provider for OpenAiCompatibleProvider {
         let temperature = temperature.unwrap_or(self.default_temperature());
         let credential = self.credential.as_deref();
 
+        let prepared = multimodal::prepare_image_attachments(
+            request.messages,
+            self.supports_image_attachments(model),
+        )?;
         let merge = self.effective_merge_system(model);
         let tools = Self::convert_tool_specs(request.tools);
-        let effective_messages = Self::flatten_system_messages(request.messages, merge);
+        let effective_messages = Self::flatten_system_messages(&prepared, merge);
         let effective_messages = self.strip_native_tool_messages(&effective_messages);
         let native_request = NativeChatRequest {
             model: model.to_string(),
@@ -752,7 +793,7 @@ impl Provider for OpenAiCompatibleProvider {
             .apply_auth_header(
                 self.http_client()
                     .post(&url)
-                    .json(&self.merge_extra_with_request(&native_request, request.provider_extra)),
+                    .json(&self.checked_payload(&native_request, request.provider_extra)?),
                 credential,
             )
             .send()
@@ -874,9 +915,19 @@ impl Provider for OpenAiCompatibleProvider {
         let temperature = temperature.unwrap_or(self.default_temperature());
         let credential = self.credential.clone();
 
+        let prepared = match multimodal::prepare_image_attachments(
+            request.messages,
+            self.supports_image_attachments(model),
+        ) {
+            Ok(messages) => messages,
+            Err(error) => {
+                return stream::once(async move { Err(StreamError::Provider(error.to_string())) })
+                    .boxed();
+            }
+        };
         let merge = self.effective_merge_system(model);
         let has_tools = request.tools.is_some_and(|tools| !tools.is_empty());
-        let effective_messages = Self::flatten_system_messages(request.messages, merge);
+        let effective_messages = Self::flatten_system_messages(&prepared, merge);
         let effective_messages = self.strip_native_tool_messages(&effective_messages);
 
         let tools = Self::convert_tool_specs(request.tools);
@@ -945,6 +996,16 @@ impl Provider for OpenAiCompatibleProvider {
             }
         }
 
+        if serde_json::to_vec(&payload)
+            .map_or(true, |bytes| bytes.len() > multimodal::IMAGE_REQUEST_BYTES)
+        {
+            return stream::once(async {
+                Err(StreamError::Provider(
+                    "Request exceeds the 32 MiB request budget".into(),
+                ))
+            })
+            .boxed();
+        }
         let url = self.chat_completions_url();
         let client = self.http_client();
         let auth_header = self.auth_header.clone();
@@ -1104,8 +1165,18 @@ impl Provider for OpenAiCompatibleProvider {
         let temperature = temperature.unwrap_or(self.default_temperature());
         let credential = self.credential.clone();
 
+        let prepared = match multimodal::prepare_image_attachments(
+            messages,
+            self.supports_image_attachments(model),
+        ) {
+            Ok(messages) => messages,
+            Err(error) => {
+                return stream::once(async move { Err(StreamError::Provider(error.to_string())) })
+                    .boxed();
+            }
+        };
         let merge = self.effective_merge_system(model);
-        let effective_messages = Self::flatten_system_messages(messages, merge);
+        let effective_messages = Self::flatten_system_messages(&prepared, merge);
         let effective_messages = self.strip_native_tool_messages(&effective_messages);
         let api_messages: Vec<Message> = effective_messages
             .iter()

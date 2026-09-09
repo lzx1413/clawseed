@@ -203,3 +203,7 @@ Only depends on:
 - `anyhow` — Error handling
 - `tokio` — Task-local storage
 - `futures-util` — Stream types
+
+## User image attachments
+
+`ChatMessage.attachments` defaults to an empty list for older records. Each `ImageAttachment` holds an opaque `id`, `mime_type`, `size_bytes`, `width`, and `height`. `resolved_path` is server-local request state: serde neither accepts it from clients nor writes it into history. Image bytes and Base64 are not message text or presentation data.

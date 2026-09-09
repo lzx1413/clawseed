@@ -203,3 +203,7 @@ pub struct ToolSpec {
 - `anyhow` — 错误处理
 - `tokio` — Task-local 存储
 - `futures-util` — Stream 类型
+
+## 用户图片附件
+
+`ChatMessage.attachments` 在旧记录中默认空列表。`ImageAttachment` 保存不透明 `id`、`mime_type`、`size_bytes`、`width` 和 `height`。`resolved_path` 仅供服务端解析后的请求使用，serde 不接受客户端传入，也不会将其持久化。图片内容和 Base64 不属于消息正文或 presentation 展示字段。

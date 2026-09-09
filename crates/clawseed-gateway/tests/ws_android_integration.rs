@@ -1043,3 +1043,192 @@ async fn ws_shared_provider_init_succeeds() {
 
     tx.close().await.ok();
 }
+
+/// Exercise actual HTTP upload, WS turns, provider wire blocks and persisted
+/// history together, including a tool continuation and a reconnected session.
+#[tokio::test]
+async fn ws_image_upload_followup_regenerate_and_resume() {
+    use clawseed_gateway::session_backend::SessionBackend;
+    let tmp = tempfile::tempdir().unwrap();
+    let captured = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
+    let responses: MockResponses = Arc::new(Mutex::new(vec![
+        tool_response(vec![clawseed_api::provider::ToolCall {
+            id: "call_image".into(),
+            name: "missing_tool".into(),
+            arguments: "{}".into(),
+        }]),
+        text_response("image answer"),
+        text_response("followup"),
+        text_response("regenerated"),
+        text_response("resumed"),
+    ]));
+    let capture = captured.clone();
+    let api = Router::new().route(
+        "/v1/chat/completions",
+        post(move |body: String| {
+            let capture = capture.clone();
+            let responses = responses.clone();
+            async move {
+                capture.lock().push(serde_json::from_str(&body).unwrap());
+                mock_chat_completions(axum::extract::State(responses), body)
+                    .await
+                    .into_response()
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let api_addr = listener.local_addr().unwrap();
+    let api_task = tokio::spawn(async move { axum::serve(listener, api).await.unwrap() });
+    let mut config = make_config(api_addr);
+    config.workspace_dir = tmp.path().to_path_buf();
+    config.user_model.enabled = false;
+    let mut model = config.providers.models.remove("openai").unwrap();
+    model.model = Some("deepseek-v4-flash-vision-exp".into());
+    config.providers.models.insert("deepseek".into(), model);
+    config.providers.fallback = Some("deepseek".into());
+    let mut state = test_app_state(config, Some(api_addr));
+    state.model = "deepseek-v4-flash-vision-exp".into();
+    state.provider = Arc::from(
+        clawseed_providers::create_resilient_provider_with_options(
+            "deepseek",
+            Some("test-key"),
+            Some(&format!("http://{api_addr}/v1")),
+            &clawseed_config::schema::ReliabilityConfig {
+                max_retries: 0,
+                ..Default::default()
+            },
+            &clawseed_providers::ProviderRuntimeOptions::default(),
+        )
+        .unwrap(),
+    );
+    let backend =
+        Arc::new(clawseed_gateway::session_sqlite::SqliteSessionBackend::new(tmp.path()).unwrap());
+    state.session_backend = Some(backend.clone());
+    let app = Router::new()
+        .route("/ws/chat", get(handle_ws_chat))
+        .route(
+            "/api/sessions/{id}/attachments",
+            post(clawseed_gateway::api::handle_api_image_upload),
+        )
+        .route(
+            "/api/sessions/{id}/attachments/{attachment}",
+            get(clawseed_gateway::api::handle_api_image_read),
+        )
+        .with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let gateway_task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let url = format!("ws://{addr}/ws/chat?session_id=image-test");
+    let (socket, _) = connect_async(&url).await.unwrap();
+    let (mut tx, mut rx) = socket.split();
+    let started = expect_msg_type(&mut rx, "session_start").await;
+    let session_id = started["session_id"].as_str().unwrap().to_string();
+    tx.send(Message::Text("{\"type\":\"connect\"}".into()))
+        .await
+        .unwrap();
+    expect_msg_type(&mut rx, "connected").await;
+    let mut png = std::io::Cursor::new(Vec::new());
+    image::RgbaImage::new(2, 3)
+        .write_to(&mut png, image::ImageFormat::Png)
+        .unwrap();
+    let http = reqwest::Client::new();
+    let upload = http
+        .post(format!(
+            "http://{addr}/api/sessions/{session_id}/attachments"
+        ))
+        .body(png.into_inner())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(upload.status(), reqwest::StatusCode::CREATED);
+    let image: serde_json::Value = upload.json().await.unwrap();
+    let read = http
+        .get(format!(
+            "http://{addr}/api/sessions/{session_id}/attachments/{}",
+            image["id"].as_str().unwrap()
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(read.status(), reqwest::StatusCode::OK);
+    let denied = http
+        .get(format!(
+            "http://{addr}/api/sessions/another/attachments/{}",
+            image["id"].as_str().unwrap()
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), reqwest::StatusCode::NOT_FOUND);
+    for request in [
+        serde_json::json!({"type":"message", "content":"", "attachments":[{"type":"image", "id":image["id"]}]}),
+        serde_json::json!({"type":"message", "content":"What was in the image?"}),
+        serde_json::json!({"type":"regenerate"}),
+    ] {
+        tx.send(Message::Text(request.to_string().into()))
+            .await
+            .unwrap();
+        let done = expect_msg_type(&mut rx, "done").await;
+        assert!(!done["full_response"].as_str().unwrap().is_empty());
+    }
+    tx.close().await.unwrap();
+    let (socket, _) = connect_async(format!("ws://{addr}/ws/chat?session_id={session_id}"))
+        .await
+        .unwrap();
+    let (mut tx, mut rx) = socket.split();
+    assert_eq!(
+        expect_msg_type(&mut rx, "session_start").await["resumed"],
+        true
+    );
+    tx.send(Message::Text("{\"type\":\"connect\"}".into()))
+        .await
+        .unwrap();
+    expect_msg_type(&mut rx, "connected").await;
+    tx.send(Message::Text(
+        "{\"type\":\"message\",\"content\":\"Look at the same image again\"}".into(),
+    ))
+    .await
+    .unwrap();
+    expect_msg_type(&mut rx, "done").await;
+    let history = backend.load(&format!("gw_{session_id}"));
+    assert_eq!(
+        history
+            .iter()
+            .filter(|message| message.role == "user")
+            .count(),
+        3
+    );
+    assert_eq!(history[0].attachments.len(), 1);
+    assert!(!serde_json::to_string(&history).unwrap().contains("base64"));
+    let requests = captured.lock();
+    let turns = requests
+        .iter()
+        .filter(|request| request["stream"] == true)
+        .collect::<Vec<_>>();
+    assert!(
+        turns.len() >= 5,
+        "Tool continuation must issue a second request"
+    );
+    for request in turns {
+        assert!(
+            request["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|message| {
+                    message["content"].as_array().is_some_and(|parts| {
+                        parts.iter().any(|part| {
+                            part["type"] == "image_url"
+                                && part["image_url"]["url"]
+                                    .as_str()
+                                    .is_some_and(|url| url.starts_with("data:image/png;base64,"))
+                        })
+                    })
+                }),
+            "Every turn must retain the image blocks"
+        );
+    }
+    drop(requests);
+    gateway_task.abort();
+    api_task.abort();
+}

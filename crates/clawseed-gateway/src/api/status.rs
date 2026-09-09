@@ -68,6 +68,12 @@ pub async fn handle_api_status(
     let body = serde_json::json!({
         "provider": config.providers.fallback,
         "model": model,
+        "image_attachments": {
+            "supported": state.session_backend.is_some(),
+            "max_images_per_message": crate::session_attachments::MAX_MESSAGE_IMAGES,
+            "max_image_bytes": crate::session_attachments::MAX_IMAGE_BYTES,
+            "max_dimension": crate::session_attachments::MAX_IMAGE_DIMENSION,
+        },
         "temperature": temperature,
         "uptime_seconds": health.get("uptime_seconds").and_then(|v| v.as_f64()).unwrap_or(0.0),
         "gateway_port": config.gateway.port,

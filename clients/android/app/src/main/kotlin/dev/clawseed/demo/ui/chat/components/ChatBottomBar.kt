@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -46,16 +48,20 @@ fun ChatBottomBar(
     isLoading: Boolean,
     canSend: Boolean,
     modifier: Modifier = Modifier,
+    hasImages: Boolean = false,
+    onPickImages: (() -> Unit)? = null,
+    imageDrafts: @Composable () -> Unit = {},
 ) {
     val colorScheme = MaterialTheme.colorScheme
 
     fun submitQuestion() {
-        if (input.isNotBlank() && canSend) {
+        if ((input.isNotBlank() || hasImages) && canSend) {
             onSend()
         }
     }
 
     Column(modifier = modifier) {
+        imageDrafts()
         OutlinedTextField(
             value = input,
             onValueChange = onInputChange,
@@ -76,6 +82,17 @@ fun ChatBottomBar(
                     color = colorScheme.onSurfaceVariant,
                 )
             },
+            leadingIcon = onPickImages?.let { pick ->
+                {
+                    IconButton(onClick = pick, enabled = canSend && !isLoading) {
+                        Icon(
+                            imageVector = AttachmentIcon,
+                            contentDescription = stringResource(R.string.chat_attach_image),
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
+            },
             trailingIcon = {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -89,7 +106,7 @@ fun ChatBottomBar(
                             contentDescription = stringResource(R.string.chat_stop_generating),
                             isPulsing = true,
                         )
-                    } else if (input.isNotBlank() && canSend) {
+                    } else if ((input.isNotBlank() || hasImages) && canSend) {
                         ComposerCircleButton(
                             icon = SendIcon,
                             onClick = { submitQuestion() },
@@ -156,6 +173,35 @@ private fun ComposerCircleButton(
             tint = MaterialTheme.colorScheme.onPrimary,
         )
     }
+}
+
+private val AttachmentIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "Attachment",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2f,
+            strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round,
+            strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round,
+        ) {
+            moveTo(21.44f, 11.05f)
+            lineTo(12.25f, 20.24f)
+            curveTo(9.91f, 22.58f, 6.11f, 22.58f, 3.77f, 20.24f)
+            curveTo(1.43f, 17.9f, 1.43f, 14.1f, 3.77f, 11.76f)
+            lineTo(12.96f, 2.57f)
+            curveTo(14.52f, 1.01f, 17.06f, 1.01f, 18.62f, 2.57f)
+            curveTo(20.18f, 4.13f, 20.18f, 6.67f, 18.62f, 8.23f)
+            lineTo(9.42f, 17.42f)
+            curveTo(8.64f, 18.2f, 7.38f, 18.2f, 6.6f, 17.42f)
+            curveTo(5.82f, 16.64f, 5.82f, 15.38f, 6.6f, 14.6f)
+            lineTo(15.09f, 6.12f)
+        }
+    }.build()
 }
 
 private val SendIcon: ImageVector by lazy {

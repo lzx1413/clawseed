@@ -125,7 +125,9 @@ internal class ChatClient(
         pendingMessages.clear()
     }
 
-    fun sendMessage(content: String, debug: Boolean = false) {
+    fun sendMessage(content: String, debug: Boolean = false, attachments: List<dev.clawseed.sdk.core.model.ImageAttachment> = emptyList()) {
+        require(attachments.size <= 4) { "At most 4 images may be attached" }
+        require(content.isNotBlank() || attachments.isNotEmpty()) { "Message cannot be empty" }
         val state = _connectionState.value
         check(state == ConnectionState.CONNECTED || state == ConnectionState.RECONNECTING) {
             "Cannot send message in state $state"
@@ -133,10 +135,13 @@ internal class ChatClient(
         val msg = buildJsonObject {
             put("type", "message")
             put("content", content)
+            if (attachments.isNotEmpty()) put("attachments", kotlinx.serialization.json.buildJsonArray {
+                attachments.forEach { image -> add(buildJsonObject { put("type", "image"); put("id", image.id) }) }
+            })
             if (debug) put("debug", true)
         }.toString()
         if (state == ConnectionState.CONNECTED) {
-            webSocket?.send(msg)
+            check(webSocket?.send(msg) == true) { "WebSocket rejected message" }
         } else {
             pendingMessages.add(msg)
         }

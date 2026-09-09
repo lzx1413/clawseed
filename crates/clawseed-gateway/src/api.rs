@@ -8,6 +8,7 @@ use axum::{
     response::Json,
 };
 
+mod attachments;
 mod config;
 mod config_secrets;
 mod cron;
@@ -22,8 +23,8 @@ mod status;
 mod system;
 
 pub use self::{
-    config::*, cron::*, hooks::*, identity::*, integrations::*, memory::*, providers::*,
-    sessions::*, skills::*, status::*, system::*,
+    attachments::*, config::*, cron::*, hooks::*, identity::*, integrations::*, memory::*,
+    providers::*, sessions::*, skills::*, status::*, system::*,
 };
 use config_secrets::{hydrate_config_for_save, mask_sensitive_fields};
 

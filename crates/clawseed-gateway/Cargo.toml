@@ -43,6 +43,7 @@ tempfile = { workspace = true, optional = true }
 chrono = { workspace = true }
 rusqlite = { workspace = true }
 rand = "0.9"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 
 [features]
 default = []

@@ -107,6 +107,31 @@ impl Agent {
         self.history.clear();
     }
 
+    pub fn validate_image_model(&self, new_images: bool) -> anyhow::Result<()> {
+        let has_images = new_images || self.history.iter().any(|message| {
+            matches!(message, ConversationMessage::Chat(chat) if !chat.attachments.is_empty())
+        });
+        anyhow::ensure!(
+            !has_images || self.provider.supports_image_attachments(&self.model_name),
+            "Model {} does not support image attachments; select a supported vision model",
+            self.model_name
+        );
+        Ok(())
+    }
+
+    pub fn last_user_attachments(&self) -> Vec<clawseed_api::provider::ImageAttachment> {
+        self.history
+            .iter()
+            .rev()
+            .find_map(|message| match message {
+                ConversationMessage::Chat(chat) if chat.role == "user" => {
+                    Some(chat.attachments.clone())
+                }
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
     /// Remove the last assistant turn and the preceding user message from history.
     /// Returns the original user message content (without timestamp prefix) if found,
     /// so the caller can re-run the turn.

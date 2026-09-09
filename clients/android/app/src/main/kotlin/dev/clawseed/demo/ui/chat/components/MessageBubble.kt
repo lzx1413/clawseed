@@ -81,9 +81,24 @@ fun MessageBubble(
     onStop: (() -> Unit)? = null,
     onPresentationAction: ((String) -> Unit)? = null,
     isSpeakingThis: Boolean = false,
+    onReadImage: (suspend (String) -> Result<ByteArray>)? = null,
 ) {
     when (entry) {
-        is ChatEntry.UserMessage -> UserBubble(entry.content, modifier)
+        is ChatEntry.UserMessage -> Column(
+            modifier = modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (entry.attachments.isNotEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.TopEnd,
+                ) {
+                    MessageImageStrip(entry.attachments, onReadImage)
+                }
+            }
+            if (entry.content.isNotBlank()) UserBubble(entry.content)
+        }
         is ChatEntry.AssistantMessage -> AssistantBubble(
             content = entry.content,
             isStreaming = entry.isStreaming,

@@ -11,7 +11,21 @@ use rusqlite::{Connection, OptionalExtension, params};
 use super::session_backend::{PersistedMessage, SessionBackend, SessionMetadata, SessionState};
 
 pub struct SqliteSessionBackend {
-    conn: Arc<Mutex<Connection>>,
+    pub(super) conn: Arc<Mutex<Connection>>,
+    pub(super) image_dir: std::path::PathBuf,
+}
+
+fn decode_attachments(
+    json: String,
+    column: usize,
+) -> rusqlite::Result<Vec<clawseed_api::provider::ImageAttachment>> {
+    serde_json::from_str(&json).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(
+            column,
+            rusqlite::types::Type::Text,
+            Box::new(error),
+        )
+    })
 }
 
 impl SqliteSessionBackend {
@@ -46,6 +60,14 @@ impl SqliteSessionBackend {
             );
             CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_key);
 
+            CREATE TABLE IF NOT EXISTS image_attachments (
+                id TEXT PRIMARY KEY,
+                session_key TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                metadata_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+
             -- UI-only rich content, linked to the final assistant message.
             -- It is intentionally not part of messages.content, which is sent
             -- back to the LLM when a session is resumed.
@@ -64,6 +86,20 @@ impl SqliteSessionBackend {
                 persona     TEXT
             );",
         )?;
+
+        // Existing databases retain their messages; old records have no images.
+        let has_attachments = {
+            let mut stmt = conn.prepare("PRAGMA table_info(messages)")?;
+            stmt.query_map([], |row| row.get::<_, String>(1))?
+                .collect::<Result<Vec<_>, _>>()?
+                .iter()
+                .any(|name| name == "attachments_json")
+        };
+        if !has_attachments {
+            conn.execute_batch(
+                "ALTER TABLE messages ADD COLUMN attachments_json TEXT NOT NULL DEFAULT '[]';",
+            )?;
+        }
 
         let has_user_id = {
             let mut stmt = conn.prepare("PRAGMA table_info(sessions)")?;
@@ -84,6 +120,7 @@ impl SqliteSessionBackend {
 
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
+            image_dir: db_dir.join("images"),
         })
     }
 
@@ -147,10 +184,32 @@ impl SqliteSessionBackend {
 
 #[async_trait]
 impl SessionBackend for SqliteSessionBackend {
+    fn upload_image(
+        &self,
+        session_key: &str,
+        user_id: &str,
+        bytes: &[u8],
+    ) -> anyhow::Result<clawseed_api::provider::ImageAttachment> {
+        self.store_image(session_key, user_id, bytes)
+    }
+
+    fn resolve_images(
+        &self,
+        session_key: &str,
+        user_id: &str,
+        ids: &[String],
+    ) -> anyhow::Result<Vec<clawseed_api::provider::ImageAttachment>> {
+        self.find_images(session_key, user_id, ids)
+    }
+
+    fn cleanup_images(&self) -> anyhow::Result<usize> {
+        self.collect_images()
+    }
+
     fn load(&self, session_key: &str) -> Vec<ChatMessage> {
         let conn = self.conn.lock();
         let mut stmt = match conn
-            .prepare("SELECT role, content FROM messages WHERE session_key = ?1 ORDER BY id")
+            .prepare("SELECT role, content, attachments_json FROM messages WHERE session_key = ?1 ORDER BY id")
         {
             Ok(s) => s,
             Err(_) => return Vec::new(),
@@ -159,6 +218,7 @@ impl SessionBackend for SqliteSessionBackend {
             Ok(ChatMessage {
                 role: row.get(0)?,
                 content: row.get(1)?,
+                attachments: decode_attachments(row.get(2)?, 2)?,
                 stable_prefix: None, // Not persisted; rebuilt by seed_history on resume
             })
         }) else {
@@ -170,7 +230,7 @@ impl SessionBackend for SqliteSessionBackend {
     fn load_with_presentations(&self, session_key: &str) -> Vec<PersistedMessage> {
         let conn = self.conn.lock();
         let mut stmt = match conn.prepare(
-            "SELECT m.role, m.content, p.presentation_json
+            "SELECT m.role, m.content, p.presentation_json, m.attachments_json
              FROM messages m
              LEFT JOIN message_presentations p ON p.message_id = m.id
              WHERE m.session_key = ?1
@@ -184,19 +244,21 @@ impl SessionBackend for SqliteSessionBackend {
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<String>>(2)?,
+                decode_attachments(row.get(3)?, 3)?,
             ))
         }) else {
             return Vec::new();
         };
 
         rows.filter_map(|row| {
-            let (role, content, presentation_json) = row.ok()?;
+            let (role, content, presentation_json, attachments) = row.ok()?;
             let presentation = presentation_json
                 .as_deref()
                 .and_then(|json| serde_json::from_str::<ToolPresentation>(json).ok());
             Some(PersistedMessage {
                 role,
                 content,
+                attachments,
                 presentation,
             })
         })
@@ -208,8 +270,8 @@ impl SessionBackend for SqliteSessionBackend {
         self.ensure_session(&conn, session_key)?;
         let now = Utc::now().to_rfc3339();
         conn.execute(
-            "INSERT INTO messages (session_key, role, content, created_at) VALUES (?1, ?2, ?3, ?4)",
-            params![session_key, message.role, message.content, now],
+            "INSERT INTO messages (session_key, role, content, created_at, attachments_json) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![session_key, message.role, message.content, now, serde_json::to_string(&message.attachments)?],
         )?;
         conn.execute(
             "UPDATE sessions SET last_activity = ?1 WHERE session_key = ?2",
@@ -475,6 +537,76 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         SqliteSessionBackend::new(tmp.path()).unwrap()
         // tmp keeps the temp dir alive for the test via the backend's open conn
+    }
+
+    #[test]
+    fn image_history_survives_reopen_enrichment_and_regeneration() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut message = ChatMessage::user("");
+        message
+            .attachments
+            .push(clawseed_api::provider::ImageAttachment {
+                id: "att_test".into(),
+                mime_type: "image/png".into(),
+                size_bytes: 128,
+                width: 20,
+                height: 30,
+                resolved_path: Some(tmp.path().join("private.png")),
+            });
+        {
+            let backend = SqliteSessionBackend::new(tmp.path()).unwrap();
+            backend.append("gw_images", &message).unwrap();
+            backend
+                .update_last_user("gw_images", &ChatMessage::user("enriched"))
+                .unwrap();
+            backend
+                .append("gw_images", &ChatMessage::assistant("answer"))
+                .unwrap();
+            assert_eq!(
+                backend.remove_last_assistant_turn("gw_images").as_deref(),
+                Some("enriched")
+            );
+        }
+        let backend = SqliteSessionBackend::new(tmp.path()).unwrap();
+        let history = backend.load("gw_images");
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].content, "enriched");
+        message.attachments[0].resolved_path = None;
+        assert_eq!(history[0].attachments, message.attachments);
+        assert_eq!(
+            backend.load_with_presentations("gw_images")[0].attachments,
+            message.attachments
+        );
+        let conn = backend.conn.lock();
+        let json: String = conn
+            .query_row("SELECT attachments_json FROM messages", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert!(!json.contains("private.png"));
+        assert!(!json.contains("base64"));
+    }
+
+    #[test]
+    fn legacy_database_migrates_without_changing_text() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("gateway")).unwrap();
+        let conn = Connection::open(tmp.path().join("gateway/sessions.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, session_key TEXT NOT NULL,
+            role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL
+        ); INSERT INTO messages (session_key, role, content, created_at)
+        VALUES ('gw_old', 'user', 'old text', '2026-09-09');",
+        )
+        .unwrap();
+        drop(conn);
+        for _ in 0..2 {
+            let backend = SqliteSessionBackend::new(tmp.path()).unwrap();
+            let history = backend.load("gw_old");
+            assert_eq!(history[0].content, "old text");
+            assert!(history[0].attachments.is_empty());
+        }
     }
 
     #[test]

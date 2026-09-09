@@ -188,3 +188,16 @@ impl Tool for RemoteTool {
 | `MAX_BODY_SIZE` | 64KB | Request body size limit |
 | `REQUEST_TIMEOUT_SECS` | 30 | Request timeout (overridable via `CLAWSEED_GATEWAY_TIMEOUT_SECS` env var; Android default: 300s) |
 | `REMOTE_TOOL_TIMEOUT` | 30s | Remote tool execution timeout |
+
+## Image attachment protocol
+
+With session persistence enabled, `/api/status.image_attachments` declares protocol support and limits. `session_start.image_attachments_supported` also advertises support; absence means an older gateway. Establish a WebSocket session before uploading.
+
+- `POST /api/sessions/{id}/attachments`: raw image bytes (not JSON or multipart); returns durable image metadata with HTTP 201.
+- `GET /api/sessions/{id}/attachments/{attachment_id}`: authenticated image bytes with their verified MIME type.
+- WebSocket message: `{"type":"message","content":"","attachments":[{"type":"image","id":"att_..."}]}`. Images allow an empty text body.
+- History entries include `attachments`; they never contain encoded image bytes.
+
+All image operations use gateway authentication and check session ownership. The current gateway identifies authenticated clients as the local owner; it is not a multi-user identity service. IDs are server-generated and cannot address arbitrary paths. JPEG, PNG, GIF and WebP are decoded and independently checked; maximum input is 5 MiB and 8192 pixels per side, with a bounded decoder allocation. At most 4 images are accepted per message.
+
+Metadata lives in `gateway/sessions.db`; durable files live in `gateway/images`. Unsent uploads expire after 24 hours, with collection every five minutes, on upload, and after session deletion. Collection retains any image still referenced by a message. Unavailable images produce explicit errors. The `image_context` WebSocket event lists `omitted_ids` outside the current model image budget; their history previews remain available.

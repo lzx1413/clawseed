@@ -1,5 +1,6 @@
 package dev.clawseed.sdk.core.model
 
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
@@ -19,6 +20,7 @@ sealed class ChatEvent {
         val version: Int?,
         /** Persona bound to this session, echoed by the gateway. Null = default. */
         val persona: String? = null,
+        val imageAttachmentsSupported: Boolean = false,
     ) : ChatEvent()
 
     /** WebSocket connection acknowledged by the gateway. */
@@ -73,6 +75,8 @@ sealed class ChatEvent {
     /** Gateway-side error surfaced through the chat stream. */
     data class Error(val message: String, val code: String? = null) : ChatEvent()
 
+    data class ImageContext(val omittedIds: List<String>) : ChatEvent()
+
     /** Extra debug payload emitted when debug mode is enabled. */
     data class DebugPrompt(val messages: String, val estimatedTokens: Int) : ChatEvent()
 
@@ -85,6 +89,7 @@ sealed class ChatEvent {
             val type = obj["type"]?.jsonPrimitive?.content ?: return null
             return when (type) {
                 "session_start" -> SessionStarted(
+                    imageAttachmentsSupported = obj["image_attachments_supported"]?.jsonPrimitive?.booleanOrNull ?: false,
                     sessionId = obj["session_id"]?.jsonPrimitive?.content ?: "",
                     name = obj["name"]?.jsonPrimitive?.content?.takeIf { it.isNotEmpty() },
                     resumed = obj["resumed"]?.jsonPrimitive?.booleanOrNull ?: false,
@@ -96,6 +101,7 @@ sealed class ChatEvent {
                     message = obj["message"]?.jsonPrimitive?.content ?: "",
                     version = obj["v"]?.jsonPrimitive?.intOrNull,
                 )
+                "image_context" -> ImageContext(obj["omitted_ids"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList())
                 "chunk" -> TextChunk(obj["content"]?.jsonPrimitive?.content ?: "")
                 "thinking" -> ThinkingChunk(obj["content"]?.jsonPrimitive?.content ?: "")
                 "done" -> Done(obj["full_response"]?.jsonPrimitive?.content ?: "")

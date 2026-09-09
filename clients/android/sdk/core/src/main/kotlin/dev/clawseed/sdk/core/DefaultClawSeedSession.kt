@@ -52,6 +52,7 @@ internal class DefaultClawSeedSession(
                         resumed = event.resumed,
                         messageCount = event.messageCount,
                         persona = event.persona,
+                        imageAttachmentsSupported = event.imageAttachmentsSupported,
                     )
                 }
             }
@@ -64,6 +65,10 @@ internal class DefaultClawSeedSession(
 
     override suspend fun disconnect() {
         chatClient.disconnect()
+    }
+
+    override fun sendMessage(content: String, debug: Boolean, attachments: List<dev.clawseed.sdk.core.model.ImageAttachment>) {
+        chatClient.sendMessage(content, debug, attachments)
     }
 
     override fun sendMessage(content: String, debug: Boolean) {

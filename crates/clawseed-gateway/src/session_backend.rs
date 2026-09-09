@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use clawseed_api::provider::ChatMessage;
+use clawseed_api::provider::{ChatMessage, ImageAttachment};
 use clawseed_api::tool::ToolPresentation;
 
 /// A persisted transcript entry. Presentation data is intentionally separate
@@ -11,6 +11,7 @@ use clawseed_api::tool::ToolPresentation;
 pub struct PersistedMessage {
     pub role: String,
     pub content: String,
+    pub attachments: Vec<ImageAttachment>,
     pub presentation: Option<ToolPresentation>,
 }
 
@@ -47,6 +48,32 @@ pub struct SessionState {
 /// Trait for session persistence backends.
 #[async_trait]
 pub trait SessionBackend: Send + Sync + 'static {
+    fn upload_image(
+        &self,
+        _session_key: &str,
+        _user_id: &str,
+        _bytes: &[u8],
+    ) -> anyhow::Result<ImageAttachment> {
+        anyhow::bail!("Image attachments are not supported by this session backend")
+    }
+
+    fn resolve_images(
+        &self,
+        _session_key: &str,
+        _user_id: &str,
+        ids: &[String],
+    ) -> anyhow::Result<Vec<ImageAttachment>> {
+        anyhow::ensure!(
+            ids.is_empty(),
+            "Image attachments are not supported by this session backend"
+        );
+        Ok(Vec::new())
+    }
+
+    fn cleanup_images(&self) -> anyhow::Result<usize> {
+        Ok(0)
+    }
+
     /// Load all messages for a session.
     fn load(&self, session_key: &str) -> Vec<ChatMessage>;
 
@@ -58,6 +85,7 @@ pub trait SessionBackend: Send + Sync + 'static {
             .map(|message| PersistedMessage {
                 role: message.role,
                 content: message.content,
+                attachments: message.attachments,
                 presentation: None,
             })
             .collect()

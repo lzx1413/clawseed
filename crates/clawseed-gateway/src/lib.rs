@@ -12,6 +12,7 @@ pub mod auth_rate_limit;
 pub mod handlers;
 pub mod ratelimit;
 pub mod remote_tool;
+mod session_attachments;
 pub mod session_backend;
 pub mod session_queue;
 pub mod session_sqlite;
@@ -576,6 +577,23 @@ pub async fn run_gateway(
     };
 
     // Config PUT needs larger body limit (1MB)
+    if let Some(backend) = state.session_backend.as_ref() {
+        let backend = Arc::downgrade(backend);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(300));
+            loop {
+                interval.tick().await;
+                let Some(backend) = backend.upgrade() else {
+                    break;
+                };
+                let result = tokio::task::spawn_blocking(move || backend.cleanup_images()).await;
+                if !matches!(result, Ok(Ok(_))) {
+                    tracing::warn!("Image attachment cleanup failed; will retry");
+                }
+            }
+        });
+    }
+
     let config_put_router = Router::new()
         .route("/api/config", put(api::handle_api_config_put))
         .layer(RequestBodyLimitLayer::new(1_048_576));
@@ -594,6 +612,22 @@ pub async fn run_gateway(
         .layer(RequestBodyLimitLayer::new(1_048_576));
 
     // Build router with middleware
+    let image_router = Router::new()
+        .route(
+            "/api/sessions/{id}/attachments",
+            post(api::handle_api_image_upload),
+        )
+        .route(
+            "/api/sessions/{id}/attachments/{attachment_id}",
+            get(api::handle_api_image_read),
+        )
+        .layer(axum::extract::DefaultBodyLimit::max(
+            session_attachments::MAX_IMAGE_BYTES,
+        ))
+        .layer(RequestBodyLimitLayer::new(
+            session_attachments::MAX_IMAGE_BYTES,
+        ));
+
     let inner = Router::new()
         // ── Admin routes (for CLI management) ──
         .route("/admin/shutdown", post(handle_admin_shutdown))
@@ -725,8 +759,9 @@ pub async fn run_gateway(
         .merge(user_profile_import_router)
         // ── SPA fallback: non-API GET requests serve index.html ──
         .fallback(get(static_files::handle_spa_fallback))
-        .with_state(state)
         .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE))
+        .merge(image_router)
+        .with_state(state)
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
             Duration::from_secs(gateway_request_timeout_secs()),

@@ -90,9 +90,17 @@ fun ChatScreen(
     val viewModel: ChatViewModel = viewModel(activity)
     val uiState by viewModel.uiState.collectAsState()
     val drafts by viewModel.drafts.collectAsState()
+    val imageDrafts by viewModel.imageDrafts.collectAsState()
+    val imageTarget = viewModel.imageDraftTarget()
+    val selectedImages = imageDrafts[imageTarget?.key].orEmpty().filterNot { it.awaitingReply }
+    var pickerTarget by remember { mutableStateOf<ImageDraftTarget?>(null) }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(4)) { uris ->
+        pickerTarget?.let { target -> if (uris.isNotEmpty()) viewModel.addImages(target, uris) }
+        pickerTarget = null
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     val draftKey = uiState.currentSessionId ?: sessionId ?: "__new__"
-    val input = drafts[draftKey].orEmpty()
+    val input = drafts[draftKey] ?: imageTarget?.let { viewModel.imageDraftText(it.key) }.orEmpty()
     val density = LocalDensity.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -327,6 +335,7 @@ fun ChatScreen(
                         && uiState.messages.indexOf(entry) == uiState.messages.indexOfLast { it is ChatEntry.AssistantMessage }
                     val canSpeak = entry is ChatEntry.AssistantMessage && !entry.isStreaming
                     MessageBubble(
+                        onReadImage = { id -> viewModel.readImage(uiState.currentSessionId.orEmpty(), id) },
                         entry = entry,
                         onRegenerate = if (isLastAssistant && !isLoading) ({ viewModel.regenerateLastResponse() }) else null,
                         onSpeak = if (canSpeak) ({ viewModel.speakMessage(entry.content, entry.id) }) else null,
@@ -390,12 +399,22 @@ fun ChatScreen(
                 onSend = {
                     val text = input
                     dismissInput()
-                    if (viewModel.sendMessage(text, uiState.currentSessionId)) viewModel.updateDraft(draftKey, "")
+                    if (selectedImages.isNotEmpty() && imageTarget != null) {
+                        viewModel.sendImageDraft(text, imageTarget)
+                    } else if (viewModel.sendMessage(text, uiState.currentSessionId)) viewModel.updateDraft(draftKey, "")
                 },
                 onStop = { viewModel.abortGeneration() },
                 isLoading = isLoading,
                 canSend = sessionSwitchReady,
                 modifier = Modifier.imePadding(),
+                hasImages = selectedImages.isNotEmpty(),
+                onPickImages = imageTarget?.let { target -> { pickerTarget = target; imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } },
+                imageDrafts = {
+                    if (imageTarget != null) dev.clawseed.demo.ui.chat.components.DraftImageStrip(
+                        selectedImages, viewModel::imageDraftFile,
+                        { viewModel.removeImage(imageTarget, it) }, { viewModel.retryImage(imageTarget, it) },
+                    )
+                },
             )
         }
     }

@@ -436,3 +436,9 @@ Profile tool results in chat use the same structured preview and action controls
 Profile and memory data are personal data. Privacy-filtered exports exclude both `USER_PROFILE` and `MEMORY`. Full archives may include both in plaintext and must be stored and shared accordingly; an in-place app upgrade never requires clearing app data or restoring an archive.
 
 On Android 16, the app requests `NEARBY_WIFI_DEVICES` before starting the embedded loopback gateway. Android 16 uses this permission when its opt-in local-network protection is active; without it, opening the local listener can fail with `EPERM`.
+
+## Image conversations
+
+Configure DeepSeek with model `deepseek-v4-flash-vision-exp`. In a connected chat, use **添加图片** to choose up to four gallery images, inspect thumbnails, remove an image, or retry a failed upload. Send images alone or with text. Tap a sent image to open it and pinch to zoom. Older gateways report unsupported image uploads.
+
+Draft copies are stored in app files and scoped to the gateway URL and session. Orientation is corrected; large images are downscaled and encoded as PNG to preserve screenshot text where possible. GIF selection uses a still frame. Failed turns retain image drafts for retry, including after process restart. Sent image history is fetched with the session's gateway authentication and survives gateway/app restarts. When earlier images leave the model context, a chat notice asks you to attach them again if needed; they remain viewable.

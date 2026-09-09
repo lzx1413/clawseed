@@ -91,6 +91,7 @@ dependencies {
     implementation(project(":sdk:embedded"))
 
     implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation("androidx.activity:activity-compose:1.10.1")
 
     val composeBom = platform("androidx.compose:compose-bom:2026.04.01")

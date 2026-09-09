@@ -57,6 +57,10 @@ class ChatClientTest {
         val server = MockWebServer()
         server.enqueue(
             MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                    webSocket.close(code, reason)
+                }
+
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     repeat(chunkCount) { index ->
                         webSocket.send("""{"type":"chunk","content":"$index,"}""")

@@ -9,11 +9,27 @@ use serde::{Deserialize, Serialize};
 
 use crate::tool::ToolSpec;
 
+/// Durable image metadata. The gateway resolves the opaque ID after checking
+/// ownership; clients cannot supply a filesystem path through this type.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImageAttachment {
+    pub id: String,
+    pub mime_type: String,
+    pub size_bytes: u64,
+    pub width: u32,
+    pub height: u32,
+    /// Request-local source, never accepted from JSON or persisted in history.
+    #[serde(skip)]
+    pub resolved_path: Option<std::path::PathBuf>,
+}
+
 /// A single message in a conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<ImageAttachment>,
     /// When `Some`, indicates the prefix portion of `content` that providers
     /// supporting prompt caching should mark as cacheable. Only meaningful on
     /// system messages. `content` always contains the full text (stable + dynamic)
@@ -27,6 +43,7 @@ impl ChatMessage {
         Self {
             role: "system".into(),
             content: content.into(),
+            attachments: Vec::new(),
             stable_prefix: None,
         }
     }
@@ -35,6 +52,7 @@ impl ChatMessage {
         Self {
             role: "user".into(),
             content: content.into(),
+            attachments: Vec::new(),
             stable_prefix: None,
         }
     }
@@ -43,6 +61,7 @@ impl ChatMessage {
         Self {
             role: "assistant".into(),
             content: content.into(),
+            attachments: Vec::new(),
             stable_prefix: None,
         }
     }
@@ -51,6 +70,7 @@ impl ChatMessage {
         Self {
             role: "tool".into(),
             content: content.into(),
+            attachments: Vec::new(),
             stable_prefix: None,
         }
     }
@@ -70,6 +90,7 @@ impl ChatMessage {
         Self {
             role: "system".into(),
             content: full,
+            attachments: Vec::new(),
             stable_prefix: if !stable.is_empty() {
                 Some(stable)
             } else {
@@ -475,6 +496,11 @@ pub trait Provider: Send + Sync {
         self.capabilities().vision
     }
 
+    /// Structured attachment support is opt-in for a specific model.
+    fn supports_image_attachments(&self, _model: &str) -> bool {
+        false
+    }
+
     async fn warmup(&self) -> anyhow::Result<()> {
         Ok(())
     }
@@ -576,6 +602,10 @@ impl<T: Provider + ?Sized> Provider for Arc<T> {
     }
     fn supports_vision(&self) -> bool {
         self.as_ref().supports_vision()
+    }
+
+    fn supports_image_attachments(&self, model: &str) -> bool {
+        self.as_ref().supports_image_attachments(model)
     }
 
     async fn chat_with_system(
