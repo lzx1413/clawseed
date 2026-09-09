@@ -894,7 +894,7 @@ async fn pdf_read_without_feature() {
     // Create a dummy file (not a real PDF)
     std::fs::write(dir.path().join("test.pdf"), "not a pdf").unwrap();
 
-    let result = t
+    let _result = t
         .execute(
             serde_json::json!({"path": "test.pdf"}),
             &ctx(dir.path().to_path_buf()),
@@ -904,11 +904,11 @@ async fn pdf_read_without_feature() {
 
     #[cfg(not(feature = "rag-pdf"))]
     {
-        assert!(!result.success);
+        assert!(!_result.success);
         assert!(
-            result.error.as_ref().unwrap().contains("not enabled"),
+            _result.error.as_ref().unwrap().contains("not enabled"),
             "unexpected error: {:?}",
-            result.error
+            _result.error
         );
     }
 }

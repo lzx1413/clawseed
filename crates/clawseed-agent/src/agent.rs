@@ -47,6 +47,15 @@ pub enum TurnEvent {
     },
 }
 
+/// A successfully completed user/assistant exchange passed to post-turn learning.
+pub struct CompletedTurn<'a> {
+    pub user_text: &'a str,
+    pub assistant_text: &'a str,
+    pub session_id: Option<&'a str>,
+    pub persona_id: Option<&'a str>,
+    pub memory_namespace: &'a str,
+}
+
 /// The core Agent struct — a registry of tools, hooks, and context providers.
 pub struct Agent {
     provider: Arc<dyn Provider>,
@@ -64,6 +73,9 @@ pub struct Agent {
     auto_save: bool,
     auto_recall: bool,
     auto_recall_limit: usize,
+    memory_min_relevance_score: f64,
+    memory_conflict_mode: clawseed_api::memory_traits::ConflictMode,
+    memory_conflict_threshold: f64,
     stable_memory_in_system_prompt: bool,
     memory_session_id: Option<String>,
     user_profile_store: Option<Arc<dyn UserProfileStore>>,
@@ -72,6 +84,7 @@ pub struct Agent {
     user_profile_items: Vec<ProfileItem>,
     max_profile_prompt_items: usize,
     user_model_config: clawseed_config::schema::UserModelConfig,
+    knowledge_coordinator: Arc<crate::knowledge_coordinator::KnowledgeCoordinator>,
     history: Vec<ConversationMessage>,
     hook_runner: Option<Arc<HookRunner>>,
     skill_index: Vec<crate::skills::SkillIndexEntry>,
@@ -122,6 +135,48 @@ fn replace_memory_tools(registry: &DefaultToolRegistry, memory: Arc<dyn Memory>)
     );
 }
 
+const PROFILE_TOOL_NAMES: [&str; 5] = [
+    "user_profile_search",
+    "user_profile_change_plan",
+    "user_profile_apply_plan",
+    "user_profile_delete",
+    "user_profile_undo",
+];
+
+fn replace_profile_tools(
+    registry: &dyn ToolRegistry,
+    store: Arc<dyn UserProfileStore>,
+    config: &clawseed_config::schema::UserModelConfig,
+) {
+    registry.register_or_replace(
+        Box::new(clawseed_tools::user_profile::UserProfileSearchTool::new(
+            store.clone(),
+        )),
+        ToolSource::BuiltIn,
+    );
+    registry.register_or_replace(
+        Box::new(
+            clawseed_tools::user_profile::UserProfileChangePlanTool::new(
+                store.clone(),
+                config.change_plan_ttl_minutes,
+            ),
+        ),
+        ToolSource::BuiltIn,
+    );
+    registry.register_or_replace(
+        Box::new(clawseed_tools::user_profile::UserProfileApplyPlanTool::new(
+            store.clone(),
+        )),
+        ToolSource::BuiltIn,
+    );
+    registry.register_or_replace(
+        Box::new(clawseed_tools::user_profile::UserProfileDeleteTool::new(
+            store,
+        )),
+        ToolSource::BuiltIn,
+    );
+}
+
 /// Builder for constructing an Agent.
 pub struct AgentBuilder {
     provider: Option<Arc<dyn Provider>>,
@@ -140,6 +195,9 @@ pub struct AgentBuilder {
     auto_save: Option<bool>,
     auto_recall: Option<bool>,
     auto_recall_limit: Option<usize>,
+    memory_min_relevance_score: Option<f64>,
+    memory_conflict_mode: Option<clawseed_api::memory_traits::ConflictMode>,
+    memory_conflict_threshold: Option<f64>,
     stable_memory_in_system_prompt: Option<bool>,
     memory_session_id: Option<String>,
     user_profile_store: Option<Arc<dyn UserProfileStore>>,
@@ -182,6 +240,9 @@ impl AgentBuilder {
             auto_save: None,
             auto_recall: None,
             auto_recall_limit: None,
+            memory_min_relevance_score: None,
+            memory_conflict_mode: None,
+            memory_conflict_threshold: None,
             stable_memory_in_system_prompt: None,
             memory_session_id: None,
             user_profile_store: None,
@@ -286,6 +347,21 @@ impl AgentBuilder {
         self
     }
 
+    pub fn memory_min_relevance_score(mut self, score: f64) -> Self {
+        self.memory_min_relevance_score = Some(score);
+        self
+    }
+
+    pub fn memory_conflict_mode(mut self, mode: clawseed_api::memory_traits::ConflictMode) -> Self {
+        self.memory_conflict_mode = Some(mode);
+        self
+    }
+
+    pub fn memory_conflict_threshold(mut self, threshold: f64) -> Self {
+        self.memory_conflict_threshold = Some(threshold);
+        self
+    }
+
     pub fn stable_memory_in_system_prompt(mut self, enabled: bool) -> Self {
         self.stable_memory_in_system_prompt = Some(enabled);
         self
@@ -383,6 +459,11 @@ impl AgentBuilder {
             Arc::new(reg)
         };
 
+        let user_model_config = self.user_model_config.unwrap_or_default();
+        if let Some(store) = self.user_profile_store.as_ref() {
+            replace_profile_tools(registry.as_ref(), store.clone(), &user_model_config);
+        }
+
         Ok(Agent {
             provider: self
                 .provider
@@ -409,6 +490,9 @@ impl AgentBuilder {
             auto_save: self.auto_save.unwrap_or(false),
             auto_recall: self.auto_recall.unwrap_or(true),
             auto_recall_limit: self.auto_recall_limit.unwrap_or(3),
+            memory_min_relevance_score: self.memory_min_relevance_score.unwrap_or(0.4),
+            memory_conflict_mode: self.memory_conflict_mode.unwrap_or_default(),
+            memory_conflict_threshold: self.memory_conflict_threshold.unwrap_or(0.82),
             stable_memory_in_system_prompt: self.stable_memory_in_system_prompt.unwrap_or(true),
             memory_session_id: self.memory_session_id,
             user_profile_store: self.user_profile_store,
@@ -416,7 +500,10 @@ impl AgentBuilder {
             user_profile_version: None,
             user_profile_items: Vec::new(),
             max_profile_prompt_items: self.max_profile_prompt_items.unwrap_or(20),
-            user_model_config: self.user_model_config.unwrap_or_default(),
+            user_model_config,
+            knowledge_coordinator: Arc::new(
+                crate::knowledge_coordinator::KnowledgeCoordinator::new(),
+            ),
             history: Vec::new(),
             hook_runner: self.hook_runner,
             skill_index: self.skill_index.unwrap_or_default(),
@@ -496,7 +583,7 @@ impl Agent {
             .unwrap_or_else(|| "anthropic/claude-sonnet-4".into());
         let temperature = fallback.and_then(|e| e.temperature).unwrap_or(0.7);
 
-        Self::build_from_config(
+        let mut agent = Self::build_from_config(
             config,
             provider,
             mem,
@@ -504,7 +591,22 @@ impl Agent {
             model_name,
             temperature,
             None,
-        )
+        )?;
+        if config.user_model.enabled {
+            let store = clawseed_memory::user_profile::SqliteUserProfileStore::with_governance(
+                &config.workspace_dir,
+                config.user_model.max_active_items_per_category,
+                config.user_model.min_observations_for_implicit_fact,
+                config.user_model.undo_retention_hours,
+            )?;
+            agent.set_user_profile_store(Some(Arc::new(store)), config.user_model.max_prompt_items);
+            agent.set_user_context(Some(UserContext {
+                user_id: "owner".into(),
+                session_id: None,
+                persona_id: None,
+            }));
+        }
+        Ok(agent)
     }
 
     /// Build an agent from config, reusing externally-provided shared components.
@@ -546,6 +648,24 @@ impl Agent {
         temperature: f64,
         shared_builtin_tools: Option<Arc<[Arc<dyn clawseed_api::tool::Tool>]>>,
     ) -> anyhow::Result<Self> {
+        // A global memory namespace is a storage isolation boundary, not a
+        // session identifier. Persona paths already pass a namespaced wrapper.
+        let memory = if config.agent.memory_namespace.is_none() {
+            config
+                .memory
+                .namespace
+                .as_ref()
+                .map(|namespace| {
+                    Arc::new(clawseed_memory::namespaced::NamespacedMemory::new(
+                        memory.clone(),
+                        namespace.clone(),
+                    )) as Arc<dyn Memory>
+                })
+                .unwrap_or(memory)
+        } else {
+            memory
+        };
+
         // Dispatcher: native if provider supports it, otherwise XML
         let dispatcher: Box<dyn ToolDispatcher> = if provider.supports_native_tools() {
             Box::new(crate::dispatcher::NativeToolDispatcher)
@@ -598,7 +718,7 @@ impl Agent {
                 mcp_filters.unwrap_or_default(),
             );
             reg.register_all_arc(shared.to_vec(), ToolSource::BuiltIn);
-            if config.agent.memory_namespace.is_some() {
+            if config.agent.memory_namespace.is_some() || config.memory.namespace.is_some() {
                 replace_memory_tools(&reg, memory.clone());
             }
             Arc::new(reg)
@@ -633,7 +753,7 @@ impl Agent {
             Vec::new()
         };
 
-        let mut builder = Agent::builder()
+        let builder = Agent::builder()
             .shared_provider(provider)
             .tool_registry(registry)
             .memory(memory)
@@ -654,6 +774,9 @@ impl Agent {
             .auto_save(config.memory.auto_save)
             .auto_recall(config.memory.auto_recall)
             .auto_recall_limit(config.memory.auto_recall_limit)
+            .memory_min_relevance_score(config.memory.min_relevance_score)
+            .memory_conflict_mode(config.memory.effective_conflict_mode())
+            .memory_conflict_threshold(config.memory.conflict_threshold)
             .stable_memory_in_system_prompt(
                 config.memory.effective_stable_memory_in_system_prompt(),
             )
@@ -664,10 +787,6 @@ impl Agent {
             .skills_extra_roots(extra_roots)
             .skills_enabled(config.skills.enabled)
             .skills_excluded(config.skills.excluded.clone());
-
-        if let Some(ref session_id) = config.memory.namespace {
-            builder = builder.memory_session_id(Some(session_id.clone()));
-        }
 
         builder.build()
     }

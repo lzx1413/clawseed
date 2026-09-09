@@ -33,7 +33,7 @@ struct ResolvedToolCall {
 impl Agent {
     /// Build the tool context for a single tool execution.
     fn build_tool_context(&self) -> AgentToolContext {
-        AgentToolContext::new(self.workspace_dir.clone())
+        AgentToolContext::new(self.workspace_dir.clone(), self.user_context.clone())
     }
 
     async fn execute_tool_call(&self, call: &ParsedToolCall) -> ToolExecutionResult {

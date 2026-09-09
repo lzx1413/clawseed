@@ -9,18 +9,12 @@ use axum::{
     response::{IntoResponse, Json},
 };
 use clawseed_agent::security::pairing::{PairingGuard, constant_time_eq};
-use clawseed_api::memory_traits::MemoryCategory;
 use clawseed_config::schema::Config;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Instant;
-use uuid::Uuid;
 
 // ── Helper functions ──────────────────────────────────────────────────────────
-
-pub(crate) fn webhook_memory_key() -> String {
-    format!("webhook_msg_{}", Uuid::new_v4())
-}
 
 pub(crate) fn webhook_session_id(headers: &HeaderMap) -> Option<String> {
     const MAX_SESSION_ID_LEN: usize = 128;
@@ -383,19 +377,6 @@ pub async fn handle_webhook(
                 stable_prefix: None,
             },
         );
-    }
-
-    if state.auto_save && !clawseed_memory::should_skip_autosave_content(message) {
-        let key = webhook_memory_key();
-        let _ = state
-            .mem
-            .store(
-                &key,
-                message,
-                MemoryCategory::Conversation,
-                session_id.as_deref(),
-            )
-            .await;
     }
 
     let provider_label = state
@@ -804,16 +785,6 @@ mod tests {
     }
 
     #[test]
-    fn webhook_memory_key_is_unique() {
-        let key1 = webhook_memory_key();
-        let key2 = webhook_memory_key();
-
-        assert!(key1.starts_with("webhook_msg_"));
-        assert!(key2.starts_with("webhook_msg_"));
-        assert_ne!(key1, key2);
-    }
-
-    #[test]
     fn webhook_session_id_accepts_valid() {
         let mut headers = HeaderMap::new();
         headers.insert("X-Session-Id", HeaderValue::from_static("abc-DEF_123.foo"));
@@ -1083,7 +1054,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn webhook_autosave_stores_distinct_keys_per_request() {
+    async fn webhook_does_not_copy_raw_requests_into_long_term_memory() {
         let provider_impl = Arc::new(MockProvider::default());
         let provider: Arc<dyn Provider> = provider_impl.clone();
 
@@ -1147,11 +1118,7 @@ mod tests {
             .into_response();
         assert_eq!(second.status(), StatusCode::OK);
 
-        let keys = tracking_impl.keys.lock().clone();
-        assert_eq!(keys.len(), 2);
-        assert_ne!(keys[0], keys[1]);
-        assert!(keys[0].starts_with("webhook_msg_"));
-        assert!(keys[1].starts_with("webhook_msg_"));
+        assert!(tracking_impl.keys.lock().is_empty());
         assert_eq!(provider_impl.calls.load(Ordering::SeqCst), 2);
     }
 

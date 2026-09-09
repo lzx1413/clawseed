@@ -24,7 +24,7 @@ impl Tool for MemoryStoreTool {
     }
 
     fn description(&self) -> &str {
-        "Store a fact, preference, or note in long-term memory. By default stores in this identity's private memory. Use scope 'public' only when the user explicitly asks all identities/personas to remember or share the fact. Use category 'core' for permanent facts, 'daily' for session notes, 'conversation' for chat context, or a custom category name. IMPORTANT: the 'content' field must be a complete, self-contained sentence that includes context — e.g. 'The user's name is Alice' instead of just 'Alice'. This ensures the memory can be found by keyword search later."
+        "Store an event, project fact, decision, or task result with cross-session value. Do not use this tool for stable user identity, preferences, goals, constraints, or accessibility needs; those belong in user-profile management. By default stores in this identity's private memory. Use scope 'public' only when the user explicitly asks all identities/personas to share it. The content must be a complete, self-contained sentence with enough context for later retrieval."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -37,7 +37,7 @@ impl Tool for MemoryStoreTool {
                 },
                 "content": {
                     "type": "string",
-                    "description": "A complete, self-contained sentence describing the information to remember. Include relevant context so it can be found by keyword search later. Example: 'The user prefers Rust over Python' instead of just 'Rust'."
+                    "description": "A complete, self-contained event, project fact, decision, or task result. Include relevant context so it can be found later."
                 },
                 "category": {
                     "type": "string",

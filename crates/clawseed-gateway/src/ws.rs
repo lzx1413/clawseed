@@ -1183,33 +1183,6 @@ async fn process_chat_message(
                 }
             }
 
-            // Fire-and-forget memory consolidation so facts from WS sessions
-            // are extracted to long-term memory (Daily + Core categories).
-            if state.auto_save {
-                let mem = state.mem.clone();
-                let provider = state.provider.clone();
-                let model = state.model.clone();
-                let user_msg = content.to_string();
-                let assistant_resp = final_response.clone();
-                let conflict_mode = state.config.lock().memory.effective_conflict_mode();
-                let conflict_threshold = state.config.lock().memory.conflict_threshold;
-                tokio::spawn(async move {
-                    if let Err(e) = clawseed_memory::consolidation::consolidate_turn(
-                        provider.as_ref(),
-                        &model,
-                        mem.as_ref(),
-                        &user_msg,
-                        &assistant_resp,
-                        &conflict_mode,
-                        conflict_threshold,
-                    )
-                    .await
-                    {
-                        tracing::debug!("WS memory consolidation skipped: {e}");
-                    }
-                });
-            }
-
             // ── Auto title generation (first turn only) ────────────
             // When the session still has the default title "新会话", use the
             // provider to generate a proper title from the first Q&A pair.

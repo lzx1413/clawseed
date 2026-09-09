@@ -20,6 +20,7 @@ impl ToolPresentation {
     pub const VERSION: u16 = 1;
     pub const MAX_BLOCKS: usize = 20;
     pub const MAX_SEARCH_RESULTS: usize = 10;
+    pub const MAX_PROFILE_ITEMS: usize = 100;
 
     pub fn new(blocks: Vec<ContentBlock>) -> Self {
         Self {
@@ -73,10 +74,67 @@ impl ToolPresentation {
                         validate_search_result(item)?;
                     }
                 }
+                ContentBlock::Profile {
+                    title,
+                    summary,
+                    plan_id,
+                    operation_id,
+                    items,
+                    actions,
+                    ..
+                } => {
+                    validate_text("profile title", title, 1_024)?;
+                    validate_text("profile summary", summary, 4_096)?;
+                    validate_optional_text("profile plan id", plan_id.as_deref(), 128)?;
+                    validate_optional_text("profile operation id", operation_id.as_deref(), 128)?;
+                    if items.len() > Self::MAX_PROFILE_ITEMS {
+                        anyhow::bail!(
+                            "profile presentation exceeds {} items",
+                            Self::MAX_PROFILE_ITEMS
+                        );
+                    }
+                    for item in items {
+                        validate_text("profile item id", &item.id, 128)?;
+                        validate_text("profile item key", &item.key, 256)?;
+                        validate_optional_json(
+                            "profile item before",
+                            item.before.as_ref(),
+                            8 * 1_024,
+                        )?;
+                        validate_optional_json(
+                            "profile item after",
+                            item.after.as_ref(),
+                            8 * 1_024,
+                        )?;
+                        validate_optional_text("profile item source", item.source.as_deref(), 64)?;
+                        validate_optional_text("profile item status", item.status.as_deref(), 64)?;
+                    }
+                    if actions.len() > 3 {
+                        anyhow::bail!("profile presentation exceeds 3 actions");
+                    }
+                    for action in actions {
+                        validate_text("profile action id", &action.id, 64)?;
+                        validate_text("profile action label", &action.label, 128)?;
+                        validate_text("profile action command", &action.command, 512)?;
+                    }
+                }
             }
         }
         Ok(())
     }
+}
+
+fn validate_optional_json(
+    name: &str,
+    value: Option<&serde_json::Value>,
+    limit: usize,
+) -> anyhow::Result<()> {
+    if let Some(value) = value
+        && serde_json::to_vec(value)?.len() > limit
+    {
+        anyhow::bail!("{name} exceeds {limit} bytes");
+    }
+    Ok(())
 }
 
 fn validate_search_result(item: &SearchResultItem) -> anyhow::Result<()> {
@@ -162,6 +220,43 @@ pub enum ContentBlock {
         query: String,
         items: Vec<SearchResultItem>,
     },
+    /// A deterministic profile view or change preview. Actions are user-visible
+    /// commands; applying a plan still requires server-side identity, TTL, and
+    /// version validation.
+    Profile {
+        title: String,
+        summary: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        plan_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        operation_id: Option<String>,
+        profile_version: u64,
+        requires_confirmation: bool,
+        items: Vec<ProfilePresentationItem>,
+        actions: Vec<PresentationAction>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProfilePresentationItem {
+    pub id: String,
+    pub key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PresentationAction {
+    pub id: String,
+    pub label: String,
+    pub command: String,
+    pub destructive: bool,
 }
 
 /// A remote or gateway-managed media item. At least one of `asset_id` and
@@ -292,5 +387,35 @@ mod tests {
                 .to_string()
                 .contains("HTTPS")
         );
+    }
+
+    #[test]
+    fn profile_presentation_round_trips_and_validates() {
+        let presentation = ToolPresentation::new(vec![ContentBlock::Profile {
+            title: "About me".into(),
+            summary: "One proposed change".into(),
+            plan_id: Some("plan-1".into()),
+            operation_id: None,
+            profile_version: 3,
+            requires_confirmation: true,
+            items: vec![ProfilePresentationItem {
+                id: "item-1".into(),
+                key: "preference.response_style".into(),
+                before: Some(serde_json::json!("detailed")),
+                after: Some(serde_json::json!("concise")),
+                source: Some("explicit".into()),
+                status: Some("active".into()),
+            }],
+            actions: vec![PresentationAction {
+                id: "confirm".into(),
+                label: "Confirm".into(),
+                command: "Apply profile plan plan-1".into(),
+                destructive: false,
+            }],
+        }]);
+        presentation.validate().unwrap();
+        let json = serde_json::to_string(&presentation).unwrap();
+        let decoded: ToolPresentation = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded, presentation);
     }
 }

@@ -6,7 +6,10 @@ use clawseed_api::provider::{ChatRequest, ChatResponse, ConversationMessage, Pro
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::user_profile::{UserContext, UserProfileStore};
 use parking_lot::Mutex;
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 
 use crate::dispatcher::{NativeToolDispatcher, XmlToolDispatcher};
 use crate::observer::Observer;
@@ -16,6 +19,11 @@ struct MockProvider {
 }
 
 struct ProfileInferenceProvider;
+
+struct CountingInferenceProvider {
+    responses: Mutex<Vec<anyhow::Result<ChatResponse>>>,
+    inference_calls: Arc<AtomicUsize>,
+}
 
 #[async_trait]
 impl Provider for MockProvider {
@@ -74,6 +82,33 @@ impl Provider for ProfileInferenceProvider {
             reasoning_content: None,
             stop_reason: clawseed_api::provider::StopReason::EndTurn,
         })
+    }
+}
+
+#[async_trait]
+impl Provider for CountingInferenceProvider {
+    async fn chat_with_system(
+        &self,
+        _system_prompt: Option<&str>,
+        _message: &str,
+        _model: &str,
+        _temperature: Option<f64>,
+    ) -> Result<String> {
+        self.inference_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(r#"{"items":[]}"#.into())
+    }
+
+    async fn chat(
+        &self,
+        _request: ChatRequest<'_>,
+        _model: &str,
+        _temperature: Option<f64>,
+    ) -> Result<ChatResponse> {
+        let mut responses = self.responses.lock();
+        if responses.is_empty() {
+            anyhow::bail!("unexpected provider call");
+        }
+        responses.remove(0)
     }
 }
 
@@ -180,6 +215,119 @@ async fn completed_turn_schedules_profile_inference() {
     assert_eq!(profile.items[0].key, "preference.response_style");
 }
 
+fn response(text: &str, stop_reason: clawseed_api::provider::StopReason) -> ChatResponse {
+    ChatResponse {
+        text: Some(text.into()),
+        tool_calls: vec![],
+        usage: None,
+        reasoning_content: None,
+        stop_reason,
+    }
+}
+
+fn learning_test_agent(
+    responses: Vec<anyhow::Result<ChatResponse>>,
+) -> (Agent, Arc<AtomicUsize>, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let store =
+        Arc::new(clawseed_memory::user_profile::SqliteUserProfileStore::new(dir.path()).unwrap());
+    let observer: Arc<dyn Observer> = Arc::new(crate::observer::NoopObserver);
+    let agent = Agent::builder()
+        .provider(Box::new(CountingInferenceProvider {
+            responses: Mutex::new(responses),
+            inference_calls: calls.clone(),
+        }))
+        .tools(vec![])
+        .memory(make_memory())
+        .observer(observer)
+        .tool_dispatcher(Box::new(NativeToolDispatcher))
+        .workspace_dir(dir.path().to_path_buf())
+        .user_profile_store(store)
+        .user_context(UserContext {
+            user_id: "owner".into(),
+            session_id: Some("session-1".into()),
+            persona_id: None,
+        })
+        .user_model_config(clawseed_config::schema::UserModelConfig {
+            auto_infer: true,
+            ..Default::default()
+        })
+        .build()
+        .unwrap();
+    (agent, calls, dir)
+}
+
+#[tokio::test]
+async fn standard_and_streamed_turn_each_schedule_learning_once() {
+    for streamed in [false, true] {
+        let (mut agent, calls, _dir) =
+            learning_test_agent(vec![Ok(response("done", Default::default()))]);
+        if streamed {
+            let (event_tx, _event_rx) = tokio::sync::mpsc::channel(8);
+            agent
+                .turn_streamed("Please keep responses concise.", event_tx, None, false)
+                .await
+                .unwrap();
+        } else {
+            agent.turn("Please keep responses concise.").await.unwrap();
+        }
+        agent.shutdown_learning().await;
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "streamed={streamed}");
+    }
+}
+
+#[tokio::test]
+async fn failed_and_cancelled_turns_do_not_schedule_learning() {
+    let (mut failed_agent, failed_calls, _dir) =
+        learning_test_agent(vec![Err(anyhow::anyhow!("provider failed"))]);
+    assert!(
+        failed_agent
+            .turn("Please keep responses concise.")
+            .await
+            .is_err()
+    );
+    failed_agent.shutdown_learning().await;
+    assert_eq!(failed_calls.load(Ordering::SeqCst), 0);
+
+    let (mut cancelled_agent, cancelled_calls, _dir) =
+        learning_test_agent(vec![Ok(response("unused", Default::default()))]);
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    cancellation.cancel();
+    let (event_tx, _event_rx) = tokio::sync::mpsc::channel(8);
+    assert!(
+        cancelled_agent
+            .turn_streamed(
+                "Please keep responses concise.",
+                event_tx,
+                Some(cancellation),
+                false,
+            )
+            .await
+            .is_err()
+    );
+    cancelled_agent.shutdown_learning().await;
+    assert_eq!(cancelled_calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn truncated_turn_schedules_learning_only_after_final_success() {
+    use clawseed_api::provider::StopReason;
+
+    let (mut agent, calls, _dir) = learning_test_agent(vec![
+        Ok(response("partial", StopReason::MaxTokens)),
+        Ok(response("finished", StopReason::EndTurn)),
+    ]);
+    agent.config.auto_continue_on_truncation = true;
+    agent.config.max_auto_continue = 1;
+    assert_eq!(
+        agent.turn("Please keep responses concise.").await.unwrap(),
+        "finished"
+    );
+    agent.shutdown_learning().await;
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
 #[tokio::test]
 async fn turn_with_native_dispatcher_handles_tool_results_variant() {
     let provider = Box::new(MockProvider {
@@ -267,6 +415,43 @@ fn builder_allowed_tools_some_filters_tools() {
         .expect("agent builder should succeed");
 
     assert!(agent.tool_registry.tool_specs().is_empty());
+}
+
+#[test]
+fn builder_registers_profile_crud_tools_when_profile_store_is_available() {
+    let dir = tempfile::tempdir().unwrap();
+    let store =
+        Arc::new(clawseed_memory::user_profile::SqliteUserProfileStore::new(dir.path()).unwrap());
+    let observer: Arc<dyn Observer> = Arc::new(crate::observer::NoopObserver);
+    let agent = Agent::builder()
+        .provider(Box::new(MockProvider {
+            responses: Mutex::new(vec![]),
+        }))
+        .tools(vec![])
+        .memory(make_memory())
+        .observer(observer)
+        .tool_dispatcher(Box::new(NativeToolDispatcher))
+        .workspace_dir(dir.path().to_path_buf())
+        .user_profile_store(store)
+        .user_context(UserContext {
+            user_id: "owner".into(),
+            session_id: None,
+            persona_id: None,
+        })
+        .build()
+        .expect("agent builder should succeed");
+
+    let names = agent
+        .tool_registry
+        .tool_specs()
+        .into_iter()
+        .map(|spec| spec.name)
+        .collect::<Vec<_>>();
+    assert!(names.contains(&"user_profile_search".to_string()));
+    assert!(names.contains(&"user_profile_change_plan".to_string()));
+    assert!(names.contains(&"user_profile_apply_plan".to_string()));
+    assert!(names.contains(&"user_profile_delete".to_string()));
+    assert!(!names.contains(&"user_profile_undo".to_string()));
 }
 
 #[test]

@@ -3,7 +3,7 @@
 use super::{Agent, TurnEvent};
 use crate::dispatcher::{ParsedToolCall, ToolExecutionResult};
 use anyhow::Result;
-use clawseed_api::memory_traits::MemoryCategory;
+use clawseed_api::memory_traits::{MemoryCategory, MemoryQuery, MemoryScope};
 use clawseed_api::provider::{ChatMessage, ChatRequest, ChatResponse, ConversationMessage};
 
 impl Agent {
@@ -19,12 +19,6 @@ impl Agent {
                 )));
         }
 
-        // Note: auto_save is async but we intentionally fire-and-forget here
-        // to avoid making prepare_turn async (the caller already awaits it).
-        if self.auto_save {
-            // Will be awaited in the caller context
-        }
-
         let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S %Z");
         let enriched = format!("[{now}] {user_message}");
 
@@ -32,6 +26,70 @@ impl Agent {
             .push(ConversationMessage::Chat(ChatMessage::user(enriched)));
 
         Ok(())
+    }
+
+    async fn inject_recalled_memory(&mut self, user_message: &str) {
+        if !self.auto_recall || self.memory.name() == "none" || self.auto_recall_limit == 0 {
+            return;
+        }
+        let namespaces = self.memory.accessible_namespaces();
+        let excluded_ids = self
+            .stable_core_memories
+            .iter()
+            .map(|entry| entry.id.as_str())
+            .collect::<Vec<_>>();
+        let core_category = MemoryCategory::Core;
+        let mut entries = Vec::new();
+        for namespace in &namespaces {
+            let recalled = self
+                .memory
+                .recall_scoped(MemoryQuery {
+                    query: user_message,
+                    scope: MemoryScope {
+                        namespace,
+                        session_id: None,
+                    },
+                    category: Some(&core_category),
+                    since: None,
+                    until: None,
+                    limit: self.auto_recall_limit,
+                    min_relevance_score: Some(self.memory_min_relevance_score),
+                    search_mode: None,
+                    exclude_ids: &excluded_ids,
+                    exclude_keys: &[],
+                })
+                .await;
+            match recalled {
+                Ok(found) => entries.extend(found),
+                Err(error) => {
+                    tracing::debug!(%error, %namespace, "dynamic Core recall skipped");
+                }
+            }
+        }
+        entries.retain(|entry| !self.memory_is_covered_by_profile(entry));
+        entries.sort_by(|left, right| {
+            right
+                .score
+                .unwrap_or_default()
+                .partial_cmp(&left.score.unwrap_or_default())
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| right.timestamp.cmp(&left.timestamp))
+                .then_with(|| left.key.cmp(&right.key))
+        });
+        entries.truncate(self.auto_recall_limit);
+        let context = entries
+            .iter()
+            .map(|entry| format!("- {}: {}", entry.key, entry.content))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !context.is_empty()
+            && let Some(ConversationMessage::Chat(message)) = self.history.last_mut()
+        {
+            message.content = format!(
+                "[Memory context]\n{context}\n[/Memory context]\n\n{}",
+                message.content
+            );
+        }
     }
 
     /// Execute tool calls, handle skill activations, format results, and append to history.
@@ -60,52 +118,12 @@ impl Agent {
         // No dynamic refresh needed — with DateTimeSection removed, the entire
         // system prompt is stable across turns. Time context comes from the
         // user message timestamp prefix.
-        if self.auto_save {
-            let _ = self
-                .memory
-                .store(
-                    "user_msg",
-                    user_message,
-                    MemoryCategory::Conversation,
-                    self.memory_session_id.as_deref(),
-                )
-                .await;
-        }
-
         // Auto-recall relevant memories and prepend context to user message.
         // Only Core memories are recalled — Daily and Conversation are excluded
         // to keep the context focused on truly important facts.
         // When stable memory injection is enabled, entries already in the system
         // prompt (tracked by injected_core_state) are deduplicated.
-        if self.auto_recall
-            && self.memory.name() != "none"
-            && let Ok(entries) = self
-                .memory
-                .recall(user_message, self.auto_recall_limit, None, None, None, None)
-                .await
-        {
-            let stable_enabled = self.stable_memory_in_system_prompt;
-            let ctx: String = entries
-                .iter()
-                .filter(|e| matches!(e.category, MemoryCategory::Core))
-                .filter(|e| {
-                    // Dedup against stable system prompt entries
-                    if !stable_enabled {
-                        return true;
-                    }
-                    let hash = clawseed_memory::sqlite::SqliteMemory::content_hash(&e.content);
-                    self.injected_core_state.get(&e.key) != Some(&hash)
-                })
-                .map(|e| format!("- {}: {}", e.key, e.content))
-                .collect::<Vec<_>>()
-                .join("\n");
-            if !ctx.is_empty() {
-                let memory_prefix = format!("[Memory context]\n{ctx}\n[/Memory context]\n\n");
-                if let Some(ConversationMessage::Chat(msg)) = self.history.last_mut() {
-                    msg.content = format!("{memory_prefix}{}", msg.content);
-                }
-            }
-        }
+        self.inject_recalled_memory(user_message).await;
 
         let effective_model = self.model_name.clone();
 
@@ -171,7 +189,7 @@ impl Agent {
                     continue;
                 }
 
-                self.schedule_user_profile_inference(user_message, &final_text);
+                self.complete_turn(user_message, &final_text);
                 return Ok(final_text);
             }
 
@@ -218,35 +236,7 @@ impl Agent {
         // to keep the context focused on truly important facts.
         // When stable memory injection is enabled, entries already in the system
         // prompt (tracked by injected_core_state) are deduplicated.
-        if self.auto_recall
-            && self.memory.name() != "none"
-            && let Ok(entries) = self
-                .memory
-                .recall(user_message, self.auto_recall_limit, None, None, None, None)
-                .await
-        {
-            let stable_enabled = self.stable_memory_in_system_prompt;
-            let ctx: String = entries
-                .iter()
-                .filter(|e| matches!(e.category, MemoryCategory::Core))
-                .filter(|e| {
-                    // Dedup against stable system prompt entries
-                    if !stable_enabled {
-                        return true;
-                    }
-                    let hash = clawseed_memory::sqlite::SqliteMemory::content_hash(&e.content);
-                    self.injected_core_state.get(&e.key) != Some(&hash)
-                })
-                .map(|e| format!("- {}: {}", e.key, e.content))
-                .collect::<Vec<_>>()
-                .join("\n");
-            if !ctx.is_empty() {
-                let memory_prefix = format!("[Memory context]\n{ctx}\n[/Memory context]\n\n");
-                if let Some(ConversationMessage::Chat(msg)) = self.history.last_mut() {
-                    msg.content = format!("{memory_prefix}{}", msg.content);
-                }
-            }
-        }
+        self.inject_recalled_memory(user_message).await;
 
         let effective_model = self.model_name.clone();
 
@@ -448,7 +438,7 @@ impl Agent {
                     continue;
                 }
 
-                self.schedule_user_profile_inference(user_message, &final_text);
+                self.complete_turn(user_message, &final_text);
                 return Ok(final_text);
             }
 

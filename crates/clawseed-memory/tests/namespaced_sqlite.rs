@@ -3,7 +3,9 @@
 //! The unit tests in namespaced.rs only use NoneMemory (no-op). These tests
 //! verify that namespace isolation works with a real SQLite backend.
 
-use clawseed_api::memory_traits::{ExportFilter, Memory, MemoryCategory};
+use clawseed_api::memory_traits::{
+    ExportFilter, Memory, MemoryCategory, MemoryQuery, MemoryScope, SearchMode,
+};
 use clawseed_memory::namespaced::NamespacedMemory;
 use clawseed_memory::sqlite::SqliteMemory;
 use std::sync::Arc;
@@ -61,20 +63,19 @@ async fn namespaced_sqlite_isolation_between_namespaces() {
     let ns_a = NamespacedMemory::new(sqlite.clone(), "agent-a".to_string());
     let ns_b = NamespacedMemory::new(sqlite.clone(), "agent-b".to_string());
 
-    // Use different keys since SqliteMemory has UNIQUE(key) constraint
-    ns_a.store("secret_a", "Agent A secret", MemoryCategory::Core, None)
+    ns_a.store("shared_key", "Agent A secret", MemoryCategory::Core, None)
         .await
         .unwrap();
-    ns_b.store("secret_b", "Agent B secret", MemoryCategory::Core, None)
+    ns_b.store("shared_key", "Agent B secret", MemoryCategory::Core, None)
         .await
         .unwrap();
 
     // Each namespace should only see its own data
-    let a_entry = ns_a.get("secret_a").await.unwrap().unwrap();
+    let a_entry = ns_a.get("shared_key").await.unwrap().unwrap();
     assert_eq!(a_entry.content, "Agent A secret");
     assert_eq!(a_entry.namespace, "agent-a");
 
-    let b_entry = ns_b.get("secret_b").await.unwrap().unwrap();
+    let b_entry = ns_b.get("shared_key").await.unwrap().unwrap();
     assert_eq!(b_entry.content, "Agent B secret");
     assert_eq!(b_entry.namespace, "agent-b");
 
@@ -90,6 +91,220 @@ async fn namespaced_sqlite_isolation_between_namespaces() {
         .await
         .unwrap();
     assert!(b_results.iter().all(|e| e.namespace == "agent-b"));
+}
+
+#[tokio::test]
+async fn same_key_forget_only_removes_the_callers_namespace() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let sqlite = Arc::new(SqliteMemory::new(tmp.path()).unwrap());
+    let ns_a = NamespacedMemory::new(sqlite.clone(), "agent-a".to_string());
+    let ns_b = NamespacedMemory::new(sqlite.clone(), "agent-b".to_string());
+
+    ns_a.store("preference", "A value", MemoryCategory::Core, None)
+        .await
+        .unwrap();
+    ns_b.store("preference", "B value", MemoryCategory::Core, None)
+        .await
+        .unwrap();
+
+    assert!(ns_a.forget("preference").await.unwrap());
+    assert!(ns_a.get("preference").await.unwrap().is_none());
+    assert_eq!(
+        ns_b.get("preference").await.unwrap().unwrap().content,
+        "B value"
+    );
+}
+
+#[tokio::test]
+async fn public_and_private_namespaces_can_share_a_key() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let sqlite: Arc<dyn Memory> = Arc::new(SqliteMemory::new(tmp.path()).unwrap());
+    let persona = NamespacedMemory::new(sqlite.clone(), "agent-a".to_string());
+
+    sqlite
+        .store_with_metadata(
+            "project",
+            "public project",
+            MemoryCategory::Core,
+            None,
+            Some("public"),
+            None,
+        )
+        .await
+        .unwrap();
+    persona
+        .store("project", "private project", MemoryCategory::Core, None)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        persona.get("project").await.unwrap().unwrap().content,
+        "private project"
+    );
+    assert_eq!(
+        sqlite
+            .get_scoped(
+                MemoryScope {
+                    namespace: "public",
+                    session_id: None,
+                },
+                "project"
+            )
+            .await
+            .unwrap()
+            .unwrap()
+            .content,
+        "public project"
+    );
+}
+
+#[tokio::test]
+async fn scoped_recall_filters_before_applying_limit() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let sqlite = SqliteMemory::new(tmp.path()).unwrap();
+
+    for index in 0..30 {
+        sqlite
+            .store_with_metadata(
+                &format!("distractor-{index}"),
+                "rust rust rust distractor",
+                MemoryCategory::Core,
+                None,
+                Some("other"),
+                None,
+            )
+            .await
+            .unwrap();
+    }
+    for index in 0..3 {
+        sqlite
+            .store_with_metadata(
+                &format!("target-{index}"),
+                "rust target",
+                MemoryCategory::Daily,
+                Some("session-a"),
+                Some("target"),
+                None,
+            )
+            .await
+            .unwrap();
+    }
+    sqlite
+        .store_with_metadata(
+            "wrong-category",
+            "rust target",
+            MemoryCategory::Core,
+            Some("session-a"),
+            Some("target"),
+            None,
+        )
+        .await
+        .unwrap();
+    sqlite
+        .store_with_metadata(
+            "wrong-session",
+            "rust target",
+            MemoryCategory::Daily,
+            Some("session-b"),
+            Some("target"),
+            None,
+        )
+        .await
+        .unwrap();
+
+    let results = sqlite
+        .recall_scoped(MemoryQuery {
+            query: "rust",
+            scope: MemoryScope {
+                namespace: "target",
+                session_id: Some("session-a"),
+            },
+            category: Some(&MemoryCategory::Daily),
+            since: None,
+            until: None,
+            limit: 3,
+            min_relevance_score: None,
+            search_mode: Some(SearchMode::Bm25),
+            exclude_ids: &[],
+            exclude_keys: &[],
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(results.len(), 3);
+    assert!(results.iter().all(|entry| {
+        entry.namespace == "target"
+            && entry.category == MemoryCategory::Daily
+            && entry.session_id.as_deref() == Some("session-a")
+    }));
+}
+
+#[test]
+fn migrates_v1_database_without_losing_rows_or_fts() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let memory_dir = tmp.path().join("memory");
+    std::fs::create_dir_all(&memory_dir).unwrap();
+    let db_path = memory_dir.join("brain.db");
+    let connection = rusqlite::Connection::open(&db_path).unwrap();
+    connection
+        .execute_batch(
+            "CREATE TABLE memories (
+                 id TEXT PRIMARY KEY,
+                 key TEXT NOT NULL UNIQUE,
+                 content TEXT NOT NULL,
+                 category TEXT NOT NULL DEFAULT 'core',
+                 embedding BLOB,
+                 created_at TEXT NOT NULL,
+                 updated_at TEXT NOT NULL
+             );
+             INSERT INTO memories VALUES
+                 ('id-1', 'alpha', 'Rust migration fixture', 'core', NULL,
+                  '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+                 ('id-2', 'beta', 'Second fixture', 'daily', NULL,
+                  '2026-01-02T00:00:00Z', '2026-01-02T00:00:00Z');
+             PRAGMA user_version = 1;",
+        )
+        .unwrap();
+    drop(connection);
+
+    let memory = SqliteMemory::new(tmp.path()).unwrap();
+    let connection = memory.connection().lock();
+    let version: i64 = connection
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .unwrap();
+    let row_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM memories", [], |row| row.get(0))
+        .unwrap();
+    let id_count: i64 = connection
+        .query_row("SELECT COUNT(DISTINCT id) FROM memories", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let default_count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM memories WHERE namespace = 'default'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let fts_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM memories_fts", [], |row| row.get(0))
+        .unwrap();
+    let schema: String = connection
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'memories'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(version, 2);
+    assert_eq!(
+        (row_count, id_count, default_count, fts_count),
+        (2, 2, 2, 2)
+    );
+    assert!(schema.contains("UNIQUE(namespace, key)"));
+    assert!(schema.contains("namespace              TEXT NOT NULL"));
 }
 
 #[tokio::test]

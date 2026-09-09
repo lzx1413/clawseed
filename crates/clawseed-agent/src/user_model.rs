@@ -1,13 +1,12 @@
 //! Background extraction of durable, non-sensitive user profile facts.
 
-use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, OnceLock};
 
 use chrono::{Duration, Utc};
 use clawseed_api::provider::Provider;
 use clawseed_api::user_profile::{
-    ProfileCategory, ProfileItem, ProfileItemInput, ProfileSource, ProfileStatus, UserContext,
-    UserProfileStore,
+    InferenceWriteResult, ProfileCategory, ProfileItemInput, ProfileKeyRegistry, ProfileSource,
+    ProfileStatus, UserContext, UserProfileStore,
 };
 use regex::Regex;
 use serde::Deserialize;
@@ -62,45 +61,22 @@ pub(crate) struct InferenceOptions {
     pub max_items: usize,
 }
 
-pub(crate) fn spawn_profile_inference(
-    provider: Arc<dyn Provider>,
-    store: Arc<dyn UserProfileStore>,
-    context: UserContext,
-    model: String,
-    user_message: String,
-    assistant_response: String,
+pub(crate) async fn infer_and_store_bounded(
+    provider: &dyn Provider,
+    store: &dyn UserProfileStore,
+    context: &UserContext,
+    model: &str,
+    user_message: &str,
     options: InferenceOptions,
-) {
+) -> anyhow::Result<usize> {
     let limiter = INFERENCE_LIMITER
         .get_or_init(|| Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_INFERENCES)))
         .clone();
-    let Ok(permit) = limiter.try_acquire_owned() else {
+    let Ok(_permit) = limiter.try_acquire_owned() else {
         tracing::debug!(user_id = %context.user_id, "user profile inference skipped: worker limit reached");
-        return;
+        return Ok(0);
     };
-
-    tokio::spawn(async move {
-        let _permit = permit;
-        match infer_and_store(
-            provider.as_ref(),
-            store.as_ref(),
-            &context,
-            &model,
-            &user_message,
-            &assistant_response,
-            options,
-        )
-        .await
-        {
-            Ok(0) => {}
-            Ok(saved) => {
-                tracing::debug!(user_id = %context.user_id, saved, "user profile inference saved")
-            }
-            Err(error) => {
-                tracing::debug!(user_id = %context.user_id, %error, "user profile inference failed")
-            }
-        }
-    });
+    infer_and_store(provider, store, context, model, user_message, options).await
 }
 
 pub(crate) async fn infer_and_store(
@@ -109,7 +85,6 @@ pub(crate) async fn infer_and_store(
     context: &UserContext,
     model: &str,
     user_message: &str,
-    assistant_response: &str,
     options: InferenceOptions,
 ) -> anyhow::Result<usize> {
     if user_message.trim().is_empty() || options.max_items == 0 {
@@ -120,7 +95,6 @@ pub(crate) async fn infer_and_store(
     let payload = serde_json::json!({
         "max_items": max_items,
         "user_message": truncate_chars(user_message, MAX_INFERENCE_INPUT_CHARS),
-        "assistant_response": truncate_chars(assistant_response, MAX_INFERENCE_INPUT_CHARS),
     });
     let response = provider
         .chat_with_system(
@@ -134,12 +108,6 @@ pub(crate) async fn infer_and_store(
         anyhow::bail!("inference response exceeded {MAX_INFERENCE_RESPONSE_BYTES} bytes");
     }
     let candidates = parse_candidates(&response)?;
-    let profile = store.load(&context.user_id).await?;
-    let mut existing: HashMap<String, ProfileItem> = profile
-        .items
-        .into_iter()
-        .map(|item| (item.key.clone(), item))
-        .collect();
     let min_confidence = if options.min_confidence.is_finite() {
         options.min_confidence.clamp(0.0, 1.0)
     } else {
@@ -154,12 +122,14 @@ pub(crate) async fn infer_and_store(
         let Some(input) = candidate_to_input(candidate, context, min_confidence) else {
             continue;
         };
-        if !may_replace(existing.get(&input.key), &input) {
-            continue;
+        if matches!(
+            store
+                .upsert_inferred_if_allowed(&context.user_id, input)
+                .await?,
+            InferenceWriteResult::Written(_)
+        ) {
+            saved += 1;
         }
-        let item = store.upsert(&context.user_id, input).await?;
-        existing.insert(item.key.clone(), item);
-        saved += 1;
     }
 
     Ok(saved)
@@ -190,11 +160,10 @@ fn candidate_to_input(
     context: &UserContext,
     min_confidence: f64,
 ) -> Option<ProfileItemInput> {
-    let key = candidate.key.trim().to_ascii_lowercase();
+    let key = ProfileKeyRegistry::normalize(&candidate.key, candidate.category)?;
     if !candidate.confidence.is_finite()
         || candidate.confidence < min_confidence
         || candidate.confidence > 1.0
-        || !is_valid_key(&key, candidate.category)
         || is_sensitive_key(&key)
         || !is_safe_value(&candidate.value)
     {
@@ -217,35 +186,6 @@ fn candidate_to_input(
         evidence_session_id: context.session_id.clone(),
         expires_at,
     })
-}
-
-fn is_valid_key(key: &str, category: ProfileCategory) -> bool {
-    let prefix = format!("{category}.");
-    if key.len() <= prefix.len()
-        || key.len() > 256
-        || !key.starts_with(&prefix)
-        || !key.bytes().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-')
-        })
-    {
-        return false;
-    }
-
-    match category {
-        ProfileCategory::Identity => matches!(
-            key,
-            "identity.display_name" | "identity.locale" | "identity.pronouns" | "identity.timezone"
-        ),
-        ProfileCategory::Accessibility => matches!(
-            key,
-            "accessibility.captions"
-                | "accessibility.color_contrast"
-                | "accessibility.input_method"
-                | "accessibility.screen_reader"
-                | "accessibility.text_size"
-        ),
-        _ => true,
-    }
 }
 
 fn is_sensitive_key(key: &str) -> bool {
@@ -321,7 +261,11 @@ fn is_safe_value(value: &serde_json::Value) -> bool {
         && !PHONE_PATTERN.is_match(&serialized)
 }
 
-fn may_replace(existing: Option<&ProfileItem>, candidate: &ProfileItemInput) -> bool {
+#[cfg(test)]
+fn may_replace(
+    existing: Option<&clawseed_api::user_profile::ProfileItem>,
+    candidate: &ProfileItemInput,
+) -> bool {
     let Some(existing) = existing else {
         return true;
     };
@@ -343,6 +287,7 @@ fn may_replace(existing: Option<&ProfileItem>, candidate: &ProfileItemInput) -> 
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use clawseed_api::user_profile::ProfileItem;
     use clawseed_memory::user_profile::SqliteUserProfileStore;
 
     struct StaticProvider(&'static str);
@@ -388,7 +333,6 @@ mod tests {
             &context(),
             "test-model",
             "Please keep responses concise. My email is person@example.com.",
-            "Understood.",
             InferenceOptions {
                 min_confidence: 0.8,
                 max_items: 3,
@@ -457,7 +401,6 @@ mod tests {
             &context(),
             "test-model",
             "Answer in English.",
-            "Sure.",
             InferenceOptions {
                 min_confidence: 0.8,
                 max_items: 3,

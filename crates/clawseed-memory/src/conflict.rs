@@ -161,8 +161,8 @@ pub fn combined_similarity(
 /// to the longer document, capturing "most of the shorter doc's tokens appear
 /// in the longer doc" which Jaccard's union denominator penalizes.
 pub fn bm25_overlap(a: &str, b: &str) -> f64 {
-    let set_a: HashSet<&str> = a.split_whitespace().collect();
-    let set_b: HashSet<&str> = b.split_whitespace().collect();
+    let set_a = text_tokens(a);
+    let set_b = text_tokens(b);
 
     if set_a.is_empty() && set_b.is_empty() {
         return 1.0;
@@ -194,8 +194,8 @@ pub fn bm25_overlap(a: &str, b: &str) -> f64 {
 /// Returns a float between 0.0 (no contradiction signals) and 1.0 (strong
 /// contradiction signals). This is additive on top of combined_similarity.
 pub fn detect_contradiction_signals(existing: &MemoryEntry, new_content: &str) -> f64 {
-    let existing_lower = existing.content.to_ascii_lowercase();
-    let new_lower = new_content.to_ascii_lowercase();
+    let existing_lower = existing.content.to_lowercase();
+    let new_lower = new_content.to_lowercase();
 
     let mut signal_score: f64 = 0.0;
 
@@ -203,7 +203,8 @@ pub fn detect_contradiction_signals(existing: &MemoryEntry, new_content: &str) -
     // If one says "not/doesn't/don't/hates/dislikes" and the other says the
     // same tokens without negation
     const NEGATION_WORDS: &[&str] = &[
-        "not", "doesn't", "don't", "never", "no", "hates", "dislikes", "won't",
+        "not", "doesn't", "don't", "never", "no", "hates", "dislikes", "won't", "不", "不要",
+        "从不", "讨厌",
     ];
     let has_negation_existing = NEGATION_WORDS.iter().any(|w| existing_lower.contains(w));
     let has_negation_new = NEGATION_WORDS.iter().any(|w| new_lower.contains(w));
@@ -218,7 +219,16 @@ pub fn detect_contradiction_signals(existing: &MemoryEntry, new_content: &str) -
 
     // Signal 2: Preference change
     // Both mention "prefers/likes/favorite" but with different values
-    const PREFERENCE_WORDS: &[&str] = &["prefers", "likes", "favorite", "favourite", "loves"];
+    const PREFERENCE_WORDS: &[&str] = &[
+        "prefers",
+        "likes",
+        "favorite",
+        "favourite",
+        "loves",
+        "喜欢",
+        "偏好",
+        "希望",
+    ];
     let has_pref_existing = PREFERENCE_WORDS.iter().any(|w| existing_lower.contains(w));
     let has_pref_new = PREFERENCE_WORDS.iter().any(|w| new_lower.contains(w));
 
@@ -228,7 +238,7 @@ pub fn detect_contradiction_signals(existing: &MemoryEntry, new_content: &str) -
 
     // Signal 3: Temporal contradiction
     // "always/forever" vs "now/currently/recently" with shared content
-    const ABSOLUTE_WORDS: &[&str] = &["always", "forever", "every", "all"];
+    const ABSOLUTE_WORDS: &[&str] = &["always", "forever", "every", "all", "总是", "一直", "永远"];
     const TEMPORAL_WORDS: &[&str] = &[
         "now",
         "currently",
@@ -236,6 +246,11 @@ pub fn detect_contradiction_signals(existing: &MemoryEntry, new_content: &str) -
         "lately",
         "switched",
         "changed",
+        "现在",
+        "目前",
+        "最近",
+        "改为",
+        "换成",
     ];
     let has_absolute = ABSOLUTE_WORDS.iter().any(|w| existing_lower.contains(w));
     let has_temporal = TEMPORAL_WORDS.iter().any(|w| new_lower.contains(w));
@@ -254,8 +269,8 @@ pub fn detect_contradiction_signals(existing: &MemoryEntry, new_content: &str) -
 ///
 /// Returns a value between 0.0 (no overlap) and 1.0 (identical word sets).
 pub fn jaccard_similarity(a: &str, b: &str) -> f64 {
-    let words_a: HashSet<&str> = a.split_whitespace().collect();
-    let words_b: HashSet<&str> = b.split_whitespace().collect();
+    let words_a = text_tokens(a);
+    let words_b = text_tokens(b);
 
     if words_a.is_empty() && words_b.is_empty() {
         return 1.0;
@@ -272,6 +287,27 @@ pub fn jaccard_similarity(a: &str, b: &str) -> f64 {
     } else {
         intersection as f64 / union as f64
     }
+}
+
+fn text_tokens(text: &str) -> HashSet<String> {
+    let mut tokens = HashSet::new();
+    let mut ascii_word = String::new();
+    for character in text.chars().flat_map(char::to_lowercase) {
+        if character.is_ascii_alphanumeric() || character == '_' {
+            ascii_word.push(character);
+            continue;
+        }
+        if !ascii_word.is_empty() {
+            tokens.insert(std::mem::take(&mut ascii_word));
+        }
+        if character.is_alphanumeric() {
+            tokens.insert(character.to_string());
+        }
+    }
+    if !ascii_word.is_empty() {
+        tokens.insert(ascii_word);
+    }
+    tokens
 }
 
 #[cfg(test)]
@@ -529,6 +565,14 @@ mod tests {
             signals.abs() < f64::EPSILON,
             "no contradiction should produce 0.0"
         );
+    }
+
+    #[test]
+    fn chinese_preference_reversal_produces_conflict_signal() {
+        let existing = make_entry("1", "pref", "我喜欢简洁回答", MemoryCategory::Core);
+        let replacement = "我现在不喜欢简洁回答了";
+        assert!(jaccard_similarity(&existing.content, replacement) > 0.3);
+        assert!(detect_contradiction_signals(&existing, replacement) >= 0.4);
     }
 
     #[test]

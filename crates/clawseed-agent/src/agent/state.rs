@@ -7,8 +7,96 @@ use anyhow::Result;
 use clawseed_api::provider::{ChatMessage, ConversationMessage};
 use clawseed_api::tool::Tool;
 use clawseed_api::tool_registry::ToolSource;
-use clawseed_api::user_profile::{ProfileItem, ProfileStatus, UserContext, UserProfileStore};
+use clawseed_api::user_profile::{
+    ProfileCategory, ProfileItem, ProfileSource, ProfileStatus, UserContext, UserProfileStore,
+};
+use std::collections::HashMap;
 use std::sync::Arc;
+
+fn profile_category_rank(category: ProfileCategory) -> u8 {
+    match category {
+        ProfileCategory::Accessibility => 0,
+        ProfileCategory::Constraint => 1,
+        ProfileCategory::Identity => 2,
+        ProfileCategory::Goal => 3,
+        ProfileCategory::Preference => 4,
+        ProfileCategory::Expertise => 5,
+    }
+}
+
+fn profile_source_rank(source: ProfileSource) -> u8 {
+    match source {
+        ProfileSource::Explicit => 0,
+        ProfileSource::Imported => 1,
+        ProfileSource::Inferred => 2,
+    }
+}
+
+struct ContextAssembler;
+
+impl ContextAssembler {
+    fn select_profile_items(mut items: Vec<ProfileItem>, limit: usize) -> Vec<ProfileItem> {
+        if limit == 0 {
+            return Vec::new();
+        }
+        items.sort_by(|left, right| {
+            profile_category_rank(left.category)
+                .cmp(&profile_category_rank(right.category))
+                .then_with(|| {
+                    profile_source_rank(left.source).cmp(&profile_source_rank(right.source))
+                })
+                .then_with(|| {
+                    right
+                        .confidence
+                        .partial_cmp(&left.confidence)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .then_with(|| right.updated_at.cmp(&left.updated_at))
+                .then_with(|| left.key.cmp(&right.key))
+        });
+
+        let category_quota = limit.div_ceil(6).max(1);
+        let mut category_counts = HashMap::<ProfileCategory, usize>::new();
+        let mut selected = Vec::with_capacity(limit.min(items.len()));
+        for item in &items {
+            let count = category_counts.entry(item.category).or_default();
+            if *count < category_quota {
+                selected.push(item.clone());
+                *count += 1;
+            }
+        }
+        if selected.len() < limit {
+            for item in items {
+                if selected.iter().any(|selected| selected.id == item.id) {
+                    continue;
+                }
+                selected.push(item);
+                if selected.len() == limit {
+                    break;
+                }
+            }
+        }
+        selected.truncate(limit);
+        selected
+    }
+
+    fn memory_is_covered_by_profile(
+        entry: &clawseed_api::memory_traits::MemoryEntry,
+        profile: &[ProfileItem],
+    ) -> bool {
+        profile.iter().any(|profile| {
+            if profile.key == entry.key {
+                return true;
+            }
+            let profile_text = profile
+                .value
+                .as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| profile.value.to_string());
+            profile_text.trim() == entry.content.trim()
+        })
+    }
+}
 
 impl Agent {
     pub fn history(&self) -> &[ConversationMessage] {
@@ -51,6 +139,17 @@ impl Agent {
         store: Option<Arc<dyn UserProfileStore>>,
         max_prompt_items: usize,
     ) {
+        if let Some(store) = store.as_ref() {
+            super::replace_profile_tools(
+                self.tool_registry.as_ref(),
+                store.clone(),
+                &self.user_model_config,
+            );
+        } else {
+            for name in super::PROFILE_TOOL_NAMES {
+                self.tool_registry.unregister(name);
+            }
+        }
         self.user_profile_store = store;
         self.max_profile_prompt_items = max_prompt_items;
         self.user_profile_version = None;
@@ -160,10 +259,22 @@ impl Agent {
             return false;
         }
 
-        let entries = match self.memory.top_core_memories(self.auto_recall_limit).await {
+        let candidates = match self
+            .memory
+            .top_core_memories(
+                self.auto_recall_limit
+                    .saturating_add(self.user_profile_items.len()),
+            )
+            .await
+        {
             Ok(e) => e,
             Err(_) => return false, // Silently skip on error
         };
+        let entries = candidates
+            .into_iter()
+            .filter(|entry| !self.memory_is_covered_by_profile(entry))
+            .take(self.auto_recall_limit)
+            .collect::<Vec<_>>();
 
         // Build new state: key → content_hash
         let new_state: std::collections::HashMap<String, String> = entries
@@ -186,6 +297,13 @@ impl Agent {
         self.injected_core_state = new_state;
         self.stable_core_memories = entries;
         true
+    }
+
+    pub(super) fn memory_is_covered_by_profile(
+        &self,
+        entry: &clawseed_api::memory_traits::MemoryEntry,
+    ) -> bool {
+        ContextAssembler::memory_is_covered_by_profile(entry, &self.user_profile_items)
     }
 
     /// Refresh the profile for the authenticated user.
@@ -215,8 +333,8 @@ impl Agent {
                         .unwrap_or(false)
                 })
             })
-            .take(self.max_profile_prompt_items)
             .collect();
+        let items = ContextAssembler::select_profile_items(items, self.max_profile_prompt_items);
         let changed =
             self.user_profile_version != Some(profile.version) || self.user_profile_items != items;
         self.user_profile_items = items;
@@ -224,29 +342,49 @@ impl Agent {
         changed
     }
 
-    pub(super) fn schedule_user_profile_inference(
-        &self,
-        user_message: &str,
-        assistant_response: &str,
-    ) {
-        if !self.user_model_config.enabled || !self.user_model_config.auto_infer {
-            return;
-        }
-        let (Some(store), Some(context)) = (&self.user_profile_store, &self.user_context) else {
-            return;
+    /// Schedule post-turn learning exactly once after a successful final reply.
+    pub(super) fn complete_turn(&self, user_message: &str, assistant_response: &str) {
+        let completed = super::CompletedTurn {
+            user_text: user_message,
+            assistant_text: assistant_response,
+            session_id: self.memory_session_id.as_deref(),
+            persona_id: self
+                .user_context
+                .as_ref()
+                .and_then(|context| context.persona_id.as_deref()),
+            memory_namespace: self.config.memory_namespace.as_deref().unwrap_or("default"),
         };
-        crate::user_model::spawn_profile_inference(
-            self.provider.clone(),
-            store.clone(),
-            context.clone(),
-            self.model_name.clone(),
-            user_message.to_string(),
-            assistant_response.to_string(),
-            crate::user_model::InferenceOptions {
+        let profile_inference = (self.user_model_config.enabled
+            && self.user_model_config.auto_infer)
+            .then_some(crate::user_model::InferenceOptions {
                 min_confidence: self.user_model_config.inference_min_confidence,
                 max_items: self.user_model_config.max_inferred_items_per_turn,
-            },
-        );
+            });
+        if !self.auto_save && profile_inference.is_none() {
+            return;
+        }
+        self.knowledge_coordinator
+            .submit(crate::knowledge_coordinator::LearningJob {
+                provider: self.provider.clone(),
+                memory: self.memory.clone(),
+                profile_store: self.user_profile_store.clone(),
+                user_context: self.user_context.clone(),
+                model: self.model_name.clone(),
+                user_text: completed.user_text.to_string(),
+                assistant_text: completed.assistant_text.to_string(),
+                session_id: completed.session_id.map(str::to_string),
+                persona_id: completed.persona_id.map(str::to_string),
+                memory_namespace: completed.memory_namespace.to_string(),
+                auto_save: self.auto_save,
+                profile_inference,
+                conflict_mode: self.memory_conflict_mode.clone(),
+                conflict_threshold: self.memory_conflict_threshold,
+            });
+    }
+
+    /// Close the background learning queue and wait for already accepted jobs.
+    pub async fn shutdown_learning(&self) {
+        self.knowledge_coordinator.shutdown_and_drain().await;
     }
 
     /// Rebuild the system prompt and replace the system message in history.
@@ -538,5 +676,115 @@ impl Agent {
         };
 
         SystemPromptBuilder::with_defaults().build_partitioned(&ctx)
+    }
+}
+
+#[cfg(test)]
+mod context_assembler_tests {
+    use super::*;
+    use clawseed_api::memory_traits::{MemoryCategory, MemoryEntry};
+
+    fn profile_item(id: &str, key: &str, value: &str, category: ProfileCategory) -> ProfileItem {
+        ProfileItem {
+            id: id.into(),
+            user_id: "owner".into(),
+            key: key.into(),
+            value: serde_json::json!(value),
+            category,
+            confidence: 0.9,
+            source: ProfileSource::Explicit,
+            status: ProfileStatus::Active,
+            evidence_session_id: None,
+            expires_at: None,
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+            version: 1,
+        }
+    }
+
+    fn memory(key: &str, content: &str) -> MemoryEntry {
+        MemoryEntry {
+            id: key.into(),
+            key: key.into(),
+            content: content.into(),
+            category: MemoryCategory::Core,
+            timestamp: "2026-01-01T00:00:00Z".into(),
+            session_id: None,
+            score: None,
+            namespace: "default".into(),
+            importance: Some(1.0),
+            superseded_by: None,
+            embedding: None,
+        }
+    }
+
+    #[test]
+    fn profile_selection_reserves_space_across_categories() {
+        let items = vec![
+            profile_item(
+                "p1",
+                "custom.preference.one",
+                "one",
+                ProfileCategory::Preference,
+            ),
+            profile_item(
+                "p2",
+                "custom.preference.two",
+                "two",
+                ProfileCategory::Preference,
+            ),
+            profile_item(
+                "p3",
+                "custom.preference.three",
+                "three",
+                ProfileCategory::Preference,
+            ),
+            profile_item(
+                "a1",
+                "accessibility.screen_reader",
+                "true",
+                ProfileCategory::Accessibility,
+            ),
+            profile_item("g1", "custom.goal.ship", "ship", ProfileCategory::Goal),
+        ];
+        let selected = ContextAssembler::select_profile_items(items, 3);
+        assert_eq!(selected.len(), 3);
+        assert!(
+            selected
+                .iter()
+                .any(|item| item.category == ProfileCategory::Accessibility)
+        );
+        assert!(
+            selected
+                .iter()
+                .any(|item| item.category == ProfileCategory::Goal)
+        );
+        assert!(
+            selected
+                .iter()
+                .any(|item| item.category == ProfileCategory::Preference)
+        );
+    }
+
+    #[test]
+    fn profile_authority_removes_same_key_or_exact_value_from_memory() {
+        let profile = vec![profile_item(
+            "p1",
+            "preference.response_style",
+            "concise",
+            ProfileCategory::Preference,
+        )];
+        assert!(ContextAssembler::memory_is_covered_by_profile(
+            &memory("preference.response_style", "different"),
+            &profile,
+        ));
+        assert!(ContextAssembler::memory_is_covered_by_profile(
+            &memory("legacy-key", "concise"),
+            &profile,
+        ));
+        assert!(!ContextAssembler::memory_is_covered_by_profile(
+            &memory("project-decision", "use SQLite"),
+            &profile,
+        ));
     }
 }

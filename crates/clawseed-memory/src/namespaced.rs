@@ -7,7 +7,7 @@
 //! All store operations redirect to `store_with_metadata()` with the configured
 //! namespace, and all recall operations redirect to `recall_namespaced()`.
 
-use super::traits::{Memory, MemoryCategory, MemoryEntry, SearchMode};
+use super::traits::{Memory, MemoryCategory, MemoryEntry, MemoryQuery, MemoryScope, SearchMode};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -43,6 +43,14 @@ impl NamespacedMemory {
 impl Memory for NamespacedMemory {
     fn name(&self) -> &str {
         self.inner.name()
+    }
+
+    fn accessible_namespaces(&self) -> Vec<String> {
+        let mut namespaces = vec![self.namespace.clone()];
+        if self.namespace != PUBLIC_NAMESPACE {
+            namespaces.push(PUBLIC_NAMESPACE.into());
+        }
+        namespaces
     }
 
     async fn store(
@@ -117,24 +125,65 @@ impl Memory for NamespacedMemory {
         until: Option<&str>,
         search_mode: Option<SearchMode>,
     ) -> anyhow::Result<Vec<MemoryEntry>> {
-        // Delegate to inner, then filter by namespace
-        // We fetch more entries to account for filtering
-        let entries = self
+        let query_for = |namespace| MemoryQuery {
+            query,
+            scope: MemoryScope {
+                namespace,
+                session_id,
+            },
+            category: None,
+            since,
+            until,
+            limit,
+            min_relevance_score: None,
+            search_mode,
+            exclude_ids: &[],
+            exclude_keys: &[],
+        };
+        let mut entries = self
             .inner
-            .recall_with_embeddings(query, limit * 2, session_id, since, until, search_mode)
+            .recall_scoped_with_embeddings(query_for(&self.namespace))
             .await?;
-        let filtered: Vec<MemoryEntry> = entries
-            .into_iter()
-            .filter(|e| self.can_access_namespace(&e.namespace))
-            .take(limit)
-            .collect();
-        Ok(filtered)
+        entries.extend(
+            self.inner
+                .recall_scoped_with_embeddings(query_for(PUBLIC_NAMESPACE))
+                .await?,
+        );
+        entries.sort_by(|left, right| {
+            right
+                .score
+                .unwrap_or_default()
+                .partial_cmp(&left.score.unwrap_or_default())
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| left.key.cmp(&right.key))
+        });
+        entries.truncate(limit);
+        Ok(entries)
     }
 
     async fn get(&self, key: &str) -> anyhow::Result<Option<MemoryEntry>> {
-        let entry = self.inner.get(key).await?;
-        // Return the entry only if it matches our namespace
-        Ok(entry.filter(|e| self.can_access_namespace(&e.namespace)))
+        if let Some(entry) = self
+            .inner
+            .get_scoped(
+                MemoryScope {
+                    namespace: &self.namespace,
+                    session_id: None,
+                },
+                key,
+            )
+            .await?
+        {
+            return Ok(Some(entry));
+        }
+        self.inner
+            .get_scoped(
+                MemoryScope {
+                    namespace: PUBLIC_NAMESPACE,
+                    session_id: None,
+                },
+                key,
+            )
+            .await
     }
 
     async fn list(
@@ -142,30 +191,44 @@ impl Memory for NamespacedMemory {
         category: Option<&MemoryCategory>,
         session_id: Option<&str>,
     ) -> anyhow::Result<Vec<MemoryEntry>> {
-        let entries = self.inner.list(category, session_id).await?;
-        // Filter to only entries in our namespace
-        Ok(entries
-            .into_iter()
-            .filter(|e| self.can_access_namespace(&e.namespace))
-            .collect())
+        let mut entries = self
+            .inner
+            .list_scoped(
+                MemoryScope {
+                    namespace: &self.namespace,
+                    session_id,
+                },
+                category,
+            )
+            .await?;
+        entries.extend(
+            self.inner
+                .list_scoped(
+                    MemoryScope {
+                        namespace: PUBLIC_NAMESPACE,
+                        session_id,
+                    },
+                    category,
+                )
+                .await?,
+        );
+        Ok(entries)
     }
 
     async fn forget(&self, key: &str) -> anyhow::Result<bool> {
-        // First verify the entry is in our namespace before forgetting
-        if let Some(entry) = self.inner.get(key).await?
-            && self.can_access_namespace(&entry.namespace)
-        {
-            return self.inner.forget(key).await;
-        }
-        Ok(false)
+        self.inner
+            .forget_scoped(
+                MemoryScope {
+                    namespace: &self.namespace,
+                    session_id: None,
+                },
+                key,
+            )
+            .await
     }
 
     async fn count(&self) -> anyhow::Result<usize> {
-        let entries = self.inner.list(None, None).await?;
-        Ok(entries
-            .into_iter()
-            .filter(|e| self.can_access_namespace(&e.namespace))
-            .count())
+        Ok(self.list(None, None).await?.len())
     }
 
     async fn health_check(&self) -> bool {
@@ -196,6 +259,60 @@ impl Memory for NamespacedMemory {
                     search_mode,
                 )
                 .await
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    async fn recall_scoped(&self, query: MemoryQuery<'_>) -> anyhow::Result<Vec<MemoryEntry>> {
+        if self.can_access_namespace(query.scope.namespace) {
+            self.inner.recall_scoped(query).await
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    async fn recall_scoped_with_embeddings(
+        &self,
+        query: MemoryQuery<'_>,
+    ) -> anyhow::Result<Vec<MemoryEntry>> {
+        if self.can_access_namespace(query.scope.namespace) {
+            self.inner.recall_scoped_with_embeddings(query).await
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    async fn top_core_memories(&self, limit: usize) -> anyhow::Result<Vec<MemoryEntry>> {
+        let mut entries = self
+            .inner
+            .top_core_memories_scoped(&self.namespace, limit)
+            .await?;
+        entries.extend(
+            self.inner
+                .top_core_memories_scoped(PUBLIC_NAMESPACE, limit)
+                .await?,
+        );
+        entries.sort_by(|left, right| {
+            right
+                .importance
+                .unwrap_or(0.5)
+                .partial_cmp(&left.importance.unwrap_or(0.5))
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| right.timestamp.cmp(&left.timestamp))
+                .then_with(|| left.key.cmp(&right.key))
+        });
+        entries.truncate(limit);
+        Ok(entries)
+    }
+
+    async fn top_core_memories_scoped(
+        &self,
+        namespace: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<MemoryEntry>> {
+        if self.can_access_namespace(namespace) {
+            self.inner.top_core_memories_scoped(namespace, limit).await
         } else {
             Ok(Vec::new())
         }
@@ -242,10 +359,21 @@ impl Memory for NamespacedMemory {
 
     async fn purge_session(&self, session_id: &str) -> anyhow::Result<usize> {
         // Purge sessions, but filtered to our namespace
-        let entries = self.inner.list(None, Some(session_id)).await?;
+        let entries = self.list(None, Some(session_id)).await?;
         let mut count = 0;
         for entry in entries {
-            if self.can_access_namespace(&entry.namespace) && self.inner.forget(&entry.key).await? {
+            if self.can_access_namespace(&entry.namespace)
+                && self
+                    .inner
+                    .forget_scoped(
+                        MemoryScope {
+                            namespace: &entry.namespace,
+                            session_id: Some(session_id),
+                        },
+                        &entry.key,
+                    )
+                    .await?
+            {
                 count += 1;
             }
         }

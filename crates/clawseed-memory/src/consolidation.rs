@@ -28,12 +28,14 @@ const MIN_CORE_CONTENT_LENGTH: usize = 10;
 /// Phase 1: Write a history entry to the Daily category.
 /// Phase 2: If the turn contains high-signal content, store as Core
 ///          with importance metadata and conflict detection.
+#[allow(clippy::too_many_arguments)]
 pub async fn consolidate_turn(
     _provider: &dyn Provider,
     _model: &str,
     memory: &dyn Memory,
     user_message: &str,
     assistant_response: &str,
+    session_id: Option<&str>,
     conflict_mode: &ConflictMode,
     conflict_threshold: f64,
 ) -> anyhow::Result<()> {
@@ -44,7 +46,12 @@ pub async fn consolidate_turn(
     let history_key = format!("daily_{date}_{}", uuid::Uuid::new_v4());
     let history_summary = truncate_content(&turn_text, MAX_SUMMARY_LENGTH);
     memory
-        .store(&history_key, &history_summary, MemoryCategory::Daily, None)
+        .store(
+            &history_key,
+            &history_summary,
+            MemoryCategory::Daily,
+            session_id,
+        )
         .await?;
 
     // Phase 2: Check if the turn contains high-signal content for Core memory.
@@ -84,7 +91,7 @@ pub async fn consolidate_turn(
                 &mem_key,
                 &core_summary,
                 MemoryCategory::Core,
-                None,
+                session_id,
                 None,
                 Some(best_importance),
             )

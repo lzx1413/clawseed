@@ -351,6 +351,18 @@ pub struct UserModelConfig {
     /// Maximum inferred items persisted from one completed turn.
     #[serde(default = "default_user_model_inference_items")]
     pub max_inferred_items_per_turn: usize,
+    /// Maximum active profile items retained in each category.
+    #[serde(default = "default_user_model_category_items")]
+    pub max_active_items_per_category: usize,
+    /// Independent sessions required before an implicit fact can become active.
+    #[serde(default = "default_user_model_observations")]
+    pub min_observations_for_implicit_fact: usize,
+    /// Lifetime of a server-side profile change plan.
+    #[serde(default = "default_user_model_plan_ttl")]
+    pub change_plan_ttl_minutes: u64,
+    /// Retention period for undo audit records.
+    #[serde(default = "default_user_model_undo_retention")]
+    pub undo_retention_hours: u64,
 }
 
 fn default_user_model_prompt_items() -> usize {
@@ -365,6 +377,22 @@ fn default_user_model_inference_items() -> usize {
     3
 }
 
+fn default_user_model_category_items() -> usize {
+    20
+}
+
+fn default_user_model_observations() -> usize {
+    2
+}
+
+fn default_user_model_plan_ttl() -> u64 {
+    10
+}
+
+fn default_user_model_undo_retention() -> u64 {
+    24
+}
+
 impl Default for UserModelConfig {
     fn default() -> Self {
         Self {
@@ -373,6 +401,10 @@ impl Default for UserModelConfig {
             auto_infer: false,
             inference_min_confidence: default_user_model_inference_confidence(),
             max_inferred_items_per_turn: default_user_model_inference_items(),
+            max_active_items_per_category: default_user_model_category_items(),
+            min_observations_for_implicit_fact: default_user_model_observations(),
+            change_plan_ttl_minutes: default_user_model_plan_ttl(),
+            undo_retention_hours: default_user_model_undo_retention(),
         }
     }
 }

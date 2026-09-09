@@ -1,5 +1,6 @@
 //! ClawSeed — Android AI agent framework.
 
+use anyhow::Context as _;
 use clap::Parser;
 
 #[derive(Parser)]
@@ -35,9 +36,12 @@ async fn main() -> anyhow::Result<()> {
     match cli {
         Cli::Gateway { host, port } => {
             tracing::info!("Starting ClawSeed gateway on {host}...");
-            let config = clawseed_config::load_config()?;
+            let config =
+                clawseed_config::load_config().context("failed to load gateway configuration")?;
             let port = port.unwrap_or(config.gateway.port);
-            clawseed_gateway::run_gateway(&host, port, config, None).await?;
+            clawseed_gateway::run_gateway(&host, port, config, None)
+                .await
+                .context("gateway startup failed")?;
         }
         Cli::Chat {
             model,

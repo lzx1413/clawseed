@@ -29,7 +29,7 @@ use crate::ratelimit::dirs_data_local;
 use crate::ratelimit::normalize_max_keys;
 use crate::session_backend::SessionBackend;
 use crate::session_sqlite::SqliteSessionBackend;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use axum::{
     Router,
     http::StatusCode,
@@ -179,20 +179,29 @@ pub async fn run_gateway(
         None
     };
 
-    let addr: SocketAddr = format!("{host}:{port}").parse()?;
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    let actual_port = listener.local_addr()?.port();
+    let addr: SocketAddr = format!("{host}:{port}")
+        .parse()
+        .with_context(|| format!("invalid gateway listen address {host}:{port}"))?;
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .with_context(|| format!("failed to bind gateway listener on {addr}"))?;
+    let actual_port = listener
+        .local_addr()
+        .context("failed to read gateway listener address")?
+        .port();
     let display_addr = format!("{host}:{actual_port}");
 
     let fallback = config.providers.fallback_provider();
-    let provider: Arc<dyn Provider> =
-        Arc::from(clawseed_providers::create_resilient_provider_with_options(
+    let provider: Arc<dyn Provider> = Arc::from(
+        clawseed_providers::create_resilient_provider_with_options(
             config.providers.fallback.as_deref().unwrap_or("openrouter"),
             fallback.and_then(|e| e.api_key.as_deref()),
             fallback.and_then(|e| e.base_url.as_deref()),
             &config.reliability,
             &clawseed_providers::provider_runtime_options_from_config(&config),
-        )?);
+        )
+        .context("failed to initialize gateway provider")?,
+    );
     let model = fallback
         .and_then(|e| e.model.clone())
         .unwrap_or_else(|| "anthropic/claude-sonnet-4".into());
@@ -204,9 +213,15 @@ pub async fn run_gateway(
         &config.workspace_dir,
         fallback.and_then(|e| e.api_key.as_deref()),
     )
-    .await?;
+    .await
+    .context("failed to initialize gateway memory")?;
     let user_profile_store: Option<Arc<dyn UserProfileStore>> = if config.user_model.enabled {
-        match clawseed_memory::user_profile::SqliteUserProfileStore::new(&config.workspace_dir) {
+        match clawseed_memory::user_profile::SqliteUserProfileStore::with_governance(
+            &config.workspace_dir,
+            config.user_model.max_active_items_per_category,
+            config.user_model.min_observations_for_implicit_fact,
+            config.user_model.undo_retention_hours,
+        ) {
             Ok(store) => Some(Arc::new(store)),
             Err(error) => {
                 tracing::warn!(%error, "User modeling disabled: profile store initialization failed");
@@ -636,6 +651,34 @@ pub async fn run_gateway(
         .route(
             "/api/users/me/profile/items/{id}",
             delete(api::handle_api_user_profile_delete).patch(api::handle_api_user_profile_patch),
+        )
+        .route(
+            "/api/users/me/profile/search",
+            post(api::handle_api_user_profile_search),
+        )
+        .route(
+            "/api/users/me/profile/change-plans",
+            post(api::handle_api_user_profile_change_plan),
+        )
+        .route(
+            "/api/users/me/profile/change-plans/{plan_id}/apply",
+            post(api::handle_api_user_profile_apply_plan),
+        )
+        .route(
+            "/api/users/me/profile/operations/{operation_id}/undo",
+            post(api::handle_api_user_profile_undo),
+        )
+        .route(
+            "/api/users/me/knowledge/forget-plans",
+            post(api::handle_api_knowledge_forget_plan),
+        )
+        .route(
+            "/api/users/me/knowledge/forget-plans/{plan_id}/apply",
+            post(api::handle_api_knowledge_forget_apply),
+        )
+        .route(
+            "/api/users/me/knowledge/legacy-report",
+            get(api::handle_api_knowledge_legacy_report),
         )
         .route("/api/cost", get(api::handle_api_cost))
         .route("/api/cli-tools", get(api::handle_api_cli_tools))

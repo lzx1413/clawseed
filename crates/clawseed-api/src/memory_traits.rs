@@ -13,6 +13,37 @@ pub struct ExportFilter {
     pub until: Option<String>,
 }
 
+/// Namespace and optional session boundary for point memory operations.
+#[derive(Debug, Clone, Copy)]
+pub struct MemoryScope<'a> {
+    pub namespace: &'a str,
+    pub session_id: Option<&'a str>,
+}
+
+impl Default for MemoryScope<'static> {
+    fn default() -> Self {
+        Self {
+            namespace: "default",
+            session_id: None,
+        }
+    }
+}
+
+/// Filters applied before memory recall candidates are truncated.
+#[derive(Debug, Clone)]
+pub struct MemoryQuery<'a> {
+    pub query: &'a str,
+    pub scope: MemoryScope<'a>,
+    pub category: Option<&'a MemoryCategory>,
+    pub since: Option<&'a str>,
+    pub until: Option<&'a str>,
+    pub limit: usize,
+    pub min_relevance_score: Option<f64>,
+    pub search_mode: Option<SearchMode>,
+    pub exclude_ids: &'a [&'a str],
+    pub exclude_keys: &'a [&'a str],
+}
+
 /// A single memory entry.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct MemoryEntry {
@@ -331,6 +362,12 @@ impl std::fmt::Display for MemoryCategory {
 pub trait Memory: Send + Sync {
     fn name(&self) -> &str;
 
+    /// Namespaces visible through this memory instance. Plain backends expose
+    /// only the compatibility default; isolation wrappers may add public data.
+    fn accessible_namespaces(&self) -> Vec<String> {
+        vec!["default".into()]
+    }
+
     async fn store(
         &self,
         key: &str,
@@ -351,13 +388,52 @@ pub trait Memory: Send + Sync {
 
     async fn get(&self, key: &str) -> anyhow::Result<Option<MemoryEntry>>;
 
+    /// Get a key inside one namespace. Backends should override this to apply
+    /// the scope in their storage query.
+    async fn get_scoped(
+        &self,
+        scope: MemoryScope<'_>,
+        key: &str,
+    ) -> anyhow::Result<Option<MemoryEntry>> {
+        Ok(self.get(key).await?.filter(|entry| {
+            entry.namespace == scope.namespace
+                && scope
+                    .session_id
+                    .is_none_or(|session_id| entry.session_id.as_deref() == Some(session_id))
+        }))
+    }
+
     async fn list(
         &self,
         category: Option<&MemoryCategory>,
         session_id: Option<&str>,
     ) -> anyhow::Result<Vec<MemoryEntry>>;
 
+    /// List entries inside one namespace.
+    async fn list_scoped(
+        &self,
+        scope: MemoryScope<'_>,
+        category: Option<&MemoryCategory>,
+    ) -> anyhow::Result<Vec<MemoryEntry>> {
+        Ok(self
+            .list(category, scope.session_id)
+            .await?
+            .into_iter()
+            .filter(|entry| entry.namespace == scope.namespace)
+            .collect())
+    }
+
     async fn forget(&self, key: &str) -> anyhow::Result<bool>;
+
+    /// Forget a key inside one namespace without affecting an identically
+    /// named key in another namespace.
+    async fn forget_scoped(&self, scope: MemoryScope<'_>, key: &str) -> anyhow::Result<bool> {
+        if self.get_scoped(scope, key).await?.is_some() {
+            self.forget(key).await
+        } else {
+            Ok(false)
+        }
+    }
 
     async fn purge_namespace(&self, _namespace: &str) -> anyhow::Result<usize> {
         anyhow::bail!("purge_namespace not supported by this memory backend")
@@ -381,15 +457,64 @@ pub trait Memory: Send + Sync {
         until: Option<&str>,
         search_mode: Option<SearchMode>,
     ) -> anyhow::Result<Vec<MemoryEntry>> {
+        self.recall_scoped(MemoryQuery {
+            query,
+            scope: MemoryScope {
+                namespace,
+                session_id,
+            },
+            category: None,
+            since,
+            until,
+            limit,
+            min_relevance_score: None,
+            search_mode,
+            exclude_ids: &[],
+            exclude_keys: &[],
+        })
+        .await
+    }
+
+    /// Recall with all scope filters applied before truncation. The default is
+    /// a compatibility fallback; persistent backends should push these filters
+    /// into their native search query.
+    async fn recall_scoped(&self, query: MemoryQuery<'_>) -> anyhow::Result<Vec<MemoryEntry>> {
         let entries = self
-            .recall(query, limit * 2, session_id, since, until, search_mode)
+            .recall(
+                query.query,
+                query.limit.saturating_mul(4),
+                query.scope.session_id,
+                query.since,
+                query.until,
+                query.search_mode,
+            )
             .await?;
-        let filtered: Vec<MemoryEntry> = entries
+        Ok(entries
             .into_iter()
-            .filter(|e| e.namespace == namespace)
-            .take(limit)
-            .collect();
-        Ok(filtered)
+            .filter(|entry| entry.namespace == query.scope.namespace)
+            .filter(|entry| {
+                query
+                    .category
+                    .is_none_or(|category| entry.category == *category)
+            })
+            .filter(|entry| {
+                query
+                    .min_relevance_score
+                    .is_none_or(|minimum| entry.score.unwrap_or(0.0) >= minimum)
+            })
+            .filter(|entry| !query.exclude_ids.contains(&entry.id.as_str()))
+            .filter(|entry| !query.exclude_keys.contains(&entry.key.as_str()))
+            .take(query.limit)
+            .collect())
+    }
+
+    /// Scoped recall that also populates stored embeddings for conflict
+    /// detection. Backends with native embeddings should override this.
+    async fn recall_scoped_with_embeddings(
+        &self,
+        query: MemoryQuery<'_>,
+    ) -> anyhow::Result<Vec<MemoryEntry>> {
+        self.recall_scoped(query).await
     }
 
     async fn export(&self, filter: &ExportFilter) -> anyhow::Result<Vec<MemoryEntry>> {
@@ -448,6 +573,22 @@ pub trait Memory: Send + Sync {
         });
         sorted.truncate(limit);
         Ok(sorted)
+    }
+
+    /// Retrieve stable Core memories for one namespace.
+    async fn top_core_memories_scoped(
+        &self,
+        namespace: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<MemoryEntry>> {
+        let mut entries = self
+            .top_core_memories(limit.saturating_mul(4))
+            .await?
+            .into_iter()
+            .filter(|entry| entry.namespace == namespace)
+            .collect::<Vec<_>>();
+        entries.truncate(limit);
+        Ok(entries)
     }
 
     /// Recall memories with embedding vectors included.

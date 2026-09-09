@@ -15,6 +15,8 @@ pub mod health;
 pub mod history;
 pub mod hooks;
 pub mod identity;
+pub mod knowledge;
+mod knowledge_coordinator;
 pub mod observability;
 pub mod observer;
 pub mod parser;

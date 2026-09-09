@@ -41,6 +41,7 @@ pub mod registry;
 pub mod shell;
 pub mod skill_create;
 pub mod skill_tool;
+pub mod user_profile;
 pub mod util_helpers;
 pub mod web_fetch;
 pub mod web_search_provider_routing;
