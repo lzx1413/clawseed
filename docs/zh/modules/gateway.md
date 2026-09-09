@@ -98,6 +98,17 @@
 - `DELETE /api/users/me/profile/items/{id}` — 删除画像条目
 - `DELETE /api/users/me/profile` — 删除全部画像条目
 - `PUT /api/users/me/profile/import` — 使用 `replace`、`merge` 或 `append` 原子导入画像条目
+- `POST /api/users/me/profile/search` — 只读搜索画像并提供总结数据
+- `POST /api/users/me/profile/change-plans` — 创建带版本和过期时间的变更预览
+- `POST /api/users/me/profile/change-plans/{id}/apply` — 单次应用计划
+- `POST /api/users/me/profile/operations/{id}/undo` — 撤销保留期内的操作
+- `POST /api/users/me/knowledge/forget-plans` — 预览画像与记忆中的明确和可能匹配
+- `POST /api/users/me/knowledge/forget-plans/{id}/apply` — 执行显式跨库遗忘计划
+- `GET /api/users/me/knowledge/legacy-report` — 只读生成画像/Core 重复报告
+
+记忆接口接受 `namespace` 或 `persona` 查询字段。默认视图合并已配置的私有 namespace 与 `public`；任意未配置 namespace 返回 403。跨库遗忘使用本地 operation journal：中断在 `applying` 的操作会依据快照重试，记忆删除失败会补偿恢复，画像删除作为最后一次原子提交。
+
+画像计划绑定认证本地用户、预期画像版本、TTL 和单次执行状态。版本冲突返回 409，计划过期返回 410。
 
 当前本地 Gateway 将已认证连接映射到稳定的 `owner` 主体。会话首次使用时绑定所有者，
 之后不能重新分配。

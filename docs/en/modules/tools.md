@@ -153,3 +153,9 @@ impl Tool for MemoryStoreTool {
     }
 }
 ```
+
+## Profile Management Tools
+
+When the profile store is enabled, the registry adds `user_profile_search`, `user_profile_change_plan`, `user_profile_apply_plan`, and `user_profile_undo`. Search is read-only. Mutations first return a structured `ContentBlock::Profile` preview with before/after values and confirmation actions; apply checks identity, version, TTL, item limit, and single-use state. Successful apply returns an undo operation ID.
+
+These tools never accept `user_id` as a model-controlled argument. They read the authenticated `UserContext` from `ToolContext`. The structured presentation is client-facing only; plain `ToolResult.output` remains the model-facing result.

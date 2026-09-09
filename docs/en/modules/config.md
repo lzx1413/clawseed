@@ -269,6 +269,10 @@ max_prompt_items = 20
 auto_infer = false
 inference_min_confidence = 0.8
 max_inferred_items_per_turn = 3
+max_active_items_per_category = 20
+min_observations_for_implicit_fact = 2
+change_plan_ttl_minutes = 10
+undo_retention_hours = 24
 
 [autonomy]
 level = "supervised"
@@ -304,7 +308,10 @@ items injected into the Agent system prompt. `auto_infer` is an opt-in switch th
 low-temperature profile extraction after successful turns without delaying the response.
 Only non-sensitive items meeting `inference_min_confidence` are accepted, with at most
 `max_inferred_items_per_turn` writes per turn. Explicit, imported, and rejected items are
-never overwritten by inference.
+never overwritten by inference. `max_active_items_per_category` bounds label growth;
+`min_observations_for_implicit_fact` requires independent sessions before an implicit fact
+becomes active. Change plans expire after `change_plan_ttl_minutes`, and undo audit records
+are retained for `undo_retention_hours`.
 
 ### IdentityConfig — Identity Configuration
 

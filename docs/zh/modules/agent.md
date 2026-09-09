@@ -239,3 +239,11 @@ SystemPromptBuilder::with_defaults()
 | `history.rs` | 对话历史管理 |
 | `parser.rs` | 多格式工具调用解析（12+ 种 LLM 输出格式） |
 | `health.rs` | 健康检查存根 |
+
+## 回合后学习与上下文组装
+
+`turn` 与 `turn_streamed` 只在最终回复成功后各创建一次 `CompletedTurn`。失败、取消和截断续写的中间结果不会触发学习。`KnowledgeCoordinator` 通过有界、非阻塞队列接收完成回合，并可在关闭时排空已接收任务；Gateway 传输层不再进行第二次记忆写入。
+
+`KnowledgeRouter` 确定性地将用户文本分配给画像、记忆或丢弃。画像推断只接收用户文本，默认关闭，过滤敏感类别，并且不能覆盖 explicit、imported 或 rejected 值。画像 key 注册表规范化内置 key，并在保留恢复快照后迁移别名。
+
+`ContextAssembler` 将 active 且未过期的画像值视为用户属性权威来源，按类别优先级、来源、置信度、更新时间和类别配额选择。稳定 Core 与动态 Core 都排除和画像 key 相同或值完全相同的条目；动态召回还会在最终截断前排除已经进入稳定 Core 区的条目。

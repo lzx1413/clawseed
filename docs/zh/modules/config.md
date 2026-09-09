@@ -269,6 +269,10 @@ max_prompt_items = 20
 auto_infer = false
 inference_min_confidence = 0.8
 max_inferred_items_per_turn = 3
+max_active_items_per_category = 20
+min_observations_for_implicit_fact = 2
+change_plan_ttl_minutes = 10
+undo_retention_hours = 24
 
 [autonomy]
 level = "supervised"
@@ -304,6 +308,9 @@ config = { level = "info" }
 Agent 会在成功回合结束后以后台低温模型调用提取画像，不延迟主回复。系统只接受达到
 `inference_min_confidence` 的非敏感条目，每轮最多写入
 `max_inferred_items_per_turn` 条，且不会覆盖 explicit、imported 或 rejected 条目。
+`max_active_items_per_category` 限制每类标签增长；`min_observations_for_implicit_fact`
+要求隐式事实先在独立会话中重复出现。变更计划在 `change_plan_ttl_minutes` 后过期，
+撤销审计记录保留 `undo_retention_hours`。
 
 ### IdentityConfig — 身份配置
 

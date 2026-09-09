@@ -4,6 +4,16 @@
 
 `clawseed-memory` 提供 SQLite 支持的记忆存储，具备混合搜索（BM25 关键词 + 向量嵌入）、Reciprocal Rank Fusion (RRF) 排序、多信号冲突检测、延迟嵌入、LLM 驱动的记忆策展人、文本分块和生命周期管理（整合、卫生、快照）。
 
+## Namespace 作用域与 schema v2
+
+记忆的身份由 `(namespace, key)` 共同确定。schema v2 将旧版全局 key 唯一约束改为 `UNIQUE(namespace, key)`，并在同一受检事务中重建 FTS 索引。打开旧数据库时会校验行数、ID、非空 namespace 和 FTS 完整性；迁移失败会停止初始化，不会静默切换到其他后端继续写入。
+
+作用域读取使用 `MemoryScope` 和 `MemoryQuery`。SQLite 在结果截断前应用 namespace、category、session、时间范围、排除项和最低相关度，覆盖 BM25、向量和 LIKE 兜底路径。get、forget、list、export、purge、top Core 和冲突处理也遵循相同作用域。`NamespacedMemory` 只暴露自身私有 namespace 与 `public`，不会读取其他 Persona 的 namespace。
+
+`memory.namespace` 选择全局 Agent 的记忆 namespace；`agents.<name>.memory_namespace` 为该 Persona 覆盖此值。两者都不是 session ID。
+
+`memory.auto_save` 只整合由知识路由选中且成功完成的回合。原始用户消息仅保存在会话历史中，不再复制到 `brain.db`。长期用户属性和回答偏好属于用户画像；项目事件、决策与执行结果属于记忆。
+
 ## 架构
 
 ```
@@ -62,16 +72,18 @@ pub trait Memory: Send + Sync {
     fn name(&self) -> &str;
     async fn store(&self, key: &str, content: &str, category: MemoryCategory, session_id: Option<&str>) -> Result<()>;
     async fn store_with_metadata(&self, key: &str, content: &str, category: MemoryCategory,
-                                  session_id: Option<&str>, namespace: &str, importance: Option<f64>) -> Result<()>;
+                                  session_id: Option<&str>, namespace: Option<&str>, importance: Option<f64>) -> Result<()>;
     async fn get(&self, key: &str) -> Result<Option<MemoryEntry>>;
+    async fn get_scoped(&self, scope: MemoryScope<'_>, key: &str) -> Result<Option<MemoryEntry>>;
     async fn recall(&self, query: &str, limit: usize, session_id: Option<&str>,
                     since: Option<&str>, until: Option<&str>, search_mode: Option<SearchMode>) -> Result<Vec<MemoryEntry>>;
     async fn recall_with_embeddings(&self, query: &str, limit: usize, session_id: Option<&str>,
                                      since: Option<&str>, until: Option<&str>, search_mode: Option<SearchMode>) -> Result<Vec<MemoryEntry>>;
-    async fn recall_namespaced(&self, namespace: &str, query: &str, limit: usize, session_id: Option<&str>,
-                                since: Option<&str>, until: Option<&str>, search_mode: Option<SearchMode>) -> Result<Vec<MemoryEntry>>;
+    async fn recall_scoped(&self, query: MemoryQuery<'_>) -> Result<Vec<MemoryEntry>>;
     async fn list(&self, category: Option<&MemoryCategory>, session_id: Option<&str>) -> Result<Vec<MemoryEntry>>;
+    async fn list_scoped(&self, scope: MemoryScope<'_>, category: Option<&MemoryCategory>) -> Result<Vec<MemoryEntry>>;
     async fn forget(&self, key: &str) -> Result<bool>;
+    async fn forget_scoped(&self, scope: MemoryScope<'_>, key: &str) -> Result<bool>;
     async fn purge_namespace(&self, namespace: &str) -> Result<usize>;
     async fn purge_session(&self, session_id: &str) -> Result<usize>;
     async fn count(&self) -> Result<usize>;
@@ -96,7 +108,7 @@ pub trait Memory: Send + Sync {
 
 **PRAGMA 调优**：WAL 模式（并发读）、`synchronous=NORMAL`（2× 写速度）、`mmap_size=8MB`、`cache_size=-2000`、`temp_store=MEMORY`。
 
-**迁移系统**：每次打开时自动升级——添加缺失列（`session_id`、`namespace`、`importance`、`superseded_by`、`embedding_content_hash`），回填已有行的 `embedding_content_hash`。幂等且可重复执行。
+**迁移系统**：每次打开时自动升级。schema v2 在事务中围绕 `(namespace, key)` 重建旧存储、回填元数据并重建 FTS，提交前校验数据和索引完整性。迁移幂等，失败时停止初始化。
 
 ### retrieval.rs — 多阶段检索管线
 

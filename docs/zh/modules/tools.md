@@ -153,3 +153,9 @@ impl Tool for MemoryStoreTool {
     }
 }
 ```
+
+## 画像管理工具
+
+启用画像存储后，注册表会加入 `user_profile_search`、`user_profile_change_plan`、`user_profile_apply_plan` 和 `user_profile_undo`。搜索只读；写操作先返回结构化 `ContentBlock::Profile` 预览，包含变更前后值和确认动作。应用时校验身份、版本、TTL、条目上限和单次执行状态，成功后返回可撤销的 operation ID。
+
+这些工具不接受模型可控的 `user_id` 参数，而是从 `ToolContext` 读取认证 `UserContext`。结构化 presentation 只供客户端展示；普通 `ToolResult.output` 仍是提供给模型的结果。

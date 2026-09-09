@@ -101,6 +101,17 @@ request/response shapes, or authentication behavior.
 - `DELETE /api/users/me/profile/items/{id}` — Delete a profile item
 - `DELETE /api/users/me/profile` — Delete all profile items
 - `PUT /api/users/me/profile/import` — Atomically import profile items with `replace`, `merge`, or `append`
+- `POST /api/users/me/profile/search` — Read-only profile search and summary input
+- `POST /api/users/me/profile/change-plans` — Create a versioned, expiring change preview
+- `POST /api/users/me/profile/change-plans/{id}/apply` — Apply a plan once
+- `POST /api/users/me/profile/operations/{id}/undo` — Undo a retained operation
+- `POST /api/users/me/knowledge/forget-plans` — Preview exact and possible profile/memory matches
+- `POST /api/users/me/knowledge/forget-plans/{id}/apply` — Apply an explicit cross-store forget plan
+- `GET /api/users/me/knowledge/legacy-report` — Read-only profile/Core duplicate report
+
+Memory endpoints accept `namespace` or `persona` query fields. The default view combines the configured private namespace and `public`; an arbitrary unconfigured namespace is rejected with 403. Cross-store forget plans use a local operation journal. An interrupted `applying` operation is retried from its snapshots, memory deletion is compensated on failure, and profile deletion is the final atomic commit.
+
+Profile plans are bound to the authenticated local user, expected profile version, TTL, and single-use state. Version conflicts return 409 and expired plans return 410.
 
 The current local gateway maps authenticated connections to the stable `owner`
 principal. Session ownership is bound on first use and cannot be reassigned.

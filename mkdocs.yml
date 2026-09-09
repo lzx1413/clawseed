@@ -10,6 +10,7 @@ docs_dir: docs
 exclude_docs: |
   council-mode-plan.md
   memory-upgrade-plan.md
+  user-profile-memory-development-plan.md
 
 theme:
   name: material

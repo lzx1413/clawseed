@@ -250,3 +250,11 @@ See [Personality & Identity Tutorial](../tutorials/personality-and-identity.md) 
 | `history.rs` | Conversation history management |
 | `parser.rs` | Multi-format tool call parsing (12+ LLM output formats) |
 | `health.rs` | Health check stubs |
+
+## Post-Turn Learning and Context Assembly
+
+Both `turn` and `turn_streamed` create one `CompletedTurn` only after a final successful response. Failed, cancelled, and intermediate truncated responses do not learn. `KnowledgeCoordinator` accepts completed turns through a bounded non-blocking queue and can drain accepted work during shutdown. Gateway transports do not perform a second memory write.
+
+`KnowledgeRouter` deterministically assigns user text to profile, memory, or drop. Profile inference receives only user text, remains disabled by default, filters sensitive categories, and cannot replace explicit, imported, or rejected values. The profile key registry canonicalizes built-in keys and migrates aliases while retaining recovery snapshots.
+
+`ContextAssembler` treats active, unexpired profile values as authoritative for user attributes. It selects them by category priority, provenance, confidence, recency, and per-category quota. Stable and dynamic Core memory exclude matching profile keys or exact values; dynamic recall also excludes entries already present in the stable Core section before applying the final limit.

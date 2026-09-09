@@ -4,6 +4,16 @@
 
 `clawseed-memory` provides SQLite-backed memory storage with hybrid search (BM25 keyword + vector embeddings), Reciprocal Rank Fusion (RRF) ranking, multi-signal conflict detection, deferred embedding, LLM-driven curator, text chunking, and lifecycle management (consolidation, hygiene, snapshot).
 
+## Namespace Scope and Schema v2
+
+Memory identity is the pair `(namespace, key)`. Schema v2 replaces the legacy global key constraint with `UNIQUE(namespace, key)` and rebuilds the FTS index in the same checked transaction. Opening a legacy database verifies row counts, IDs, non-null namespaces, and FTS integrity; migration failure stops initialization instead of silently switching to another backend.
+
+Use `MemoryScope` and `MemoryQuery` for scoped reads. Namespace, category, session, time range, exclusions, and minimum relevance are applied by SQLite before the result limit for BM25, vector, and LIKE fallback paths. Scoped behavior also applies to get, forget, list, export, purge, top-Core selection, and conflict resolution. `NamespacedMemory` exposes its private namespace plus `public`; it never exposes another persona's namespace.
+
+`memory.namespace` selects the global agent's memory namespace. A persona's `agents.<name>.memory_namespace` overrides it for that persona. Neither setting is a session ID.
+
+`memory.auto_save` consolidates only a successfully completed turn selected by the knowledge router. Raw user messages remain in session history and are not copied to `brain.db`. Durable user attributes and response preferences belong to the user profile, while project events, decisions, and results belong to memory.
+
 ## Architecture
 
 ```
@@ -62,16 +72,18 @@ pub trait Memory: Send + Sync {
     fn name(&self) -> &str;
     async fn store(&self, key: &str, content: &str, category: MemoryCategory, session_id: Option<&str>) -> Result<()>;
     async fn store_with_metadata(&self, key: &str, content: &str, category: MemoryCategory,
-                                  session_id: Option<&str>, namespace: &str, importance: Option<f64>) -> Result<()>;
+                                  session_id: Option<&str>, namespace: Option<&str>, importance: Option<f64>) -> Result<()>;
     async fn get(&self, key: &str) -> Result<Option<MemoryEntry>>;
+    async fn get_scoped(&self, scope: MemoryScope<'_>, key: &str) -> Result<Option<MemoryEntry>>;
     async fn recall(&self, query: &str, limit: usize, session_id: Option<&str>,
                     since: Option<&str>, until: Option<&str>, search_mode: Option<SearchMode>) -> Result<Vec<MemoryEntry>>;
     async fn recall_with_embeddings(&self, query: &str, limit: usize, session_id: Option<&str>,
                                      since: Option<&str>, until: Option<&str>, search_mode: Option<SearchMode>) -> Result<Vec<MemoryEntry>>;
-    async fn recall_namespaced(&self, namespace: &str, query: &str, limit: usize, session_id: Option<&str>,
-                                since: Option<&str>, until: Option<&str>, search_mode: Option<SearchMode>) -> Result<Vec<MemoryEntry>>;
+    async fn recall_scoped(&self, query: MemoryQuery<'_>) -> Result<Vec<MemoryEntry>>;
     async fn list(&self, category: Option<&MemoryCategory>, session_id: Option<&str>) -> Result<Vec<MemoryEntry>>;
+    async fn list_scoped(&self, scope: MemoryScope<'_>, category: Option<&MemoryCategory>) -> Result<Vec<MemoryEntry>>;
     async fn forget(&self, key: &str) -> Result<bool>;
+    async fn forget_scoped(&self, scope: MemoryScope<'_>, key: &str) -> Result<bool>;
     async fn purge_namespace(&self, namespace: &str) -> Result<usize>;
     async fn purge_session(&self, session_id: &str) -> Result<usize>;
     async fn count(&self) -> Result<usize>;
@@ -96,7 +108,7 @@ pub trait Memory: Send + Sync {
 
 **PRAGMA Tuning**: WAL mode (concurrent reads), `synchronous=NORMAL` (2× write speed), `mmap_size=8MB`, `cache_size=-2000`, `temp_store=MEMORY`.
 
-**Migration System**: Auto-upgrades on every open — adds missing columns (`session_id`, `namespace`, `importance`, `superseded_by`, `embedding_content_hash`), backfills `embedding_content_hash` for existing rows. Idempotent and safe to re-run.
+**Migration System**: Auto-upgrades on every open. Schema v2 transactionally rebuilds legacy storage around `(namespace, key)`, backfills metadata, rebuilds FTS, and verifies data and index integrity before committing. It is idempotent and fails closed.
 
 ### retrieval.rs — Multi-Stage Retrieval Pipeline
 

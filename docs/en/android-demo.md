@@ -426,3 +426,13 @@ Colors are centralized in `ui/theme/AppColors.kt`: neutral gray surfaces, warm g
 ## Soul Customization
 
 The settings UI includes a dedicated Soul editor that reads and writes workspace personality files (SOUL.md, etc.) via the `/api/personality` API endpoint. Only files in the allowlist can be edited. The Gateway restarts automatically after saving to apply personality changes.
+
+## Profile and Memory Management
+
+Settings opens a unified "What the assistant remembers" screen with About me and Memory tabs. About me supports category, inferred-source, and rejected-status filters; multi-select delete/reject; delete-all-inferred; expiring change previews; conflict refresh; and one-tap undo after apply. Pending plan identity is retained across activity recreation, but a plan is never applied automatically. Memory entries show category and namespace so persona scope remains visible.
+
+Profile tool results in chat use the same structured preview and action controls instead of parsing model text. Destructive operations require confirmation.
+
+Profile and memory data are personal data. Privacy-filtered exports exclude both `USER_PROFILE` and `MEMORY`. Full archives may include both in plaintext and must be stored and shared accordingly; an in-place app upgrade never requires clearing app data or restoring an archive.
+
+On Android 16, the app requests `NEARBY_WIFI_DEVICES` before starting the embedded loopback gateway. Android 16 uses this permission when its opt-in local-network protection is active; without it, opening the local listener can fail with `EPERM`.
