@@ -382,15 +382,29 @@ impl OpenAiCompatibleProvider {
 #[async_trait]
 impl Provider for OpenAiCompatibleProvider {
     fn supports_image_attachments(&self, model: &str) -> bool {
-        // Android settings persist providers as custom:<base_url>, so the
-        // display name alone cannot identify the DeepSeek protocol endpoint.
+        self.image_attachment_support(model).unwrap_or(false)
+    }
+
+    fn image_attachment_support(&self, model: &str) -> Option<bool> {
+        if self.effective_merge_system(model) {
+            return Some(false);
+        }
+        if let Some((configured_model, enabled)) = &self.vision_override
+            && configured_model == model
+        {
+            return Some(*enabled);
+        }
+        // Compatibility for existing configurations. Unknown models require
+        // an explicit setting until provider metadata discovery is available.
         let is_deepseek = self.name.eq_ignore_ascii_case("deepseek")
             || reqwest::Url::parse(&self.base_url).is_ok_and(|url| {
                 url.scheme() == "https" && url.host_str() == Some("api.deepseek.com")
             });
-        is_deepseek
-            && model == "deepseek-v4-flash-vision-exp"
-            && !self.effective_merge_system(model)
+        if is_deepseek && model == "deepseek-v4-flash-vision-exp" {
+            Some(true)
+        } else {
+            None
+        }
     }
 
     fn capabilities(&self) -> clawseed_api::provider::ProviderCapabilities {

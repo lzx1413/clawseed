@@ -496,6 +496,11 @@ pub trait Provider: Send + Sync {
         self.capabilities().vision
     }
 
+    /// Effective image support; None means the model capability is unknown.
+    fn image_attachment_support(&self, model: &str) -> Option<bool> {
+        Some(self.supports_image_attachments(model))
+    }
+
     /// Structured attachment support is opt-in for a specific model.
     fn supports_image_attachments(&self, _model: &str) -> bool {
         false
@@ -602,6 +607,10 @@ impl<T: Provider + ?Sized> Provider for Arc<T> {
     }
     fn supports_vision(&self) -> bool {
         self.as_ref().supports_vision()
+    }
+
+    fn image_attachment_support(&self, model: &str) -> Option<bool> {
+        self.as_ref().image_attachment_support(model)
     }
 
     fn supports_image_attachments(&self, model: &str) -> bool {

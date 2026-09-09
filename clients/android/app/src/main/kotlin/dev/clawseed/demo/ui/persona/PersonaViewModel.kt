@@ -21,6 +21,7 @@ data class PersonaDraft(
     val systemPrompt: String = "",
     val model: String = "",
     val thinkingEnabled: Boolean? = null,
+    val vision: String? = null,
     val avatar: String = "",
     val color: String = "",
     val memoryMode: String = "shared",
@@ -178,6 +179,7 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             systemPrompt = systemPrompt ?: identity?.toString().orEmpty(),
             model = model.orEmpty(),
             thinkingEnabled = thinkingEnabled,
+            vision = vision,
             avatar = avatar.orEmpty(),
             color = color.orEmpty(),
             memoryMode = if (ns.isBlank()) "shared" else "isolated",
@@ -200,6 +202,7 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             deniedSkills = deniedSkills.sorted(),
             model = model.trim().ifEmpty { null },
             thinkingEnabled = thinkingEnabled,
+            vision = vision,
             avatar = avatar.trim().ifEmpty { null },
             color = color.trim().ifEmpty { null },
         )
@@ -212,6 +215,7 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             || deniedSkills.isNotEmpty()
             || model.isNotBlank()
             || thinkingEnabled != null
+            || vision != null
             || avatar.isNotBlank()
             || color.isNotBlank()
 

@@ -115,6 +115,7 @@ pub async fn handle_api_personas_list(
                 "denied_skills": entry.denied_skills,
                 "model": entry.model,
                 "thinking_enabled": entry.thinking_enabled,
+                "vision": entry.vision,
                 "avatar": entry.avatar,
                 "color": entry.color,
             })
@@ -156,6 +157,7 @@ pub async fn handle_api_persona_get(
         "denied_skills": entry.denied_skills,
         "model": entry.model,
         "thinking_enabled": entry.thinking_enabled,
+                "vision": entry.vision,
         "avatar": entry.avatar,
         "color": entry.color,
     }))
@@ -186,6 +188,8 @@ pub struct PersonaPutBody {
     #[serde(default)]
     pub thinking_enabled: Option<bool>,
     #[serde(default)]
+    pub vision: Option<clawseed_config::schema::VisionMode>,
+    #[serde(default)]
     pub avatar: Option<String>,
     #[serde(default)]
     pub color: Option<String>,
@@ -215,6 +219,7 @@ pub async fn handle_api_persona_put(
         denied_skills: body.denied_skills,
         model: body.model,
         thinking_enabled: body.thinking_enabled,
+        vision: body.vision,
         avatar: body.avatar,
         color: body.color,
     };

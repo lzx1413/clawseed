@@ -408,6 +408,7 @@ fun ChatScreen(
                 canSend = sessionSwitchReady,
                 modifier = Modifier.imePadding(),
                 hasImages = selectedImages.isNotEmpty(),
+                canPickImages = uiState.imageAttachmentsSupported,
                 onPickImages = imageTarget?.let { target -> { pickerTarget = target; imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } },
                 imageDrafts = {
                     if (imageTarget != null) dev.clawseed.demo.ui.chat.components.DraftImageStrip(

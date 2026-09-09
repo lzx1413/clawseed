@@ -477,4 +477,14 @@
     <string name="data_clear_media_cache">Clear media cache</string>
     <string name="data_media_cache_cleared">Media cache cleared</string>
     <string name="data_media_cache_clear_failed">Could not clear media cache</string>
+    <string name="settings_vision">Vision</string>
+    <string name="settings_vision_auto">Auto</string>
+    <string name="settings_vision_on">On</string>
+    <string name="settings_vision_off">Off</string>
+    <string name="settings_vision_inherit">Inherit</string>
+    <string name="settings_vision_hint">Auto uses known model capabilities. If unknown, enable vision manually for models that accept images.</string>
+    <string name="settings_vision_persona_hint">Inherit uses the global setting only for the same model; a different model uses Auto. Unknown or unsupported vision disables attachments.</string>
+    <string name="settings_vision_supported">Current model: vision supported</string>
+    <string name="settings_vision_unsupported">Current model: vision unavailable</string>
+    <string name="settings_vision_unknown">Vision capability unknown; configure manually if needed</string>
 </resources>

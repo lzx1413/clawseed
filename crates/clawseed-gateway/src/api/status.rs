@@ -70,6 +70,11 @@ pub async fn handle_api_status(
         "model": model,
         "image_attachments": {
             "supported": state.session_backend.is_some(),
+            "model_support": match state.provider.image_attachment_support(&model) {
+                Some(true) => "supported",
+                Some(false) => "unsupported",
+                None => "unknown",
+            },
             "max_images_per_message": crate::session_attachments::MAX_MESSAGE_IMAGES,
             "max_image_bytes": crate::session_attachments::MAX_IMAGE_BYTES,
             "max_dimension": crate::session_attachments::MAX_IMAGE_DIMENSION,

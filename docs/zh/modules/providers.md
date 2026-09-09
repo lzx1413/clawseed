@@ -190,3 +190,14 @@ provider_backoff_ms = 500
 首个支持组合为 `deepseek` / `deepseek-v4-flash-vision-exp`。Android 保存的 `custom:` Provider 若指向官方 `https://api.deepseek.com` 地址（包括 `/v1`），同样识别为支持的组合。按模型检查附件能力，不使用 Provider 级 vision 标志推断全部模型可用；重试和回退不能通过不兼容模型静默丢图。兼容协议在请求边界读取已授权附件，复用 `text` + `image_url` 内容块，覆盖流式和工具后续请求。
 
 产品预算优先保留最近完整图片消息：单次上下文最多 8 张、图片总字节最多 20 MiB，与文本 token 估算分开；请求预算 32 MiB 包括 Base64 膨胀。不会修改持久历史。结构化附件读取器不允许正文中的旧图片标记获得文件读取权限。上游限制见 [DeepSeek 图像理解文档](https://api-docs.deepseek.com/zh-cn/guides/vision/)，不要把产品限制当作官方上限。
+
+### 模型视觉能力覆盖
+
+在 `[providers.models.NAME]` 中设置 `vision = "auto" | "enabled" | "disabled"`，
+默认值为 `auto`。设置仅作用于该配置的模型，不会自动允许备用模型接收图片。
+`[agents.NAME].vision` 接受相同值；省略时仅在分身使用同一模型的情况下继承。
+手动开启也不能绕过不支持图片的请求格式，例如合并系统消息的模式。
+
+`/api/status.image_attachments.model_support` 区分 `supported`、`unsupported` 和
+`unknown`。会话握手返回当前分身的实际能力；状态接口的
+`image_attachments.supported` 仍表示图片存储能力。

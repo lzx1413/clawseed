@@ -248,6 +248,7 @@ fn make_config(api_addr: std::net::SocketAddr) -> clawseed_config::schema::Confi
     config.providers.models.insert(
         "openai".into(),
         clawseed_config::schema::ModelProviderConfig {
+            vision: Default::default(),
             api_key: Some("test-key".into()),
             base_url: Some(format!("http://{api_addr}/v1")),
             model: Some("test-model".into()),
@@ -1231,4 +1232,85 @@ async fn ws_image_upload_followup_regenerate_and_resume() {
     drop(requests);
     gateway_task.abort();
     api_task.abort();
+}
+
+#[tokio::test]
+async fn ws_persona_image_capability_uses_effective_model_and_saved_binding() {
+    use clawseed_config::schema::{AgentEntryConfig, VisionMode};
+    let tmp = tempfile::tempdir().unwrap();
+    let mut config = make_config("127.0.0.1:1".parse().unwrap());
+    config.workspace_dir = tmp.path().to_path_buf();
+    config.user_model.enabled = false;
+    config.providers.models.get_mut("openai").unwrap().vision = VisionMode::Enabled;
+    for (name, model, vision) in [
+        ("inherited", None, None),
+        ("text", Some("text-model"), Some(VisionMode::Disabled)),
+        ("unknown", Some("new-model"), None),
+        ("vision", Some("other-vision"), Some(VisionMode::Enabled)),
+    ] {
+        config.agents.insert(
+            name.into(),
+            AgentEntryConfig {
+                system_prompt: Some("Test persona".into()),
+                model: model.map(String::from),
+                vision,
+                ..Default::default()
+            },
+        );
+    }
+    let options = clawseed_providers::provider_runtime_options_from_config(&config);
+    let mut state = test_app_state(config, None);
+    state.model = "test-model".into();
+    state.provider = Arc::from(
+        clawseed_providers::create_resilient_provider_with_options(
+            "openai",
+            None,
+            Some("http://127.0.0.1:1/v1"),
+            &Default::default(),
+            &options,
+        )
+        .unwrap(),
+    );
+    state.session_backend = Some(Arc::new(
+        clawseed_gateway::session_sqlite::SqliteSessionBackend::new(tmp.path()).unwrap(),
+    ));
+    let app = Router::new()
+        .route("/ws/chat", get(handle_ws_chat))
+        .with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    for (persona, expected, support) in [
+        ("inherited", true, "supported"),
+        ("text", false, "unsupported"),
+        ("unknown", false, "unknown"),
+        ("vision", true, "supported"),
+    ] {
+        let (socket, _) = connect_async(format!(
+            "ws://{addr}/ws/chat?session_id={persona}-test&persona={persona}"
+        ))
+        .await
+        .unwrap();
+        let (mut tx, mut rx) = socket.split();
+        let started = expect_msg_type(&mut rx, "session_start").await;
+        assert_eq!(
+            started["image_attachments_supported"], expected,
+            "{persona}"
+        );
+        assert_eq!(started["image_model_support"], support);
+        let id = started["session_id"].as_str().unwrap().to_string();
+        tx.close().await.unwrap();
+        // Resume cannot replace a text-only persona with a vision persona.
+        let (socket, _) = connect_async(format!(
+            "ws://{addr}/ws/chat?session_id={id}&persona=vision"
+        ))
+        .await
+        .unwrap();
+        let (mut tx, mut rx) = socket.split();
+        let resumed = expect_msg_type(&mut rx, "session_start").await;
+        assert_eq!(resumed["persona"], persona);
+        assert_eq!(resumed["image_attachments_supported"], expected);
+        tx.close().await.unwrap();
+    }
+    task.abort();
 }

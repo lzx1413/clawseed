@@ -70,7 +70,7 @@ pub fn create_resilient_provider_with_registry(
         if let Some(extra) = options.provider_extra.clone() {
             p = p.with_provider_extra(extra);
         }
-        Box::new(p)
+        Box::new(p.with_image_options(options))
     };
 
     // Wrap in ReliableProvider with retry/backoff and extra API keys.

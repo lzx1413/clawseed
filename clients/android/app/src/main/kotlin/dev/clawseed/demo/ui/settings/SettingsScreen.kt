@@ -213,6 +213,7 @@ fun SettingsScreen(
                     onFetchModels = viewModel::fetchModels,
                     onSelectModel = viewModel::selectModel,
                     onToggleThinking = viewModel::toggleThinking,
+                    onVisionChange = viewModel::updateVision,
                     onUpdateMaxTokens = viewModel::updateMaxTokens,
                     onToggleAutoContinue = viewModel::toggleAutoContinueOnTruncation,
                 )
@@ -953,6 +954,7 @@ private fun ProviderFormEditor(
     onFetchModels: () -> Unit,
     onSelectModel: (String) -> Unit,
     onToggleThinking: (Boolean) -> Unit,
+    onVisionChange: (String) -> Unit,
     onUpdateMaxTokens: (String) -> Unit,
     onToggleAutoContinue: (Boolean) -> Unit,
 ) {
@@ -1127,11 +1129,26 @@ private fun ProviderFormEditor(
                 )
             }
 
-            Text(
-                text = if (state.selectedModel == "deepseek-v4-flash-vision-exp") "此模型支持图片对话（实验模型）" else "图片对话目前支持 DeepSeek deepseek-v4-flash-vision-exp；其他模型将拒绝图片输入。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            dev.clawseed.demo.ui.components.VisionModeSelector(
+                value = state.vision,
+                onChange = { onVisionChange(it ?: "auto") },
             )
+
+            if (state.vision == "auto") {
+                val status = state.status
+                val support = if (status?.model == state.selectedModel &&
+                    status.provider == "custom:${state.baseUrl.trimEnd('/')}"
+                ) status.imageAttachments.modelSupport else "unknown"
+                Text(
+                    stringResource(when (support) {
+                        "supported" -> R.string.settings_vision_supported
+                        "unsupported" -> R.string.settings_vision_unsupported
+                        else -> R.string.settings_vision_unknown
+                    }),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 

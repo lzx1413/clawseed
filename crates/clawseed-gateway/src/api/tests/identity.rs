@@ -28,6 +28,7 @@ async fn persona_api_round_trips_model_thinking_and_visuals() {
             denied_skills: vec!["skill-a".to_string()],
             model: Some("gpt-4.1-mini".to_string()),
             thinking_enabled: Some(true),
+            vision: Some(clawseed_config::schema::VisionMode::Disabled),
             avatar: Some("译".to_string()),
             color: Some("#0F766E".to_string()),
         }),
@@ -56,6 +57,7 @@ async fn persona_api_round_trips_model_thinking_and_visuals() {
     assert_eq!(detail["denied_skills"][0], "skill-a");
     assert_eq!(detail["model"], "gpt-4.1-mini");
     assert_eq!(detail["thinking_enabled"], true);
+    assert_eq!(detail["vision"], "disabled");
     assert_eq!(detail["avatar"], "译");
     assert_eq!(detail["color"], "#0F766E");
 
@@ -72,6 +74,7 @@ async fn persona_api_round_trips_model_thinking_and_visuals() {
         .expect("translator persona");
     assert_eq!(persona["model"], "gpt-4.1-mini");
     assert_eq!(persona["thinking_enabled"], true);
+    assert_eq!(persona["vision"], "disabled");
     assert_eq!(persona["avatar"], "译");
     assert_eq!(persona["color"], "#0F766E");
 }

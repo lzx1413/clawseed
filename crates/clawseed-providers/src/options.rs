@@ -9,6 +9,8 @@ use crate::aliases::{
 
 #[derive(Debug, Clone)]
 pub struct ProviderRuntimeOptions {
+    pub vision: clawseed_config::schema::VisionMode,
+    pub vision_model: Option<String>,
     pub auth_profile_override: Option<String>,
     pub provider_api_url: Option<String>,
     pub clawseed_dir: Option<PathBuf>,
@@ -38,6 +40,8 @@ pub struct ProviderRuntimeOptions {
 impl Default for ProviderRuntimeOptions {
     fn default() -> Self {
         Self {
+            vision: Default::default(),
+            vision_model: None,
             auth_profile_override: None,
             provider_api_url: None,
             clawseed_dir: None,
@@ -79,6 +83,8 @@ pub fn provider_runtime_options_from_config(
         .unwrap_or(false);
 
     ProviderRuntimeOptions {
+        vision: fallback.map(|p| p.vision).unwrap_or_default(),
+        vision_model: fallback.and_then(|p| p.model.clone()),
         auth_profile_override: None,
         provider_api_url: fallback.and_then(|e| e.base_url.clone()),
         clawseed_dir: config.config_path.parent().map(PathBuf::from),

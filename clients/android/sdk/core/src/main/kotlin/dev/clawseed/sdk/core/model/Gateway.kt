@@ -52,6 +52,7 @@ data class PersonaInfo(
     @SerialName("denied_skills") val deniedSkills: List<String> = emptyList(),
     val model: String? = null,
     @SerialName("thinking_enabled") val thinkingEnabled: Boolean? = null,
+    val vision: String? = null,
     val avatar: String? = null,
     val color: String? = null,
 )
@@ -71,6 +72,7 @@ data class PersonaDetail(
     @SerialName("denied_skills") val deniedSkills: List<String> = emptyList(),
     val model: String? = null,
     @SerialName("thinking_enabled") val thinkingEnabled: Boolean? = null,
+    val vision: String? = null,
     val avatar: String? = null,
     val color: String? = null,
 )
@@ -86,6 +88,7 @@ data class PersonaUpsert(
     @SerialName("denied_skills") val deniedSkills: List<String> = emptyList(),
     val model: String? = null,
     @SerialName("thinking_enabled") val thinkingEnabled: Boolean? = null,
+    val vision: String? = null,
     val avatar: String? = null,
     val color: String? = null,
 )

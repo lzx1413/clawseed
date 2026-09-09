@@ -439,6 +439,19 @@ On Android 16, the app requests `NEARBY_WIFI_DEVICES` before starting the embedd
 
 ## Image conversations
 
-Configure DeepSeek with model `deepseek-v4-flash-vision-exp`. In a connected chat, use **添加图片** to choose up to four gallery images, inspect thumbnails, remove an image, or retry a failed upload. Send images alone or with text. Tap a sent image to open it and pinch to zoom. Older gateways report unsupported image uploads.
+Configure DeepSeek with model `deepseek-v4-flash-vision-exp`. In a connected chat, use the **attachment icon inside the input field** to choose up to four gallery images, inspect thumbnails, remove an image, or retry a failed upload. Send images alone or with text. Tap a sent image to open it and pinch to zoom. Older gateways report unsupported image uploads.
 
 Draft copies are stored in app files and scoped to the gateway URL and session. Orientation is corrected; large images are downscaled and encoded as PNG to preserve screenshot text where possible. GIF selection uses a still frame. Failed turns retain image drafts for retry, including after process restart. Sent image history is fetched with the session's gateway authentication and survives gateway/app restarts. When earlier images leave the model context, a chat notice asks you to attach them again if needed; they remain viewable.
+
+### Vision configuration
+
+LLM settings expose `auto`, `enabled`, and `disabled` vision modes. Existing
+profiles default to `auto`; the legacy DeepSeek vision model remains recognized.
+Other unknown models require an explicit setting in this first phase (provider
+metadata discovery and image probes are not yet implemented).
+
+Personas can inherit or override vision independently. Inheritance applies only
+to the same model; changing the model resets capability to automatic. The chat
+attachment icon is disabled unless the effective session provider supports
+images. The gateway sends this decision in `session_start`, including on resume,
+and enforces it when processing images. Persona changes apply on new connections.

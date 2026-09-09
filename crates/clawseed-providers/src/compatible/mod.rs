@@ -17,6 +17,7 @@ pub struct OpenAiCompatibleProvider {
     pub base_url: String,
     pub credential: Option<String>,
     pub auth_header: AuthStyle,
+    vision_override: Option<(String, bool)>,
     supports_vision: bool,
     /// When false, do not fall back to /v1/responses on chat completions 404.
     /// GLM/Zhipu does not support the responses API.
@@ -166,6 +167,7 @@ impl OpenAiCompatibleProvider {
             base_url: base_url.trim_end_matches('/').to_string(),
             credential: credential.map(ToString::to_string),
             auth_header: auth_style,
+            vision_override: None,
             supports_vision,
             supports_responses_fallback,
             user_agent: user_agent.map(ToString::to_string),
@@ -178,6 +180,24 @@ impl OpenAiCompatibleProvider {
             max_tokens: None,
             provider_extra: None,
         }
+    }
+
+    /// Apply a model-scoped override without enabling unimplemented wire formats.
+    pub fn with_image_options(mut self, options: &crate::ProviderRuntimeOptions) -> Self {
+        use clawseed_config::schema::VisionMode;
+        self.vision_override =
+            options
+                .vision_model
+                .as_ref()
+                .and_then(|model| match options.vision {
+                    VisionMode::Auto => None,
+                    VisionMode::Enabled => Some((model.clone(), true)),
+                    VisionMode::Disabled => Some((model.clone(), false)),
+                });
+        if options.merge_system_into_user {
+            self.merge_system_into_user = true;
+        }
+        self
     }
 
     /// Disable native tool calling, forcing prompt-guided tool use instead.
@@ -2386,6 +2406,53 @@ mod attachment_capability_tests {
 
     fn make_provider(name: &str, url: &str, key: Option<&str>) -> OpenAiCompatibleProvider {
         OpenAiCompatibleProvider::new(name, url, key, AuthStyle::Bearer)
+    }
+
+    #[test]
+    fn explicit_vision_is_model_scoped_and_respects_transport() {
+        use clawseed_config::schema::VisionMode;
+        for name in ["openai", "custom:https://proxy.example/v1"] {
+            for (mode, expected) in [
+                (VisionMode::Auto, None),
+                (VisionMode::Enabled, Some(true)),
+                (VisionMode::Disabled, Some(false)),
+            ] {
+                let options = crate::ProviderRuntimeOptions {
+                    vision: mode,
+                    vision_model: Some("private-model".into()),
+                    ..Default::default()
+                };
+                let provider = crate::create_resilient_provider_with_options(
+                    name,
+                    None,
+                    Some("https://proxy.example/v1"),
+                    &Default::default(),
+                    &options,
+                )
+                .unwrap();
+                assert_eq!(provider.image_attachment_support("private-model"), expected);
+                assert_eq!(
+                    provider.supports_image_attachments("private-model"),
+                    expected == Some(true)
+                );
+                assert_eq!(provider.image_attachment_support("another-model"), None);
+                let merged = make_provider(name, "https://proxy.example/v1", None)
+                    .with_image_options(&options)
+                    .with_merge_system_into_user();
+                assert!(!merged.supports_image_attachments("private-model"));
+            }
+        }
+        let options = crate::ProviderRuntimeOptions {
+            vision: VisionMode::Disabled,
+            vision_model: Some("deepseek-v4-flash-vision-exp".into()),
+            ..Default::default()
+        };
+        let provider = make_provider("DeepSeek", "https://api.deepseek.com/v1", None)
+            .with_image_options(&options);
+        assert_eq!(
+            provider.image_attachment_support("deepseek-v4-flash-vision-exp"),
+            Some(false)
+        );
     }
 
     #[test]

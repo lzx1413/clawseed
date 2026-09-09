@@ -705,7 +705,7 @@ private fun PersonaEditor(
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.persona_model_inherit)) },
                             onClick = {
-                                onDraftChange(draft.copy(model = ""))
+                                onDraftChange(draft.copy(model = "", vision = null))
                                 modelExpanded = false
                             },
                         )
@@ -713,13 +713,18 @@ private fun PersonaEditor(
                             DropdownMenuItem(
                                 text = { Text(model, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                 onClick = {
-                                    onDraftChange(draft.copy(model = model))
+                                    onDraftChange(draft.copy(model = model, vision = null))
                                     modelExpanded = false
                                 },
                             )
                         }
                     }
                 }
+                dev.clawseed.demo.ui.components.VisionModeSelector(
+                    value = draft.vision,
+                    allowInherit = true,
+                    onChange = { onDraftChange(draft.copy(vision = it)) },
+                )
                 ThinkingModeSelector(
                     value = draft.thinkingEnabled,
                     onChange = { onDraftChange(draft.copy(thinkingEnabled = it)) },
@@ -1135,6 +1140,7 @@ private fun PersonaDetail.toInfo(): PersonaInfo =
         deniedSkills = deniedSkills,
         model = model,
         thinkingEnabled = thinkingEnabled,
+        vision = vision,
         avatar = avatar,
         color = color,
     )

@@ -56,9 +56,21 @@ pub struct ProvidersConfig {
     pub reasoning_enabled: Option<bool>,
 }
 
+/// User override for image input; automatic mode preserves provider detection.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VisionMode {
+    #[default]
+    Auto,
+    Enabled,
+    Disabled,
+}
+
 /// Per-model provider configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelProviderConfig {
+    #[serde(default)]
+    pub vision: VisionMode,
     #[serde(default)]
     pub api_key: Option<String>,
     #[serde(default)]

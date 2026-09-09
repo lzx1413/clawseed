@@ -49,6 +49,7 @@ fun ChatBottomBar(
     canSend: Boolean,
     modifier: Modifier = Modifier,
     hasImages: Boolean = false,
+    canPickImages: Boolean = true,
     onPickImages: (() -> Unit)? = null,
     imageDrafts: @Composable () -> Unit = {},
 ) {
@@ -84,7 +85,7 @@ fun ChatBottomBar(
             },
             leadingIcon = onPickImages?.let { pick ->
                 {
-                    IconButton(onClick = pick, enabled = canSend && !isLoading) {
+                    IconButton(onClick = pick, enabled = canSend && !isLoading && canPickImages) {
                         Icon(
                             imageVector = AttachmentIcon,
                             contentDescription = stringResource(R.string.chat_attach_image),

@@ -282,7 +282,7 @@ impl ProviderFactory for OpenAiCompatFactory {
             provider = provider.with_max_tokens(options.provider_max_tokens);
         }
 
-        Ok(Box::new(provider))
+        Ok(Box::new(provider.with_image_options(options)))
     }
 }
 
@@ -331,7 +331,7 @@ impl ProviderFactory for GenericCompatFactory {
         if options.provider_max_tokens.is_some() {
             provider = provider.with_max_tokens(options.provider_max_tokens);
         }
-        Ok(Box::new(provider))
+        Ok(Box::new(provider.with_image_options(options)))
     }
 }
 
@@ -370,7 +370,7 @@ impl ProviderFactory for AzureOpenAiFactory {
         if options.provider_max_tokens.is_some() {
             provider = provider.with_max_tokens(options.provider_max_tokens);
         }
-        Ok(Box::new(provider))
+        Ok(Box::new(provider.with_image_options(options)))
     }
 }
 
@@ -413,7 +413,7 @@ impl ProviderFactory for GlmFactory {
         if options.provider_max_tokens.is_some() {
             provider = provider.with_max_tokens(options.provider_max_tokens);
         }
-        Ok(Box::new(provider))
+        Ok(Box::new(provider.with_image_options(options)))
     }
 }
 
@@ -460,7 +460,7 @@ impl ProviderFactory for MinimaxFactory {
         if options.provider_max_tokens.is_some() {
             provider = provider.with_max_tokens(options.provider_max_tokens);
         }
-        Ok(Box::new(provider))
+        Ok(Box::new(provider.with_image_options(options)))
     }
 }
 
@@ -502,7 +502,7 @@ impl ProviderFactory for MoonshotFactory {
         if options.provider_max_tokens.is_some() {
             provider = provider.with_max_tokens(options.provider_max_tokens);
         }
-        Ok(Box::new(provider))
+        Ok(Box::new(provider.with_image_options(options)))
     }
 }
 
@@ -551,7 +551,7 @@ impl ProviderFactory for QwenFactory {
         if options.provider_max_tokens.is_some() {
             provider = provider.with_max_tokens(options.provider_max_tokens);
         }
-        Ok(Box::new(provider))
+        Ok(Box::new(provider.with_image_options(options)))
     }
 }
 
@@ -584,7 +584,7 @@ impl ProviderFactory for BailianFactory {
         if options.provider_max_tokens.is_some() {
             provider = provider.with_max_tokens(options.provider_max_tokens);
         }
-        Ok(Box::new(provider))
+        Ok(Box::new(provider.with_image_options(options)))
     }
 }
 
@@ -619,7 +619,7 @@ impl ProviderFactory for ZaiFactory {
         if options.provider_max_tokens.is_some() {
             provider = provider.with_max_tokens(options.provider_max_tokens);
         }
-        Ok(Box::new(provider))
+        Ok(Box::new(provider.with_image_options(options)))
     }
 }
 
@@ -651,7 +651,7 @@ impl ProviderFactory for QianfanFactory {
         if options.provider_max_tokens.is_some() {
             provider = provider.with_max_tokens(options.provider_max_tokens);
         }
-        Ok(Box::new(provider))
+        Ok(Box::new(provider.with_image_options(options)))
     }
 }
 
@@ -683,7 +683,7 @@ impl ProviderFactory for DoubaoFactory {
         if options.provider_max_tokens.is_some() {
             provider = provider.with_max_tokens(options.provider_max_tokens);
         }
-        Ok(Box::new(provider))
+        Ok(Box::new(provider.with_image_options(options)))
     }
 }
 

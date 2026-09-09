@@ -1658,6 +1658,10 @@ pub struct AgentEntryConfig {
     #[serde(default)]
     pub model: Option<String>,
 
+    /// Vision override for this persona; absent inherits only for the same model.
+    #[serde(default)]
+    pub vision: Option<VisionMode>,
+
     /// Optional thinking/reasoning toggle for this persona. `None` inherits the
     /// global provider profile; `Some(true/false)` writes
     /// `provider_extra.thinking.type = enabled/disabled` for this persona's
@@ -1694,6 +1698,7 @@ impl AgentEntryConfig {
             || !self.denied_skills.is_empty()
             || self.model.is_some()
             || self.thinking_enabled.is_some()
+            || self.vision.is_some()
             || self.avatar.is_some()
             || self.color.is_some()
             || self.system_prompt.is_some()

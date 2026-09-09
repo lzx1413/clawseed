@@ -290,9 +290,41 @@ async fn handle_socket(
         .and_then(|entry| entry.temperature)
         .unwrap_or(state.temperature);
 
+    // Persona LLM settings must reach the provider as well as the agent model.
+    let persona_has_llm_override = effective_persona
+        .as_ref()
+        .and_then(|name| agent_config.agents.get(name))
+        .is_some_and(|entry| {
+            entry.model.is_some() || entry.vision.is_some() || entry.thinking_enabled.is_some()
+        });
+    let agent_provider = if persona_has_llm_override {
+        let profile = agent_config.providers.fallback_provider();
+        match clawseed_providers::create_resilient_provider_with_options(
+            agent_config
+                .providers
+                .fallback
+                .as_deref()
+                .unwrap_or("openrouter"),
+            profile.and_then(|p| p.api_key.as_deref()),
+            profile.and_then(|p| p.base_url.as_deref()),
+            &agent_config.reliability,
+            &clawseed_providers::provider_runtime_options_from_config(&agent_config),
+        ) {
+            Ok(provider) => std::sync::Arc::from(provider),
+            Err(e) => {
+                let error = serde_json::json!({"type": "error", "code": "AGENT_INIT_FAILED", "message": format!("Failed to initialise persona provider: {e}")});
+                let _ = sender.send(Message::Text(error.to_string().into())).await;
+                return;
+            }
+        }
+    } else {
+        state.provider.clone()
+    };
+    let image_support = agent_provider.image_attachment_support(&agent_model);
+
     let mut agent = match clawseed_agent::agent::Agent::from_config_with_shared_components(
         &agent_config,
-        state.provider.clone(),
+        agent_provider,
         shared_memory,
         state.observer.clone(),
         agent_model,
@@ -386,7 +418,8 @@ async fn handle_socket(
     // Send session_start message to client
     let mut session_start = serde_json::json!({
         "type": "session_start",
-        "image_attachments_supported": state.session_backend.is_some(),
+        "image_attachments_supported": state.session_backend.is_some() && image_support == Some(true),
+        "image_model_support": match image_support { Some(true) => "supported", Some(false) => "unsupported", None => "unknown" },
         "v": MSG_PROTOCOL_VERSION,
         "session_id": session_id,
         "resumed": resumed,

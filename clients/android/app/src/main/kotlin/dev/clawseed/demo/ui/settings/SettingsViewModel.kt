@@ -59,6 +59,7 @@ data class SettingsUiState(
     val isFetchingModels: Boolean = false,
     val connectionOk: Boolean? = null,
     val thinkingEnabled: Boolean = false,
+    val vision: String = "auto",
     val maxTokens: String = "262144",
     val autoContinueOnTruncation: Boolean = true,
     val userModelAutoInfer: Boolean = false,
@@ -103,6 +104,7 @@ private data class ProviderDraft(
     val apiKey: String,
     val selectedModel: String,
     val thinkingEnabled: Boolean,
+    val vision: String,
     val maxTokens: String,
 )
 
@@ -129,6 +131,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             apiKey = state.apiKey,
             selectedModel = state.selectedModel,
             thinkingEnabled = state.thinkingEnabled,
+            vision = state.vision,
             maxTokens = state.maxTokens,
         )
     }
@@ -189,6 +192,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 apiKey = currentApiKey,
                 selectedModel = currentModel,
                 thinkingEnabled = thinking,
+                vision = extractProviderVision(toml),
                 maxTokens = maxTokens,
             )
             val autoContinue = extractAutoContinueOnTruncation(toml)
@@ -217,6 +221,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 hasServerApiKey = serverHasKey,
                 selectedModel = currentModel,
                 thinkingEnabled = thinking,
+                vision = extractProviderVision(toml),
                 maxTokens = maxTokens,
                 autoContinueOnTruncation = autoContinue,
                 userModelAutoInfer = userModelAutoInfer,
@@ -264,6 +269,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             hasServerApiKey = hasServerKey,
             selectedModel = draft?.selectedModel ?: saved?.model ?: "",
             thinkingEnabled = draft?.thinkingEnabled ?: saved?.thinking ?: false,
+            vision = draft?.vision ?: saved?.vision ?: "auto",
             maxTokens = draft?.maxTokens ?: saved?.maxTokens ?: "262144",
             autoContinueOnTruncation = true,
             availableModels = emptyList(),
@@ -275,6 +281,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun updateBaseUrl(url: String) {
         _uiState.value = _uiState.value.copy(
             baseUrl = url,
+            vision = if (url.trimEnd('/') == _uiState.value.baseUrl.trimEnd('/')) _uiState.value.vision else "auto",
             availableModels = emptyList(),
             connectionOk = null,
             successMessage = null,
@@ -286,7 +293,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun selectModel(model: String) {
-        _uiState.value = _uiState.value.copy(selectedModel = model, successMessage = null)
+        _uiState.value = _uiState.value.copy(selectedModel = model, vision = if (model == _uiState.value.selectedModel) _uiState.value.vision else "auto", successMessage = null)
+    }
+
+    fun updateVision(value: String) {
+        _uiState.value = _uiState.value.copy(vision = value, successMessage = null)
     }
 
     fun toggleThinking(enabled: Boolean) {
@@ -428,6 +439,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             apiKey = currentApiKey,
             selectedModel = currentModel,
             thinkingEnabled = thinking,
+            vision = extractProviderVision(toml),
             maxTokens = maxTokens,
         )
         val autoContinue = extractAutoContinueOnTruncation(toml)
@@ -454,6 +466,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             hasServerApiKey = serverHasKey,
             selectedModel = currentModel,
             thinkingEnabled = thinking,
+            vision = extractProviderVision(toml),
             maxTokens = maxTokens,
             autoContinueOnTruncation = autoContinue,
             userModelAutoInfer = userModelAutoInfer,
@@ -653,6 +666,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         if (toml.contains(sectionHeader)) {
             toml = replaceInSection(toml, sectionHeader, "base_url", baseUrl)
             toml = replaceInSection(toml, sectionHeader, "model", state.selectedModel)
+            toml = replaceInSection(toml, sectionHeader, "vision", state.vision)
             val isRealKey = state.apiKey.isNotBlank()
                     && state.apiKey != MASKED_KEY_PLACEHOLDER
                     && !state.apiKey.contains("***")
@@ -673,6 +687,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 if (isRealKey) {
                     appendLine("api_key = \"${state.apiKey}\"")
                 }
+                appendLine("vision = \"${state.vision}\"")
                 appendLine("max_tokens = ${state.maxTokens}")
                 if (state.thinkingEnabled) {
                     appendLine(THINKING_ENABLED_LINE)
@@ -1080,10 +1095,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             return value != "false"
         }
 
+        internal fun extractProviderVision(toml: String): String {
+            val fallback = extractTomlValue(toml, "fallback") ?: return "auto"
+            val section = findSection(toml, "[providers.models.\"$fallback\"]")
+            return extractTomlValueInBlock(section, "vision") ?: "auto"
+        }
+
         private data class SavedProviderSettings(
             val apiKey: String,
             val model: String,
             val thinking: Boolean,
+            val vision: String,
             val maxTokens: String,
         )
 
@@ -1104,7 +1126,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     thinking = extractTomlValueInBlock(subSection, "type") == "enabled"
                 }
             }
-            return SavedProviderSettings(apiKey, model, thinking, maxTokens)
+            return SavedProviderSettings(apiKey, model, thinking, extractTomlValueInBlock(section, "vision") ?: "auto", maxTokens)
         }
 
         private fun sectionHasThinkingEnabled(section: String): Boolean {

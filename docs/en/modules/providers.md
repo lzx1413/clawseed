@@ -190,3 +190,14 @@ provider_backoff_ms = 500
 The first supported provider/model pair is `deepseek` / `deepseek-v4-flash-vision-exp`. Android `custom:` provider entries pointing to the official `https://api.deepseek.com` endpoint (including `/v1`) are recognized as well. Model capability is checked separately from provider-wide vision flags; incompatible retries and fallback providers cannot discard images silently. Compatible requests resolve authorized attachments at the request boundary and reuse `text` + `image_url` blocks, including streaming and tool continuations.
 
 Product budgets retain recent complete image messages: at most 8 images and 20 MiB of image bytes per request context, independently of text token estimates. The request budget is 32 MiB including Base64 expansion. Persistent history is untouched. Legacy text image markers do not grant filesystem access through the structured attachment loader. See [DeepSeek vision documentation](https://api-docs.deepseek.com/zh-cn/guides/vision/) for upstream limits; the application limits are deliberately separate.
+
+### Model vision override
+
+Set `vision = "auto" | "enabled" | "disabled"` in a `[providers.models.NAME]`
+profile. The default is `auto`. Overrides are scoped to that profile's model;
+they do not authorize fallback models. `[agents.NAME].vision` accepts the same
+values; omission inherits only when the persona uses the same model. Explicit
+settings cannot enable unsupported request formats (for example system merging).
+`/api/status.image_attachments.model_support` distinguishes `supported`,
+`unsupported`, and `unknown`; the session handshake reports the effective persona
+capability. `image_attachments.supported` on status still denotes storage support.

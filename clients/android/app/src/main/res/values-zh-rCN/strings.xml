@@ -477,4 +477,14 @@
     <string name="data_clear_media_cache">清除媒体缓存</string>
     <string name="data_media_cache_cleared">媒体缓存已清除</string>
     <string name="data_media_cache_clear_failed">无法清除媒体缓存</string>
+    <string name="settings_vision">视觉能力</string>
+    <string name="settings_vision_auto">自动</string>
+    <string name="settings_vision_on">开启</string>
+    <string name="settings_vision_off">关闭</string>
+    <string name="settings_vision_inherit">继承</string>
+    <string name="settings_vision_hint">自动使用已知模型能力；未知模型如支持图片，可手动开启。</string>
+    <string name="settings_vision_persona_hint">继承仅沿用同一模型的全局设置；不同模型按自动判断。未知或不支持视觉时，附件按钮不可用。</string>
+    <string name="settings_vision_supported">当前模型：支持视觉</string>
+    <string name="settings_vision_unsupported">当前模型：视觉不可用</string>
+    <string name="settings_vision_unknown">视觉能力未知，如模型支持图片，请手动开启</string>
 </resources>

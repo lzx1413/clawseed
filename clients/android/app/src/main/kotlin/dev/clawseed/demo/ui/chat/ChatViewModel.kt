@@ -76,6 +76,7 @@ data class AuthPrompt(
 )
 
 data class ChatUiState(
+    val imageAttachmentsSupported: Boolean = false,
     val messages: List<ChatEntry> = emptyList(),
     val streamingContent: String = "",
     val thinkingContent: String = "",
@@ -277,6 +278,9 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
     internal val imageDrafts = imageDraftStore.drafts
     private val imageOperations = mutableSetOf<String>()
 
+    internal fun canPickImages(): Boolean =
+        currentSlot?.session?.sessionInfo?.value?.imageAttachmentsSupported == true
+
     internal fun imageDraftTarget(): ImageDraftTarget? {
         val session = currentSlot?.session ?: return null
         val id = session.sessionInfo.value?.sessionId ?: return null
@@ -294,6 +298,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
     }
 
     internal fun addImages(target: ImageDraftTarget, uris: List<android.net.Uri>) {
+        if (!canPickImages() || imageDraftTarget()?.key != target.key) return
         if (!imageOperations.add(target.key)) return
         viewModelScope.launch {
             try {
@@ -532,6 +537,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
             sessionName = null,
             currentSessionId = null,
             currentPersona = null,
+            imageAttachmentsSupported = false,
             error = null,
         )
 
@@ -579,6 +585,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
             sessionName = slot.accumulator.sessionTitle.value ?: slot.session.sessionInfo.value?.name,
             currentSessionId = sessionId,
             currentPersona = slot.session.sessionInfo.value?.persona,
+            imageAttachmentsSupported = slot.session.sessionInfo.value?.imageAttachmentsSupported == true,
         )
 
         // Resume observation
@@ -877,6 +884,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                         // null is a valid value (default global agent), only set
                         // when we actually have session info so the chip clears on disconnect.
                         currentPersona = info?.persona,
+                        imageAttachmentsSupported = info?.imageAttachmentsSupported == true,
                     )
                     // Update pool slot sessionId if the gateway assigned a new one
                     val sid = info?.sessionId

@@ -125,7 +125,14 @@ fn apply_provider_overrides(cfg: &mut Config, entry: &AgentEntryConfig) {
     };
 
     if let Some(model) = entry.model.as_ref().filter(|m| !m.trim().is_empty()) {
+        if provider.model.as_deref() != Some(model.trim()) {
+            provider.vision = Default::default();
+        }
         provider.model = Some(model.trim().to_string());
+    }
+
+    if let Some(vision) = entry.vision {
+        provider.vision = vision;
     }
 
     if let Some(enabled) = entry.thinking_enabled {
@@ -182,6 +189,54 @@ mod tests {
 
     fn none_mem() -> Arc<dyn Memory> {
         Arc::new(NoneMemory::new())
+    }
+
+    #[test]
+    fn persona_vision_inherits_only_for_the_same_model() {
+        use clawseed_config::schema::VisionMode;
+        let mut config = base_config();
+        config.providers.fallback = Some("test".into());
+        config.providers.models.insert(
+            "test".into(),
+            serde_json::from_value(serde_json::json!({
+                "model": "vision-model", "vision": "enabled"
+            }))
+            .unwrap(),
+        );
+        for (model, vision, expected) in [
+            (None, None, VisionMode::Enabled),
+            (Some("vision-model"), None, VisionMode::Enabled),
+            (Some("text-model"), None, VisionMode::Auto),
+            (
+                Some("text-model"),
+                Some(VisionMode::Disabled),
+                VisionMode::Disabled,
+            ),
+            (
+                Some("other-vision"),
+                Some(VisionMode::Enabled),
+                VisionMode::Enabled,
+            ),
+            (None, Some(VisionMode::Auto), VisionMode::Auto),
+        ] {
+            let mut resolved = config.clone();
+            apply_provider_overrides(
+                &mut resolved,
+                &AgentEntryConfig {
+                    model: model.map(String::from),
+                    vision,
+                    ..Default::default()
+                },
+            );
+            assert_eq!(
+                resolved.providers.fallback_provider().unwrap().vision,
+                expected
+            );
+        }
+        assert_eq!(
+            config.providers.fallback_provider().unwrap().vision,
+            VisionMode::Enabled
+        );
     }
 
     #[test]
@@ -333,6 +388,7 @@ mod tests {
         cfg.providers.models.insert(
             "default".into(),
             ModelProviderConfig {
+                vision: Default::default(),
                 api_key: None,
                 name: None,
                 base_url: None,

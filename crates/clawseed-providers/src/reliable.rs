@@ -444,6 +444,12 @@ impl ReliableProvider {
 
 #[async_trait]
 impl Provider for ReliableProvider {
+    fn image_attachment_support(&self, model: &str) -> Option<bool> {
+        self.providers
+            .first()
+            .and_then(|(_, p)| p.image_attachment_support(model))
+    }
+
     fn supports_image_attachments(&self, model: &str) -> bool {
         self.providers
             .first()
