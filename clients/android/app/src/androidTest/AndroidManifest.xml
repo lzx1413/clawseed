@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Test APK only: a separate-UID sender supplying generated fixtures. -->
+        <provider
+            android:name="dev.clawseed.demo.sharing.ShareFixtureProvider"
+            android:authorities="dev.clawseed.demo.test.share-fixtures"
+            android:exported="true"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>

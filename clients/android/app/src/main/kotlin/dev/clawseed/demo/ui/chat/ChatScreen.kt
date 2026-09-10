@@ -255,6 +255,12 @@ fun ChatScreen(
         }
     }
 
+    LaunchedEffect(sessionSwitchReady, imageTarget?.key, imageDraftsReady, fileDraftsReady) {
+        if (sessionSwitchReady && imageDraftsReady && fileDraftsReady && imageTarget != null) {
+            viewModel.importSharedDraft(imageTarget)
+        }
+    }
+
     LaunchedEffect(sessionSwitchReady, autoSendMessage, uiState.isGenerating, uiState.currentSessionId) {
         if (sessionSwitchReady && autoSendMessage != null && !uiState.isGenerating && viewModel.sendMessage(autoSendMessage, uiState.currentSessionId)) {
             onAutoMessageSent()

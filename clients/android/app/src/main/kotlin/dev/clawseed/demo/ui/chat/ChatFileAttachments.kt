@@ -58,6 +58,7 @@ internal class ChatFileAttachments(private val context: Context) {
     } }
 
     private fun original(id: String): File { checkId(id); return File(directory, "$id.original") }
+    internal fun hasOriginal(id: String): Boolean = original(id).isFile
     private fun cache(id: String): File { checkId(id); return File(directory, "$id.json") }
     private fun checkId(id: String) = require(Regex("file_[0-9a-f]{32}").matches(id)) { "附件 ID 无效" }
     private fun persist(value: Map<String, List<ChatFileDraft>>) {
@@ -71,7 +72,9 @@ internal class ChatFileAttachments(private val context: Context) {
         mutex.withLock { check(_ready.value) { "附件草稿尚未载入" }; persist(_entries.value + (key to block(_entries.value[key].orEmpty()))) }
     }
 
-    suspend fun import(key: String, uri: Uri) = withContext(Dispatchers.IO) {
+    suspend fun import(key: String, uri: Uri, attachmentId: String = "file_" + UUID.randomUUID().toString().replace("-", "")) = withContext(Dispatchers.IO) {
+        checkId(attachmentId)
+        if (entries.value[key].orEmpty().any { it.id == attachmentId }) return@withContext
         var name = uri.lastPathSegment?.substringAfterLast('/') ?: "文件"
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
             if (it.moveToFirst()) name = it.getString(0) ?: name
@@ -87,7 +90,7 @@ internal class ChatFileAttachments(private val context: Context) {
             else -> error("支持 MD、TXT、CSV、文字 PDF、DOCX；旧 DOC 请另存为 DOCX")
         }
         runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-        val draft = ChatFileDraft("file_" + UUID.randomUUID().toString().replace("-", ""), name, mime, format, source = uri.toString())
+        val draft = ChatFileDraft(attachmentId, name, mime, format, source = uri.toString())
         change(key) {
             require(it.count { item -> !item.sent } < Limits.MAX_FILES) { "每条消息最多 4 个文件" }
             it + draft

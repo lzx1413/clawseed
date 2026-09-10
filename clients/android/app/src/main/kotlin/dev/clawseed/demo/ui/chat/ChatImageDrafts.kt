@@ -86,9 +86,10 @@ internal class ChatImageDrafts(private val context: Context) {
     }
 
     /** Save the original first so a preview is available before decoding or network I/O. */
-    suspend fun stageImage(uri: Uri): ChatImageDraft = withContext(Dispatchers.IO) {
+    suspend fun stageImage(uri: Uri, id: String = UUID.randomUUID().toString()): ChatImageDraft = withContext(Dispatchers.IO) {
+        require(UUID.fromString(id).toString() == id) { "图片标识无效" }
         directory.mkdirs()
-        val draft = ChatImageDraft(UUID.randomUUID().toString(), preparing = true)
+        val draft = ChatImageDraft(id, preparing = true)
         val original = File(directory, "${draft.id}.source")
         try {
             context.contentResolver.openInputStream(uri).use { input ->

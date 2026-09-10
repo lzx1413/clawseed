@@ -15,6 +15,10 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.ViewModelProvider
+import dev.clawseed.demo.sharing.SharedInbox
+import dev.clawseed.demo.sharing.ShareReceiverViewModel
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +40,8 @@ class MainActivity : ComponentActivity() {
     private val pendingSessionId = mutableStateOf<String?>(null)
     private var pendingAlarmDismissId: String? = null
     private var gatewayServiceStarted = false
+    private val shareReceiver by lazy { ViewModelProvider(this)[ShareReceiverViewModel::class.java] }
+    private var shareRequestId: String? = null
 
     private val nearbyWifiPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -81,10 +87,23 @@ class MainActivity : ComponentActivity() {
         }
 
         // Handle session ID from notification tap
-        handleIntentSession(intent)
+        if (SharedInbox.isShare(intent)) {
+            shareRequestId = savedInstanceState?.getString("share_request_id") ?: java.util.UUID.randomUUID().toString()
+            shareReceiver.receive(checkNotNull(shareRequestId), Intent(intent))
+        } else {
+            handleIntentSession(intent)
+            if (pendingSessionId.value == null) shareReceiver.recover()
+        }
         handleAlarmDismiss(intent)
 
         setContent {
+            val shareState by shareReceiver.state.collectAsState()
+            LaunchedEffect(shareState.openSession) {
+                shareState.openSession?.let {
+                    pendingSessionId.value = it
+                    shareReceiver.navigationHandled(it)
+                }
+            }
             val themeMode by localStore.themeMode.collectAsState(initial = "system")
             val oledMode by localStore.oledMode.collectAsState(initial = false)
             val useDarkTheme = when (themeMode) {
@@ -100,13 +119,37 @@ class MainActivity : ComponentActivity() {
                         notificationSessionId = pendingSessionId,
                     )
                 }
+                if (shareState.receiving) androidx.compose.material3.AlertDialog(
+                    onDismissRequest = {},
+                    title = { androidx.compose.material3.Text("正在接收分享") },
+                    text = { androidx.compose.material3.Text("正在保存图片和文件，即将打开新会话…") },
+                    confirmButton = {},
+                )
+                shareState.error?.let { error -> androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { shareReceiver.dismissError() },
+                    title = { androidx.compose.material3.Text("无法接收分享") },
+                    text = { androidx.compose.material3.Text(error) },
+                    confirmButton = { androidx.compose.material3.TextButton(onClick = { shareReceiver.dismissError() }) { androidx.compose.material3.Text("知道了") } },
+                ) }
             }
         }
     }
 
+    override fun onSaveInstanceState(outState: android.os.Bundle) {
+        shareRequestId?.let { outState.putString("share_request_id", it) }
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        handleIntentSession(intent)
+        setIntent(intent)
+        if (SharedInbox.isShare(intent)) {
+            shareRequestId = java.util.UUID.randomUUID().toString()
+            shareReceiver.receive(checkNotNull(shareRequestId), Intent(intent))
+        } else {
+            shareRequestId = null
+            handleIntentSession(intent)
+        }
         handleAlarmDismiss(intent)
     }
 

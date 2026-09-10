@@ -316,6 +316,58 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
         }
     }
 
+    private val sharedInbox = dev.clawseed.demo.sharing.SharedInbox(application)
+    private val checkedShares = mutableSetOf<String>()
+
+    internal fun importSharedDraft(target: ImageDraftTarget) {
+        if (target.key in checkedShares || !imageOperations.add(target.key)) return
+        viewModelScope.launch {
+            try {
+                val received = sharedInbox.load(target.sessionId)
+                if (received == null || received.imported) {
+                    checkedShares += target.key
+                    return@launch
+                }
+                val bundle = sharedInbox.bind(target.sessionId, target.key)
+                check(bundle.items.none { it.image } || canPickImages()) { "当前网关不支持图片，分享副本已保存，请切换配置后重试" }
+                check(bundle.items.none { !it.image } || currentSlot?.session?.sessionInfo?.value?.fileAttachmentsSupported == true) { "当前网关不支持文件，分享副本已保存，请升级后重试" }
+                val staged = mutableListOf<ChatImageDraft>()
+                for (item in bundle.items) {
+                    val uri = android.net.Uri.fromFile(sharedInbox.file(bundle, item))
+                    if (item.image) {
+                        val existing = imageDrafts.value[target.key].orEmpty().find { it.id == item.id }
+                        if (existing != null) {
+                            if (existing.attachment == null) staged += existing
+                        } else {
+                            check(imageDrafts.value[target.key].orEmpty().size < 4) { "每条消息最多 4 张图片" }
+                            val draft = imageDraftStore.stageImage(uri, item.id)
+                            imageDraftStore.transform(target.key) { it + draft }
+                            staged += draft
+                        }
+                    } else {
+                        val id = "file_" + item.id.replace("-", "")
+                        if (fileDrafts.value[target.key].orEmpty().any { it.id == id } && !fileStore.hasOriginal(id)) fileStore.retry(target.key, id)
+                        else fileStore.import(target.key, uri, id)
+                        check(fileStore.hasOriginal(id)) { "文件副本保存失败，请释放存储空间后重新打开会话" }
+                    }
+                }
+                if (bundle.text.isNotBlank() && imageDraftStore.savedText(target.key).isBlank() && drafts.value[target.sessionId].isNullOrBlank()) {
+                    imageDraftStore.saveText(target.key, bundle.text)
+                    draftStore.update(target.sessionId, bundle.text)
+                }
+                sharedInbox.complete(bundle.id)
+                checkedShares += target.key
+                if (bundle.warnings.isNotEmpty() && imageDraftTarget()?.key == target.key) {
+                    _uiState.value = _uiState.value.copy(error = bundle.warnings.joinToString("\n"))
+                }
+                for (draft in staged) uploadDraft(target, draft)
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                if (imageDraftTarget()?.key == target.key) _uiState.value = _uiState.value.copy(error = error.message ?: "分享导入失败，副本已保留，请重新打开会话重试")
+            } finally { imageOperations.remove(target.key) }
+        }
+    }
+
     private val imageDraftStore = ChatImageDrafts(application)
     internal val imageDrafts = imageDraftStore.drafts
     internal val imageDraftsReady = imageDraftStore.ready
