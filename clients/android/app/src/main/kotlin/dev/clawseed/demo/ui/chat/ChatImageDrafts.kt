@@ -7,8 +7,6 @@ import android.net.Uri
 import dev.clawseed.sdk.core.client.GatewayClient
 import dev.clawseed.sdk.core.model.ImageAttachment
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -31,38 +29,61 @@ internal data class ChatImageDraft(
 
 /** Persistent app-owned copies survive provider URI permission expiry and process death. */
 internal class ChatImageDrafts(private val context: Context) {
-    private val directory = File(context.filesDir, "chat-image-drafts").apply { mkdirs() }
-    private val prefs = context.getSharedPreferences("chat-image-drafts", Context.MODE_PRIVATE)
+    private val directory = File(context.filesDir, "chat-image-drafts")
+    private val prefs by lazy { context.getSharedPreferences("chat-image-drafts", Context.MODE_PRIVATE) }
     private val json = Json { ignoreUnknownKeys = true }
-    private val initial = runCatching {
-        json.decodeFromString<Map<String, List<ChatImageDraft>>>(prefs.getString("drafts", "{}")!!)
-            .mapValues { (_, images) -> images.map { it.copy(uploading = false, awaitingReply = false) } }
-    }.getOrDefault(emptyMap())
-    private val mutable = MutableStateFlow(initial)
-    val drafts = mutable.asStateFlow()
-
-    fun savedText(key: String): String = prefs.getString("text:$key", "").orEmpty()
-    fun saveText(key: String, text: String) { prefs.edit().putString("text:$key", text).commit() }
-
+    private val persistence = ImageDraftPersistence(
+        read = {
+            val images = runCatching {
+                json.decodeFromString<Map<String, List<ChatImageDraft>>>(prefs.getString("drafts", "{}")!!)
+            }.getOrDefault(emptyMap())
+            val texts = prefs.all.mapNotNull { (key, value) ->
+                if (key.startsWith("text:") && value is String) key.removePrefix("text:") to value else null
+            }.toMap()
+            ImageDraftSnapshot(images, texts)
+        },
+        write = { snapshot ->
+            val editor = prefs.edit().clear().putString("drafts", json.encodeToString(snapshot.images))
+            snapshot.texts.forEach { (key, text) -> editor.putString("text:$key", text) }
+            check(editor.commit()) { "Unable to save image draft" }
+        },
+    )
+    val drafts = persistence.drafts
+    val ready = persistence.ready
+    suspend fun load() = persistence.load()
+    fun savedText(key: String): String = persistence.savedText(key)
     fun file(id: String): File = File(directory, "$id.png")
 
-    fun update(key: String, images: List<ChatImageDraft>) {
-        mutable.value = mutable.value.toMutableMap().apply {
-            if (images.isEmpty()) remove(key) else put(key, images)
+    suspend fun saveText(key: String, text: String) = persistence.update {
+        it.copy(texts = if (text.isEmpty()) it.texts - key else it.texts + (key to text))
+    }
+
+    suspend fun update(key: String, images: List<ChatImageDraft>) = transform(key) { images }
+
+    suspend fun transform(key: String, change: (List<ChatImageDraft>) -> List<ChatImageDraft>) = persistence.update {
+        val images = change(it.images[key].orEmpty())
+        it.copy(images = if (images.isEmpty()) it.images - key else it.images + (key to images))
+    }
+
+    suspend fun replace(key: String, image: ChatImageDraft) = transform(key) { images ->
+        images.map { if (it.id == image.id) image else it }
+    }
+
+    suspend fun remove(key: String, id: String) = removeAll(key, setOf(id))
+
+    suspend fun removeAll(key: String, ids: Set<String>) {
+        persistence.update {
+            val images = it.images[key].orEmpty().filterNot { image -> image.id in ids }
+            it.copy(
+                images = if (images.isEmpty()) it.images - key else it.images + (key to images),
+                texts = if (images.isEmpty()) it.texts - key else it.texts,
+            )
         }
-        prefs.edit().putString("drafts", json.encodeToString(mutable.value)).commit()
-    }
-
-    fun replace(key: String, image: ChatImageDraft) {
-        update(key, mutable.value[key].orEmpty().map { if (it.id == image.id) image else it })
-    }
-
-    fun remove(key: String, id: String) {
-        update(key, mutable.value[key].orEmpty().filterNot { it.id == id })
-        file(id).delete()
+        withContext(Dispatchers.IO) { ids.forEach { file(it).delete() } }
     }
 
     suspend fun copyImage(uri: Uri): ChatImageDraft = withContext(Dispatchers.IO) {
+        directory.mkdirs()
         // ImageDecoder applies EXIF orientation. Keep screenshot text lossless;
         // downscale only when dimensions or encoded size require it.
         var bitmap = if (android.os.Build.VERSION.SDK_INT >= 28) {

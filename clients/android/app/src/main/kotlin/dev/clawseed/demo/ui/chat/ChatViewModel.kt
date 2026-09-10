@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.intOrNull
@@ -104,7 +105,13 @@ internal data class SessionSlot(
     val session: ClawSeedSession,
     val accumulator: ChatAccumulator,
     var history: List<ChatEntry> = emptyList(),
+    var lifetimeJob: Job? = null,
 ) {
+    fun close() {
+        lifetimeJob?.cancel()
+        accumulator.stop()
+    }
+
     fun messages(): List<ChatEntry> = history + mapAccumulatedToEntries(accumulator.messages.value).first
 
     fun sendMessage(content: String, debug: Boolean = false, expectedSessionId: String? = null, attachments: List<dev.clawseed.sdk.core.model.ImageAttachment> = emptyList()): Boolean {
@@ -276,6 +283,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
 
     private val imageDraftStore = ChatImageDrafts(application)
     internal val imageDrafts = imageDraftStore.drafts
+    internal val imageDraftsReady = imageDraftStore.ready
     private val imageOperations = mutableSetOf<String>()
 
     internal fun canPickImages(): Boolean =
@@ -294,7 +302,14 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
     internal fun imageDraftFile(id: String) = imageDraftStore.file(id)
 
     internal fun removeImage(target: ImageDraftTarget, id: String) {
-        imageDraftStore.remove(target.key, id)
+        if (!imageOperations.add(target.key)) return
+        viewModelScope.launch {
+            try { imageDraftStore.remove(target.key, id) }
+            catch (error: Exception) {
+                if (error is CancellationException) throw error
+                _uiState.value = _uiState.value.copy(error = error.message)
+            } finally { imageOperations.remove(target.key) }
+        }
     }
 
     internal fun addImages(target: ImageDraftTarget, uris: List<android.net.Uri>) {
@@ -319,19 +334,25 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
 
     internal fun retryImage(target: ImageDraftTarget, id: String) {
         val image = imageDrafts.value[target.key].orEmpty().find { it.id == id } ?: return
-        if (image.uploading) return
-        viewModelScope.launch { uploadDraft(target, image) }
+        if (image.uploading || !imageOperations.add(target.key)) return
+        viewModelScope.launch {
+            try { uploadDraft(target, image) }
+            catch (error: Exception) {
+                if (error is CancellationException) throw error
+                _uiState.value = _uiState.value.copy(error = error.message)
+            } finally { imageOperations.remove(target.key) }
+        }
     }
 
     private suspend fun uploadDraft(target: ImageDraftTarget, image: ChatImageDraft) {
-        imageDraftStore.replace(target.key, image.copy(uploading = true, error = null))
         try {
+            imageDraftStore.replace(target.key, image.copy(uploading = true, error = null))
             val bytes = withContext(Dispatchers.IO) { imageDraftStore.file(image.id).readBytes() }
             val attachment = target.gateway.uploadImage(target.sessionId, bytes).getOrThrow()
             imageDraftStore.replace(target.key, image.copy(attachment = attachment, uploading = false))
         } catch (error: Exception) {
-            imageDraftStore.replace(target.key, image.copy(uploading = false, error = error.message ?: "上传失败"))
             if (error is kotlinx.coroutines.CancellationException) throw error
+            imageDraftStore.replace(target.key, image.copy(uploading = false, error = error.message ?: "上传失败"))
         }
     }
 
@@ -341,33 +362,73 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
         val images = imageDrafts.value[target.key].orEmpty().filterNot { it.awaitingReply }
         if (images.isEmpty()) return sendMessage(content, target.sessionId)
         if (images.any { it.uploading || it.attachment == null || it.error != null }) return false
-        imageDraftStore.saveText(target.key, content)
-        val sent = slot.sendMessage(content, debugEnabled, target.sessionId, images.mapNotNull { it.attachment })
-        if (sent) {
-            // Clear the composer immediately, keeping durable copies for failure
-            // recovery until the gateway confirms the completed turn.
-            images.forEach { imageDraftStore.replace(target.key, it.copy(awaitingReply = true)) }
-            draftStore.update(target.sessionId, "")
-        }
-        if (sent) viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
-            val event = slot.session.events.first { it is dev.clawseed.sdk.core.model.ChatEvent.Done || it is dev.clawseed.sdk.core.model.ChatEvent.Error || it is dev.clawseed.sdk.core.model.ChatEvent.Aborted }
-            if (event is dev.clawseed.sdk.core.model.ChatEvent.Done) {
-                images.forEach { imageDraftStore.remove(target.key, it.id) }
-                imageDraftStore.saveText(target.key, "")
-                if (drafts.value[target.sessionId] == content) draftStore.update(target.sessionId, "")
-            } else if (event is dev.clawseed.sdk.core.model.ChatEvent.Error) {
-                images.forEach { image -> imageDraftStore.replace(target.key, image.copy(error = event.message)) }
-            } else {
-                images.forEach { imageDraftStore.replace(target.key, it.copy(awaitingReply = false)) }
+        if (!imageOperations.add(target.key)) return false
+        viewModelScope.launch {
+            try {
+                // Preserve crash recovery before sending, without blocking keyboard dismissal.
+                imageDraftStore.saveText(target.key, content)
+                if (currentSlot !== slot || imageDraftTarget()?.key != target.key) return@launch
+                kotlinx.coroutines.coroutineScope {
+                    // Subscribe before sending so a very fast response cannot be missed.
+                    val response = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                        slot.session.events.first {
+                            it is dev.clawseed.sdk.core.model.ChatEvent.Done ||
+                                it is dev.clawseed.sdk.core.model.ChatEvent.Error ||
+                                it is dev.clawseed.sdk.core.model.ChatEvent.Aborted
+                        }
+                    }
+                    val disconnected = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                        slot.session.connectionState.first { it == ConnectionState.DISCONNECTED }
+                        dev.clawseed.sdk.core.model.ChatEvent.Error(
+                            getApplication<Application>().getString(R.string.chat_connection_interrupted),
+                        )
+                    }
+                    if (!slot.sendMessage(content, debugEnabled, target.sessionId, images.mapNotNull { it.attachment })) {
+                        response.cancel()
+                        disconnected.cancel()
+                        return@coroutineScope
+                    }
+                    val ids = images.map { it.id }.toSet()
+                    imageDraftStore.transform(target.key) { current ->
+                        current.map { if (it.id in ids) it.copy(awaitingReply = true) else it }
+                    }
+                    if (drafts.value[target.sessionId] == content) draftStore.update(target.sessionId, "")
+                    val event = kotlinx.coroutines.selects.select<dev.clawseed.sdk.core.model.ChatEvent> {
+                        response.onAwait { it }
+                        disconnected.onAwait { it }
+                    }
+                    response.cancel()
+                    disconnected.cancel()
+                    when (event) {
+                        is dev.clawseed.sdk.core.model.ChatEvent.Done -> imageDraftStore.removeAll(target.key, ids)
+                        else -> imageDraftStore.transform(target.key) { current ->
+                            current.map {
+                                if (it.id in ids) it.copy(
+                                    awaitingReply = false,
+                                    error = (event as? dev.clawseed.sdk.core.model.ChatEvent.Error)?.message,
+                                ) else it
+                            }
+                        }
+                    }
+                }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                _uiState.value = _uiState.value.copy(error = error.message ?: "图片发送失败")
+            } finally {
+                imageOperations.remove(target.key)
             }
         }
-        return sent
+        return true
     }
+
+    private val attachmentImageCache = AttachmentImageCache()
 
     internal suspend fun readImage(sessionId: String, id: String): Result<ByteArray> {
         val session = currentSlot?.session ?: return Result.failure(IllegalStateException("会话未连接"))
         if (session.sessionInfo.value?.sessionId != sessionId) return Result.failure(IllegalStateException("会话已切换"))
-        return session.gateway.readImage(sessionId, id)
+        return attachmentImageCache.load("${ChatImageDrafts.key(session.gateway, sessionId)}:$id") {
+            session.gateway.readImage(sessionId, id)
+        }
     }
 
     private val localStore = LocalStore(application)
@@ -403,6 +464,10 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
 
     init {
         viewModelScope.launch {
+            runCatching { imageDraftStore.load() }
+                .onFailure { _uiState.value = _uiState.value.copy(error = it.message) }
+        }
+        viewModelScope.launch {
             localStore.showDebugInfo.collect { debugEnabled = it }
         }
         viewModelScope.launch {
@@ -425,6 +490,19 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                 _uiState.value = _uiState.value.copy(speakingMessageId = id)
             }
         }
+        viewModelScope.launch {
+            ClawSeedAndroid.awaitInit()
+            sessionManager().pooledSessions.collect { pooled ->
+                val iterator = sessionSlots.iterator()
+                while (iterator.hasNext()) {
+                    val (id, slot) = iterator.next()
+                    if (pooled[id] !== slot.session) {
+                        slot.close()
+                        iterator.remove()
+                    }
+                }
+            }
+        }
         refreshPersonaVisuals()
     }
 
@@ -435,6 +513,8 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
         queuedAuthPrompts.mapNotNull { it.requestId }.forEach {
             ClawSeedAndroid.externalToolBridge().cancelPendingAction(it)
         }
+        sessionSlots.values.forEach { it.close() }
+        sessionSlots.clear()
         tts.shutdown()
         super.onCleared()
     }
@@ -541,12 +621,8 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
             error = null,
         )
 
-        // ── Check pool for an existing slot ──
-        if (sessionId != null && sessionSlots.containsKey(sessionId)) {
-            reuseExistingSlot(sessionId)
-        } else {
-            doConnect(sessionId, persona)
-        }
+        // The SDK owns connection reuse and LRU access order, including cached UI slots.
+        doConnect(sessionId, persona)
     }
 
     /**
@@ -592,9 +668,6 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
         observeAccumulator(slot)
         observeConnectionState(slot.session)
         observeAuthEvents()
-        if (slot.session.connectionState.value == ConnectionState.DISCONNECTED) {
-            connectJob = viewModelScope.launch { slot.session.connect(sessionId) }
-        }
     }
 
     private fun doConnect(sessionId: String?, persona: String? = null) {
@@ -607,6 +680,10 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
 
                 val sid = session.sessionInfo.value?.sessionId ?: sessionId
                 currentSessionId = sid
+                if (sid != null && sessionSlots[sid]?.session === session) {
+                    reuseExistingSlot(sid)
+                    return@launch
+                }
 
                 if (registeredSession !== session) {
                     registerTools(session)
@@ -628,7 +705,19 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
 
                 // Save to pool immediately so it survives future switches
                 if (sid != null) {
-                    sessionSlots[sid] = slot
+                    sessionSlots.put(sid, slot)?.close()
+                    slot.lifetimeJob = viewModelScope.launch {
+                        launch {
+                            acc.isGenerating.collect { sessionManager().setSessionGenerating(sid, it) }
+                        }
+                        launch {
+                            session.connectionState.collect { state ->
+                                if (state == ConnectionState.DISCONNECTED && acc.isGenerating.value) {
+                                    acc.failTurn(getApplication<Application>().getString(R.string.chat_connection_interrupted))
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Observe accumulator state
@@ -698,8 +787,8 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
     }
 
     private suspend fun loadHistory(session: ClawSeedSession, sessionId: String): List<ChatEntry> {
-        return session.gateway.sessionMessages(sessionId)
-            .map { msgs ->
+        return withContext(Dispatchers.Default) {
+            session.gateway.sessionMessages(sessionId).map { msgs ->
 
                 // Pass 1: Collect reasoning_content per turn (indexed by user message position)
                 val turnThinkingMap = mutableMapOf<Int, String>()
@@ -801,6 +890,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
 
                 groupToolCalls(intermediate)
             }.getOrThrow()
+        }
     }
 
     private fun observeAccumulator(slot: SessionSlot) {
@@ -889,8 +979,9 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                     // Update pool slot sessionId if the gateway assigned a new one
                     val sid = info?.sessionId
                     if (sid != null && currentSessionId != sid) {
+                        val oldId = currentSessionId
                         currentSessionId = sid
-                        val slot = sessionSlots[currentSessionId]
+                        val slot = sessionSlots.remove(oldId)
                         if (slot != null && slot.session === session) {
                             // Migrate slot entry from old key to real sessionId
                             sessionSlots[sid] = slot

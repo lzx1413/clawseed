@@ -21,8 +21,21 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class ChatClientTest {
+
+    @Test
+    fun closingClientIsTerminalAndIdempotent() = runBlocking {
+        val client = ChatClient(
+            url = "ws://localhost:1", authTokenProvider = { null },
+            toolRegistry = ToolRegistry(), reconnectPolicy = ReconnectPolicy.None,
+        )
+        client.close()
+        client.close()
+        assertFailsWith<IllegalStateException> { client.connect() }
+        Unit
+    }
 
     @Test
     fun resolveSessionIdKeepsExistingSessionWhenReconnectOmitsId() {
@@ -90,7 +103,7 @@ class ChatClientTest {
             client.connect()
             assertEquals(List(chunkCount) { "$it," }, received.await())
         } finally {
-            client.disconnect()
+            client.close()
             server.shutdown()
         }
     }
@@ -137,7 +150,7 @@ class ChatClientTest {
             client.sendAbort()
             withTimeout(5_000) { cancelled.await() }
         } finally {
-            client.disconnect()
+            client.close()
             server.shutdown()
         }
     }

@@ -9,6 +9,7 @@ import dev.clawseed.sdk.core.tool.ToolRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -88,7 +89,8 @@ internal class DefaultClawSeedSession(
     }
 
     override fun close() {
-        chatClient.disconnect()
+        chatClient.close()
+        scope.cancel()
     }
 
     companion object {

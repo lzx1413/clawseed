@@ -3,6 +3,8 @@ package dev.clawseed.sdk.android
 import dev.clawseed.sdk.core.ClawSeedSession
 import dev.clawseed.sdk.core.model.ChatEvent
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,7 +39,48 @@ class ChatAccumulator(private val session: ClawSeedSession) {
     val sessionTitle: StateFlow<String?> = _sessionTitle.asStateFlow()
 
     private val idCounter = AtomicLong(0)
-    private var collectionJob: kotlinx.coroutines.Job? = null
+    private var collectionJob: Job? = null
+    private var publicationJob: Job? = null
+    private var collectionScope: CoroutineScope? = null
+    private val textBuffer = StringBuilder()
+    private val thinkingBuffer = StringBuilder()
+    private var publishedFirstChunk = false
+
+    private fun publishBuffers() {
+        _streamingContent.value = textBuffer.toString()
+        _thinkingContent.value = thinkingBuffer.toString()
+    }
+
+    private fun schedulePublication() {
+        // Show the first chunk immediately, then merge bursts into bounded UI updates.
+        if (!publishedFirstChunk) {
+            publishBuffers()
+            publishedFirstChunk = true
+        }
+        if (publicationJob == null) publicationJob = collectionScope?.launch {
+            delay(40)
+            publishBuffers()
+            publicationJob = null
+        }
+    }
+
+    private fun clearBuffers() {
+        publicationJob?.cancel()
+        publicationJob = null
+        textBuffer.setLength(0)
+        thinkingBuffer.setLength(0)
+        _streamingContent.value = ""
+        _thinkingContent.value = ""
+        publishedFirstChunk = false
+    }
+
+    /** Release event collection when the owning session leaves the pool. */
+    fun stop() {
+        collectionJob?.cancel()
+        collectionJob = null
+        clearBuffers()
+        collectionScope = null
+    }
     private var currentTurnFlushed = false
     private var regenerating = false
     var generationId: Long = 0
@@ -46,6 +89,7 @@ class ChatAccumulator(private val session: ClawSeedSession) {
     /** Starts collecting [session] events inside [scope]. */
     fun startIn(scope: CoroutineScope) {
         collectionJob?.cancel()
+        collectionScope = scope
         collectionJob = scope.launch {
             session.events.collect { event -> handleEvent(event) }
         }
@@ -74,8 +118,7 @@ class ChatAccumulator(private val session: ClawSeedSession) {
         // Remove everything after the last user message (assistant responses, tool calls, etc.)
         // but keep the user message itself — the server does NOT re-emit it as a ChatEvent.
         _messages.value = messages.subList(0, lastUserIndex + 1).toList()
-        _streamingContent.value = ""
-        _thinkingContent.value = ""
+        clearBuffers()
         regenerating = true
         currentTurnFlushed = false
     }
@@ -84,8 +127,7 @@ class ChatAccumulator(private val session: ClawSeedSession) {
     fun reset() {
         finishTurn()
         clearError()
-        _streamingContent.value = ""
-        _thinkingContent.value = ""
+        clearBuffers()
         _messages.value = emptyList()
         _sessionTitle.value = null
         idCounter.set(0)
@@ -95,16 +137,14 @@ class ChatAccumulator(private val session: ClawSeedSession) {
 
     private fun beginTurn() {
         generationId++
-        _streamingContent.value = ""
-        _thinkingContent.value = ""
+        clearBuffers()
         currentTurnFlushed = false
         clearError()
         _isGenerating.value = true
     }
 
     fun finishTurn() {
-        _streamingContent.value = ""
-        _thinkingContent.value = ""
+        clearBuffers()
         _isGenerating.value = false
     }
 
@@ -132,22 +172,25 @@ class ChatAccumulator(private val session: ClawSeedSession) {
             is ChatEvent.TextChunk -> {
                 _isGenerating.value = true
                 currentTurnFlushed = false
-                _streamingContent.value += event.content
+                textBuffer.append(event.content)
+                schedulePublication()
             }
             is ChatEvent.ThinkingChunk -> {
                 _isGenerating.value = true
                 currentTurnFlushed = false
-                _thinkingContent.value += event.content
+                thinkingBuffer.append(event.content)
+                schedulePublication()
             }
             is ChatEvent.ChunkReset -> {
                 // The gateway sends chunk_reset immediately before the
                 // authoritative done event so clients can discard any
                 // provisional draft text collected during tool use.
+                textBuffer.setLength(0)
                 _streamingContent.value = ""
                 currentTurnFlushed = false
             }
             is ChatEvent.Done -> {
-                val hasPendingBuffers = _streamingContent.value.isNotEmpty() || _thinkingContent.value.isNotEmpty()
+                val hasPendingBuffers = textBuffer.isNotEmpty() || thinkingBuffer.isNotEmpty()
                 if (hasPendingBuffers || !currentTurnFlushed) {
                     flushBuffers(event.fullResponse)
                 } else {
@@ -214,7 +257,7 @@ class ChatAccumulator(private val session: ClawSeedSession) {
     }
 
     private fun flushBuffers(fullResponseFallback: String? = null) {
-        val thinking = _thinkingContent.value
+        val thinking = thinkingBuffer.toString()
         if (thinking.isNotEmpty()) {
             append(AccumulatedMessage.Thinking(
                 id = nextId(),
@@ -225,15 +268,15 @@ class ChatAccumulator(private val session: ClawSeedSession) {
         }
         val completedContent = fullResponseFallback
             ?.takeIf { it.isNotEmpty() }
-            ?: _streamingContent.value
+            ?: textBuffer.toString()
         if (completedContent.isNotEmpty()) {
             append(AccumulatedMessage.Assistant(
                 id = nextId(),
                 timestamp = System.currentTimeMillis(),
                 content = completedContent,
             ))
-            _streamingContent.value = ""
         }
+        clearBuffers()
     }
 
     private fun reconcileCompletedAssistantMessage(fullResponse: String) {

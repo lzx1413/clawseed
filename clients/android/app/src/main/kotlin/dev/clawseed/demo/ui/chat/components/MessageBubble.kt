@@ -167,7 +167,7 @@ private fun AssistantBubble(
     Column(modifier = modifier.fillMaxWidth()) {
         SelectionContainer {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                MarkdownContent(content = content)
+                MarkdownContent(content = content, cacheDocument = !isStreaming)
                 presentation?.let { RichContentBlocks(it, onPresentationAction) }
                 if (isStreaming) {
                     Text(
@@ -996,6 +996,7 @@ private fun ThinkingCard(content: String, modifier: Modifier = Modifier) {
                     content = content,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp),
+                    cacheDocument = false,
                 )
             }
         }

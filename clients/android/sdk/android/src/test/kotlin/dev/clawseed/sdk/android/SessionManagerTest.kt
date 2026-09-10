@@ -16,6 +16,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlin.test.assertFailsWith
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
@@ -200,6 +204,79 @@ class SessionManagerTest {
         assertEquals(1, processLifecycle.addedObservers.size)
     }
 
+    @Test
+    fun lruEvictionClosesTheRemovedObjectAndReusingUpdatesAccessOrder() = runTest {
+        val created = mutableListOf<FakeSession>()
+        val manager = SessionManager(
+            ClawSeedConfig("http://localhost"),
+            sessionFactory = { FakeSession().also(created::add) },
+            scope = backgroundScope,
+        ).apply { maxPoolSize = 2 }
+        val first = manager.connect("first")
+        manager.connect("second")
+        manager.connect("first")
+        val third = manager.connect("third")
+        assertEquals(1, created[1].disconnectCalls)
+        assertEquals(1, created[1].closeCalls)
+        assertEquals(ConnectionState.CONNECTED, first.connectionState.value)
+        assertEquals(setOf("first", "third"), manager.pooledSessions.value.keys)
+        assertSame(third, manager.activeSession.value)
+    }
+
+    @Test
+    fun repeatedSwitchesKeepActualConnectionsWithinPoolLimit() = runTest {
+        val created = mutableListOf<FakeSession>()
+        val manager = SessionManager(
+            ClawSeedConfig("http://localhost"),
+            sessionFactory = { FakeSession().also(created::add) },
+            scope = backgroundScope,
+        ).apply { maxPoolSize = 1 }
+        repeat(20) { manager.connect("session-$it") }
+        assertEquals(1, manager.poolSessionIds().size)
+        assertEquals(1, created.count { it.connectionState.value == ConnectionState.CONNECTED })
+        assertEquals(19, created.sumOf { it.disconnectCalls })
+    }
+
+    @Test
+    fun unfinishedBackgroundTurnIsRetainedThenEvictedAfterCompletion() = runTest {
+        val manager = SessionManager(
+            ClawSeedConfig("http://localhost"), sessionFactory = { FakeSession() }, scope = backgroundScope,
+        ).apply { maxPoolSize = 1 }
+        val generating = manager.connect("generating")
+        manager.setSessionGenerating("generating", true)
+        manager.connect("visible")
+        assertEquals(2, manager.poolSessionIds().size)
+        assertEquals(ConnectionState.CONNECTED, generating.connectionState.value)
+        manager.setSessionGenerating("generating", false)
+        runCurrent()
+        assertEquals(setOf("visible"), manager.poolSessionIds())
+        assertEquals(ConnectionState.DISCONNECTED, generating.connectionState.value)
+    }
+
+    @Test
+    fun cancelledConnectClosesUnpooledSession() = runTest {
+        val failed = FakeSession(onConnect = { throw CancellationException("switched away") })
+        val manager = SessionManager(
+            ClawSeedConfig("http://localhost"), sessionFactory = { failed }, scope = backgroundScope,
+        )
+        assertFailsWith<CancellationException> { manager.connect("cancelled") }
+        assertEquals(1, failed.disconnectCalls)
+        assertTrue(manager.poolSessionIds().isEmpty())
+    }
+
+    @Test
+    fun concurrentConnectsToSameIdCreateOnlyOneSession() = runTest {
+        var created = 0
+        val manager = SessionManager(
+            ClawSeedConfig("http://localhost"),
+            sessionFactory = { created++; FakeSession() }, scope = backgroundScope,
+        )
+        val first = async { manager.connect("same") }
+        val second = async { manager.connect("same") }
+        assertSame(first.await(), second.await())
+        assertEquals(1, created)
+    }
+
     private class CountingLifecycle : Lifecycle() {
         val addedObservers = mutableListOf<LifecycleObserver>()
         private val observers = linkedSetOf<LifecycleObserver>()
@@ -220,11 +297,17 @@ class SessionManagerTest {
     private class FakeSession(
         initialConnectionState: ConnectionState = ConnectionState.CONNECTED,
         initialSessionInfo: SessionInfo? = null,
+        private val onConnect: suspend () -> Unit = {},
     ) : ClawSeedSession {
         private val mutableConnectionState = MutableStateFlow(initialConnectionState)
         private val mutableSessionInfo = MutableStateFlow(initialSessionInfo)
         private val mutableEvents = MutableSharedFlow<ChatEvent>(extraBufferCapacity = 16)
 
+        var closeCalls: Int = 0
+            private set
+        override fun close() { closeCalls++ }
+        var disconnectCalls: Int = 0
+            private set
         var connectCalls: Int = 0
             private set
         var lastConnectSessionId: String? = "__unset__"
@@ -238,11 +321,13 @@ class SessionManagerTest {
 
         override suspend fun connect(sessionId: String?, persona: String?) {
             connectCalls += 1
+            onConnect()
             lastConnectSessionId = sessionId
             mutableConnectionState.value = ConnectionState.CONNECTED
         }
 
         override suspend fun disconnect() {
+            disconnectCalls++
             mutableConnectionState.value = ConnectionState.DISCONNECTED
         }
 

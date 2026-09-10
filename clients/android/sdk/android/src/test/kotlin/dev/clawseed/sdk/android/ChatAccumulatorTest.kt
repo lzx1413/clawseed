@@ -13,11 +13,58 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.advanceTimeBy
 import org.junit.Test
 import kotlin.test.assertEquals
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatAccumulatorTest {
+
+    @Test
+    fun rapidChunksPublishInBatchesWithoutLosingTheUnpublishedTail() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+        session.emit(ChatEvent.TextChunk("first"))
+        runCurrent()
+        repeat(100) {
+            session.emit(ChatEvent.TextChunk("x"))
+            runCurrent()
+        }
+        assertEquals("first", accumulator.streamingContent.value)
+        advanceTimeBy(40)
+        runCurrent()
+        assertEquals("first" + "x".repeat(100), accumulator.streamingContent.value)
+        session.emit(ChatEvent.TextChunk("tail"))
+        session.emit(ChatEvent.ThinkingChunk("reasoning"))
+        session.emit(ChatEvent.Done(""))
+        runCurrent()
+        assertEquals("first" + "x".repeat(100) + "tail",
+            (accumulator.messages.value.last() as AccumulatedMessage.Assistant).content)
+        assertEquals("reasoning",
+            accumulator.messages.value.filterIsInstance<AccumulatedMessage.Thinking>().single().content)
+        advanceTimeBy(80)
+        runCurrent()
+        assertEquals("", accumulator.streamingContent.value)
+        assertEquals("", accumulator.thinkingContent.value)
+    }
+
+    @Test
+    fun stoppingCollectionCancelsPendingPublicationsAndReleasesSubscriber() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+        session.emit(ChatEvent.TextChunk("draft"))
+        runCurrent()
+        accumulator.stop()
+        session.emit(ChatEvent.Done("must not be collected"))
+        advanceTimeBy(80)
+        runCurrent()
+        assertEquals(emptyList(), accumulator.messages.value)
+        assertEquals("", accumulator.streamingContent.value)
+    }
 
     @Test
     fun delayedAbortCleanupDoesNotResetTheNextTurn() {

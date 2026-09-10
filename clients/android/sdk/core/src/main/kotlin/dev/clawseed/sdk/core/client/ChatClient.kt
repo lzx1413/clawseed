@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -65,6 +66,7 @@ internal class ChatClient(
     @Volatile private var sessionId: String? = null
     @Volatile private var persona: String? = null
     @Volatile private var intentionalDisconnect = false
+    @Volatile private var closed = false
     @Volatile private var reconnectAttempt = 0
     private val pendingMessages = ConcurrentLinkedQueue<String>()
     private val activeToolCalls = ConcurrentHashMap<String, Job>()
@@ -85,6 +87,7 @@ internal class ChatClient(
     }
 
     suspend fun connect(sessionId: String? = null, persona: String? = null) {
+        check(!closed) { "Session is closed" }
         val targetSessionId = resolveSessionId(sessionId, this.sessionId)
         val currentState = _connectionState.value
         // If already connected/connecting to the same session, no-op or await the in-flight connect.
@@ -123,6 +126,22 @@ internal class ChatClient(
         webSocket?.close(1000, null)
         webSocket = null
         pendingMessages.clear()
+    }
+
+    /** Permanently release transport resources when a session leaves its owner's pool. */
+    fun close() {
+        if (closed) return
+        closed = true
+        val socket = webSocket
+        disconnect()
+        failPendingConnects(IllegalStateException("Session is closed"))
+        socket?.cancel()
+        eventQueue.cancel()
+        scope.cancel()
+        toolRegistry.onToolRegistered {}
+        httpClient.dispatcher.cancelAll()
+        httpClient.connectionPool.evictAll()
+        httpClient.dispatcher.executorService.shutdown()
     }
 
     fun sendMessage(content: String, debug: Boolean = false, attachments: List<dev.clawseed.sdk.core.model.ImageAttachment> = emptyList()) {

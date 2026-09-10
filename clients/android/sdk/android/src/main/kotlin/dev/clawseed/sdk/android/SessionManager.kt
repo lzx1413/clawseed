@@ -13,6 +13,10 @@ import dev.clawseed.sdk.core.model.ConnectionState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +25,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Application-scoped owner for active [ClawSeedSession]s.
@@ -35,8 +40,14 @@ class SessionManager internal constructor(
     private val sessionFactory: (ClawSeedConfig) -> ClawSeedSession = ClawSeed::createSession,
     private val appContextProvider: () -> Context? = { runCatching { ClawSeedAndroid.context }.getOrNull() },
     private val processLifecycleProvider: () -> Lifecycle = { ProcessLifecycleOwner.get().lifecycle },
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
 ) {
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val poolMutex = Mutex()
+    private val accessCounter = AtomicLong()
+    private val generatingSessions = ConcurrentHashMap.newKeySet<String>()
+    private val _pooledSessions = MutableStateFlow<Map<String, ClawSeedSession>>(emptyMap())
+    /** Snapshot used by UI caches to release state when a session leaves the pool. */
+    val pooledSessions = _pooledSessions.asStateFlow()
     private val observedLifecycles = Collections.newSetFromMap(WeakHashMap<Lifecycle, Boolean>())
     @Volatile private var processLifecycleObserver: DefaultLifecycleObserver? = null
     @Volatile private var disconnectOnBackground = false
@@ -44,15 +55,16 @@ class SessionManager internal constructor(
     /** Pool of live sessions keyed by sessionId. */
     private val sessions = ConcurrentHashMap<String, ClawSeedSession>()
 
-    /** Tracks the last-access timestamp for LRU eviction. */
+    /** Monotonic access order for LRU eviction, including rapid switches. */
     private val lastAccessTime = ConcurrentHashMap<String, Long>()
 
     private val _activeSessionId = MutableStateFlow<String?>(null)
     /** SessionId of the session currently displayed in the UI. */
     val activeSessionId: StateFlow<String?> = _activeSessionId.asStateFlow()
 
-    /** Maximum number of concurrent live sessions in the pool. */
+    /** Target pool size; unfinished turns may temporarily exceed this limit. */
     var maxPoolSize: Int = DEFAULT_MAX_POOL_SIZE
+        set(value) { require(value > 0); field = value }
 
     companion object {
         /** Default maximum pool size. */
@@ -64,14 +76,22 @@ class SessionManager internal constructor(
     /**
      * Returns the currently active session, if one has been created.
      */
-    val activeSession: StateFlow<ClawSeedSession?> = kotlinx.coroutines.flow.MutableStateFlow<ClawSeedSession?>(null).also { flow ->
-        // Derive activeSession from activeSessionId + pool
-        scope.launch {
-            _activeSessionId.collect { sid ->
-                flow.value = sid?.let { sessions[it] }
-            }
+    private val _activeSession = MutableStateFlow<ClawSeedSession?>(null)
+    val activeSession = _activeSession.asStateFlow()
+
+    private fun activate(sessionId: String) {
+        touch(sessionId)
+        _activeSessionId.value = sessionId
+        _activeSession.value = sessions[sessionId]
+    }
+
+    /** Generating sessions can temporarily exceed the idle-cache limit. */
+    fun setSessionGenerating(sessionId: String, generating: Boolean) {
+        if (generating) generatingSessions.add(sessionId)
+        else if (generatingSessions.remove(sessionId)) {
+            scope.launch { poolMutex.withLock { evictIfNeeded() } }
         }
-    }.asStateFlow()
+    }
 
     /**
      * Connects to an existing session or creates a new one when [sessionId] is `null`.
@@ -84,21 +104,22 @@ class SessionManager internal constructor(
      * the old session on switch.  Old sessions remain alive in the pool so
      * the gateway continues any ongoing agent turn.
      */
-    suspend fun connect(sessionId: String? = null, persona: String? = null): ClawSeedSession {
+    suspend fun connect(sessionId: String? = null, persona: String? = null): ClawSeedSession =
+        poolMutex.withLock { connectLocked(sessionId, persona) }
+
+    private suspend fun connectLocked(sessionId: String?, persona: String?): ClawSeedSession {
         // ── Reuse existing session ──────────────────────────
         if (sessionId != null) {
             val existing = sessions[sessionId]
             if (existing != null) {
                 val state = existing.connectionState.value
                 if (state == ConnectionState.CONNECTED) {
-                    touch(sessionId)
-                    _activeSessionId.value = sessionId
+                    activate(sessionId)
                     return existing
                 }
                 if (state == ConnectionState.DISCONNECTED) {
                     existing.connect(sessionId, persona)
-                    touch(sessionId)
-                    _activeSessionId.value = sessionId
+                    activate(sessionId)
                     return existing
                 }
                 // CONNECTING / RECONNECTING — await
@@ -109,64 +130,62 @@ class SessionManager internal constructor(
                     }
                 }
                 if (existing.connectionState.value == ConnectionState.CONNECTED) {
-                    touch(sessionId)
-                    _activeSessionId.value = sessionId
+                    activate(sessionId)
                     return existing
                 }
                 // Failed to reconnect — remove stale entry and fall through to create
-                sessions.remove(sessionId)
-                lastAccessTime.remove(sessionId)
-                runCatching { existing.disconnect() }
+                disconnectLocked(sessionId)
             }
         }
 
-        // ── Evict LRU idle session if pool is full ──────────
-        evictIfNeeded()
-
         // ── Create new session ──────────────────────────────
         val session = sessionFactory(config)
-        session.connect(sessionId, persona)
-
-        // Bridge CETP external tools into this session's registry
-        runCatching { ClawSeedAndroid.externalToolBridge().attachToRegistry(session.tools) }
-
-        // Wait for SessionStarted event to get the real sessionId
-        val realSessionId = waitForSessionId(session, sessionId)
-
-        if (realSessionId != null) {
+        try {
+            session.connect(sessionId, persona)
+            val realSessionId = waitForSessionId(session, sessionId)
+                ?: error("Session did not receive an ID")
             sessions[realSessionId] = session
-            touch(realSessionId)
-            _activeSessionId.value = realSessionId
-        } else {
-            // Session failed to get an ID (e.g. connect error). Don't pool it.
-            // Still set as active so the caller can use it.
-            _activeSessionId.value = null
+            activate(realSessionId)
+            _pooledSessions.value = sessions.toMap()
+            runCatching { ClawSeedAndroid.externalToolBridge().attachToRegistry(session.tools) }
+            evictIfNeeded()
+            return session
+        } catch (error: Throwable) {
+            // A cancelled connection must not leave an unowned WebSocket behind.
+            val key = sessions.entries.firstOrNull { it.value === session }?.key
+            if (key != null) disconnectLocked(key)
+            else withContext(NonCancellable) {
+                try { session.disconnect() } finally { session.close() }
+            }
+            throw error
         }
-
-        return session
     }
 
     /** Disconnects a specific session and removes it from the pool. */
-    suspend fun disconnect(sessionId: String) {
+    suspend fun disconnect(sessionId: String) = poolMutex.withLock {
+        disconnectLocked(sessionId)
+    }
+
+    private suspend fun disconnectLocked(sessionId: String) {
         val session = sessions.remove(sessionId) ?: return
         lastAccessTime.remove(sessionId)
-        runCatching { ClawSeedAndroid.externalToolBridge().detachFromRegistry() }
-        session.disconnect()
+        generatingSessions.remove(sessionId)
+        _pooledSessions.value = sessions.toMap()
         if (_activeSessionId.value == sessionId) {
             _activeSessionId.value = null
+            _activeSession.value = null
+            runCatching { ClawSeedAndroid.externalToolBridge().detachFromRegistry() }
+        }
+        // Keep the removed object until close finishes, even if the caller is cancelled.
+        withContext(NonCancellable) {
+            try { session.disconnect() } finally { session.close() }
         }
     }
 
     /** Disconnects and clears all sessions from the pool. */
-    suspend fun disconnectAll() {
-        val allSessionIds = sessions.keys.toList()
-        for (sid in allSessionIds) {
-            val session = sessions.remove(sid)
-            lastAccessTime.remove(sid)
-            runCatching { session?.disconnect() }
-        }
+    suspend fun disconnectAll() = poolMutex.withLock {
+        for (sid in sessions.keys.toList()) disconnectLocked(sid)
         runCatching { ClawSeedAndroid.externalToolBridge().detachFromRegistry() }
-        _activeSessionId.value = null
     }
 
     /** Returns the pool entry for a given sessionId, or null. */
@@ -227,38 +246,22 @@ class SessionManager internal constructor(
     /** Test-only: add a session to the pool directly. */
     internal fun addSessionToPoolForTest(sessionId: String, session: ClawSeedSession) {
         sessions[sessionId] = session
+        _pooledSessions.value = sessions.toMap()
         touch(sessionId)
     }
 
-    /** Update last-access timestamp for LRU eviction. */
+    /** Update access order for LRU eviction. */
     private fun touch(sessionId: String) {
-        lastAccessTime[sessionId] = System.currentTimeMillis()
+        lastAccessTime[sessionId] = accessCounter.incrementAndGet()
     }
 
-    /** Evict the least-recently-used idle session if the pool exceeds [maxPoolSize]. */
-    private fun evictIfNeeded() {
-        while (sessions.size >= maxPoolSize) {
-            val activeId = _activeSessionId.value
-            // Find the LRU session that is NOT the active one
-            val lruEntry = lastAccessTime.entries
-                .filter { it.key != activeId }
-                .minByOrNull { it.value }
-
-            if (lruEntry == null) {
-                // All sessions are active; can't evict without disrupting the user.
-                // Remove the oldest active session as last resort.
-                val oldest = lastAccessTime.entries.minByOrNull { it.value }
-                if (oldest != null) {
-                    scope.launch { disconnect(oldest.key) }
-                }
-                break
-            }
-
-            scope.launch { disconnect(lruEntry.key) }
-            // Remove synchronously from maps so the size check re-evaluates.
-            // The async disconnect will handle the actual WS close.
-            sessions.remove(lruEntry.key)
-            lastAccessTime.remove(lruEntry.key)
+    /** Retain the visible session and any unfinished turns; bound idle history. */
+    private suspend fun evictIfNeeded() {
+        while (sessions.size > maxPoolSize) {
+            val oldestIdle = lastAccessTime.entries
+                .filter { it.key != _activeSessionId.value && it.key !in generatingSessions }
+                .minByOrNull { it.value } ?: break
+            disconnectLocked(oldestIdle.key)
         }
     }
 

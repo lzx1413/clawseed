@@ -44,6 +44,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.interaction.DragInteraction
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -92,6 +95,7 @@ fun ChatScreen(
     val uiState by viewModel.uiState.collectAsState()
     val drafts by viewModel.drafts.collectAsState()
     val imageDrafts by viewModel.imageDrafts.collectAsState()
+    val imageDraftsReady by viewModel.imageDraftsReady.collectAsState()
     val imageTarget = viewModel.imageDraftTarget()
     val selectedImages = imageDrafts[imageTarget?.key].orEmpty().filterNot { it.awaitingReply }
     var pickerTarget by remember { mutableStateOf<ImageDraftTarget?>(null) }
@@ -161,12 +165,29 @@ fun ChatScreen(
         } else null
     }
 
-    // Only auto-scroll if user is near the bottom
-    val isNearBottom by remember {
-        derivedStateOf {
-            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            val totalItems = listState.layoutInfo.totalItemsCount
-            totalItems == 0 || lastVisible >= totalItems - 2
+    var followLatest by remember(sessionVersion) { mutableStateOf(true) }
+    LaunchedEffect(listState, sessionVersion) {
+        launch {
+            listState.interactionSource.interactions.collect {
+                if (it is DragInteraction.Start) followLatest = false
+            }
+        }
+        // Follow measured content growth, including background Markdown parsing.
+        // A drag suspends following until the user returns to the bottom.
+        snapshotFlow {
+            val layout = listState.layoutInfo
+            listOf(
+                layout.totalItemsCount, layout.viewportEndOffset,
+                layout.visibleItemsInfo.lastOrNull()?.size ?: 0,
+                if (listState.canScrollForward) 1 else 0,
+                if (listState.isScrollInProgress) 1 else 0,
+            )
+        }.collect {
+            if (!listState.canScrollForward && !listState.isScrollInProgress) followLatest = true
+            if (followLatest && !listState.isScrollInProgress && listState.canScrollForward) {
+                val lastIndex = listState.layoutInfo.totalItemsCount - 1
+                if (lastIndex >= 0) listState.scrollToItem(lastIndex)
+            }
         }
     }
 
@@ -231,17 +252,8 @@ fun ChatScreen(
         }
     }
 
-    // Auto-scroll to bottom on new messages (only when user is near bottom)
-    LaunchedEffect(uiState.messages.size, uiState.streamingContent, uiState.thinkingContent) {
-        if (isNearBottom && (uiState.messages.isNotEmpty() || uiState.streamingContent.isNotEmpty() || uiState.thinkingContent.isNotEmpty())) {
-            if (displayedItemCount > 0) {
-                listState.animateScrollToItem(bottomAnchorIndex)
-            }
-        }
-    }
-
     LaunchedEffect(isImeVisible) {
-        if (!isNearBottom || !isImeVisible) {
+        if (!followLatest || !isImeVisible) {
             return@LaunchedEffect
         }
 
@@ -416,7 +428,7 @@ fun ChatScreen(
                 },
                 onStop = { viewModel.abortGeneration() },
                 isLoading = isLoading,
-                canSend = sessionSwitchReady,
+                canSend = sessionSwitchReady && imageDraftsReady,
                 modifier = Modifier.imePadding(),
                 hasImages = selectedImages.isNotEmpty(),
                 canPickImages = uiState.imageAttachmentsSupported,
