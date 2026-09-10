@@ -20,6 +20,7 @@ ClawSeed 是一个 AI Agent **运行时**，用 Rust 编写。它连接 LLM 提�
 
 ## NEWS
 
+- 2026-09-11：**ClawSeed Android 2.0.0** 带来图片与文件对话：支持添加图片、PDF、DOCX、Markdown、文本和 CSV 附件；附件面板提供最近图片预览及拍照、相册、文件入口；支持从其他 Android 应用分享图片和文件到新会话草稿。本次更新还优化了拍照预览与上传速度、聊天滚动和会话资源占用，并完善了模型用量统计。支持格式与限制详见[附件使用说明](docs/zh/android-file-attachments.md)。
 - 2026-07-03：我们今天正式支持了分身功能。
 
 一个 agent 运行时应该只做三件事：接收消息、调用 LLM、执行工具。其他一切——渠道、面板、集成——都属于应用层。ClawSeed 提供稳定的 trait crate，应用自己组装。

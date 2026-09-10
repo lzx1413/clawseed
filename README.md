@@ -19,6 +19,7 @@ ClawSeed is an AI agent **runtime** written in Rust. It connects to LLM provider
 
 ## NEWS
 
+- 2026-09-11: **ClawSeed Android 2.0.0** brings image and file conversations: attach images, PDF, DOCX, Markdown, text, and CSV files; browse recent photos or choose Camera, Gallery, and Files from the attachment picker; and share images and files from other Android apps into a new conversation draft. This update also improves photo preview and upload performance, chat scrolling, session resource usage, and LLM usage metrics. See the [attachment guide](docs/en/android-file-attachments.md) for supported formats and limits.
 - 2026-07-03: ClawSeed now officially supports personas.
 
 An agent runtime should do three things: receive messages, call an LLM, execute tools. Everything else — channels, dashboards, integrations — belongs to the application layer. ClawSeed provides crates with stable traits; applications compose them.
