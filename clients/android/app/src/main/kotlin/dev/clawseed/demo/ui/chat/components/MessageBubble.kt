@@ -97,6 +97,7 @@ fun MessageBubble(
                     MessageImageStrip(entry.attachments, onReadImage)
                 }
             }
+            MessageFileList(entry.files)
             if (entry.content.isNotBlank()) UserBubble(entry.content)
         }
         is ChatEntry.AssistantMessage -> AssistantBubble(

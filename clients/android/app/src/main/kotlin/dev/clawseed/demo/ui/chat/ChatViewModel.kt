@@ -79,6 +79,7 @@ data class AuthPrompt(
 data class ChatUiState(
     val showDebugInfo: Boolean = false,
     val imageAttachmentsSupported: Boolean = false,
+    val fileAttachmentsSupported: Boolean = false,
     val messages: List<ChatEntry> = emptyList(),
     val streamingContent: String = "",
     val thinkingContent: String = "",
@@ -115,11 +116,11 @@ internal data class SessionSlot(
 
     fun messages(): List<ChatEntry> = history + mapAccumulatedToEntries(accumulator.messages.value).first
 
-    fun sendMessage(content: String, debug: Boolean = false, expectedSessionId: String? = null, attachments: List<dev.clawseed.sdk.core.model.ImageAttachment> = emptyList()): Boolean {
-        if ((content.isBlank() && attachments.isEmpty()) || accumulator.isGenerating.value || session.connectionState.value != ConnectionState.CONNECTED) return false
+    fun sendMessage(content: String, debug: Boolean = false, expectedSessionId: String? = null, attachments: List<dev.clawseed.sdk.core.model.ImageAttachment> = emptyList(), files: List<dev.clawseed.sdk.core.model.FileAttachment> = emptyList()): Boolean {
+        if ((content.isBlank() && attachments.isEmpty() && files.isEmpty()) || accumulator.isGenerating.value || session.connectionState.value != ConnectionState.CONNECTED) return false
         if (expectedSessionId != null && session.sessionInfo.value?.sessionId != expectedSessionId) return false
-        accumulator.addUserMessage(content, attachments)
-        return runCatching { session.sendMessage(content, debug, attachments) }
+        accumulator.addUserMessage(content, attachments, files)
+        return runCatching { session.sendMessage(content, debug, attachments, files) }
             .onFailure { accumulator.failTurn(it.message ?: "Failed to send message") }
             .isSuccess
     }
@@ -171,6 +172,7 @@ internal data class SessionSlot(
                         timestamp = msg.timestamp,
                         content = if (stripEnrichment) stripEnrichmentPrefixes(msg.content) else msg.content,
                         attachments = msg.attachments,
+                        files = msg.files,
                     ))
                 }
                 is dev.clawseed.sdk.android.AccumulatedMessage.Assistant -> {
@@ -285,6 +287,35 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
         draftStore.update(key, text)
     }
 
+    private val fileStore = ChatFileAttachments(application)
+    internal val fileDrafts = fileStore.entries
+    internal val fileDraftsReady = fileStore.ready
+
+    internal fun addFiles(target: ImageDraftTarget, uris: List<android.net.Uri>) {
+        if (imageDraftTarget()?.key != target.key || !imageOperations.add(target.key)) return
+        viewModelScope.launch {
+            try {
+                check(currentSlot?.session?.sessionInfo?.value?.fileAttachmentsSupported == true) { "当前 Gateway 不支持文件附件，请升级 Gateway" }
+                check(fileDrafts.value[target.key].orEmpty().count { !it.sent } + uris.size <= 4) { "每条消息最多 4 个文件" }
+                for (uri in uris) fileStore.import(target.key, uri)
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                _uiState.value = _uiState.value.copy(error = error.message)
+            } finally { imageOperations.remove(target.key) }
+        }
+    }
+
+    internal fun changeFile(target: ImageDraftTarget, id: String, retry: Boolean) {
+        if (!imageOperations.add(target.key)) return
+        viewModelScope.launch {
+            try { if (retry) fileStore.retry(target.key, id) else fileStore.remove(target.key, id) }
+            catch (error: Exception) {
+                if (error is CancellationException) throw error
+                _uiState.value = _uiState.value.copy(error = error.message)
+            } finally { imageOperations.remove(target.key) }
+        }
+    }
+
     private val imageDraftStore = ChatImageDrafts(application)
     internal val imageDrafts = imageDraftStore.drafts
     internal val imageDraftsReady = imageDraftStore.ready
@@ -300,7 +331,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
     }
 
     internal fun imageDraftText(key: String): String =
-        if (imageDrafts.value[key].orEmpty().any { it.awaitingReply }) ""
+        if (imageDrafts.value[key].orEmpty().any { it.awaitingReply } || fileDrafts.value[key].orEmpty().any { it.awaitingReply }) ""
         else imageDraftStore.savedText(key)
 
     internal fun imageDraftFile(id: String) = imageDraftStore.file(id)
@@ -316,9 +347,11 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
         }
     }
 
-    internal fun addImages(target: ImageDraftTarget, uris: List<android.net.Uri>) {
-        if (!canPickImages() || imageDraftTarget()?.key != target.key) return
-        if (!imageOperations.add(target.key)) return
+    internal fun addImages(target: ImageDraftTarget, uris: List<android.net.Uri>, onComplete: () -> Unit = {}) {
+        if (!canPickImages() || imageDraftTarget()?.key != target.key || !imageOperations.add(target.key)) {
+            onComplete()
+            return
+        }
         viewModelScope.launch {
             try {
                 val capability = target.gateway.status().getOrThrow().imageAttachments
@@ -332,7 +365,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
             } catch (error: Exception) {
                 if (error is kotlinx.coroutines.CancellationException) throw error
                 _uiState.value = _uiState.value.copy(error = error.message ?: "图片处理失败")
-            } finally { imageOperations.remove(target.key) }
+            } finally { imageOperations.remove(target.key); onComplete() }
         }
     }
 
@@ -364,7 +397,9 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
         val slot = currentSlot ?: return false
         if (imageDraftTarget()?.key != target.key || target.key in imageOperations) return false
         val images = imageDrafts.value[target.key].orEmpty().filterNot { it.awaitingReply }
-        if (images.isEmpty()) return sendMessage(content, target.sessionId)
+        val fileDrafts = fileDrafts.value[target.key].orEmpty().filter { !it.sent && !it.awaitingReply }
+        if (images.isEmpty() && fileDrafts.isEmpty()) return sendMessage(content, target.sessionId)
+        if (fileDrafts.any { it.status != "ready" }) return false
         if (images.any { it.uploading || it.attachment == null || it.error != null }) return false
         if (!imageOperations.add(target.key)) return false
         viewModelScope.launch {
@@ -372,6 +407,8 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                 // Preserve crash recovery before sending, without blocking keyboard dismissal.
                 imageDraftStore.saveText(target.key, content)
                 if (currentSlot !== slot || imageDraftTarget()?.key != target.key) return@launch
+                val files = fileStore.metadata(target.key)
+                fileStore.markSending(target.key, files.map { it.id }.toSet())
                 kotlinx.coroutines.coroutineScope {
                     // Subscribe before sending so a very fast response cannot be missed.
                     val response = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
@@ -387,9 +424,10 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                             getApplication<Application>().getString(R.string.chat_connection_interrupted),
                         )
                     }
-                    if (!slot.sendMessage(content, debugEnabled, target.sessionId, images.mapNotNull { it.attachment })) {
+                    if (!slot.sendMessage(content, debugEnabled, target.sessionId, images.mapNotNull { it.attachment }, files)) {
                         response.cancel()
                         disconnected.cancel()
+                        fileStore.finish(target.key, files.map { it.id }.toSet(), false)
                         return@coroutineScope
                     }
                     val ids = images.map { it.id }.toSet()
@@ -403,6 +441,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                     }
                     response.cancel()
                     disconnected.cancel()
+                    fileStore.finish(target.key, files.map { it.id }.toSet(), event is dev.clawseed.sdk.core.model.ChatEvent.Done)
                     when (event) {
                         is dev.clawseed.sdk.core.model.ChatEvent.Done -> imageDraftStore.removeAll(target.key, ids)
                         else -> imageDraftStore.transform(target.key) { current ->
@@ -417,7 +456,8 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                 }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                _uiState.value = _uiState.value.copy(error = error.message ?: "图片发送失败")
+                fileStore.finish(target.key, fileDrafts.map { it.id }.toSet(), false)
+                _uiState.value = _uiState.value.copy(error = error.message ?: "附件发送失败")
             } finally {
                 imageOperations.remove(target.key)
             }
@@ -468,6 +508,8 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
 
     init {
         viewModelScope.launch {
+            runCatching { fileStore.load() }
+                .onFailure { _uiState.value = _uiState.value.copy(error = it.message) }
             runCatching { imageDraftStore.load() }
                 .onFailure { _uiState.value = _uiState.value.copy(error = it.message) }
         }
@@ -625,6 +667,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
             currentSessionId = null,
             currentPersona = null,
             imageAttachmentsSupported = false,
+            fileAttachmentsSupported = false,
             error = null,
         )
 
@@ -669,6 +712,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
             currentSessionId = sessionId,
             currentPersona = slot.session.sessionInfo.value?.persona,
             imageAttachmentsSupported = slot.session.sessionInfo.value?.imageAttachmentsSupported == true,
+            fileAttachmentsSupported = slot.session.sessionInfo.value?.fileAttachmentsSupported == true,
         )
 
         // Resume observation
@@ -740,6 +784,24 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
 
     private fun registerTools(session: ClawSeedSession) {
         session.tools.register(
+            name = "attachment_read",
+            description = "读取当前会话已发送的文件。start 从 0 开始；文本/DOCX 按 Unicode 字符，CSV 按完整记录（第 0 条是表头），PDF 按页。返回 next/eof；继续读取使用 next。原始 Android 客户端必须在线。",
+            parameters = """{"type":"object","properties":{"attachment_id":{"type":"string"},"start":{"type":"integer","minimum":0},"count":{"type":"integer","minimum":1,"maximum":16000}},"required":["attachment_id","start","count"],"additionalProperties":false}""",
+        ) { args ->
+            try {
+                val sessionId = session.sessionInfo.value?.sessionId ?: error("会话未连接")
+                val key = ChatImageDrafts.key(session.gateway, sessionId)
+                val id = args["attachment_id"]?.jsonPrimitive?.content ?: error("缺少 attachment_id")
+                val start = args["start"]?.jsonPrimitive?.content?.toIntOrNull() ?: error("start 必须是整数")
+                val count = args["count"]?.jsonPrimitive?.content?.toIntOrNull() ?: error("count 必须是整数")
+                val result = fileStore.read(key, id, start, count)
+                ToolResult.Success(kotlinx.serialization.json.Json.encodeToString(dev.clawseed.sdk.core.model.AttachmentReadResult.serializer(), result))
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                ToolResult.Failure(error.message ?: "附件读取失败")
+            }
+        }
+        session.tools.register(
             name = "device_info",
             description = "获取Android设备信息，包括型号、制造商、Android版本",
             parameters = """{"type":"object","properties":{},"required":[]}""",
@@ -796,6 +858,8 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
     private suspend fun loadHistory(session: ClawSeedSession, sessionId: String): List<ChatEntry> {
         return withContext(Dispatchers.Default) {
             session.gateway.sessionMessages(sessionId).map { msgs ->
+                fileStore.load()
+                fileStore.reconcile(ChatImageDrafts.key(session.gateway, sessionId), msgs.flatMap { it.files }.map { it.id }.toSet())
 
                 // Pass 1: Collect reasoning_content per turn (indexed by user message position)
                 val turnThinkingMap = mutableMapOf<Int, String>()
@@ -836,6 +900,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                                     timestamp = System.currentTimeMillis(),
                                     content = stripEnrichmentPrefixes(msg.content ?: ""),
                                     attachments = msg.attachments,
+                        files = msg.files,
                                 ))
                                 // Insert consolidated Thinking right after UserMessage
                                 turnThinkingMap[idx]?.let { reasoning ->
@@ -983,6 +1048,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                         // when we actually have session info so the chip clears on disconnect.
                         currentPersona = info?.persona,
                         imageAttachmentsSupported = info?.imageAttachmentsSupported == true,
+                        fileAttachmentsSupported = info?.fileAttachmentsSupported == true,
                     )
                     // Update pool slot sessionId if the gateway assigned a new one
                     val sid = info?.sessionId

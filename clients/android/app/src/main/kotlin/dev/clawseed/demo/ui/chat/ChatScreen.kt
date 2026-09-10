@@ -1,6 +1,9 @@
 package dev.clawseed.demo.ui.chat
 
 import android.Manifest
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -96,12 +99,48 @@ fun ChatScreen(
     val drafts by viewModel.drafts.collectAsState()
     val imageDrafts by viewModel.imageDrafts.collectAsState()
     val imageDraftsReady by viewModel.imageDraftsReady.collectAsState()
+    val fileDrafts by viewModel.fileDrafts.collectAsState()
+    val fileDraftsReady by viewModel.fileDraftsReady.collectAsState()
     val imageTarget = viewModel.imageDraftTarget()
     val selectedImages = imageDrafts[imageTarget?.key].orEmpty().filterNot { it.awaitingReply }
+    val selectedFiles = fileDrafts[imageTarget?.key].orEmpty().filter { !it.sent && !it.awaitingReply }
+    var filePickerTarget by remember { mutableStateOf<ImageDraftTarget?>(null) }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        filePickerTarget?.let { target -> if (uris.isNotEmpty()) viewModel.addFiles(target, uris) }
+        filePickerTarget = null
+    }
     var pickerTarget by remember { mutableStateOf<ImageDraftTarget?>(null) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(4)) { uris ->
         pickerTarget?.let { target -> if (uris.isNotEmpty()) viewModel.addImages(target, uris) }
         pickerTarget = null
+    }
+    var cameraFileName by rememberSaveable { mutableStateOf<String?>(null) }
+    var cameraTargetKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var cameraResultReady by rememberSaveable { mutableStateOf(false) }
+    val cameraPicker = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        if (success) cameraResultReady = true
+        else {
+            cameraFileName?.let { File(activity.cacheDir, "chat-camera/$it").delete() }
+            cameraFileName = null
+            cameraTargetKey = null
+            cameraResultReady = false
+        }
+    }
+    // A camera activity can recreate this screen. Wait for the original session and
+    // its image capability to reconnect before importing the saved capture.
+    LaunchedEffect(cameraResultReady, imageTarget?.key, uiState.imageAttachmentsSupported, imageDraftsReady) {
+        val target = imageTarget
+        if (cameraResultReady && target != null && target.key == cameraTargetKey &&
+            uiState.imageAttachmentsSupported && imageDraftsReady) {
+            val file = cameraFileName?.let { File(activity.cacheDir, "chat-camera/$it") }
+            cameraResultReady = false
+            cameraFileName = null
+            cameraTargetKey = null
+            if (file != null) {
+                val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file)
+                viewModel.addImages(target, listOf(uri)) { file.delete() }
+            }
+        }
     }
     val lifecycleOwner = LocalLifecycleOwner.current
     val draftKey = uiState.currentSessionId ?: sessionId ?: "__new__"
@@ -423,18 +462,38 @@ fun ChatScreen(
                 onSend = {
                     val text = input
                     dismissInput()
-                    if (selectedImages.isNotEmpty() && imageTarget != null) {
+                    if ((selectedImages.isNotEmpty() || selectedFiles.isNotEmpty()) && imageTarget != null) {
                         viewModel.sendImageDraft(text, imageTarget)
                     } else if (viewModel.sendMessage(text, uiState.currentSessionId)) viewModel.updateDraft(draftKey, "")
                 },
                 onStop = { viewModel.abortGeneration() },
                 isLoading = isLoading,
-                canSend = sessionSwitchReady && imageDraftsReady,
+                canSend = sessionSwitchReady && imageDraftsReady && fileDraftsReady,
                 modifier = Modifier.imePadding(),
-                hasImages = selectedImages.isNotEmpty(),
+                hasImages = selectedImages.isNotEmpty() || selectedFiles.isNotEmpty(),
+                canPickFiles = uiState.fileAttachmentsSupported,
+                onPickFiles = imageTarget?.let { target -> { filePickerTarget = target; filePicker.launch(arrayOf("text/*", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/octet-stream")) } },
                 canPickImages = uiState.imageAttachmentsSupported,
+                imageSlots = (4 - selectedImages.size).coerceAtLeast(0),
+                onSelectRecent = imageTarget?.let { target -> { uris -> viewModel.addImages(target, uris) } },
+                onTakePhoto = imageTarget?.let { target -> {
+                    try {
+                        val directory = File(activity.cacheDir, "chat-camera").apply { mkdirs() }
+                        val file = File.createTempFile("capture-", ".jpg", directory)
+                        cameraFileName = file.name
+                        cameraTargetKey = target.key
+                        cameraPicker.launch(FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file))
+                    } catch (_: Exception) {
+                        cameraFileName?.let { File(activity.cacheDir, "chat-camera/$it").delete() }
+                        cameraFileName = null
+                        cameraTargetKey = null
+                        android.widget.Toast.makeText(activity, "无法打开相机，请使用相册选择图片", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                } },
                 onPickImages = imageTarget?.let { target -> { pickerTarget = target; imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } },
                 imageDrafts = {
+                    if (imageTarget != null) dev.clawseed.demo.ui.chat.components.DraftFileList(selectedFiles,
+                        { viewModel.changeFile(imageTarget, it, false) }, { viewModel.changeFile(imageTarget, it, true) })
                     if (imageTarget != null) dev.clawseed.demo.ui.chat.components.DraftImageStrip(
                         selectedImages, viewModel::imageDraftFile,
                         { viewModel.removeImage(imageTarget, it) }, { viewModel.retryImage(imageTarget, it) },

@@ -39,8 +39,9 @@ android {
         applicationId = "dev.clawseed.demo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
-        versionName = "1.11.3"
+        versionCode = 16
+        versionName = "1.12.3"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
         buildConfigField("String", "SDK_VERSION", "\"0.4.0\"")
     }
@@ -67,6 +68,8 @@ android {
         }
     }
 
+    testBuildType = providers.gradleProperty("attachmentTestBuildType").getOrElse("debug")
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -92,6 +95,8 @@ dependencies {
 
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
+    // Apache-2.0; Java-only text extraction, no additional native ABI dependency.
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation("androidx.activity:activity-compose:1.10.1")
 
     val composeBom = platform("androidx.compose:compose-bom:2026.04.01")
@@ -131,6 +136,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.7.1")
     implementation("androidx.media3:media3-ui:1.7.1")
 
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
 }

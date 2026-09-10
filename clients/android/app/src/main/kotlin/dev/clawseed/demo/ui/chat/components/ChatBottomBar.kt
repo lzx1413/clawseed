@@ -25,6 +25,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +37,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -51,8 +55,15 @@ fun ChatBottomBar(
     hasImages: Boolean = false,
     canPickImages: Boolean = true,
     onPickImages: (() -> Unit)? = null,
+    canPickFiles: Boolean = false,
+    onPickFiles: (() -> Unit)? = null,
+    onTakePhoto: (() -> Unit)? = null,
+    onSelectRecent: ((List<android.net.Uri>) -> Unit)? = null,
+    imageSlots: Int = 4,
     imageDrafts: @Composable () -> Unit = {},
 ) {
+    var showAttachmentPicker by remember { mutableStateOf(false) }
+    val keyboardController = LocalSoftwareKeyboardController.current
     val colorScheme = MaterialTheme.colorScheme
 
     fun submitQuestion() {
@@ -83,17 +94,23 @@ fun ChatBottomBar(
                     color = colorScheme.onSurfaceVariant,
                 )
             },
-            leadingIcon = onPickImages?.let { pick ->
+            leadingIcon = if (onPickImages != null || onPickFiles != null) {
                 {
-                    IconButton(onClick = pick, enabled = canSend && !isLoading && canPickImages) {
+                    IconButton(
+                        onClick = {
+                            keyboardController?.hide()
+                            showAttachmentPicker = true
+                        },
+                        enabled = canSend && !isLoading,
+                    ) {
                         Icon(
                             imageVector = AttachmentIcon,
-                            contentDescription = stringResource(R.string.chat_attach_image),
+                            contentDescription = "添加附件",
                             modifier = Modifier.size(24.dp),
                         )
                     }
                 }
-            },
+            } else null,
             trailingIcon = {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -122,6 +139,19 @@ fun ChatBottomBar(
         )
 
     }
+    if (showAttachmentPicker) {
+        ChatAttachmentSheet(
+            onDismiss = { showAttachmentPicker = false },
+            canPickImages = canSend && !isLoading && canPickImages,
+            canPickFiles = canSend && !isLoading && canPickFiles,
+            imageSlots = imageSlots,
+            onPickImages = onPickImages,
+            onPickFiles = onPickFiles,
+            onTakePhoto = onTakePhoto,
+            onSelectRecent = onSelectRecent,
+        )
+    }
+
 }
 
 @Composable
@@ -176,7 +206,7 @@ private fun ComposerCircleButton(
     }
 }
 
-private val AttachmentIcon: ImageVector by lazy {
+internal val AttachmentIcon: ImageVector by lazy {
     ImageVector.Builder(
         name = "Attachment",
         defaultWidth = 24.dp,
