@@ -2004,6 +2004,20 @@ mod tests {
     }
 
     #[test]
+    fn cached_usage_accepts_chat_completions_deepseek_and_responses_formats() {
+        for payload in [
+            r#"{"prompt_tokens":100,"completion_tokens":20,"prompt_tokens_details":{"cached_tokens":60}}"#,
+            r#"{"prompt_tokens":100,"completion_tokens":20,"prompt_cache_hit_tokens":60,"prompt_cache_miss_tokens":40}"#,
+            r#"{"input_tokens":100,"output_tokens":20,"input_tokens_details":{"cached_tokens":60}}"#,
+        ] {
+            let usage: UsageInfo = serde_json::from_str(payload).unwrap();
+            assert_eq!(usage.prompt_tokens, Some(100));
+            assert_eq!(usage.completion_tokens, Some(20));
+            assert_eq!(usage.extract_cached_tokens(), Some(60));
+        }
+    }
+
+    #[test]
     fn api_response_parses_usage() {
         let json = r#"{
             "choices": [{"message": {"content": "Hello"}}],

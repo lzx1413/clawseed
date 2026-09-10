@@ -157,14 +157,18 @@ pub fn create_resilient_provider_with_registry(
 | `aliases.rs` | Provider name aliases |
 | `models_dev.rs` | Development model definitions |
 
-## Token Estimation
+## Token Usage
 
-Providers estimate token usage from response metadata, used for cost tracking. `TokenUsage.cached_input_tokens` is populated from provider-specific fields:
+Providers retain reported token counts from response metadata. Missing counts remain unknown. `TokenUsage.cached_input_tokens` is populated from provider-specific fields:
 
 - **DeepSeek** (`/v1/chat/completions`): `prompt_cache_hit_tokens` — reports prefix-cached input tokens
 - **OpenAI**: `prompt_tokens_details.cached_tokens` — nested cached token count
-- **Anthropic / Bedrock**: `cache_read_input_tokens` from the Anthropic response format
+- **Anthropic**: `cache_read_input_tokens`
+- **Bedrock Converse**: `cacheReadInputTokens`
+- **Gemini generateContent**: `cachedContentTokenCount`
 - Extraction logic in `UsageInfo::extract_cached_tokens()` tries DeepSeek's field first, then falls back to OpenAI's nested field
+
+Streaming usage travels in cumulative `StreamEvent::Usage` snapshots. Anthropic and Bedrock input totals include cache reads and writes. Responses API usage is retained on fallback. See [provider balances and reply statistics](../response-metrics.md) for the Android display and aggregation rules.
 
 ## Configuration Example
 

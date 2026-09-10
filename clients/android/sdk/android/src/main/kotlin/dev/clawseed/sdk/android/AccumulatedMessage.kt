@@ -20,6 +20,7 @@ sealed class AccumulatedMessage {
         override val id: String,
         override val timestamp: Long,
         val content: String,
+        val metrics: dev.clawseed.sdk.core.model.ResponseMetrics? = null,
     ) : AccumulatedMessage()
 
     /** Server-side tool invocation entry. */
@@ -68,5 +69,7 @@ sealed class AccumulatedMessage {
         override val timestamp: Long,
         val messagesJson: String,
         val estimatedTokens: Int,
+        val toolsJson: String? = null,
+        val estimatedToolTokens: Int = 0,
     ) : AccumulatedMessage()
 }

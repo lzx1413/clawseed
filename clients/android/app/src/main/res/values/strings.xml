@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="debug_prompt_token_estimates">Debug · messages ~%1$d · tools ~%2$d tokens</string>
+    <string name="debug_prompt_native_tools">Show / hide native tool definitions</string>
+    <string name="debug_prompt_context_hint">This is the first model call of the turn, including history. Only the current user message contains newly recalled context. Token estimates are approximate; usage below the reply totals all model calls in the turn. Native tool definitions are shown separately.</string>
+    <string name="debug_prompt_system">System prompt and persistent context</string>
+    <string name="debug_prompt_history">History · context from earlier turns</string>
+    <string name="debug_prompt_current">Current turn · new input and recalled context</string>
     <string name="task_result_summary">Stored result summary</string>
     <string name="task_open_session">View linked conversation</string>
     <string name="task_clock_time">%1$02d:%2$02d</string>
@@ -305,7 +311,7 @@
 
     <string name="settings_developer_options">Developer Options</string>
     <string name="settings_debug_query">Debug Query Message</string>
-    <string name="settings_debug_desc">When enabled, the chat screen will show the actual content sent to the LLM each time, with estimated token count</string>
+    <string name="settings_debug_desc">Show the prompt and response statistics: input/output tokens, cache hit ratio, output speed, and total time. Counts cover all model calls in a turn. Speed excludes first-token waiting and tool execution; unavailable data is marked.</string>
     <string name="settings_global_config">Global Config (TOML)</string>
     <string name="settings_global_config_desc">Edit clawseed.toml directly. Unsaved form changes are not reflected here. Restart Gateway after changes.</string>
     <string name="settings_save_global_config">Save Global Config</string>
@@ -487,4 +493,13 @@
     <string name="settings_vision_supported">Current model: vision supported</string>
     <string name="settings_vision_unsupported">Current model: vision unavailable</string>
     <string name="settings_vision_unknown">Vision capability unknown; configure manually if needed</string>
+    <string name="metrics_unavailable">Not provided</string>
+    <string name="msg_response_metrics">Input tokens: %1$s · Output tokens: %2$s · Cache hit: %3$s\nOutput speed: %4$s · Total time: %5$s</string>
+    <string name="settings_provider_balance">Balance: %1$s</string>
+    <string name="balance_loading">Loading…</string>
+    <string name="balance_unsupported">Balance lookup is not supported</string>
+    <string name="balance_missing_key">Enter an API key to check balance</string>
+    <string name="balance_auth_failed">API key authentication failed</string>
+    <string name="balance_permission_denied">This key cannot access account balance (OpenRouter requires a management key)</string>
+    <string name="balance_unavailable">Temporarily unavailable; refreshes automatically</string>
 </resources>

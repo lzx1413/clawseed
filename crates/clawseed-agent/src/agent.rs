@@ -17,6 +17,7 @@ use clawseed_api::user_profile::{ProfileItem, UserContext, UserProfileStore};
 use clawseed_config::schema::{AutonomyLevel, IdentityConfig};
 use std::sync::Arc;
 
+mod metrics;
 mod state;
 mod tool_execution;
 mod turn;
@@ -24,6 +25,7 @@ mod turn;
 /// Streaming events emitted during an agent turn.
 #[derive(Debug, Clone)]
 pub enum TurnEvent {
+    Metrics(clawseed_api::provider::ResponseMetrics),
     Chunk {
         delta: String,
     },
@@ -44,6 +46,8 @@ pub enum TurnEvent {
     DebugPrompt {
         messages_json: String,
         estimated_tokens: usize,
+        tools_json: Option<String>,
+        estimated_tool_tokens: usize,
     },
 }
 

@@ -101,6 +101,7 @@ fun MessageBubble(
         }
         is ChatEntry.AssistantMessage -> AssistantBubble(
             content = entry.content,
+            metrics = entry.metrics,
             isStreaming = entry.isStreaming,
             presentation = entry.presentation,
             onRegenerate = onRegenerate,
@@ -151,6 +152,7 @@ private fun UserBubble(content: String, modifier: Modifier = Modifier) {
 @Composable
 private fun AssistantBubble(
     content: String,
+    metrics: dev.clawseed.sdk.core.model.ResponseMetrics?,
     isStreaming: Boolean,
     presentation: dev.clawseed.sdk.core.model.ToolPresentation?,
     onRegenerate: (() -> Unit)?,
@@ -177,6 +179,23 @@ private fun AssistantBubble(
                     )
                 }
             }
+        }
+        if (!isStreaming && metrics != null) {
+            val unavailable = stringResource(R.string.metrics_unavailable)
+            val ratio = metrics.cacheHitRatio?.takeIf { it.isFinite() && it in 0.0..1.0 }
+                ?.let { String.format(java.util.Locale.getDefault(), "%.1f%%", it * 100) } ?: unavailable
+            val speed = metrics.outputTokensPerSecond?.takeIf { it.isFinite() && it >= 0 }
+                ?.let { String.format(java.util.Locale.getDefault(), "%.1f tok/s", it) } ?: unavailable
+            val elapsed = metrics.elapsedMs?.takeIf { it >= 0 }
+                ?.let { String.format(java.util.Locale.getDefault(), "%.2f s", it / 1000.0) } ?: unavailable
+            Text(
+                text = stringResource(R.string.msg_response_metrics,
+                    metrics.inputTokens?.toString() ?: unavailable,
+                    metrics.outputTokens?.toString() ?: unavailable, ratio, speed, elapsed),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         if (!isStreaming && content.isNotBlank()) {
             Row(
@@ -1027,6 +1046,8 @@ private fun SystemBubble(content: String, modifier: Modifier = Modifier) {
 @Composable
 private fun DebugInfoCard(entry: ChatEntry.DebugInfo, modifier: Modifier = Modifier) {
     var expanded by remember { mutableStateOf(false) }
+    val messages = remember(entry.messagesJson) { debugPromptMessages(entry.messagesJson) }
+    var toolsExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -1046,19 +1067,52 @@ private fun DebugInfoCard(entry: ChatEntry.DebugInfo, modifier: Modifier = Modif
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
             Text(
-                text = "Debug: ~${entry.estimatedTokens} tokens",
+                text = stringResource(R.string.debug_prompt_token_estimates, entry.estimatedTokens, entry.estimatedToolTokens),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
         }
         AnimatedVisibility(visible = expanded) {
             SelectionContainer {
-                Text(
-                    text = formatJson(entry.messagesJson),
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
-                    modifier = Modifier.padding(top = 8.dp),
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                    Text(
+                        text = stringResource(R.string.debug_prompt_context_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                    if (messages == null) {
+                        Text(text = formatJson(entry.messagesJson), style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        messages.forEach { message ->
+                            val scope = stringResource(when (message.scope) {
+                                DebugPromptScope.System -> R.string.debug_prompt_system
+                                DebugPromptScope.History -> R.string.debug_prompt_history
+                                DebugPromptScope.Current -> R.string.debug_prompt_current
+                            })
+                            Text(
+                                text = "$scope · ${message.role}",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                            Text(
+                                text = message.json,
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
+                            )
+                        }
+                    }
+                    if (entry.toolsJson != null) {
+                        TextButton(onClick = { toolsExpanded = !toolsExpanded }) {
+                            Text(stringResource(R.string.debug_prompt_native_tools))
+                        }
+                        if (toolsExpanded) {
+                            Text(
+                                text = formatJson(entry.toolsJson),
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            )
+                        }
+                    }
+                }
             }
         }
     }

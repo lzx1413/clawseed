@@ -173,6 +173,19 @@ async fn mock_chat_completions(
             .to_string(),
         );
 
+        if parsed
+            .pointer("/stream_options/include_usage")
+            .and_then(|v| v.as_bool())
+            == Some(true)
+        {
+            chunks.push(
+                serde_json::json!({
+                    "choices": [], "usage": {"prompt_tokens": 100, "completion_tokens": 20,
+                        "prompt_tokens_details": {"cached_tokens": 60}}
+                })
+                .to_string(),
+            );
+        }
         let sse_body = chunks
             .iter()
             .map(|c| format!("data: {c}\n\n"))
@@ -466,6 +479,122 @@ async fn expect_msg_type(
 
 /// Test 1: Health endpoint returns ok.
 #[tokio::test]
+async fn ws_new_sessions_and_reconnect_preserve_system_and_native_tool_prefixes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let captured = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
+    let capture = captured.clone();
+    let api = Router::new().route(
+        "/v1/chat/completions",
+        post(move |body: String| {
+            let capture = capture.clone();
+            async move {
+                capture.lock().push(serde_json::from_str(&body).unwrap());
+                mock_chat_completions(axum::extract::State(Arc::new(Mutex::new(vec![]))), body)
+                    .await
+                    .into_response()
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let api_addr = listener.local_addr().unwrap();
+    let api_task = tokio::spawn(async move { axum::serve(listener, api).await.unwrap() });
+    let mut config = make_config(api_addr);
+    config.workspace_dir = tmp.path().to_path_buf();
+    config.user_model.enabled = false;
+    config.memory.stable_memory_in_system_prompt = Some(true);
+    let mut state = test_app_state(config, Some(api_addr));
+    let memory = Arc::new(clawseed_memory::sqlite::SqliteMemory::new(tmp.path()).unwrap());
+    memory
+        .store(
+            "historical_alerts",
+            "OBSOLETE_ALERT_BODY must not be in a greeting",
+            clawseed_api::memory_traits::MemoryCategory::Core,
+            None,
+        )
+        .await
+        .unwrap();
+    state.mem = memory;
+    state.session_backend = Some(Arc::new(
+        clawseed_gateway::session_sqlite::SqliteSessionBackend::new(tmp.path()).unwrap(),
+    ));
+    let app = Router::new()
+        .route("/ws/chat", get(handle_ws_chat))
+        .with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let gateway_task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    for (session_id, names) in [
+        ("prefix-a", ["alpha", "zeta"]),
+        ("prefix-b", ["zeta", "alpha"]),
+        ("prefix-a", ["zeta", "alpha"]),
+    ] {
+        let (socket, _) = connect_async(format!("ws://{addr}/ws/chat?session_id={session_id}"))
+            .await
+            .unwrap();
+        let (mut tx, mut rx) = socket.split();
+        expect_msg_type(&mut rx, "session_start").await;
+        let tools = names.iter().map(|name| serde_json::json!({
+            "name": name, "description": "remote lookup", "parameters": {"type":"object","properties":{"unique_lookup_parameter":{"type":"string"}}}
+        })).collect::<Vec<_>>();
+        tx.send(Message::Text(
+            serde_json::json!({"type":"register_tools", "tools":tools})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+        expect_msg_type(&mut rx, "tools_registered").await;
+        tx.send(Message::Text(
+            serde_json::json!({"type":"message", "content":"你好", "debug":true})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+        let debug = expect_msg_type(&mut rx, "debug_prompt").await;
+        assert!(debug["tools"].is_string());
+        assert!(debug["estimated_tool_tokens"].as_u64().unwrap() > 0);
+        assert!(
+            !debug["messages"]
+                .as_str()
+                .unwrap()
+                .contains("stable_prefix")
+        );
+        expect_msg_type(&mut rx, "done").await;
+        tx.close().await.unwrap();
+    }
+    let requests = captured.lock();
+    let turns = requests
+        .iter()
+        .filter(|r| r["stream"] == true)
+        .collect::<Vec<_>>();
+    assert_eq!(turns.len(), 3);
+    for request in &turns {
+        assert_eq!(request["messages"][0], turns[0]["messages"][0]);
+        assert_eq!(request["tools"], turns[0]["tools"]);
+        let system = request["messages"][0]["content"].as_str().unwrap();
+        assert!(!system.contains("unique_lookup_parameter"));
+        assert!(!system.contains("OBSOLETE_ALERT_BODY"));
+        assert!(!request["messages"].to_string().contains("[Memory context]"));
+        let names = request["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["function"]["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(names.windows(2).all(|pair| pair[0] < pair[1]));
+        assert!(
+            request["tools"]
+                .to_string()
+                .contains("unique_lookup_parameter")
+        );
+    }
+    drop(requests);
+    gateway_task.abort();
+    api_task.abort();
+}
+
+#[tokio::test]
 async fn health_endpoint_returns_ok() {
     let ctx = setup_test_env(vec![]).await;
     let config = make_config(ctx.api_addr);
@@ -627,6 +756,7 @@ async fn ws_chat_message_streams_chunks_and_done() {
 
     let done = expect_msg_type(&mut rx, "done").await;
     assert_eq!(done["full_response"], "Hello from agent!");
+    assert!(done["metrics"].is_null(), "metrics are opt-in via debug");
 
     tx.close().await.unwrap();
 }
@@ -672,7 +802,8 @@ async fn ws_full_remote_tool_round_trip() {
     assert_eq!(tools_ack["registered"], 1);
 
     // Send a chat message that triggers the remote tool
-    let chat_msg = serde_json::json!({"type": "message", "content": "What device am I using?"});
+    let chat_msg =
+        serde_json::json!({"type": "message", "content": "What device am I using?", "debug": true});
     tx.send(Message::Text(chat_msg.to_string().into()))
         .await
         .unwrap();
@@ -703,6 +834,17 @@ async fn ws_full_remote_tool_round_trip() {
         done["full_response"],
         "Your device is a Pixel 8 running Android 14."
     );
+    assert_eq!(done["metrics"]["input_tokens"], 200);
+    assert_eq!(done["metrics"]["output_tokens"], 40);
+    assert_eq!(done["metrics"]["cached_input_tokens"], 120);
+    assert_eq!(done["metrics"]["cache_hit_ratio"], 0.6);
+    assert!(
+        done["metrics"]["output_tokens_per_second"]
+            .as_f64()
+            .unwrap()
+            > 0.0
+    );
+    assert!(done["metrics"]["elapsed_ms"].is_u64());
 
     tx.close().await.unwrap();
 }

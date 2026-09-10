@@ -118,7 +118,11 @@ Three-stage pipeline with early return optimization:
 2. **FTS/Vector Stages** — BM25 keyword search via FTS5, then vector cosine similarity. If top BM25 score > `fts_early_return_score` (0.85) → skip vector stage.
 3. **Merge Stage** — Combine results via configured `MergeStrategy`.
 
-**Fallback**: If hybrid/vector returns empty, falls back to LIKE search (splits query into ≤8 keywords, searches content and key columns).
+**Relevance and ranking**: `MemoryEntry.score` and `min_relevance_score` use query evidence on a 0–1 scale, independently of BM25, RRF, or weighted ranking scores. Lexical evidence is the fraction of distinct meaningful query terms matched in the key/content; single characters and common English function words do not count. Latin terms require word matches; multi-character Chinese/Japanese phrases may match substrings. Hybrid relevance uses the stronger of lexical coverage and vector cosine similarity. These are heuristic relevance measures, not probabilities. Filtering precedes the final result limit.
+
+**Fallback**: Empty Hybrid/Bm25 results may use a literal LIKE search of the complete query in content/key, with `%`, `_`, and backslash escaped. Fallback results undergo the same lexical relevance filter; they are never assigned a synthetic full score. Embedding-only mode does not fall back to keyword search. Empty queries with a relevance threshold return no results; explicit unfiltered browsing still lists recent entries.
+
+**Automatic context**: Standalone greetings and acknowledgements such as “你好”, “Hello”, “好的”, “嗯嗯”, or “OK” skip dynamic recall. Recall considers four times the final limit before a second filter: candidates without lexical support require a semantic score of at least max(configured minimum, 0.65) for automatic injection. Explicit memory_recall remains broader. This is a conservative gate, not a probability guarantee. No qualifying results means no new `[Memory context]` block. Historical blocks remain in their original messages to preserve prompt prefixes. Android Debug labels system, historical, and current-turn messages separately while retaining their contents and order.
 
 **Search Mode Configuration**:
 
@@ -394,3 +398,5 @@ stable_memory_in_system_prompt = true     # Inject Core memories into system pro
 # conversation_retention_floor = 30       # Floor for Conversation category
 # daily_retention_floor = 20              # Floor for Daily category
 ```
+
+**Persistent memory index**: With `stable_memory_in_system_prompt` enabled, the system includes sorted Core lookup keys and historical-reference guidance, not complete event bodies. Referenced entries remain eligible for relevant recall. Profile and memory references follow fixed tool/safety/skill discovery instructions to preserve their common prefix. Historical conversation bodies are not rewritten.

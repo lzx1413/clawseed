@@ -38,6 +38,8 @@ pub struct MemoryQuery<'a> {
     pub since: Option<&'a str>,
     pub until: Option<&'a str>,
     pub limit: usize,
+    /// Minimum query relevance on a 0..=1 scale, not a BM25 or fusion rank score.
+    /// `None` also permits unfiltered browsing with an empty query.
     pub min_relevance_score: Option<f64>,
     pub search_mode: Option<SearchMode>,
     pub exclude_ids: &'a [&'a str],
@@ -53,6 +55,7 @@ pub struct MemoryEntry {
     pub category: MemoryCategory,
     pub timestamp: String,
     pub session_id: Option<String>,
+    /// Query relevance (0..=1), when available; not a probability or sorting rank.
     pub score: Option<f64>,
     #[serde(default = "default_namespace")]
     pub namespace: String,

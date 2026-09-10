@@ -206,6 +206,10 @@ struct GenerateContentResponse {
 
 #[derive(Debug, Deserialize)]
 struct GeminiUsageMetadata {
+    #[serde(default, rename = "thoughtsTokenCount")]
+    thoughts_token_count: Option<u64>,
+    #[serde(default, rename = "cachedContentTokenCount")]
+    cached_content_token_count: Option<u64>,
     #[serde(default, rename = "promptTokenCount")]
     prompt_token_count: Option<u64>,
     #[serde(default, rename = "candidatesTokenCount")]
@@ -1196,8 +1200,10 @@ impl GeminiProvider {
 
         let usage = result.usage_metadata.map(|u| TokenUsage {
             input_tokens: u.prompt_token_count,
-            output_tokens: u.candidates_token_count,
-            cached_input_tokens: None,
+            output_tokens: u
+                .candidates_token_count
+                .map(|output| output.saturating_add(u.thoughts_token_count.unwrap_or(0))),
+            cached_input_tokens: u.cached_content_token_count,
         });
 
         let candidate = result.candidates.and_then(|c| c.into_iter().next());
@@ -1265,11 +1271,40 @@ impl Provider for GeminiProvider {
         model: &str,
         temperature: Option<f64>,
     ) -> anyhow::Result<String> {
+        self.chat(
+            crate::traits::ChatRequest {
+                messages,
+                tools: None,
+                provider_extra: None,
+            },
+            model,
+            temperature,
+        )
+        .await
+        .map(|response| response.text.unwrap_or_default())
+    }
+
+    async fn chat(
+        &self,
+        request: crate::traits::ChatRequest<'_>,
+        model: &str,
+        temperature: Option<f64>,
+    ) -> anyhow::Result<crate::traits::ChatResponse> {
+        let mut messages = request.messages.to_vec();
+        if let Some(tools) = request.tools.filter(|tools| !tools.is_empty()) {
+            let instructions = clawseed_api::provider::build_tool_instructions_text(tools);
+            if let Some(system) = messages.iter_mut().find(|m| m.role == "system") {
+                system.content.push_str("\n\n");
+                system.content.push_str(&instructions);
+            } else {
+                messages.insert(0, ChatMessage::system(instructions));
+            }
+        }
         let temperature = temperature.unwrap_or(self.default_temperature());
         let mut system_parts: Vec<&str> = Vec::new();
         let mut contents: Vec<Content> = Vec::new();
 
-        for msg in messages {
+        for msg in &messages {
             match msg.role.as_str() {
                 "system" => {
                     system_parts.push(&msg.content);
@@ -1300,10 +1335,16 @@ impl Provider for GeminiProvider {
             })
         };
 
-        let (text, _usage, _stop_reason) = self
+        let (text, usage, stop_reason) = self
             .send_generate_content(contents, system_instruction, model, temperature)
             .await?;
-        Ok(text)
+        Ok(crate::traits::ChatResponse {
+            text: Some(text),
+            tool_calls: Vec::new(),
+            usage,
+            reasoning_content: None,
+            stop_reason,
+        })
     }
 
     async fn warmup(&self) -> anyhow::Result<()> {

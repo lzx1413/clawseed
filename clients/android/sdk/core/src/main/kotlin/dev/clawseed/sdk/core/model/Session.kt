@@ -51,6 +51,7 @@ data class SessionMessage(
     val data: JsonElement? = null,
     /** UI-only rich content associated with a persisted assistant message. */
     val presentation: JsonElement? = null,
+    val metrics: ResponseMetrics? = null,
     // Legacy fields (no longer populated by new API, kept for backward compat)
     @SerialName("tool_name") val toolName: String? = null,
     @SerialName("tool_args") val toolArgs: String? = null,

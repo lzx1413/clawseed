@@ -86,6 +86,7 @@ pub async fn handle_api_session_messages(
                 "role": m.role,
                 "content": m.content,
                 "presentation": m.presentation,
+                "metrics": m.metrics,
                 "attachments": m.attachments,
             })
         })

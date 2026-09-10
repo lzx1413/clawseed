@@ -21,6 +21,7 @@ mod config;
 mod cron;
 mod identity;
 mod profile;
+mod providers;
 
 struct MockMemory;
 

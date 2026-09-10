@@ -487,6 +487,25 @@ class GatewayClient(
         }
     }
 
+    /** Query optional balances for a draft URL/key, or reuse its saved key when null. */
+    suspend fun providerBalance(
+        providerBaseUrl: String,
+        apiKey: String?,
+    ): Result<dev.clawseed.sdk.core.model.ProviderBalance> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = kotlinx.serialization.json.buildJsonObject {
+                put("base_url", kotlinx.serialization.json.JsonPrimitive(providerBaseUrl))
+                apiKey?.let { put("api_key", kotlinx.serialization.json.JsonPrimitive(it)) }
+            }
+            val request = Request.Builder().url("$baseUrl/api/provider/balance")
+                .addAuth().post(payload.toString().toRequestBody(JSON_MEDIA_TYPE)).build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw Exception("HTTP ${response.code}")
+                json.decodeFromString<dev.clawseed.sdk.core.model.ProviderBalance>(response.body?.string().orEmpty())
+            }
+        }
+    }
+
     /** Lists models directly from a provider-compatible `/models` endpoint. */
     suspend fun fetchProviderModels(
         providerBaseUrl: String,

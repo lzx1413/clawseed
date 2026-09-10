@@ -148,7 +148,7 @@ async fn run_chat(
                         };
                         println!("\x1b[32m[result: {name}]\x1b[0m {preview}");
                     }
-                    TurnEvent::DebugPrompt { .. } => {}
+                    TurnEvent::DebugPrompt { .. } | TurnEvent::Metrics(_) => {}
                 }
             }
             if in_thinking {

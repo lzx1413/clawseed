@@ -9,6 +9,7 @@
 pub mod aliases;
 pub mod anthropic;
 pub mod auth;
+pub mod balance;
 pub mod bedrock;
 pub mod compatible;
 pub mod factory;

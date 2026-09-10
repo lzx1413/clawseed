@@ -118,3 +118,45 @@ pub async fn handle_api_tools(
 
     Json(serde_json::json!({"tools": tools})).into_response()
 }
+
+#[derive(serde::Deserialize)]
+pub struct ProviderBalanceRequest {
+    pub base_url: String,
+    /// None reuses a saved credential only for the exact same provider URL.
+    pub api_key: Option<String>,
+}
+
+/// POST /api/provider/balance — query a draft or saved provider's optional balance.
+pub async fn handle_api_provider_balance(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ProviderBalanceRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    let saved_key = if request.api_key.is_none() {
+        let config = state.config.lock();
+        let matches_url = |entry: &&clawseed_config::schema::ModelProviderConfig| {
+            entry.base_url.as_deref().is_some_and(|url| {
+                url.trim_end_matches('/') == request.base_url.trim_end_matches('/')
+            })
+        };
+        config
+            .providers
+            .fallback
+            .as_ref()
+            .and_then(|name| config.providers.models.get(name))
+            .filter(matches_url)
+            .or_else(|| config.providers.models.values().find(matches_url))
+            .and_then(|entry| entry.api_key.clone())
+    } else {
+        None
+    };
+    let balance = clawseed_providers::balance::query_balance(
+        &request.base_url,
+        request.api_key.as_deref().or(saved_key.as_deref()),
+    )
+    .await;
+    ([(header::CACHE_CONTROL, "no-store")], Json(balance)).into_response()
+}

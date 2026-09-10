@@ -196,6 +196,16 @@ class ChatAccumulator(private val session: ClawSeedSession) {
                 } else {
                     reconcileCompletedAssistantMessage(event.fullResponse)
                 }
+                event.metrics?.let { metrics ->
+                    val index = _messages.value.indexOfLast { it is AccumulatedMessage.Assistant }
+                    val userIndex = _messages.value.indexOfLast { it is AccumulatedMessage.User }
+                    if (index > userIndex) {
+                        _messages.value = _messages.value.toMutableList().apply {
+                            val assistant = get(index) as AccumulatedMessage.Assistant
+                            set(index, assistant.copy(metrics = metrics))
+                        }
+                    }
+                }
                 currentTurnFlushed = true
                 _isGenerating.value = false
             }
@@ -245,6 +255,8 @@ class ChatAccumulator(private val session: ClawSeedSession) {
                     timestamp = System.currentTimeMillis(),
                     messagesJson = event.messages,
                     estimatedTokens = event.estimatedTokens,
+                    toolsJson = event.toolsJson,
+                    estimatedToolTokens = event.estimatedToolTokens,
                 ))
             }
             // SessionStarted, Connected, ToolsRegistered, ResultAcknowledged — no accumulation needed

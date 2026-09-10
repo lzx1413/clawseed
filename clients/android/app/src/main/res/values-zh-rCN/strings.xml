@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="debug_prompt_token_estimates">Debug · 消息约 %1$d · 工具约 %2$d tokens</string>
+    <string name="debug_prompt_native_tools">展开 / 收起原生工具定义</string>
+    <string name="debug_prompt_context_hint">此处为本轮首次模型调用，包含会话历史。只有本轮用户消息中的 Memory context 是本轮新增。Token 数为粗估；回复底部是本轮所有模型调用的实际用量合计。原生工具定义单独展示。</string>
+    <string name="debug_prompt_system">系统提示与固定上下文</string>
+    <string name="debug_prompt_history">历史消息 · 之前轮次的上下文</string>
+    <string name="debug_prompt_current">本轮消息 · 新输入与本轮召回的上下文</string>
     <string name="task_result_summary">已保存的结果摘要</string>
     <string name="task_open_session">查看关联会话</string>
     <string name="task_clock_time">%1$02d:%2$02d</string>
@@ -305,7 +311,7 @@
 
     <string name="settings_developer_options">开发者选项</string>
     <string name="settings_debug_query">Debug Query Message</string>
-    <string name="settings_debug_desc">开启后，每次发送消息时会在聊天界面显示实际发送给 LLM 的完整内容，并估计 Token 数量</string>
+    <string name="settings_debug_desc">显示发送给 LLM 的完整内容，以及回复的输入/输出 Token、缓存命中率、输出速度和整体耗时。Token 汇总本轮所有模型调用；速度不含首 Token 等待及工具执行，缺失数据显示为未提供。</string>
     <string name="settings_global_config">全局配置 (TOML)</string>
     <string name="settings_global_config_desc">直接编辑 clawseed.toml。未保存的表单修改不会反映在此处。修改后需重启 Gateway 生效。</string>
     <string name="settings_save_global_config">保存全局配置</string>
@@ -487,4 +493,13 @@
     <string name="settings_vision_supported">当前模型：支持视觉</string>
     <string name="settings_vision_unsupported">当前模型：视觉不可用</string>
     <string name="settings_vision_unknown">视觉能力未知，如模型支持图片，请手动开启</string>
+    <string name="metrics_unavailable">未提供</string>
+    <string name="msg_response_metrics">Input tokens：%1$s · Output tokens：%2$s · Cache 命中：%3$s\n输出速度：%4$s · 整体耗时：%5$s</string>
+    <string name="settings_provider_balance">余额：%1$s</string>
+    <string name="balance_loading">查询中…</string>
+    <string name="balance_unsupported">不支持余额查询</string>
+    <string name="balance_missing_key">填写 API Key 后自动查询</string>
+    <string name="balance_auth_failed">API Key 验证失败</string>
+    <string name="balance_permission_denied">当前密钥无余额查询权限（OpenRouter 需要管理密钥）</string>
+    <string name="balance_unavailable">暂时无法查询，将自动刷新</string>
 </resources>

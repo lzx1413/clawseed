@@ -1320,6 +1320,9 @@ impl Memory for SqliteMemory {
             };
 
             if query_text.trim().is_empty() {
+                if minimum.is_some() {
+                    return Ok(Vec::new());
+                }
                 let mut stmt = conn.prepare(
                     "SELECT id, key, content, category, created_at, session_id, namespace,
                             importance, superseded_by
@@ -1356,16 +1359,18 @@ impl Memory for SqliteMemory {
 
             let fts_query = query_text
                 .split_whitespace()
-                .map(|word| format!("\"{word}\""))
+                .map(|word| format!("\"{}\"", word.replace('"', "\"\"")))
                 .collect::<Vec<_>>()
                 .join(" OR ");
 
+            let lexical_query = super::relevance::LexicalQuery::new(&query_text);
+            let mut lexical_scores = std::collections::HashMap::new();
             let keyword_results = if effective_mode == SearchMode::Embedding || fts_query.is_empty()
             {
                 Vec::new()
             } else {
                 let mut stmt = conn.prepare(
-                    "SELECT m.id, bm25(memories_fts) AS score
+                    "SELECT m.id, bm25(memories_fts) AS score, m.key, m.content
                      FROM memories_fts f
                      JOIN memories m ON m.rowid = f.rowid
                      WHERE memories_fts MATCH ?1
@@ -1390,15 +1395,36 @@ impl Memory for SqliteMemory {
                         until,
                         exclude_ids,
                         exclude_keys,
-                        candidate_limit
+                        if minimum.is_some() {
+                            -1
+                        } else {
+                            candidate_limit
+                        }
                     ],
                     |row| {
                         let score: f64 = row.get(1)?;
                         #[allow(clippy::cast_possible_truncation)]
-                        Ok((row.get::<_, String>(0)?, (-score) as f32))
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            (-score) as f32,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                        ))
                     },
                 )?;
-                rows.collect::<rusqlite::Result<Vec<_>>>()?
+                let mut candidates = Vec::new();
+                for row in rows {
+                    let (id, rank, key, content) = row?;
+                    let score = lexical_query.score(&key, &content);
+                    lexical_scores.insert(id.clone(), score);
+                    if minimum.is_none_or(|minimum| score > 0.0 && score >= minimum) {
+                        candidates.push((id, rank));
+                        if candidates.len() >= limit.saturating_mul(2) {
+                            break;
+                        }
+                    }
+                }
+                candidates
             };
 
             let vector_results = if effective_mode == SearchMode::Bm25 {
@@ -1453,6 +1479,9 @@ impl Memory for SqliteMemory {
                 Vec::new()
             };
 
+            // Fuse all candidates first. Ranking scores (especially RRF) are not
+            // relevance scores, and filtering must precede the final result limit.
+            let merge_limit = vector_results.len() + keyword_results.len();
             let mut merged = if vector_results.is_empty() {
                 keyword_results
                     .into_iter()
@@ -1476,7 +1505,7 @@ impl Memory for SqliteMemory {
             } else {
                 match merge_strategy {
                     MergeStrategy::Rrf { k } => {
-                        vector::rrf_merge(&vector_results, &keyword_results, k, limit)
+                        vector::rrf_merge(&vector_results, &keyword_results, k, merge_limit)
                     }
                     MergeStrategy::Weighted {
                         vector_weight,
@@ -1486,12 +1515,16 @@ impl Memory for SqliteMemory {
                         &keyword_results,
                         vector_weight,
                         keyword_weight,
-                        limit,
+                        merge_limit,
                     ),
                 }
             };
+            let relevance = |entry: &vector::ScoredResult| {
+                f64::from(entry.vector_score.unwrap_or_default())
+                    .max(lexical_scores.get(&entry.id).copied().unwrap_or_default())
+            };
             if let Some(minimum) = minimum {
-                merged.retain(|entry| f64::from(entry.final_score) >= minimum);
+                merged.retain(|entry| relevance(entry) > 0.0 && relevance(entry) >= minimum);
             }
             merged.truncate(limit);
 
@@ -1523,20 +1556,25 @@ impl Memory for SqliteMemory {
                     .collect::<std::collections::HashMap<_, _>>();
                 for scored in merged {
                     if let Some(mut entry) = entries.get(&scored.id).cloned() {
-                        entry.score = Some(f64::from(scored.final_score));
+                        entry.score = Some(relevance(&scored));
                         results.push(entry);
                     }
                 }
             }
 
-            if results.is_empty() && minimum.is_none_or(|value| value <= 1.0) {
-                let pattern = format!("%{}%", query_text.trim());
+            if results.is_empty() && effective_mode != SearchMode::Embedding {
+                let literal = query_text
+                    .trim()
+                    .replace('\\', "\\\\")
+                    .replace('%', "\\%")
+                    .replace('_', "\\_");
+                let pattern = format!("%{literal}%");
                 let mut stmt = conn.prepare(
                     "SELECT id, key, content, category, created_at, session_id, namespace,
                             importance, superseded_by
                      FROM memories
                      WHERE superseded_by IS NULL
-                       AND (content LIKE ?1 OR key LIKE ?1)
+                       AND (content LIKE ?1 ESCAPE '\\' OR key LIKE ?1 ESCAPE '\\')
                        AND namespace = ?2
                        AND (?3 IS NULL OR category = ?3)
                        AND (?4 IS NULL OR session_id = ?4)
@@ -1561,10 +1599,18 @@ impl Memory for SqliteMemory {
                     ],
                     map_entry,
                 )?;
-                results = rows.take(limit).collect::<rusqlite::Result<Vec<_>>>()?;
-                for entry in &mut results {
-                    entry.score = Some(1.0);
-                }
+                results = rows
+                    .collect::<rusqlite::Result<Vec<_>>>()?
+                    .into_iter()
+                    .filter_map(|mut entry| {
+                        let score = lexical_query.score(&entry.key, &entry.content);
+                        entry.score = Some(score);
+                        minimum
+                            .is_none_or(|minimum| score > 0.0 && score >= minimum)
+                            .then_some(entry)
+                    })
+                    .take(limit)
+                    .collect();
             }
 
             Ok(results)
@@ -3317,7 +3363,7 @@ mod tests {
     #[tokio::test]
     async fn search_mode_embedding_only() {
         let tmp = TempDir::new().unwrap();
-        // NoopEmbedding returns None, so embedding-only mode will fall back to LIKE
+        // NoopEmbedding has no vectors; embedding-only mode must return no matches.
         let mem = SqliteMemory::with_embedder(
             tmp.path(),
             Arc::new(super::super::embeddings::NoopEmbedding),
@@ -3340,15 +3386,14 @@ mod tests {
         .unwrap();
 
         // With NoopEmbedding, vector search returns empty, and FTS is skipped.
-        // The recall method falls back to LIKE search.
+        // Lexical fallback would violate the requested search mode.
         let results = mem
             .recall("Rust", 10, None, None, None, None)
             .await
             .unwrap();
-        // LIKE fallback should still find it
         assert!(
-            results.iter().any(|e| e.content.contains("Rust")),
-            "Embedding mode with noop should fall back to LIKE and still find results"
+            results.is_empty(),
+            "Embedding mode with noop must not silently return lexical results"
         );
     }
 

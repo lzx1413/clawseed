@@ -1075,6 +1075,7 @@ async fn process_chat_message(
     // Presentations are emitted live with each tool result, then consolidated
     // onto the final assistant message for durable history restoration.
     let mut turn_presentations = Vec::new();
+    let mut turn_metrics = None;
     let mut partial_saved = false;
     let mut last_partial_save = std::time::Instant::now();
     let partial_save_interval = std::time::Duration::from_millis(500);
@@ -1086,6 +1087,10 @@ async fn process_chat_message(
                 event = event_rx.recv() => {
                     let Some(event) = event else { break };
                     let ws_msg = match event {
+                        TurnEvent::Metrics(metrics) => {
+                            turn_metrics = Some(metrics);
+                            continue;
+                        }
                         TurnEvent::Chunk { ref delta } => {
                             accumulated_text.push_str(delta);
 
@@ -1126,8 +1131,8 @@ async fn process_chat_message(
                                 "presentation": presentation,
                             })
                         }
-                        TurnEvent::DebugPrompt { messages_json, estimated_tokens } => {
-                            serde_json::json!({ "type": "debug_prompt", "messages": messages_json, "estimated_tokens": estimated_tokens })
+                        TurnEvent::DebugPrompt { messages_json, estimated_tokens, tools_json, estimated_tool_tokens } => {
+                            serde_json::json!({ "type": "debug_prompt", "messages": messages_json, "estimated_tokens": estimated_tokens, "tools": tools_json, "estimated_tool_tokens": estimated_tool_tokens })
                         }
                     };
                     let _ = sender.send(Message::Text(ws_msg.to_string().into())).await;
@@ -1257,6 +1262,11 @@ async fn process_chat_message(
                     let _ = backend.append(session_key, &assistant_msg);
                 }
 
+                if let Some(ref metrics) = turn_metrics
+                    && let Err(error) = backend.set_last_assistant_metrics(session_key, metrics)
+                {
+                    tracing::warn!(%error, "failed to persist response metrics");
+                }
                 if !turn_presentations.is_empty() {
                     let blocks = turn_presentations
                         .iter()
@@ -1350,6 +1360,7 @@ async fn process_chat_message(
             let done = serde_json::json!({
                 "type": "done",
                 "full_response": final_response,
+                "metrics": turn_metrics,
             });
             let _ = sender.send(Message::Text(done.to_string().into())).await;
 

@@ -26,6 +26,7 @@ sealed class ChatEntry {
         override val timestamp: Long,
         val content: String,
         val isStreaming: Boolean = false,
+        val metrics: dev.clawseed.sdk.core.model.ResponseMetrics? = null,
         val presentation: dev.clawseed.sdk.core.model.ToolPresentation? = null,
     ) : ChatEntry()
 
@@ -52,6 +53,8 @@ sealed class ChatEntry {
         override val timestamp: Long,
         val messagesJson: String,
         val estimatedTokens: Int,
+        val toolsJson: String? = null,
+        val estimatedToolTokens: Int = 0,
     ) : ChatEntry()
 }
 

@@ -1,5 +1,7 @@
 package dev.clawseed.sdk.core.model
 
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
@@ -36,7 +38,7 @@ sealed class ChatEvent {
     data object ChunkReset : ChatEvent()
 
     /** Final turn completion event containing the assembled response. */
-    data class Done(val fullResponse: String) : ChatEvent()
+    data class Done(val fullResponse: String, val metrics: ResponseMetrics? = null) : ChatEvent()
 
     /** Informational event describing a server-side tool invocation. */
     data class ToolCallStarted(
@@ -78,7 +80,10 @@ sealed class ChatEvent {
     data class ImageContext(val omittedIds: List<String>) : ChatEvent()
 
     /** Extra debug payload emitted when debug mode is enabled. */
-    data class DebugPrompt(val messages: String, val estimatedTokens: Int) : ChatEvent()
+    data class DebugPrompt(
+        val messages: String, val estimatedTokens: Int,
+        val toolsJson: String? = null, val estimatedToolTokens: Int = 0,
+    ) : ChatEvent()
 
     companion object {
         internal fun parse(text: String, json: kotlinx.serialization.json.Json): ChatEvent? {
@@ -104,7 +109,12 @@ sealed class ChatEvent {
                 "image_context" -> ImageContext(obj["omitted_ids"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList())
                 "chunk" -> TextChunk(obj["content"]?.jsonPrimitive?.content ?: "")
                 "thinking" -> ThinkingChunk(obj["content"]?.jsonPrimitive?.content ?: "")
-                "done" -> Done(obj["full_response"]?.jsonPrimitive?.content ?: "")
+                "done" -> Done(
+                    fullResponse = obj["full_response"]?.jsonPrimitive?.content ?: "",
+                    metrics = obj["metrics"]?.takeUnless { it is JsonNull }?.let {
+                        runCatching { json.decodeFromJsonElement<ResponseMetrics>(it) }.getOrNull()
+                    },
+                )
                 "tool_call" -> ToolCallStarted(
                     id = obj["id"]?.jsonPrimitive?.content ?: "",
                     name = obj["name"]?.jsonPrimitive?.content ?: "",
@@ -139,6 +149,8 @@ sealed class ChatEvent {
                 "debug_prompt" -> DebugPrompt(
                     messages = obj["messages"]?.jsonPrimitive?.content ?: "",
                     estimatedTokens = obj["estimated_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
+                    toolsJson = obj["tools"]?.jsonPrimitive?.contentOrNull,
+                    estimatedToolTokens = obj["estimated_tool_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
                 )
                 else -> null
             }

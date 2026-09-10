@@ -185,11 +185,16 @@ impl DefaultToolRegistry {
     }
 
     fn rebuild_specs(&self) -> Vec<ToolSpec> {
-        self.tools
+        let mut specs: Vec<_> = self
+            .tools
             .iter()
             .filter(|entry| self.is_tool_allowed(entry.key(), &entry.value().1.source))
             .map(|entry| entry.value().0.spec())
-            .collect()
+            .collect();
+        // DashMap iteration order differs between connections. Both the system
+        // prompt and native tools payload must share a deterministic ordering.
+        specs.sort_by(|left, right| left.name.cmp(&right.name));
+        specs
     }
 }
 
@@ -338,6 +343,35 @@ mod tests {
                 presentation: None,
             })
         }
+    }
+
+    #[test]
+    fn specs_stay_identical_across_registries_replacement_and_filter_refresh() {
+        let first = DefaultToolRegistry::new();
+        let second = DefaultToolRegistry::new();
+        for name in ["zeta", "alpha", "middle"] {
+            first.register(Box::new(MockTool::new(name)), ToolSource::BuiltIn);
+        }
+        for name in ["middle", "alpha", "zeta"] {
+            second.register(Box::new(MockTool::new(name)), ToolSource::BuiltIn);
+        }
+        let snapshot =
+            |registry: &DefaultToolRegistry| serde_json::to_value(registry.tool_specs()).unwrap();
+        assert_eq!(snapshot(&first), snapshot(&second));
+        assert_eq!(
+            first
+                .tool_specs()
+                .iter()
+                .map(|s| s.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["alpha", "middle", "zeta"]
+        );
+        second.unregister("middle");
+        second.register(Box::new(MockTool::new("middle")), ToolSource::BuiltIn);
+        assert_eq!(snapshot(&first), snapshot(&second));
+        first.update_filters(vec![], vec!["middle".into()]);
+        second.update_filters(vec![], vec!["middle".into()]);
+        assert_eq!(snapshot(&first), snapshot(&second));
     }
 
     #[test]

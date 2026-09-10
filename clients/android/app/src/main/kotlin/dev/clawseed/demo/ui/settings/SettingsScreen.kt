@@ -176,6 +176,16 @@ fun SettingsScreen(
 
     BackHandler(enabled = llmExpanded) { llmExpanded = false }
     if (llmExpanded) {
+        LaunchedEffect(uiState.baseUrl, uiState.apiKey, uiState.isLoading) {
+            viewModel.clearBalance()
+            if (!uiState.isLoading) {
+                kotlinx.coroutines.delay(600)
+                while (true) {
+                    viewModel.refreshBalance()
+                    kotlinx.coroutines.delay(60_000)
+                }
+            }
+        }
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -1040,6 +1050,25 @@ private fun ProviderFormEditor(
                 supportingText = if (isPlaceholderKey && state.hasServerApiKey) {
                     { Text(stringResource(R.string.settings_server_has_key), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 } else null,
+            )
+
+            val balanceText = when {
+                state.isFetchingBalance -> stringResource(R.string.balance_loading)
+                state.providerBalance?.status == "available" -> state.providerBalance.balances.joinToString(" · ") {
+                    "${it.currency} ${it.available.toBigDecimalOrNull()?.stripTrailingZeros()?.toPlainString() ?: it.available}"
+                }
+                else -> stringResource(when (state.providerBalance?.status) {
+                    "unsupported" -> R.string.balance_unsupported
+                    "missing_key" -> R.string.balance_missing_key
+                    "authentication_failed" -> R.string.balance_auth_failed
+                    "permission_denied" -> R.string.balance_permission_denied
+                    else -> R.string.balance_unavailable
+                })
+            }
+            Text(
+                text = stringResource(R.string.settings_provider_balance, balanceText),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             // Fetch models button + status

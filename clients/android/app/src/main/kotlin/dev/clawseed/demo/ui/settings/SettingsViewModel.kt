@@ -17,6 +17,7 @@ import dev.clawseed.sdk.core.model.GatewayStatus
 import dev.clawseed.sdk.core.model.SkillInfo
 import dev.clawseed.sdk.core.model.ToolInfo
 import dev.clawseed.sdk.embedded.GatewayConfigManager
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,6 +43,8 @@ val PROVIDER_PRESETS = listOf(
 )
 
 data class SettingsUiState(
+    val providerBalance: dev.clawseed.sdk.core.model.ProviderBalance? = null,
+    val isFetchingBalance: Boolean = false,
     val status: GatewayStatus? = null,
     val tools: List<ToolInfo> = emptyList(),
     val skills: List<SkillInfo> = emptyList(),
@@ -266,6 +269,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             selectedPresetIndex = index,
             baseUrl = preset.baseUrl,
             apiKey = displayApiKey,
+            providerBalance = null,
+            isFetchingBalance = true,
             hasServerApiKey = hasServerKey,
             selectedModel = draft?.selectedModel ?: saved?.model ?: "",
             thinkingEnabled = draft?.thinkingEnabled ?: saved?.thinking ?: false,
@@ -281,6 +286,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun updateBaseUrl(url: String) {
         _uiState.value = _uiState.value.copy(
             baseUrl = url,
+            providerBalance = null,
+            isFetchingBalance = true,
             vision = if (url.trimEnd('/') == _uiState.value.baseUrl.trimEnd('/')) _uiState.value.vision else "auto",
             availableModels = emptyList(),
             connectionOk = null,
@@ -289,7 +296,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun updateApiKey(key: String) {
-        _uiState.value = _uiState.value.copy(apiKey = key, successMessage = null)
+        _uiState.value = _uiState.value.copy(apiKey = key, successMessage = null, providerBalance = null, isFetchingBalance = true)
     }
 
     fun selectModel(model: String) {
@@ -383,6 +390,26 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val current = _uiState.value.councilReviewers
         if (index in current.indices) {
             _uiState.value = _uiState.value.copy(councilReviewers = current.toMutableList().apply { set(index, draft) }, successMessage = null)
+        }
+    }
+
+    fun clearBalance() {
+        _uiState.value = _uiState.value.copy(providerBalance = null, isFetchingBalance = true)
+    }
+
+    suspend fun refreshBalance() {
+        val state = _uiState.value
+        val key = state.apiKey.takeUnless { it == MASKED_KEY_PLACEHOLDER || it.contains("***") }
+        val result = if (ClawSeedAndroid.isInitialized) {
+            client().providerBalance(state.baseUrl, key).getOrNull()
+        } else null
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+        // A delayed response must never overwrite a different provider/account.
+        if (_uiState.value.baseUrl == state.baseUrl && _uiState.value.apiKey == state.apiKey) {
+            _uiState.value = _uiState.value.copy(
+                isFetchingBalance = false,
+                providerBalance = result ?: dev.clawseed.sdk.core.model.ProviderBalance("unavailable"),
+            )
         }
     }
 

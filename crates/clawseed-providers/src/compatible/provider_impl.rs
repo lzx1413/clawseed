@@ -38,6 +38,17 @@ impl OpenAiCompatibleProvider {
         messages: &[ChatMessage],
         model: &str,
     ) -> anyhow::Result<String> {
+        self.chat_response_via_responses(credential, messages, model)
+            .await
+            .map(|response| response.text.unwrap_or_default())
+    }
+
+    async fn chat_response_via_responses(
+        &self,
+        credential: Option<&str>,
+        messages: &[ChatMessage],
+        model: &str,
+    ) -> anyhow::Result<ProviderChatResponse> {
         anyhow::ensure!(
             !multimodal::contains_image_markers(messages),
             "Images cannot fall back to this Responses API adapter"
@@ -77,8 +88,20 @@ impl OpenAiCompatibleProvider {
         let body = response.text().await?;
         let responses = parse_responses_response_body(&self.name, &body)?;
 
-        extract_responses_text(responses)
-            .ok_or_else(|| anyhow::anyhow!("No response from {} Responses API", self.name))
+        let usage = responses.usage.as_ref().map(|u| TokenUsage {
+            input_tokens: u.prompt_tokens,
+            output_tokens: u.completion_tokens,
+            cached_input_tokens: u.extract_cached_tokens(),
+        });
+        let text = extract_responses_text(responses)
+            .ok_or_else(|| anyhow::anyhow!("No response from {} Responses API", self.name))?;
+        Ok(ProviderChatResponse {
+            text: Some(text),
+            tool_calls: vec![],
+            usage,
+            reasoning_content: None,
+            stop_reason: clawseed_api::provider::StopReason::EndTurn,
+        })
     }
 
     fn convert_tool_specs(
@@ -818,15 +841,8 @@ impl Provider for OpenAiCompatibleProvider {
                 if self.supports_responses_fallback {
                     let sanitized = crate::sanitize_api_error(&chat_error.to_string());
                     return self
-                        .chat_via_responses(credential, &effective_messages, model)
+                        .chat_response_via_responses(credential, &effective_messages, model)
                         .await
-                        .map(|text| ProviderChatResponse {
-                            text: Some(text),
-                            tool_calls: vec![],
-                            usage: None,
-                            reasoning_content: None,
-                            stop_reason: clawseed_api::provider::StopReason::EndTurn,
-                        })
                         .map_err(|responses_err| {
                             anyhow::anyhow!(
                                 "{} native chat transport error: {sanitized} (responses fallback failed: {responses_err})",
@@ -861,15 +877,8 @@ impl Provider for OpenAiCompatibleProvider {
 
             if status == reqwest::StatusCode::NOT_FOUND && self.supports_responses_fallback {
                 return self
-                    .chat_via_responses(credential, &effective_messages, model)
+                    .chat_response_via_responses(credential, &effective_messages, model)
                     .await
-                    .map(|text| ProviderChatResponse {
-                        text: Some(text),
-                        tool_calls: vec![],
-                        usage: None,
-                        reasoning_content: None,
-                        stop_reason: clawseed_api::provider::StopReason::EndTurn,
-                    })
                     .map_err(|responses_err| {
                         anyhow::anyhow!(
                             "{} API error ({status}): {sanitized} (chat completions unavailable; responses fallback failed: {responses_err})",
@@ -994,6 +1003,12 @@ impl Provider for OpenAiCompatibleProvider {
             }
         };
         if let Some(obj) = payload.as_object_mut() {
+            if options.count_tokens {
+                obj.insert(
+                    "stream_options".into(),
+                    serde_json::json!({"include_usage": true}),
+                );
+            }
             if let Some(ref extra) = self.provider_extra
                 && let Some(extra_obj) = extra.as_object()
             {

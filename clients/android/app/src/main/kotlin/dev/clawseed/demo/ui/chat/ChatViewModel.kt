@@ -77,6 +77,7 @@ data class AuthPrompt(
 )
 
 data class ChatUiState(
+    val showDebugInfo: Boolean = false,
     val imageAttachmentsSupported: Boolean = false,
     val messages: List<ChatEntry> = emptyList(),
     val streamingContent: String = "",
@@ -182,6 +183,7 @@ internal data class SessionSlot(
                         timestamp = msg.timestamp,
                         content = msg.content,
                         presentation = presentation,
+                        metrics = msg.metrics,
                     ))
                 }
                 is dev.clawseed.sdk.android.AccumulatedMessage.ToolCall -> {
@@ -212,6 +214,8 @@ internal data class SessionSlot(
                     timestamp = msg.timestamp,
                     messagesJson = msg.messagesJson,
                     estimatedTokens = msg.estimatedTokens,
+                    toolsJson = msg.toolsJson,
+                    estimatedToolTokens = msg.estimatedToolTokens,
                 ))
                 is dev.clawseed.sdk.android.AccumulatedMessage.Error -> {
                     errors.add(msg.message)
@@ -468,7 +472,10 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                 .onFailure { _uiState.value = _uiState.value.copy(error = it.message) }
         }
         viewModelScope.launch {
-            localStore.showDebugInfo.collect { debugEnabled = it }
+            localStore.showDebugInfo.collect {
+                debugEnabled = it
+                _uiState.value = _uiState.value.copy(showDebugInfo = it)
+            }
         }
         viewModelScope.launch {
             localStore.speechOutputEnabled.collect { enabled ->
@@ -844,6 +851,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                                 timestamp = System.currentTimeMillis(),
                                 content = msg.content ?: "",
                                 presentation = parseToolPresentation(msg.presentation),
+                                metrics = msg.metrics,
                             ))
                             else -> {}
                         }

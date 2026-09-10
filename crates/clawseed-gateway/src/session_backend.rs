@@ -13,6 +13,7 @@ pub struct PersistedMessage {
     pub content: String,
     pub attachments: Vec<ImageAttachment>,
     pub presentation: Option<ToolPresentation>,
+    pub metrics: Option<clawseed_api::provider::ResponseMetrics>,
 }
 
 /// Metadata for a persisted session.
@@ -87,6 +88,7 @@ pub trait SessionBackend: Send + Sync + 'static {
                 content: message.content,
                 attachments: message.attachments,
                 presentation: None,
+                metrics: None,
             })
             .collect()
     }
@@ -108,6 +110,15 @@ pub trait SessionBackend: Send + Sync + 'static {
         &self,
         _session_key: &str,
         _presentation: &ToolPresentation,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    /// Store UI-only response metrics without adding them to model context.
+    fn set_last_assistant_metrics(
+        &self,
+        _session_key: &str,
+        _metrics: &clawseed_api::provider::ResponseMetrics,
     ) -> anyhow::Result<()> {
         Ok(())
     }

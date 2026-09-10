@@ -109,11 +109,25 @@ pub struct ToolCall {
 }
 
 /// Raw token counts from a single LLM API response.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TokenUsage {
+    /// Total input, including cache reads and writes. Missing is not zero.
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
     pub cached_input_tokens: Option<u64>,
+}
+
+/// UI-only statistics for a complete assistant turn (including tool iterations).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ResponseMetrics {
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub cached_input_tokens: Option<u64>,
+    /// Fraction of total input served by cache, in [0, 1].
+    pub cache_hit_ratio: Option<f64>,
+    /// Output tokens / streaming generation time; excludes tools and first-token wait.
+    pub output_tokens_per_second: Option<f64>,
+    pub elapsed_ms: u64,
 }
 
 /// Reason the LLM stopped generating.
@@ -246,11 +260,23 @@ impl StreamChunk {
 /// Structured events emitted by provider streaming APIs.
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
+    /// Cumulative usage snapshot for this model request, never a delta.
+    Usage(TokenUsage),
+    /// The provider began generating tool arguments (before the completed ToolCall).
+    OutputStarted,
     TextDelta(StreamChunk),
     ToolCall(ToolCall),
-    PreExecutedToolCall { name: String, args: String },
-    PreExecutedToolResult { name: String, output: String },
-    Final { stop_reason: StopReason },
+    PreExecutedToolCall {
+        name: String,
+        args: String,
+    },
+    PreExecutedToolResult {
+        name: String,
+        output: String,
+    },
+    Final {
+        stop_reason: StopReason,
+    },
 }
 
 impl StreamEvent {

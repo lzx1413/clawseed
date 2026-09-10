@@ -71,6 +71,11 @@ impl SqliteSessionBackend {
             -- UI-only rich content, linked to the final assistant message.
             -- It is intentionally not part of messages.content, which is sent
             -- back to the LLM when a session is resumed.
+            CREATE TABLE IF NOT EXISTS message_metrics (
+                message_id INTEGER PRIMARY KEY,
+                metrics_json TEXT NOT NULL,
+                FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+            );
             CREATE TABLE IF NOT EXISTS message_presentations (
                 message_id      INTEGER PRIMARY KEY,
                 schema_version  INTEGER NOT NULL,
@@ -230,9 +235,10 @@ impl SessionBackend for SqliteSessionBackend {
     fn load_with_presentations(&self, session_key: &str) -> Vec<PersistedMessage> {
         let conn = self.conn.lock();
         let mut stmt = match conn.prepare(
-            "SELECT m.role, m.content, p.presentation_json, m.attachments_json
+            "SELECT m.role, m.content, p.presentation_json, m.attachments_json, stats.metrics_json
              FROM messages m
              LEFT JOIN message_presentations p ON p.message_id = m.id
+             LEFT JOIN message_metrics stats ON stats.message_id = m.id
              WHERE m.session_key = ?1
              ORDER BY m.id",
         ) {
@@ -245,13 +251,14 @@ impl SessionBackend for SqliteSessionBackend {
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<String>>(2)?,
                 decode_attachments(row.get(3)?, 3)?,
+                row.get::<_, Option<String>>(4)?,
             ))
         }) else {
             return Vec::new();
         };
 
         rows.filter_map(|row| {
-            let (role, content, presentation_json, attachments) = row.ok()?;
+            let (role, content, presentation_json, attachments, metrics_json) = row.ok()?;
             let presentation = presentation_json
                 .as_deref()
                 .and_then(|json| serde_json::from_str::<ToolPresentation>(json).ok());
@@ -260,6 +267,9 @@ impl SessionBackend for SqliteSessionBackend {
                 content,
                 attachments,
                 presentation,
+                metrics: metrics_json
+                    .as_deref()
+                    .and_then(|json| serde_json::from_str(json).ok()),
             })
         })
         .collect()
@@ -303,6 +313,22 @@ impl SessionBackend for SqliteSessionBackend {
                 SELECT id FROM messages WHERE session_key = ?2 AND role = 'user' ORDER BY id DESC LIMIT 1
             )",
             params![message.content, session_key],
+        )?;
+        Ok(())
+    }
+
+    fn set_last_assistant_metrics(
+        &self,
+        session_key: &str,
+        metrics: &clawseed_api::provider::ResponseMetrics,
+    ) -> anyhow::Result<()> {
+        let conn = self.conn.lock();
+        conn.execute(
+            "INSERT INTO message_metrics (message_id, metrics_json)
+             SELECT id, ?2 FROM messages WHERE session_key = ?1 AND role = 'assistant'
+             ORDER BY id DESC LIMIT 1
+             ON CONFLICT(message_id) DO UPDATE SET metrics_json = excluded.metrics_json",
+            params![session_key, serde_json::to_string(metrics)?],
         )?;
         Ok(())
     }
@@ -615,6 +641,46 @@ mod tests {
         let key = "gw_s1";
         b.set_session_persona(key, Some("nova")).unwrap();
         assert_eq!(b.get_session_persona(key).unwrap().as_deref(), Some("nova"));
+    }
+
+    #[test]
+    fn metrics_survive_reopen_and_are_removed_with_regeneration() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = "gw_metrics";
+        let expected = clawseed_api::provider::ResponseMetrics {
+            input_tokens: Some(100),
+            output_tokens: Some(20),
+            cached_input_tokens: Some(0),
+            cache_hit_ratio: Some(0.0),
+            output_tokens_per_second: Some(10.0),
+            elapsed_ms: 2500,
+        };
+        {
+            let backend = SqliteSessionBackend::new(dir.path()).unwrap();
+            backend.append(key, &ChatMessage::user("question")).unwrap();
+            backend
+                .append(key, &ChatMessage::assistant("answer"))
+                .unwrap();
+            backend.set_last_assistant_metrics(key, &expected).unwrap();
+            // Updating an existing metrics record is idempotent.
+            backend.set_last_assistant_metrics(key, &expected).unwrap();
+            assert!(
+                !serde_json::to_string(&backend.load(key))
+                    .unwrap()
+                    .contains("elapsed_ms")
+            );
+        }
+        let backend = SqliteSessionBackend::new(dir.path()).unwrap();
+        let transcript = backend.load_with_presentations(key);
+        assert!(transcript[0].metrics.is_none());
+        assert_eq!(transcript[1].metrics, Some(expected));
+        backend.remove_last_assistant_turn(key);
+        let count: i64 = backend
+            .conn
+            .lock()
+            .query_row("SELECT COUNT(*) FROM message_metrics", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]

@@ -427,6 +427,10 @@ struct ConverseResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BedrockUsage {
+    #[serde(default, rename = "cacheReadInputTokens")]
+    cache_read_input_tokens: Option<u64>,
+    #[serde(default, rename = "cacheWriteInputTokens")]
+    cache_write_input_tokens: Option<u64>,
     #[serde(default)]
     input_tokens: Option<u64>,
     #[serde(default)]
@@ -966,9 +970,13 @@ impl BedrockProvider {
         let mut tool_calls = Vec::new();
 
         let usage = response.usage.map(|u| TokenUsage {
-            input_tokens: u.input_tokens,
+            input_tokens: u.input_tokens.map(|input| {
+                input
+                    .saturating_add(u.cache_read_input_tokens.unwrap_or(0))
+                    .saturating_add(u.cache_write_input_tokens.unwrap_or(0))
+            }),
             output_tokens: u.output_tokens,
-            cached_input_tokens: None,
+            cached_input_tokens: u.cache_read_input_tokens,
         });
 
         if let Some(output) = response.output
@@ -1840,6 +1848,18 @@ mod tests {
         };
         let caps = provider.capabilities();
         assert!(caps.native_tool_calling);
+    }
+
+    #[test]
+    fn converse_usage_counts_cached_input_in_total() {
+        let response: ConverseResponse = serde_json::from_str(r#"{
+            "usage": {"inputTokens":10,"outputTokens":20,"cacheReadInputTokens":890,"cacheWriteInputTokens":100}
+        }"#).unwrap();
+        let usage = BedrockProvider::parse_converse_response(response)
+            .usage
+            .unwrap();
+        assert_eq!(usage.input_tokens, Some(1000));
+        assert_eq!(usage.cached_input_tokens, Some(890));
     }
 
     #[test]

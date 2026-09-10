@@ -19,6 +19,51 @@ import kotlin.test.assertEquals
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatAccumulatorTest {
+    @Test
+    fun debugToolsAreRetainedWithTheirMessageSnapshot() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+        session.emit(ChatEvent.DebugPrompt("[]", 12, "[{\"name\":\"lookup\"}]", 34))
+        runCurrent()
+        val debug = accumulator.messages.value.filterIsInstance<AccumulatedMessage.Debug>().single()
+        assertEquals("[{\"name\":\"lookup\"}]", debug.toolsJson)
+        assertEquals(34, debug.estimatedToolTokens)
+        assertEquals(12, debug.estimatedTokens)
+    }
+
+
+    @Test
+    fun metricsStayWithTheirReplyAcrossResetRegenerationAndNextTurn() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+        accumulator.addUserMessage("first question")
+        val metrics = dev.clawseed.sdk.core.model.ResponseMetrics(inputTokens = 100, outputTokens = 20, cacheHitRatio = 0.0, elapsedMs = 2000)
+        session.emit(ChatEvent.TextChunk("draft"))
+        session.emit(ChatEvent.ChunkReset)
+        session.emit(ChatEvent.Done("answer", metrics))
+        runCurrent()
+        assertEquals(metrics, (accumulator.messages.value.last() as AccumulatedMessage.Assistant).metrics)
+        accumulator.addUserMessage("next question")
+        session.emit(ChatEvent.Done("next answer"))
+        runCurrent()
+        val assistants = accumulator.messages.value.filterIsInstance<AccumulatedMessage.Assistant>()
+        assertEquals(metrics, assistants.first().metrics)
+        assertEquals(null, assistants.last().metrics)
+        accumulator.prepareRegenerate()
+        session.emit(ChatEvent.Done("regenerated", metrics.copy(inputTokens = 200)))
+        runCurrent()
+        assertEquals(200L, (accumulator.messages.value.last() as AccumulatedMessage.Assistant).metrics?.inputTokens)
+        accumulator.reset()
+        accumulator.addUserMessage("fresh session")
+        session.emit(ChatEvent.Done("fresh"))
+        runCurrent()
+        assertEquals(null, (accumulator.messages.value.last() as AccumulatedMessage.Assistant).metrics)
+    }
+
 
     @Test
     fun rapidChunksPublishInBatchesWithoutLosingTheUnpublishedTail() = runTest {

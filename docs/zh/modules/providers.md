@@ -157,14 +157,18 @@ pub fn create_resilient_provider_with_registry(
 | `aliases.rs` | 提供者名称别名 |
 | `models_dev.rs` | 开发用模型定义 |
 
-## 令牌估算
+## 令牌用量
 
-提供者根据响应元数据估算令牌使用量，用于成本追踪。`TokenUsage.cached_input_tokens` 从提供商特定字段填充：
+提供者保留响应元数据中上报的真实用量，缺失计数保持未知。`TokenUsage.cached_input_tokens` 从提供商特定字段填充：
 
 - **DeepSeek** (`/v1/chat/completions`)：`prompt_cache_hit_tokens` — 报告前缀缓存的输入 tokens
 - **OpenAI**：`prompt_tokens_details.cached_tokens` — 嵌套的缓存 token 计数
-- **Anthropic / Bedrock**：`cache_read_input_tokens` 来自 Anthropic 响应格式
+- **Anthropic**：`cache_read_input_tokens`
+- **Bedrock Converse**：`cacheReadInputTokens`
+- **Gemini generateContent**：`cachedContentTokenCount`
 - 提取逻辑在 `UsageInfo::extract_cached_tokens()` 中，先尝试 DeepSeek 字段，然后回退到 OpenAI 嵌套字段
+
+流式用量通过累计快照 `StreamEvent::Usage` 传递。Anthropic 和 Bedrock 的输入总量包含缓存读取与写入，Responses API 回退路径也保留用量。Android 展示和汇总规则见 [Provider 余额与回复统计](../response-metrics.md)。
 
 ## 配置示例
 

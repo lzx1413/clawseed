@@ -169,9 +169,23 @@ struct AnthropicUsage {
     output_tokens: Option<u64>,
     #[serde(default)]
     #[serde(rename = "cache_creation_input_tokens")]
-    _cache_creation_input_tokens: Option<u64>,
+    cache_creation_input_tokens: Option<u64>,
     #[serde(default)]
     cache_read_input_tokens: Option<u64>,
+}
+
+impl AnthropicUsage {
+    fn into_token_usage(self) -> TokenUsage {
+        TokenUsage {
+            input_tokens: self.input_tokens.map(|input| {
+                input
+                    .saturating_add(self.cache_creation_input_tokens.unwrap_or(0))
+                    .saturating_add(self.cache_read_input_tokens.unwrap_or(0))
+            }),
+            output_tokens: self.output_tokens,
+            cached_input_tokens: self.cache_read_input_tokens,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -549,11 +563,7 @@ impl AnthropicProvider {
         let mut text_parts = Vec::new();
         let mut tool_calls = Vec::new();
 
-        let usage = response.usage.map(|u| TokenUsage {
-            input_tokens: u.input_tokens,
-            output_tokens: u.output_tokens,
-            cached_input_tokens: u.cache_read_input_tokens,
-        });
+        let usage = response.usage.map(AnthropicUsage::into_token_usage);
 
         for block in response.content {
             match block.kind.as_str() {
@@ -629,6 +639,7 @@ impl AnthropicProvider {
         let reader = StreamReader::new(byte_stream);
         let mut lines = reader.lines();
 
+        let mut usage = TokenUsage::default();
         let mut tool_id: Option<String> = None;
         let mut tool_name: Option<String> = None;
         let mut tool_input_json = String::new();
@@ -653,6 +664,14 @@ impl AnthropicProvider {
 
             match event_type {
                 "message_start" => {
+                    if let Some(value) = event.pointer("/message/usage")
+                        && let Ok(parsed) = serde_json::from_value::<AnthropicUsage>(value.clone())
+                    {
+                        usage = parsed.into_token_usage();
+                        // message_start's output count is provisional.
+                        usage.output_tokens = None;
+                        let _ = tx.send(Ok(StreamEvent::Usage(usage.clone()))).await;
+                    }
                     let model = event
                         .get("message")
                         .and_then(|m| m.get("model"))
@@ -677,6 +696,7 @@ impl AnthropicProvider {
                             .and_then(|t| t.as_str())
                             .unwrap_or_default();
                         if block_type == "tool_use" {
+                            let _ = tx.send(Ok(StreamEvent::OutputStarted)).await;
                             if let Some(id) = tool_id.take() {
                                 let name = tool_name.take().unwrap_or_default();
                                 let input = std::mem::take(&mut tool_input_json);
@@ -720,6 +740,15 @@ impl AnthropicProvider {
                                     return;
                                 }
                             }
+                            "thinking_delta" => {
+                                if let Some(text) = delta.get("thinking").and_then(|v| v.as_str()) {
+                                    let _ = tx
+                                        .send(Ok(StreamEvent::TextDelta(StreamChunk::reasoning(
+                                            text.to_owned(),
+                                        ))))
+                                        .await;
+                                }
+                            }
                             "input_json_delta" => {
                                 if let Some(json) =
                                     delta.get("partial_json").and_then(|j| j.as_str())
@@ -745,6 +774,13 @@ impl AnthropicProvider {
                     }
                 }
                 "message_delta" => {
+                    if let Some(output) = event
+                        .pointer("/usage/output_tokens")
+                        .and_then(|v| v.as_u64())
+                    {
+                        usage.output_tokens = Some(output);
+                        let _ = tx.send(Ok(StreamEvent::Usage(usage.clone()))).await;
+                    }
                     let stop_reason_str = event
                         .get("delta")
                         .and_then(|d| d.get("stop_reason"))
@@ -1962,6 +1998,73 @@ mod tests {
         );
 
         server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn streaming_usage_combines_start_counts_with_final_output_snapshot() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let body = concat!(
+            "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10,\"cache_creation_input_tokens\":100,\"cache_read_input_tokens\":890,\"output_tokens\":1}}}\n\n",
+            "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"thinking\"}}\n\n",
+            "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"answer\"}}\n\n",
+            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":60}}\n\n",
+            "data: {\"type\":\"message_stop\"}\n\n",
+        );
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0; 4096];
+            let bytes_read = socket.read(&mut request).await.unwrap();
+            assert!(bytes_read > 0);
+            socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+        });
+        let response = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
+            .get(format!("http://{address}"))
+            .send()
+            .await
+            .unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        AnthropicProvider::parse_anthropic_sse(response, &tx).await;
+        drop(tx);
+        let mut usages = Vec::new();
+        let mut reasoning = String::new();
+        while let Some(event) = rx.recv().await {
+            match event.unwrap() {
+                StreamEvent::Usage(usage) => usages.push(usage),
+                StreamEvent::TextDelta(chunk) => {
+                    reasoning.push_str(&chunk.reasoning.unwrap_or_default())
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(usages.len(), 2);
+        assert_eq!(usages[0].output_tokens, None);
+        assert_eq!(usages[1].input_tokens, Some(1000));
+        assert_eq!(usages[1].cached_input_tokens, Some(890));
+        assert_eq!(usages[1].output_tokens, Some(60));
+        assert_eq!(reasoning, "thinking");
+        server.await.unwrap();
+    }
+
+    #[test]
+    fn native_usage_includes_cache_reads_and_writes_in_total_input() {
+        let response: NativeChatResponse = serde_json::from_str(
+            r#"{
+            "content": [{"type":"text","text":"Hello"}],
+            "usage": {"input_tokens": 10, "output_tokens": 20,
+                "cache_creation_input_tokens": 100, "cache_read_input_tokens": 890}
+        }"#,
+        )
+        .unwrap();
+        let usage = AnthropicProvider::parse_native_response(response, None)
+            .usage
+            .unwrap();
+        assert_eq!(usage.input_tokens, Some(1000));
+        assert_eq!(usage.cached_input_tokens, Some(890));
     }
 
     #[test]

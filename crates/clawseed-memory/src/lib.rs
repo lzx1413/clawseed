@@ -13,6 +13,7 @@ pub mod hygiene;
 pub mod importance;
 pub mod namespaced;
 pub mod none;
+pub mod relevance;
 pub mod retrieval;
 pub mod snapshot;
 pub mod sqlite;

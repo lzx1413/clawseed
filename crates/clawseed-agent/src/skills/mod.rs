@@ -109,6 +109,31 @@ pub fn check_permissions(skill: &Skill, available_tool_names: &[String]) -> Resu
 }
 
 /// Render the skill index as XML for the system prompt.
+fn index_summary(description: &str) -> String {
+    // The index is for discovery. Full instructions and revision history belong
+    // in the on-demand skill body, not in every model request.
+    let first = description
+        .trim()
+        .split_inclusive(['。', '！', '？', '\n'])
+        .next()
+        .unwrap_or("");
+    let first = first
+        .split_once(". ")
+        .map_or(first, |(sentence, _)| sentence);
+    let mut summary = first.chars().take(160).collect::<String>();
+    if first.chars().count() > 160 {
+        summary.push('…');
+    }
+    summary
+}
+
+fn index_xml(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
 pub fn render_skill_index(entries: &[SkillIndexEntry]) -> String {
     if entries.is_empty() {
         return String::new();
@@ -117,18 +142,21 @@ pub fn render_skill_index(entries: &[SkillIndexEntry]) -> String {
     let mut s = String::from(
         "## Available Skills\n\n\
          Skill summaries are listed below. To use a skill, call `Skill({\"skill\": \"<name>\"})` \
-         to load its full instructions into your system prompt.\n\n\
+         to load its full instructions into your system prompt. Summaries and historical memories are not the complete rules; load the relevant skill before applying its procedure.\n\n\
          <available_skills>\n",
     );
 
+    let mut entries = entries.iter().collect::<Vec<_>>();
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
     for entry in entries {
         let triggers = entry.trigger_phrases.join(", ");
         let _ = writeln!(
             s,
             "  <skill name=\"{}\" triggers=\"{}\">",
-            entry.name, triggers
+            index_xml(&entry.name),
+            index_xml(&triggers)
         );
-        let _ = writeln!(s, "    {}", entry.description);
+        let _ = writeln!(s, "    {}", index_xml(&index_summary(&entry.description)));
         let _ = writeln!(s, "  </skill>");
     }
 
@@ -156,6 +184,23 @@ pub fn render_active_skills(skills: &[ActiveSkill]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn index_keeps_discovery_summary_without_revision_history() {
+        let entry = SkillIndexEntry {
+            name: "finance".into(),
+            description: "行星系统 v1.8.7：仓位与风险管理。v1.8.6修订；旧预警ID123。".into(),
+            version: "1.8.7".into(),
+            trigger_phrases: vec!["持仓分析".into()],
+            permissions: vec![],
+        };
+        let index = render_skill_index(&[entry]);
+        assert!(index.contains("仓位与风险管理。"));
+        assert!(index.contains("持仓分析"));
+        assert!(!index.contains("旧预警"));
+        assert!(!index.contains("v1.8.6"));
+        assert!(index_summary(&"长".repeat(1000)).chars().count() <= 161);
+    }
 
     #[test]
     fn render_empty_index() {

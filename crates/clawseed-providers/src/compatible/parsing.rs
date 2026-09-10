@@ -57,9 +57,9 @@ pub(super) struct ApiChatResponse {
 
 #[derive(Debug, Deserialize)]
 pub(super) struct UsageInfo {
-    #[serde(default)]
+    #[serde(default, alias = "input_tokens")]
     pub(super) prompt_tokens: Option<u64>,
-    #[serde(default)]
+    #[serde(default, alias = "output_tokens")]
     pub(super) completion_tokens: Option<u64>,
     /// DeepSeek reports `prompt_cache_hit_tokens` for prefix-cached input.
     #[serde(default, rename = "prompt_cache_hit_tokens")]
@@ -71,7 +71,7 @@ pub(super) struct UsageInfo {
     #[expect(dead_code, reason = "reserved for future metrics wiring")]
     pub(super) prompt_cache_miss_tokens: Option<u64>,
     /// OpenAI reports `prompt_tokens_details` with a `cached_tokens` sub-field.
-    #[serde(default)]
+    #[serde(default, alias = "input_tokens_details")]
     pub(super) prompt_tokens_details: Option<PromptTokensDetails>,
 }
 
@@ -325,6 +325,8 @@ impl ResponsesInput {
 #[derive(Debug, Deserialize)]
 pub(super) struct ResponsesResponse {
     #[serde(default)]
+    pub(super) usage: Option<UsageInfo>,
+    #[serde(default)]
     pub(super) output: Vec<ResponsesOutput>,
     #[serde(default)]
     pub(super) output_text: Option<String>,
@@ -350,6 +352,8 @@ pub(super) struct ResponsesContent {
 /// Server-Sent Event stream chunk for OpenAI-compatible streaming.
 #[derive(Debug, Deserialize)]
 pub(super) struct StreamChunkResponse {
+    #[serde(default)]
+    pub(super) usage: Option<UsageInfo>,
     #[serde(default)]
     pub(super) choices: Vec<StreamChoice>,
 }
@@ -727,6 +731,16 @@ pub(crate) fn sse_bytes_to_events(
                             }
                         };
 
+                        if let Some(usage) = chunk.usage {
+                            let cached_input_tokens = usage.extract_cached_tokens();
+                            let _ = tx
+                                .send(Ok(StreamEvent::Usage(crate::traits::TokenUsage {
+                                    input_tokens: usage.prompt_tokens,
+                                    output_tokens: usage.completion_tokens,
+                                    cached_input_tokens,
+                                })))
+                                .await;
+                        }
                         let mut should_emit_tool_calls = false;
                         for choice in &chunk.choices {
                             if let Some(reasoning_delta) = extract_sse_reasoning_delta(choice) {
@@ -754,6 +768,9 @@ pub(crate) fn sse_bytes_to_events(
                             }
 
                             if let Some(deltas) = choice.delta.tool_calls.as_ref() {
+                                if !deltas.is_empty() {
+                                    let _ = tx.send(Ok(StreamEvent::OutputStarted)).await;
+                                }
                                 for delta in deltas {
                                     let index = delta.index.unwrap_or(tool_calls.len());
                                     if index >= tool_calls.len() {
