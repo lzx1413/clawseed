@@ -1569,12 +1569,14 @@ mod tests {
                 role: "system".to_string(),
                 content: "System prompt".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
         ];
@@ -1588,6 +1590,7 @@ mod tests {
             role: "system".to_string(),
             content: "System prompt".to_string(),
             attachments: Vec::new(),
+            files: Vec::new(),
             stable_prefix: None,
         }];
         // Add 3 non-system messages
@@ -1596,6 +1599,7 @@ mod tests {
                 role: if i % 2 == 0 { "user" } else { "assistant" }.to_string(),
                 content: format!("Message {i}"),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             });
         }
@@ -1608,6 +1612,7 @@ mod tests {
             role: "user".to_string(),
             content: "Hello".to_string(),
             attachments: Vec::new(),
+            files: Vec::new(),
             stable_prefix: None,
         }];
         // Exactly 1 non-system message — should not cache
@@ -1619,12 +1624,14 @@ mod tests {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage {
                 role: "assistant".to_string(),
                 content: "Hi".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
         ];
@@ -1745,6 +1752,7 @@ mod tests {
             role: "system".to_string(),
             content: "Short system prompt".to_string(),
             attachments: Vec::new(),
+            files: Vec::new(),
             stable_prefix: None,
         }];
 
@@ -1772,6 +1780,7 @@ mod tests {
             role: "system".to_string(),
             content: large_content.clone(),
             attachments: Vec::new(),
+            files: Vec::new(),
             stable_prefix: None,
         }];
 
@@ -1833,24 +1842,28 @@ mod tests {
                 role: "system".to_string(),
                 content: "You are helpful.".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage {
                 role: "user".to_string(),
                 content: "gen a 2 sum in golang".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage {
                 role: "assistant".to_string(),
                 content: "```go\nfunc twoSum(nums []int) {}\n```".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage {
                 role: "user".to_string(),
                 content: "what's meaning of make here?".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
         ];
@@ -2106,6 +2119,7 @@ mod tests {
             content: "Check this image: [IMAGE:data:image/jpeg;base64,/9j/4AAQ] What do you see?"
                 .to_string(),
             attachments: Vec::new(),
+            files: Vec::new(),
             stable_prefix: None,
         }];
 
@@ -2146,6 +2160,7 @@ mod tests {
             role: "user".to_string(),
             content: "[IMAGE:data:image/png;base64,iVBORw0KGgo]".to_string(),
             attachments: Vec::new(),
+            files: Vec::new(),
             stable_prefix: None,
         }];
 
@@ -2177,6 +2192,7 @@ mod tests {
             role: "user".to_string(),
             content: "Hello, how are you?".to_string(),
             attachments: Vec::new(),
+            files: Vec::new(),
             stable_prefix: None,
         }];
 
@@ -2223,12 +2239,14 @@ mod tests {
                 role: "system".to_string(),
                 content: "You are helpful.".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage {
                 role: "user".to_string(),
                 content: "Do two things.".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage {
@@ -2242,6 +2260,7 @@ mod tests {
                 })
                 .to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage {
@@ -2252,6 +2271,7 @@ mod tests {
                 })
                 .to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage {
@@ -2262,6 +2282,7 @@ mod tests {
                 })
                 .to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
         ];
@@ -2298,6 +2319,7 @@ mod tests {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage {
@@ -2310,6 +2332,7 @@ mod tests {
                 })
                 .to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage {
@@ -2320,12 +2343,14 @@ mod tests {
                 })
                 .to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage {
                 role: "user".to_string(),
                 content: "Thanks!".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
         ];

@@ -418,6 +418,7 @@ async fn handle_socket(
     // Send session_start message to client
     let mut session_start = serde_json::json!({
         "type": "session_start",
+        "file_attachments_supported": state.session_backend.is_some(),
         "image_attachments_supported": state.session_backend.is_some() && image_support == Some(true),
         "image_model_support": match image_support { Some(true) => "supported", Some(false) => "unsupported", None => "unknown" },
         "v": MSG_PROTOCOL_VERSION,
@@ -512,7 +513,10 @@ async fn handle_socket(
                     }
                 };
                 let content = user_message.content.clone();
-                if !content.is_empty() || !user_message.attachments.is_empty() {
+                if !content.is_empty()
+                    || !user_message.attachments.is_empty()
+                    || !user_message.files.is_empty()
+                {
                     let debug = parsed["debug"].as_bool().unwrap_or(false);
                     // Inject remote tools into agent before processing
                     {
@@ -536,6 +540,7 @@ async fn handle_socket(
                         pending_remote_calls.clone(),
                         &content,
                         user_message.attachments.clone(),
+                        user_message.files.clone(),
                         &session_key,
                         debug,
                     )
@@ -724,6 +729,7 @@ async fn handle_socket(
                         continue;
                     }
                     let attachments = agent.last_user_attachments();
+                    let files = agent.last_user_files();
                     let user_content = agent.remove_last_assistant_turn();
                     let Some(content) = user_content else {
                         let err = serde_json::json!({
@@ -765,6 +771,7 @@ async fn handle_socket(
 
                     let mut user_message = clawseed_api::provider::ChatMessage::user(&content);
                     user_message.attachments = attachments;
+                    user_message.files = files;
 
                     process_chat_message(
                         &state,
@@ -775,6 +782,7 @@ async fn handle_socket(
                         pending_remote_calls.clone(),
                         &content,
                         user_message.attachments.clone(),
+                        user_message.files.clone(),
                         &session_key,
                         parsed["debug"].as_bool().unwrap_or(false),
                     )
@@ -804,7 +812,7 @@ async fn handle_socket(
                 };
                 let content = user_message.content.clone();
                 let debug = parsed["debug"].as_bool().unwrap_or(false);
-                if content.is_empty() && user_message.attachments.is_empty() {
+                if content.is_empty() && user_message.attachments.is_empty() && user_message.files.is_empty() {
                     let err = serde_json::json!({
                         "type": "error",
                         "message": "Message content cannot be empty",
@@ -852,6 +860,7 @@ async fn handle_socket(
                     pending_remote_calls.clone(),
                     &content,
                     user_message.attachments.clone(),
+                        user_message.files.clone(),
                     &session_key,
                     debug,
                 )
@@ -985,6 +994,7 @@ async fn process_chat_message(
     pending_remote_calls: std::sync::Arc<tokio::sync::RwLock<PendingRemoteCalls>>,
     content: &str,
     attachments: Vec<clawseed_api::provider::ImageAttachment>,
+    files: Vec<clawseed_api::file_attachment::FileAttachment>,
     session_key: &str,
     debug: bool,
 ) {
@@ -1052,9 +1062,10 @@ async fn process_chat_message(
     let content_owned = content.to_string();
     let turn_fut = async {
         agent
-            .turn_streamed_with_attachments(
+            .turn_streamed_with_files(
                 &content_owned,
                 attachments,
+                files,
                 event_tx,
                 Some(cancel_token.clone()),
                 debug,
@@ -1634,6 +1645,14 @@ fn resolve_image_message(
 ) -> anyhow::Result<clawseed_api::provider::ChatMessage> {
     let mut message =
         clawseed_api::provider::ChatMessage::user(parsed["content"].as_str().unwrap_or(""));
+    if let Some(files) = parsed.get("files") {
+        anyhow::ensure!(
+            state.session_backend.is_some(),
+            "File attachments require session persistence"
+        );
+        message.files = serde_json::from_value(files.clone())?;
+        clawseed_api::file_attachment::validate_files(&message.files)?;
+    }
     let mut ids = Vec::new();
     if let Some(attachments) = parsed.get("attachments") {
         let attachments = attachments

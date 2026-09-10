@@ -1750,6 +1750,7 @@ mod tests {
             role: "user".to_string(),
             content: "hello".to_string(),
             attachments: Vec::new(),
+            files: Vec::new(),
             stable_prefix: None,
         }];
         let tools = vec![serde_json::json!({

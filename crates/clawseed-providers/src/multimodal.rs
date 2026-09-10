@@ -210,6 +210,7 @@ pub async fn prepare_messages_for_provider(
             role: message.role.clone(),
             content,
             attachments: message.attachments.clone(),
+            files: Vec::new(),
             stable_prefix: None,
         });
     }
@@ -263,6 +264,7 @@ fn trim_old_images(messages: &[ChatMessage], max_images: usize) -> Vec<ChatMessa
                     role: m.role.clone(),
                     content: text,
                     attachments: m.attachments.clone(),
+                    files: m.files.clone(),
                     stable_prefix: m.stable_prefix.clone(),
                 }
             } else {
@@ -708,6 +710,7 @@ mod tests {
                 role: "assistant".to_string(),
                 content: "[IMAGE:/tmp/assistant.png]\nAssistant generated".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage::user("[IMAGE:/tmp/user1.png]\nFirst".to_string()),
@@ -767,6 +770,7 @@ mod tests {
                 role: "assistant".to_string(),
                 content: "I see a photo.".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage::user("[IMAGE:/tmp/2.png]\nWhat about this?".to_string()),
@@ -774,6 +778,7 @@ mod tests {
                 role: "assistant".to_string(),
                 content: "That's a chart.".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage::user("[IMAGE:/tmp/3.png]\nAnd this one".to_string()),

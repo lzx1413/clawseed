@@ -28,6 +28,19 @@ fn decode_attachments(
     })
 }
 
+fn decode_files(
+    json: String,
+    column: usize,
+) -> rusqlite::Result<Vec<clawseed_api::file_attachment::FileAttachment>> {
+    serde_json::from_str(&json).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(
+            column,
+            rusqlite::types::Type::Text,
+            Box::new(error),
+        )
+    })
+}
+
 impl SqliteSessionBackend {
     pub fn new(workspace_dir: &std::path::Path) -> anyhow::Result<Self> {
         let db_dir = workspace_dir.join("gateway");
@@ -103,6 +116,19 @@ impl SqliteSessionBackend {
         if !has_attachments {
             conn.execute_batch(
                 "ALTER TABLE messages ADD COLUMN attachments_json TEXT NOT NULL DEFAULT '[]';",
+            )?;
+        }
+
+        let has_files = {
+            let mut stmt = conn.prepare("PRAGMA table_info(messages)")?;
+            stmt.query_map([], |row| row.get::<_, String>(1))?
+                .collect::<Result<Vec<_>, _>>()?
+                .iter()
+                .any(|name| name == "files_json")
+        };
+        if !has_files {
+            conn.execute_batch(
+                "ALTER TABLE messages ADD COLUMN files_json TEXT NOT NULL DEFAULT '[]';",
             )?;
         }
 
@@ -214,7 +240,7 @@ impl SessionBackend for SqliteSessionBackend {
     fn load(&self, session_key: &str) -> Vec<ChatMessage> {
         let conn = self.conn.lock();
         let mut stmt = match conn
-            .prepare("SELECT role, content, attachments_json FROM messages WHERE session_key = ?1 ORDER BY id")
+            .prepare("SELECT role, content, attachments_json, files_json FROM messages WHERE session_key = ?1 ORDER BY id")
         {
             Ok(s) => s,
             Err(_) => return Vec::new(),
@@ -224,6 +250,7 @@ impl SessionBackend for SqliteSessionBackend {
                 role: row.get(0)?,
                 content: row.get(1)?,
                 attachments: decode_attachments(row.get(2)?, 2)?,
+                files: decode_files(row.get(3)?, 3)?,
                 stable_prefix: None, // Not persisted; rebuilt by seed_history on resume
             })
         }) else {
@@ -235,7 +262,7 @@ impl SessionBackend for SqliteSessionBackend {
     fn load_with_presentations(&self, session_key: &str) -> Vec<PersistedMessage> {
         let conn = self.conn.lock();
         let mut stmt = match conn.prepare(
-            "SELECT m.role, m.content, p.presentation_json, m.attachments_json, stats.metrics_json
+            "SELECT m.role, m.content, p.presentation_json, m.attachments_json, stats.metrics_json, m.files_json
              FROM messages m
              LEFT JOIN message_presentations p ON p.message_id = m.id
              LEFT JOIN message_metrics stats ON stats.message_id = m.id
@@ -252,13 +279,14 @@ impl SessionBackend for SqliteSessionBackend {
                 row.get::<_, Option<String>>(2)?,
                 decode_attachments(row.get(3)?, 3)?,
                 row.get::<_, Option<String>>(4)?,
+                decode_files(row.get(5)?, 5)?,
             ))
         }) else {
             return Vec::new();
         };
 
         rows.filter_map(|row| {
-            let (role, content, presentation_json, attachments, metrics_json) = row.ok()?;
+            let (role, content, presentation_json, attachments, metrics_json, files) = row.ok()?;
             let presentation = presentation_json
                 .as_deref()
                 .and_then(|json| serde_json::from_str::<ToolPresentation>(json).ok());
@@ -266,6 +294,7 @@ impl SessionBackend for SqliteSessionBackend {
                 role,
                 content,
                 attachments,
+                files,
                 presentation,
                 metrics: metrics_json
                     .as_deref()
@@ -280,8 +309,8 @@ impl SessionBackend for SqliteSessionBackend {
         self.ensure_session(&conn, session_key)?;
         let now = Utc::now().to_rfc3339();
         conn.execute(
-            "INSERT INTO messages (session_key, role, content, created_at, attachments_json) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![session_key, message.role, message.content, now, serde_json::to_string(&message.attachments)?],
+            "INSERT INTO messages (session_key, role, content, created_at, attachments_json, files_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![session_key, message.role, message.content, now, serde_json::to_string(&message.attachments)?, serde_json::to_string(&message.files)?],
         )?;
         conn.execute(
             "UPDATE sessions SET last_activity = ?1 WHERE session_key = ?2",
@@ -557,6 +586,42 @@ impl SessionBackend for SqliteSessionBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_metadata_survives_restart_and_stays_in_its_session() {
+        let tmp = tempfile::tempdir().unwrap();
+        let backend = SqliteSessionBackend::new(tmp.path()).unwrap();
+        let mut message = ChatMessage::user("Summarize");
+        message.files = serde_json::from_value(serde_json::json!([{
+            "id": "file_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "name": "中文 file.csv",
+            "mime_type": "text/csv", "size_bytes": 12, "format": "csv", "status": "ready",
+            "unit": "record", "total": 2,
+            "excerpt": {"attachment_id": "file_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "unit": "record",
+                "start": 0, "next": 1, "total": 2, "eof": false, "content": "[record 1]\na,b\n"}
+        }]))
+        .unwrap();
+        clawseed_api::file_attachment::validate_files(&message.files).unwrap();
+        backend.append("file_a", &message).unwrap();
+        backend
+            .append("file_b", &ChatMessage::user("No attachment"))
+            .unwrap();
+        drop(backend);
+        let backend = SqliteSessionBackend::new(tmp.path()).unwrap();
+        assert_eq!(backend.load("file_a")[0].files, message.files);
+        assert_eq!(
+            backend.load_with_presentations("file_a")[0].files,
+            message.files
+        );
+        assert!(backend.load("file_b")[0].files.is_empty());
+        assert_eq!(backend.load("file_a")[0].content, "Summarize");
+        let prompt = backend.load("file_a")[0].with_file_context();
+        assert_eq!(prompt.role, "user");
+        assert!(prompt.content.contains("attachment_read"));
+        assert!(prompt.content.contains("中文 file.csv"));
+        let mut system = ChatMessage::system("system");
+        system.files = message.files;
+        assert_eq!(system.with_file_context().content, "system");
+    }
     use clawseed_api::tool::{ContentBlock, ToolPresentation};
 
     fn fresh_backend() -> SqliteSessionBackend {

@@ -132,6 +132,17 @@ impl Agent {
             .unwrap_or_default()
     }
 
+    pub fn last_user_files(&self) -> Vec<clawseed_api::file_attachment::FileAttachment> {
+        self.history
+            .iter()
+            .rev()
+            .find_map(|message| match message {
+                ConversationMessage::Chat(chat) if chat.role == "user" => Some(chat.files.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
     /// Remove the last assistant turn and the preceding user message from history.
     /// Returns the original user message content (without timestamp prefix) if found,
     /// so the caller can re-run the turn.

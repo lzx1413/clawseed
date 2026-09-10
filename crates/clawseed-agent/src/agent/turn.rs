@@ -319,6 +319,27 @@ impl Agent {
         cancel_token: Option<tokio_util::sync::CancellationToken>,
         debug: bool,
     ) -> Result<String> {
+        self.turn_streamed_with_files(
+            user_message,
+            attachments,
+            Vec::new(),
+            event_tx,
+            cancel_token,
+            debug,
+        )
+        .await
+    }
+
+    pub async fn turn_streamed_with_files(
+        &mut self,
+        user_message: &str,
+        attachments: Vec<clawseed_api::provider::ImageAttachment>,
+        files: Vec<clawseed_api::file_attachment::FileAttachment>,
+        event_tx: tokio::sync::mpsc::Sender<TurnEvent>,
+        cancel_token: Option<tokio_util::sync::CancellationToken>,
+        debug: bool,
+    ) -> Result<String> {
+        clawseed_api::file_attachment::validate_files(&files)?;
         let turn_started = std::time::Instant::now();
         let mut metrics = super::metrics::TurnMetrics::default();
         self.validate_image_model(!attachments.is_empty())?;
@@ -333,6 +354,7 @@ impl Agent {
 
         if let Some(ConversationMessage::Chat(message)) = self.history.last_mut() {
             message.attachments = attachments;
+            message.files = files;
         }
 
         // Auto-recall relevant memories and prepend context to user message.

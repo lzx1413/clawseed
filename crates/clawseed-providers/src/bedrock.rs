@@ -1628,6 +1628,7 @@ mod tests {
                 role: if i % 2 == 0 { "user" } else { "assistant" }.to_string(),
                 content: format!("Message {i}"),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             });
         }
@@ -1896,6 +1897,7 @@ mod tests {
                 role: "tool".to_string(),
                 content: "not valid json".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
         ];
@@ -1920,6 +1922,7 @@ mod tests {
                 role: "tool".to_string(),
                 content: "raw output with no json".to_string(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
         ];
@@ -2028,6 +2031,7 @@ mod tests {
                 role: "assistant".to_string(),
                 content: String::new(),
                 attachments: Vec::new(),
+                files: Vec::new(),
                 stable_prefix: None,
             },
             ChatMessage::user("Continue"),

@@ -30,3 +30,5 @@ tokio::task_local! {
     /// Override for tool choice mode, set by the agent loop.
     pub static TOOL_CHOICE_OVERRIDE: Option<String>;
 }
+
+pub mod file_attachment;

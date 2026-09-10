@@ -134,7 +134,7 @@ impl ToolDispatcher for XmlToolDispatcher {
         history
             .iter()
             .flat_map(|msg| match msg {
-                ConversationMessage::Chat(chat) => vec![chat.clone()],
+                ConversationMessage::Chat(chat) => vec![chat.with_file_context()],
                 ConversationMessage::AssistantToolCalls { text, .. } => {
                     vec![ChatMessage::assistant(text.clone().unwrap_or_default())]
                 }
@@ -205,7 +205,7 @@ impl ToolDispatcher for NativeToolDispatcher {
         history
             .iter()
             .flat_map(|msg| match msg {
-                ConversationMessage::Chat(chat) => vec![chat.clone()],
+                ConversationMessage::Chat(chat) => vec![chat.with_file_context()],
                 ConversationMessage::AssistantToolCalls {
                     text,
                     tool_calls,

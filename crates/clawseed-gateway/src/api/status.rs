@@ -68,6 +68,7 @@ pub async fn handle_api_status(
     let body = serde_json::json!({
         "provider": config.providers.fallback,
         "model": model,
+        "file_attachments_supported": state.session_backend.is_some(),
         "image_attachments": {
             "supported": state.session_backend.is_some(),
             "model_support": match state.provider.image_attachment_support(&model) {

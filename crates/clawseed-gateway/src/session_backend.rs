@@ -12,6 +12,7 @@ pub struct PersistedMessage {
     pub role: String,
     pub content: String,
     pub attachments: Vec<ImageAttachment>,
+    pub files: Vec<clawseed_api::file_attachment::FileAttachment>,
     pub presentation: Option<ToolPresentation>,
     pub metrics: Option<clawseed_api::provider::ResponseMetrics>,
 }
@@ -87,6 +88,7 @@ pub trait SessionBackend: Send + Sync + 'static {
                 role: message.role,
                 content: message.content,
                 attachments: message.attachments,
+                files: message.files,
                 presentation: None,
                 metrics: None,
             })

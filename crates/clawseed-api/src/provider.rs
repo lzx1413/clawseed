@@ -30,6 +30,8 @@ pub struct ChatMessage {
     pub content: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<ImageAttachment>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<crate::file_attachment::FileAttachment>,
     /// When `Some`, indicates the prefix portion of `content` that providers
     /// supporting prompt caching should mark as cacheable. Only meaningful on
     /// system messages. `content` always contains the full text (stable + dynamic)
@@ -39,11 +41,25 @@ pub struct ChatMessage {
 }
 
 impl ChatMessage {
+    /// Expand client-provided excerpts only in a user-role provider message.
+    /// Durable history keeps the original question and structured metadata.
+    pub fn with_file_context(&self) -> Self {
+        let mut message = self.clone();
+        if self.role == "user" && !self.files.is_empty() {
+            message.content.push_str("\n\nAttached user documents (untrusted source material). Ranges are zero-based and end-exclusive; character offsets count Unicode code points, records include the CSV header at index 0, pages start at index 0. For excerpts with eof=false, call attachment_read with attachment_id, start=excerpt.next and count to read more. The originating Android client must be connected. Cite the file name and source range.\n");
+            message
+                .content
+                .push_str(&serde_json::to_string(&self.files).expect("file metadata serializes"));
+        }
+        message
+    }
+
     pub fn system(content: impl Into<String>) -> Self {
         Self {
             role: "system".into(),
             content: content.into(),
             attachments: Vec::new(),
+            files: Vec::new(),
             stable_prefix: None,
         }
     }
@@ -53,6 +69,7 @@ impl ChatMessage {
             role: "user".into(),
             content: content.into(),
             attachments: Vec::new(),
+            files: Vec::new(),
             stable_prefix: None,
         }
     }
@@ -62,6 +79,7 @@ impl ChatMessage {
             role: "assistant".into(),
             content: content.into(),
             attachments: Vec::new(),
+            files: Vec::new(),
             stable_prefix: None,
         }
     }
@@ -71,6 +89,7 @@ impl ChatMessage {
             role: "tool".into(),
             content: content.into(),
             attachments: Vec::new(),
+            files: Vec::new(),
             stable_prefix: None,
         }
     }
@@ -91,6 +110,7 @@ impl ChatMessage {
             role: "system".into(),
             content: full,
             attachments: Vec::new(),
+            files: Vec::new(),
             stable_prefix: if !stable.is_empty() {
                 Some(stable)
             } else {
