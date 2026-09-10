@@ -24,10 +24,11 @@ internal fun DraftImageStrip(images: List<ChatImageDraft>, file: (String) -> Fil
             key(image.id) {
                 Column(Modifier.width(110.dp)) {
                     ZoomableChatImage(file(image.id))
-                    if (image.uploading) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("上传中") }
+                    if (image.preparing) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("处理中") }
+                    else if (image.uploading) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("上传中") }
                     else if (image.error != null || image.attachment == null) {
                         image.error?.let { Text(it, maxLines = 2, style = MaterialTheme.typography.labelSmall) }
-                        TextButton(onClick = { onRetry(image.id) }) { Text("重新上传") }
+                        TextButton(onClick = { onRetry(image.id) }) { Text("重试") }
                     }
                     TextButton(onClick = { onRemove(image.id) }) { Text("移除图片") }
                 }

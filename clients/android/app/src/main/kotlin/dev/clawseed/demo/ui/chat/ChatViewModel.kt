@@ -354,14 +354,20 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
         }
         viewModelScope.launch {
             try {
-                val capability = target.gateway.status().getOrThrow().imageAttachments
-                check(capability.supported) { "当前 Gateway 不支持图片，请升级 Gateway" }
-                check(imageDrafts.value[target.key].orEmpty().size + uris.size <= capability.maxImagesPerMessage) { "每条消息最多选择 4 张图片" }
+                check(imageDrafts.value[target.key].orEmpty().size + uris.size <= 4) { "每条消息最多选择 4 张图片" }
+                val staged = mutableListOf<ChatImageDraft>()
                 for (uri in uris) {
-                    val image = imageDraftStore.copyImage(uri)
-                    imageDraftStore.update(target.key, imageDrafts.value[target.key].orEmpty() + image)
-                    uploadDraft(target, image)
+                    try {
+                        val image = imageDraftStore.stageImage(uri)
+                        imageDraftStore.transform(target.key) { it + image }
+                        staged += image
+                    } catch (error: Exception) {
+                        if (error is CancellationException) throw error
+                        _uiState.value = _uiState.value.copy(error = error.message ?: "图片读取失败")
+                    }
                 }
+                // Publish every local preview before processing or uploading any image.
+                for (image in staged) uploadDraft(target, image)
             } catch (error: Exception) {
                 if (error is kotlinx.coroutines.CancellationException) throw error
                 _uiState.value = _uiState.value.copy(error = error.message ?: "图片处理失败")
@@ -371,7 +377,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
 
     internal fun retryImage(target: ImageDraftTarget, id: String) {
         val image = imageDrafts.value[target.key].orEmpty().find { it.id == id } ?: return
-        if (image.uploading || !imageOperations.add(target.key)) return
+        if (image.preparing || image.uploading || !imageOperations.add(target.key)) return
         viewModelScope.launch {
             try { uploadDraft(target, image) }
             catch (error: Exception) {
@@ -382,14 +388,19 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
     }
 
     private suspend fun uploadDraft(target: ImageDraftTarget, image: ChatImageDraft) {
+        var prepared = image
         try {
-            imageDraftStore.replace(target.key, image.copy(uploading = true, error = null))
+            if (imageDraftStore.needsPreparation(image.id)) {
+                imageDraftStore.replace(target.key, image.copy(preparing = true, error = null))
+                prepared = imageDraftStore.prepareImage(image)
+            }
+            imageDraftStore.replace(target.key, prepared.copy(preparing = false, uploading = true, error = null))
             val bytes = withContext(Dispatchers.IO) { imageDraftStore.file(image.id).readBytes() }
             val attachment = target.gateway.uploadImage(target.sessionId, bytes).getOrThrow()
-            imageDraftStore.replace(target.key, image.copy(attachment = attachment, uploading = false))
+            imageDraftStore.replace(target.key, prepared.copy(attachment = attachment, preparing = false, uploading = false, error = null))
         } catch (error: Exception) {
             if (error is kotlinx.coroutines.CancellationException) throw error
-            imageDraftStore.replace(target.key, image.copy(uploading = false, error = error.message ?: "上传失败"))
+            imageDraftStore.replace(target.key, prepared.copy(preparing = false, uploading = false, error = error.message ?: "图片处理或上传失败"))
         }
     }
 
@@ -400,7 +411,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
         val fileDrafts = fileDrafts.value[target.key].orEmpty().filter { !it.sent && !it.awaitingReply }
         if (images.isEmpty() && fileDrafts.isEmpty()) return sendMessage(content, target.sessionId)
         if (fileDrafts.any { it.status != "ready" }) return false
-        if (images.any { it.uploading || it.attachment == null || it.error != null }) return false
+        if (images.any { it.preparing || it.uploading || it.attachment == null || it.error != null }) return false
         if (!imageOperations.add(target.key)) return false
         viewModelScope.launch {
             try {

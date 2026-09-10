@@ -34,7 +34,12 @@ internal class ImageDraftPersistence(
         if (mutableReady.value) return
         val stored = read()
         snapshot = stored.copy(images = stored.images.mapValues { (_, images) ->
-            images.map { it.copy(uploading = false, awaitingReply = false) }
+            images.map { it.copy(
+                uploading = false,
+                preparing = false,
+                awaitingReply = false,
+                error = if (it.preparing) "图片处理中断，请重试" else it.error,
+            ) }
         })
         mutableDrafts.value = snapshot.images
         mutableReady.value = true

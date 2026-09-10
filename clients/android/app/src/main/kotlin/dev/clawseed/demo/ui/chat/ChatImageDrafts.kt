@@ -23,6 +23,7 @@ internal data class ChatImageDraft(
     val id: String,
     val attachment: ImageAttachment? = null,
     val uploading: Boolean = false,
+    val preparing: Boolean = false,
     val error: String? = null,
     val awaitingReply: Boolean = false,
 )
@@ -52,7 +53,9 @@ internal class ChatImageDrafts(private val context: Context) {
     val ready = persistence.ready
     suspend fun load() = persistence.load()
     fun savedText(key: String): String = persistence.savedText(key)
-    fun file(id: String): File = File(directory, "$id.png")
+    fun file(id: String): File = listOf("jpg", "png", "source")
+        .map { File(directory, "$id.$it") }.firstOrNull { it.exists() } ?: File(directory, "$id.png")
+    fun needsPreparation(id: String): Boolean = File(directory, "$id.source").exists()
 
     suspend fun saveText(key: String, text: String) = persistence.update {
         it.copy(texts = if (text.isEmpty()) it.texts - key else it.texts + (key to text))
@@ -79,11 +82,43 @@ internal class ChatImageDrafts(private val context: Context) {
                 texts = if (images.isEmpty()) it.texts - key else it.texts,
             )
         }
-        withContext(Dispatchers.IO) { ids.forEach { file(it).delete() } }
+        withContext(Dispatchers.IO) { ids.forEach { id -> listOf("jpg", "png", "source", "tmp").forEach { File(directory, "$id.$it").delete() } } }
     }
 
-    suspend fun copyImage(uri: Uri): ChatImageDraft = withContext(Dispatchers.IO) {
+    /** Save the original first so a preview is available before decoding or network I/O. */
+    suspend fun stageImage(uri: Uri): ChatImageDraft = withContext(Dispatchers.IO) {
         directory.mkdirs()
+        val draft = ChatImageDraft(UUID.randomUUID().toString(), preparing = true)
+        val original = File(directory, "${draft.id}.source")
+        try {
+            context.contentResolver.openInputStream(uri).use { input ->
+                checkNotNull(input) { "无法读取图片" }
+                original.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        require(total <= 50L * 1024 * 1024) { "原始图片不能超过 50 MiB" }
+                        output.write(buffer, 0, count)
+                    }
+                    output.fd.sync()
+                }
+            }
+            draft
+        } catch (error: Exception) {
+            original.delete()
+            throw error
+        }
+    }
+
+    suspend fun prepareImage(draft: ChatImageDraft): ChatImageDraft = withContext(Dispatchers.IO) {
+        val source = File(directory, "${draft.id}.source")
+        val uri = Uri.fromFile(source)
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(source.path, bounds)
+        val jpeg = bounds.outMimeType == "image/jpeg"
         // ImageDecoder applies EXIF orientation. Keep screenshot text lossless;
         // downscale only when dimensions or encoded size require it.
         var bitmap = if (android.os.Build.VERSION.SDK_INT >= 28) {
@@ -99,7 +134,7 @@ internal class ChatImageDrafts(private val context: Context) {
             var bytes: ByteArray
             while (true) {
                 bytes = ByteArrayOutputStream().use { output ->
-                    check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) { "Unable to prepare image" }
+                    check(bitmap.compress(if (jpeg) Bitmap.CompressFormat.JPEG else Bitmap.CompressFormat.PNG, if (jpeg) 90 else 100, output)) { "Unable to prepare image" }
                     output.toByteArray()
                 }
                 if (bytes.size <= 5 * 1024 * 1024) break
@@ -108,9 +143,14 @@ internal class ChatImageDrafts(private val context: Context) {
                 if (smaller !== bitmap) bitmap.recycle()
                 bitmap = smaller
             }
-            val draft = ChatImageDraft(UUID.randomUUID().toString())
-            file(draft.id).outputStream().use { it.write(bytes); it.fd.sync() }
-            draft
+            val output = File(directory, "${draft.id}.${if (jpeg) "jpg" else "png"}")
+            val temporary = File(directory, "${draft.id}.tmp")
+            try {
+                temporary.outputStream().use { it.write(bytes); it.fd.sync() }
+                check(temporary.renameTo(output)) { "无法保存处理后的图片" }
+                source.delete()
+            } finally { temporary.delete() }
+            draft.copy(preparing = false, error = null)
         } finally { bitmap.recycle() }
     }
 

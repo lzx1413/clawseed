@@ -39,6 +39,16 @@ class ImageDraftPersistenceTest {
         assertEquals("question", restored.savedText("session"))
     }
 
+    @Test fun interruptedPreparationRecoversAsRetryable() = runTest {
+        val disk = ImageDraftSnapshot(mapOf("session" to listOf(ChatImageDraft("photo", preparing = true))))
+        val store = ImageDraftPersistence({ disk }, {}, StandardTestDispatcher(testScheduler))
+        store.load()
+        val draft = store.drafts.value.getValue("session").single()
+        assertFalse(draft.preparing)
+        assertFalse(draft.uploading)
+        assertEquals("图片处理中断，请重试", draft.error)
+    }
+
     @Test fun failedWriteDoesNotPublishOrDiscardTheDurableDraft() = runTest {
         val disk = ImageDraftSnapshot(mapOf("session" to listOf(ChatImageDraft("keep"))))
         val store = ImageDraftPersistence({ disk }, { error("disk full") }, StandardTestDispatcher(testScheduler))
