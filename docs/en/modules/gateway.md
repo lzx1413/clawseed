@@ -201,3 +201,5 @@ With session persistence enabled, `/api/status.image_attachments` declares proto
 All image operations use gateway authentication and check session ownership. The current gateway identifies authenticated clients as the local owner; it is not a multi-user identity service. IDs are server-generated and cannot address arbitrary paths. JPEG, PNG, GIF and WebP are decoded and independently checked; maximum input is 5 MiB and 8192 pixels per side, with a bounded decoder allocation. At most 4 images are accepted per message.
 
 Metadata lives in `gateway/sessions.db`; durable files live in `gateway/images`. Unsent uploads expire after 24 hours, with collection every five minutes, on upload, and after session deletion. Collection retains any image still referenced by a message. Unavailable images produce explicit errors. The `image_context` WebSocket event lists `omitted_ids` outside the current model image budget; their history previews remain available.
+
+See [Android file attachments](../android-file-attachments.md) for document metadata, budgets and client-side reading.

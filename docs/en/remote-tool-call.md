@@ -332,3 +332,5 @@ ToolSpec("sensors", "Read sensor data",
 - Gateway still intercepts tool calls through the Hook pipeline
 - `before_tool_call` hooks can cancel remote tool calls
 - Recommendation: Restrict registerable tool name ranges in `SecurityPolicy`
+
+See [Android file attachments](android-file-attachments.md) for document metadata, budgets and client-side reading.

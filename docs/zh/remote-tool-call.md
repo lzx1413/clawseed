@@ -331,3 +331,5 @@ ToolSpec("sensors", "读取传感器数据",
 - Gateway 仍然通过 Hook 管线拦截工具调用
 - `before_tool_call` Hook 可以取消远程工具调用
 - 建议：在 `SecurityPolicy` 中限制可注册的工具名称范围
+
+文件附件协议、限额与客户端读取工具见 [Android 文件附件](android-file-attachments.md)。

@@ -455,3 +455,5 @@ to the same model; changing the model resets capability to automatic. The chat
 attachment icon is disabled unless the effective session provider supports
 images. The gateway sends this decision in `session_start`, including on resume,
 and enforces it when processing images. Persona changes apply on new connections.
+
+See [Android file attachments](android-file-attachments.md) for document metadata, budgets and client-side reading.

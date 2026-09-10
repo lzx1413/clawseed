@@ -197,3 +197,5 @@ impl Tool for RemoteTool {
 上传、引用和读取均复用 Gateway 认证并校验会话归属。当前 Gateway 将认证客户端映射到本地 owner，并非多用户身份服务。服务端生成附件 ID，客户端不能通过路径读取任意文件。独立解码校验 JPEG、PNG、GIF、WebP，单图最多 5 MiB、单边最多 8192 像素，解码内存有上限；每条消息最多 4 张。
 
 元数据位于 `gateway/sessions.db`，持久图片位于 `gateway/images`。未发送附件 24 小时后可回收，后台每 5 分钟及上传、删除会话时触发清理；仍被消息引用的文件不会被清理。附件失效明确报错。`image_context` WebSocket 事件通过 `omitted_ids` 通知本轮预算排除的历史图片，历史预览仍可读取。
+
+文件附件协议、限额与客户端读取工具见 [Android 文件附件](../android-file-attachments.md)。
