@@ -13,12 +13,16 @@ internal fun groupSessionHistory(
     zone: ZoneId = ZoneId.systemDefault(),
 ): List<SessionDay> {
     val term = query.trim()
-    return sessions.filter {
-        term.isEmpty() || it.name.orEmpty().contains(term, ignoreCase = true) ||
-            it.persona.orEmpty().contains(term, ignoreCase = true) || it.id.contains(term, ignoreCase = true)
-    }.sortedByDescending { it.lastActivityMillis.takeIf { time -> time > 0 } ?: it.createdAtMillis }
-        .groupBy {
-            val time = it.lastActivityMillis.takeIf { time -> time > 0 } ?: it.createdAtMillis
+    return sessions.asSequence().filter {
+        // Connecting can persist persona/name metadata before the first message.
+        it.messageCount > 0 && (term.isEmpty() || it.name.orEmpty().contains(term, ignoreCase = true) ||
+            it.persona.orEmpty().contains(term, ignoreCase = true) || it.id.contains(term, ignoreCase = true))
+    }.map { session ->
+        // Parse once per session, not on every comparison in the sort.
+        session to (session.lastActivityMillis.takeIf { it > 0 } ?: session.createdAtMillis)
+    }.sortedByDescending { it.second }
+        .groupBy(keySelector = { (_, time) ->
             if (time > 0) Instant.ofEpochMilli(time).atZone(zone).toLocalDate() else null
-        }.map { (date, entries) -> SessionDay(date, entries) }
+        }, valueTransform = { it.first })
+        .map { (date, entries) -> SessionDay(date, entries) }
 }

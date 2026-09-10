@@ -3,6 +3,7 @@ package dev.clawseed.demo.ui.chat.markdown
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -18,7 +19,9 @@ import androidx.compose.ui.text.withStyle
 @Composable
 internal fun List<InlineNode>.toAnnotatedString(): AnnotatedString {
     val colors = MaterialTheme.colorScheme
-    return buildAnnotatedString { appendInlines(this@toAnnotatedString, colors) }
+    return remember(this, colors) {
+        buildAnnotatedString { appendInlines(this@toAnnotatedString, colors) }
+    }
 }
 
 private fun AnnotatedString.Builder.appendInlines(nodes: List<InlineNode>, colors: ColorScheme) {

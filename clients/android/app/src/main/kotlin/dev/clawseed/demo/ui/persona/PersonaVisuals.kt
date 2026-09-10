@@ -1,9 +1,5 @@
 package dev.clawseed.demo.ui.persona
 
-import android.graphics.BitmapFactory
-import android.media.ThumbnailUtils
-import android.net.Uri
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,12 +8,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.lerp
@@ -26,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 
 private val PersonaPalette = listOf(
     Color(0xFF2563EB),
@@ -90,82 +89,45 @@ fun PersonaDot(
 ) {
     val accentColor = personaAccentColor(name, color)
     val contentColor = personaInitialColor(accentColor)
-    val avatarImage = rememberPersonaAvatarBitmap(avatar)
+    val context = LocalContext.current
+    val avatarUri = remember(context, avatar) {
+        avatar?.trim()?.takeIf { PersonaAvatarStorage.isAvatarUri(it) }?.let {
+            runCatching { PersonaAvatarStorage.resolveAvatarUri(context, it) }.getOrNull()
+        }
+    }
+    var avatarLoaded by remember(avatarUri) { mutableStateOf(false) }
     Box(
         modifier = modifier
             .clip(CircleShape)
             .background(accentColor),
         contentAlignment = Alignment.Center,
     ) {
-        if (avatarImage != null) {
-            Image(
-                bitmap = avatarImage,
+        val label = avatar
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() && !it.isLikelyImageUri() }
+            ?: if (showInitial) personaInitial(name) else ""
+        if (!avatarLoaded && label.isNotEmpty()) {
+            Text(
+                text = label.take(2),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = contentColor,
+                textAlign = TextAlign.Center,
+            )
+        }
+        if (avatarUri != null) {
+            // Coil decodes off the main thread and shares its memory cache
+            // across history rows, including rows that leave and re-enter view.
+            AsyncImage(
+                model = avatarUri,
+                onSuccess = { avatarLoaded = true },
+                onError = { avatarLoaded = false },
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
-        } else {
-            val label = avatar
-                ?.trim()
-                ?.takeIf { it.isNotEmpty() && !it.isLikelyImageUri() }
-                ?: if (showInitial) personaInitial(name) else ""
-            if (label.isNotEmpty()) {
-                Text(
-                    text = label.take(2),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = contentColor,
-                    textAlign = TextAlign.Center,
-                )
-            }
         }
     }
-}
-
-@Composable
-private fun rememberPersonaAvatarBitmap(avatar: String?) =
-    avatar
-        ?.trim()
-        ?.takeIf { PersonaAvatarStorage.isAvatarUri(it) }
-        ?.let { uriText ->
-            val context = LocalContext.current
-            remember(uriText) {
-                runCatching {
-                    val uri = PersonaAvatarStorage.resolveAvatarUri(context, uriText)
-                        ?: return@runCatching null
-                    decodePersonaAvatar(context.contentResolver, uri)?.asImageBitmap()
-                }.getOrNull()
-            }
-        }
-
-private fun decodePersonaAvatar(
-    contentResolver: android.content.ContentResolver,
-    uri: Uri,
-) = run {
-    val targetSize = 128
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    contentResolver.openInputStream(uri)?.use { input ->
-        BitmapFactory.decodeStream(input, null, bounds)
-    }
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@run null
-
-    val options = BitmapFactory.Options().apply {
-        inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, targetSize)
-    }
-    val decoded = contentResolver.openInputStream(uri)?.use { input ->
-        BitmapFactory.decodeStream(input, null, options)
-    } ?: return@run null
-    ThumbnailUtils.extractThumbnail(decoded, targetSize, targetSize)
-}
-
-private fun calculateInSampleSize(width: Int, height: Int, targetSize: Int): Int {
-    var sampleSize = 1
-    var halfWidth = width / 2
-    var halfHeight = height / 2
-    while (halfWidth / sampleSize >= targetSize && halfHeight / sampleSize >= targetSize) {
-        sampleSize *= 2
-    }
-    return sampleSize
 }
 
 private fun String.isLikelyImageUri(): Boolean =

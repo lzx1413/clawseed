@@ -6,6 +6,7 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -147,7 +148,18 @@ fun ChatScreen(
         (if (uiState.streamingContent.isNotEmpty()) 1 else 0)
     val bottomAnchorIndex = displayedItemCount
     val isLoading = uiState.isGenerating
-    val isImeVisible = WindowInsets.ime.getBottom(density) > 0
+    val imeInsets = WindowInsets.ime
+    // IME height changes every animation frame. Only visibility changes need
+    // composition; imePadding handles the intermediate heights during layout.
+    val isImeVisible by remember(imeInsets, density) {
+        derivedStateOf { imeInsets.getBottom(density) > 0 }
+    }
+    val lastAssistantId = remember(uiState.messages) {
+        val last = uiState.messages.lastOrNull()
+        if (last is ChatEntry.AssistantMessage || last is ChatEntry.ToolInvocations || last is ChatEntry.Thinking) {
+            uiState.messages.lastOrNull { it is ChatEntry.AssistantMessage }?.id
+        } else null
+    }
 
     // Only auto-scroll if user is near the bottom
     val isNearBottom by remember {
@@ -310,7 +322,8 @@ fun ChatScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(innerPadding)
+                .consumeWindowInsets(innerPadding),
         ) {
             LazyColumn(
                 state = listState,
@@ -326,13 +339,11 @@ fun ChatScreen(
                 items(
                     items = uiState.messages,
                     key = { it.id },
+                    contentType = { it.javaClass },
                 ) { entry ->
                     val isLastAssistant = entry is ChatEntry.AssistantMessage
                         && !entry.isStreaming
-                        && uiState.messages.lastOrNull()
-                            ?.let { it is ChatEntry.AssistantMessage || it is ChatEntry.ToolInvocations || it is ChatEntry.Thinking }
-                            ?: false
-                        && uiState.messages.indexOf(entry) == uiState.messages.indexOfLast { it is ChatEntry.AssistantMessage }
+                        && entry.id == lastAssistantId
                     val canSpeak = entry is ChatEntry.AssistantMessage && !entry.isStreaming
                     MessageBubble(
                         onReadImage = { id -> viewModel.readImage(uiState.currentSessionId.orEmpty(), id) },
@@ -347,7 +358,7 @@ fun ChatScreen(
                     )
                 }
                 if (uiState.thinkingContent.isNotEmpty()) {
-                    item(key = "__thinking__") {
+                    item(key = "__thinking__", contentType = ChatEntry.Thinking::class.java) {
                         MessageBubble(
                             entry = ChatEntry.Thinking(
                                 id = "__thinking__",
@@ -358,7 +369,7 @@ fun ChatScreen(
                     }
                 }
                 if (uiState.streamingContent.isNotEmpty()) {
-                    item(key = "__streaming__") {
+                    item(key = "__streaming__", contentType = ChatEntry.AssistantMessage::class.java) {
                         MessageBubble(
                             entry = ChatEntry.AssistantMessage(
                                 id = "__streaming__",
@@ -369,7 +380,7 @@ fun ChatScreen(
                         )
                     }
                 }
-                item(key = "__bottom_anchor__") {
+                item(key = "__bottom_anchor__", contentType = "anchor") {
                     Spacer(Modifier.size(1.dp))
                 }
             }

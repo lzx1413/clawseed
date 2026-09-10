@@ -97,6 +97,8 @@ fun SessionDrawer(
     var showAbout by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     val groups = remember(uiState.sessions, query) { groupSessionHistory(uiState.sessions, query) }
+    val dateFormatter = remember { DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM) }
+    val today = remember(isDrawerOpen) { LocalDate.now() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -165,21 +167,20 @@ fun SessionDrawer(
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxWidth()) {
                         groups.forEach { group ->
-                            item(key = "date:${group.date}") {
-                                val today = LocalDate.now()
+                            item(key = "date:${group.date}", contentType = "date") {
                                 Text(
                                     when (group.date) {
                                         today -> stringResource(R.string.drawer_today)
                                         today.minusDays(1) -> stringResource(R.string.drawer_yesterday)
                                         null -> stringResource(R.string.drawer_older)
-                                        else -> group.date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
+                                        else -> group.date.format(dateFormatter)
                                     },
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                 )
                             }
-                            items(group.sessions, key = { "session:${it.id}" }) { session ->
+                            items(group.sessions, key = { "session:${it.id}" }, contentType = { "session" }) { session ->
                                 SessionItem(
                                     session = session,
                                     personaVisuals = uiState.personaVisuals,
