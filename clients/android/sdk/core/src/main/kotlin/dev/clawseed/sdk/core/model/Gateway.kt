@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonElement
 /** Snapshot of gateway runtime status and provider configuration. */
 @Serializable
 data class GatewayStatus(
+    @SerialName("file_attachments_supported") val fileAttachmentsSupported: Boolean = false,
     val provider: String? = null,
     val model: String = "",
     val temperature: Double = 0.7,

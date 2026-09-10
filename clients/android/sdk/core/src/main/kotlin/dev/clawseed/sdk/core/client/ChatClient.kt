@@ -144,9 +144,10 @@ internal class ChatClient(
         httpClient.dispatcher.executorService.shutdown()
     }
 
-    fun sendMessage(content: String, debug: Boolean = false, attachments: List<dev.clawseed.sdk.core.model.ImageAttachment> = emptyList()) {
+    fun sendMessage(content: String, debug: Boolean = false, attachments: List<dev.clawseed.sdk.core.model.ImageAttachment> = emptyList(), files: List<dev.clawseed.sdk.core.model.FileAttachment> = emptyList()) {
         require(attachments.size <= 4) { "At most 4 images may be attached" }
-        require(content.isNotBlank() || attachments.isNotEmpty()) { "Message cannot be empty" }
+        require(files.size <= dev.clawseed.sdk.core.model.FileAttachmentLimits.MAX_FILES) { "At most 4 files may be attached" }
+        require(content.isNotBlank() || attachments.isNotEmpty() || files.isNotEmpty()) { "Message cannot be empty" }
         val state = _connectionState.value
         check(state == ConnectionState.CONNECTED || state == ConnectionState.RECONNECTING) {
             "Cannot send message in state $state"
@@ -154,6 +155,7 @@ internal class ChatClient(
         val msg = buildJsonObject {
             put("type", "message")
             put("content", content)
+            if (files.isNotEmpty()) put("files", json.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(dev.clawseed.sdk.core.model.FileAttachment.serializer()), files))
             if (attachments.isNotEmpty()) put("attachments", kotlinx.serialization.json.buildJsonArray {
                 attachments.forEach { image -> add(buildJsonObject { put("type", "image"); put("id", image.id) }) }
             })

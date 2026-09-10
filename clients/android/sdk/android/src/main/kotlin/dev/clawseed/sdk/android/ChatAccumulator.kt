@@ -98,13 +98,14 @@ class ChatAccumulator(private val session: ClawSeedSession) {
     /** Records a local user message so UI state stays aligned with sent input.
      *  Clears streaming buffers defensively — a new user turn always starts fresh,
      *  preventing any residual content from a previous turn leaking into the next. */
-    fun addUserMessage(content: String, attachments: List<dev.clawseed.sdk.core.model.ImageAttachment> = emptyList()) {
+    fun addUserMessage(content: String, attachments: List<dev.clawseed.sdk.core.model.ImageAttachment> = emptyList(), files: List<dev.clawseed.sdk.core.model.FileAttachment> = emptyList()) {
         beginTurn()
         append(AccumulatedMessage.User(
             id = nextId(),
             timestamp = System.currentTimeMillis(),
             content = content,
             attachments = attachments,
+            files = files,
         ))
     }
 

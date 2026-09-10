@@ -16,6 +16,7 @@ data class SessionInfo(
      *  reflects the stored binding, not anything the client requested. */
     val persona: String? = null,
     val imageAttachmentsSupported: Boolean = false,
+    val fileAttachmentsSupported: Boolean = false,
 )
 
 /** Summary information returned by the gateway session list API. */
@@ -58,6 +59,7 @@ data class SessionMessage(
     @SerialName("tool_result") val toolResult: String? = null,
     val success: Boolean? = null,
     val attachments: List<ImageAttachment> = emptyList(),
+        val files: List<dev.clawseed.sdk.core.model.FileAttachment> = emptyList(),
 )
 
 internal fun parseIsoToEpochMillis(iso: String): Long {

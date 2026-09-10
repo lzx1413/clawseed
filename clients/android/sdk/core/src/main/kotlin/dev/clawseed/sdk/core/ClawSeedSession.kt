@@ -41,6 +41,10 @@ interface ClawSeedSession : Closeable {
         check(attachments.isEmpty()) { "This session implementation does not support images" }
         sendMessage(content, debug)
     }
+    fun sendMessage(content: String, debug: Boolean, attachments: List<dev.clawseed.sdk.core.model.ImageAttachment>, files: List<dev.clawseed.sdk.core.model.FileAttachment>) {
+        check(files.isEmpty()) { "This session implementation does not support files" }
+        sendMessage(content, debug, attachments)
+    }
     /** Requests the agent to regenerate its last response. */
     fun regenerate(debug: Boolean = false)
     /** Requests cancellation of the current agent turn. */

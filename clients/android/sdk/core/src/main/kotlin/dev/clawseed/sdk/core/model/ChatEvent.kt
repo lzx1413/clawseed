@@ -23,6 +23,7 @@ sealed class ChatEvent {
         /** Persona bound to this session, echoed by the gateway. Null = default. */
         val persona: String? = null,
         val imageAttachmentsSupported: Boolean = false,
+    val fileAttachmentsSupported: Boolean = false,
     ) : ChatEvent()
 
     /** WebSocket connection acknowledged by the gateway. */
@@ -95,6 +96,7 @@ sealed class ChatEvent {
             return when (type) {
                 "session_start" -> SessionStarted(
                     imageAttachmentsSupported = obj["image_attachments_supported"]?.jsonPrimitive?.booleanOrNull ?: false,
+                    fileAttachmentsSupported = obj["file_attachments_supported"]?.jsonPrimitive?.booleanOrNull ?: false,
                     sessionId = obj["session_id"]?.jsonPrimitive?.content ?: "",
                     name = obj["name"]?.jsonPrimitive?.content?.takeIf { it.isNotEmpty() },
                     resumed = obj["resumed"]?.jsonPrimitive?.booleanOrNull ?: false,

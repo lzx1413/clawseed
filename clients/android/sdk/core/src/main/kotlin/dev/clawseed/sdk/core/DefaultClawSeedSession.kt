@@ -54,6 +54,7 @@ internal class DefaultClawSeedSession(
                         messageCount = event.messageCount,
                         persona = event.persona,
                         imageAttachmentsSupported = event.imageAttachmentsSupported,
+                        fileAttachmentsSupported = event.fileAttachmentsSupported,
                     )
                 }
             }
@@ -70,6 +71,11 @@ internal class DefaultClawSeedSession(
 
     override fun sendMessage(content: String, debug: Boolean, attachments: List<dev.clawseed.sdk.core.model.ImageAttachment>) {
         chatClient.sendMessage(content, debug, attachments)
+    }
+
+    override fun sendMessage(content: String, debug: Boolean, attachments: List<dev.clawseed.sdk.core.model.ImageAttachment>, files: List<dev.clawseed.sdk.core.model.FileAttachment>) {
+        check(files.isEmpty() || sessionInfo.value?.fileAttachmentsSupported == true) { "当前 Gateway 不支持文件附件，请升级 Gateway" }
+        chatClient.sendMessage(content, debug, attachments, files)
     }
 
     override fun sendMessage(content: String, debug: Boolean) {

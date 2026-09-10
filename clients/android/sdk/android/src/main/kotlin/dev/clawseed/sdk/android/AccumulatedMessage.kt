@@ -13,6 +13,7 @@ sealed class AccumulatedMessage {
         override val timestamp: Long,
         val content: String,
         val attachments: List<dev.clawseed.sdk.core.model.ImageAttachment> = emptyList(),
+        val files: List<dev.clawseed.sdk.core.model.FileAttachment> = emptyList(),
     ) : AccumulatedMessage()
 
     /** Completed assistant message. */
