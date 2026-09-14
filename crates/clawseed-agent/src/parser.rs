@@ -709,6 +709,7 @@ fn map_tool_name_alias(tool_name: &str) -> &str {
         // Memory variations
         "memoryrecall" | "memory_recall" | "recall" | "memrecall" => "memory_recall",
         "memorystore" | "memory_store" | "store" | "memstore" => "memory_store",
+        "memoryupdate" | "memory_update" | "memupdate" => "memory_update",
         "memoryforget" | "memory_forget" | "forget" | "memforget" => "memory_forget",
         // HTTP variations
         "http_request" | "http" | "fetch" | "curl" | "wget" => "http_request",
@@ -806,7 +807,8 @@ fn default_param_for_tool(tool: &str) -> &'static str {
         "memory_recall" | "memoryrecall" | "recall" | "memrecall" | "memory_forget"
         | "memoryforget" | "forget" | "memforget" | "web_search_tool" | "web_search"
         | "websearch" | "search" => "query",
-        "memory_store" | "memorystore" | "store" | "memstore" => "content",
+        "memory_store" | "memorystore" | "store" | "memstore" | "memory_update"
+        | "memoryupdate" | "memupdate" => "content",
         // HTTP and browser tools default to "url"
         "http_request" | "http" | "fetch" | "curl" | "wget" | "browser_open" | "browser" => "url",
         _ => "input",
@@ -2748,6 +2750,7 @@ Let me check the result."#;
         assert_eq!(map_tool_name_alias("bash"), "shell");
         assert_eq!(map_tool_name_alias("filelist"), "file_list");
         assert_eq!(map_tool_name_alias("memorystore"), "memory_store");
+        assert_eq!(map_tool_name_alias("memoryupdate"), "memory_update");
         assert_eq!(map_tool_name_alias("memoryforget"), "memory_forget");
         assert_eq!(map_tool_name_alias("http"), "http_request");
         assert_eq!(
@@ -2763,6 +2766,7 @@ Let me check the result."#;
         assert_eq!(default_param_for_tool("file_read"), "path");
         assert_eq!(default_param_for_tool("memory_recall"), "query");
         assert_eq!(default_param_for_tool("memory_store"), "content");
+        assert_eq!(default_param_for_tool("memory_update"), "content");
         assert_eq!(default_param_for_tool("web_search_tool"), "query");
         assert_eq!(default_param_for_tool("web_search"), "query");
         assert_eq!(default_param_for_tool("search"), "query");

@@ -186,6 +186,18 @@ impl Memory for NamespacedMemory {
             .await
     }
 
+    async fn get_scoped(
+        &self,
+        scope: MemoryScope<'_>,
+        key: &str,
+    ) -> anyhow::Result<Option<MemoryEntry>> {
+        if self.can_access_namespace(scope.namespace) {
+            self.inner.get_scoped(scope, key).await
+        } else {
+            Ok(None)
+        }
+    }
+
     async fn list(
         &self,
         category: Option<&MemoryCategory>,
@@ -225,6 +237,14 @@ impl Memory for NamespacedMemory {
                 key,
             )
             .await
+    }
+
+    async fn forget_scoped(&self, scope: MemoryScope<'_>, key: &str) -> anyhow::Result<bool> {
+        if self.can_access_namespace(scope.namespace) {
+            self.inner.forget_scoped(scope, key).await
+        } else {
+            Ok(false)
+        }
     }
 
     async fn count(&self) -> anyhow::Result<usize> {
@@ -515,6 +535,57 @@ mod tests {
         assert!(
             b_hits.iter().all(|e| e.key != "k_private"),
             "persona B must not see persona A private memory, got: {b_hits:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn scoped_get_and_forget_do_not_shadow_same_key_across_namespaces() {
+        let tmp = tempfile::tempdir().unwrap();
+        let inner: Arc<dyn Memory> = Arc::new(SqliteMemory::new(tmp.path()).unwrap());
+        for (namespace, content) in [
+            ("persona_a", "Private value"),
+            (PUBLIC_NAMESPACE, "Public value"),
+        ] {
+            inner
+                .store_with_metadata(
+                    "shared_key",
+                    content,
+                    MemoryCategory::Core,
+                    None,
+                    Some(namespace),
+                    None,
+                )
+                .await
+                .unwrap();
+        }
+        let persona = NamespacedMemory::new(inner.clone(), "persona_a".into());
+        let public_scope = MemoryScope {
+            namespace: PUBLIC_NAMESPACE,
+            session_id: None,
+        };
+
+        let public = persona
+            .get_scoped(public_scope, "shared_key")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(public.content, "Public value");
+        assert!(
+            persona
+                .forget_scoped(public_scope, "shared_key")
+                .await
+                .unwrap()
+        );
+        assert!(
+            inner
+                .get_scoped(public_scope, "shared_key")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            persona.get("shared_key").await.unwrap().unwrap().content,
+            "Private value"
         );
     }
 }

@@ -1,10 +1,12 @@
 use async_trait::async_trait;
-use clawseed_api::memory_traits::{Memory, MemoryCategory};
+use clawseed_api::memory_traits::{Memory, MemoryCategory, MemoryScope};
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
 use clawseed_memory::namespaced::PUBLIC_NAMESPACE;
 use serde_json::json;
 use std::sync::Arc;
+
+use crate::memory_scope::private_namespace;
 
 /// Let the agent store memories -- its own brain writes
 pub struct MemoryStoreTool {
@@ -24,7 +26,7 @@ impl Tool for MemoryStoreTool {
     }
 
     fn description(&self) -> &str {
-        "Store an event, project fact, decision, or task result with cross-session value. Do not use this tool for stable user identity, preferences, goals, constraints, or accessibility needs; those belong in user-profile management. By default stores in this identity's private memory. Use scope 'public' only when the user explicitly asks all identities/personas to share it. The content must be a complete, self-contained sentence with enough context for later retrieval."
+        "Create a new event, project fact, decision, or task result with cross-session value. Call memory_recall first when a related record may already exist; use memory_update with its exact key instead of creating a duplicate. Do not use this tool for stable user identity, preferences, goals, constraints, or accessibility needs; those belong in user-profile management. By default stores in this identity's private memory. Use scope 'public' only when the user explicitly asks all identities/personas to share it. The content must be a complete, self-contained sentence with enough context for later retrieval."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -67,6 +69,14 @@ impl Tool for MemoryStoreTool {
             .get("content")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'content' parameter"))?;
+        if content.trim().is_empty() {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some("Memory content must not be empty".into()),
+                presentation: None,
+            });
+        }
 
         let category = match args.get("category").and_then(|v| v.as_str()) {
             Some("core") | None => MemoryCategory::Core,
@@ -75,10 +85,14 @@ impl Tool for MemoryStoreTool {
             Some(other) => MemoryCategory::Custom(other.to_string()),
         };
 
-        let namespace = match args.get("scope").and_then(|v| v.as_str()) {
-            Some("public") => Some(PUBLIC_NAMESPACE),
-            Some("private") | None => None,
-            Some(other) => {
+        let scope = args
+            .get("scope")
+            .and_then(|value| value.as_str())
+            .unwrap_or("private");
+        let namespace = match scope {
+            "public" => PUBLIC_NAMESPACE.into(),
+            "private" => private_namespace(self.memory.as_ref()),
+            other => {
                 return Ok(ToolResult {
                     success: false,
                     output: String::new(),
@@ -90,18 +104,36 @@ impl Tool for MemoryStoreTool {
             }
         };
 
+        if self
+            .memory
+            .get_scoped(
+                MemoryScope {
+                    namespace: &namespace,
+                    session_id: None,
+                },
+                key,
+            )
+            .await?
+            .is_some()
+        {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(format!(
+                    "Memory '{key}' already exists in {scope} scope. Use memory_update to change it."
+                )),
+                presentation: None,
+            });
+        }
+
         match self
             .memory
-            .store_with_metadata(key, content, category, None, namespace, None)
+            .store_with_metadata(key, content, category, None, Some(&namespace), None)
             .await
         {
             Ok(()) => Ok(ToolResult {
                 success: true,
-                output: if namespace == Some(PUBLIC_NAMESPACE) {
-                    format!("Stored public memory: {key}")
-                } else {
-                    format!("Stored private memory: {key}")
-                },
+                output: format!("Stored {scope} memory: {key}"),
                 error: None,
                 presentation: None,
             }),
@@ -222,6 +254,35 @@ mod tests {
             .unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].key, "shared_lang");
+    }
+
+    #[tokio::test]
+    async fn store_rejects_an_existing_key_without_overwriting_it() {
+        let (_tmp, mem) = test_mem();
+        mem.store_with_metadata(
+            "project_stack",
+            "The project uses Rust",
+            MemoryCategory::Custom("project".into()),
+            Some("session-1"),
+            Some("default"),
+            Some(0.9),
+        )
+        .await
+        .unwrap();
+
+        let result = MemoryStoreTool::new(mem.clone())
+            .execute(
+                json!({"key": "project_stack", "content": "The project uses Kotlin"}),
+                &test_ctx(),
+            )
+            .await
+            .unwrap();
+
+        assert!(!result.success);
+        assert!(result.error.unwrap().contains("memory_update"));
+        let existing = mem.get("project_stack").await.unwrap().unwrap();
+        assert_eq!(existing.content, "The project uses Rust");
+        assert_eq!(existing.importance, Some(0.9));
     }
 
     #[tokio::test]

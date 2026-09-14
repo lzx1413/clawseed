@@ -134,7 +134,7 @@ Skill 通过 manifest.toml 中的 `permissions` 字段声明所需工具。激�
 | `web_search` | `web_search` |
 | `web_fetch` | `web_fetch` |
 | `http_request` | `http_request` |
-| `memory` | `memory_store`, `memory_recall`, `memory_export`, `memory_forget`, `memory_purge` |
+| `memory` | `memory_store`, `memory_update`, `memory_recall`, `memory_export`, `memory_forget`, `memory_purge` |
 | `knowledge` | `knowledge` |
 | `calculator` | `calculator` |
 | `git` | `git` |

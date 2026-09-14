@@ -33,6 +33,7 @@ HTML extraction removes scripts, styles, navigation, footers, sidebars, forms, a
 | Tool | Name | Description |
 |------|------|-------------|
 | `MemoryStoreTool` | `memory_store` | Store memories |
+| `MemoryUpdateTool` | `memory_update` | Update an existing memory while preserving metadata |
 | `MemoryRecallTool` | `memory_recall` | Retrieve relevant memories |
 | `MemoryForgetTool` | `memory_forget` | Delete specific memories |
 | `MemoryPurgeTool` | `memory_purge` | Clear expired memories |

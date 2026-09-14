@@ -418,9 +418,10 @@ impl PromptSection for MemorySection {
     fn build(&self, _ctx: &PromptContext<'_>) -> Result<String> {
         Ok("## Memory\n\n\
              You have a long-term memory system. Relevant records may be recalled when a request has a clear topic. Historical records are not verified current state. Reply briefly to greetings without unsolicited personal or portfolio summaries.\n\
-             - Use `memory_recall` to search for additional or more specific memories when the \
-             auto-recalled context is insufficient.\n\
-             - Use `memory_store` for events, project knowledge, decisions, and task results with \
+             - Use `memory_recall` before writing when a related record may already exist. Use \
+             `memory_update` with the exact key to correct or merge an existing record, and \
+             `memory_store` only when no relevant record exists.\n\
+             - Store events, project knowledge, decisions, and task results with \
              cross-session value. Stable user identity, preferences, goals, constraints, and \
              accessibility needs belong in user-profile management, not Core Memory."
             .into())

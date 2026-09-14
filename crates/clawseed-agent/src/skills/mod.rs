@@ -57,6 +57,7 @@ const PERMISSION_MAP: &[(&str, &[&str])] = &[
         "memory",
         &[
             "memory_store",
+            "memory_update",
             "memory_recall",
             "memory_export",
             "memory_forget",

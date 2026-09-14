@@ -230,6 +230,17 @@ mod tests {
     }
 
     #[test]
+    fn memory_mutations_need_approval_in_supervised_mode() {
+        let (auto, ask, level) = supervised_config();
+        let mgr = ApprovalManager::new(auto, ask, level);
+
+        assert!(!mgr.needs_approval("memory_recall"));
+        assert!(mgr.needs_approval("memory_store"));
+        assert!(mgr.needs_approval("memory_update"));
+        assert!(mgr.needs_approval("memory_forget"));
+    }
+
+    #[test]
     fn full_autonomy_never_prompts() {
         let mgr = ApprovalManager::new(vec![], vec![], AutonomyLevel::Full);
         assert!(!mgr.needs_approval("shell"));

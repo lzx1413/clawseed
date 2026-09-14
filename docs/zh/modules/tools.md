@@ -33,6 +33,7 @@ HTML 提取会移除脚本、样式、导航、页脚、侧栏、表单和隐藏
 | 工具 | 名称 | 描述 |
 |------|------|------|
 | `MemoryStoreTool` | `memory_store` | 存储记忆 |
+| `MemoryUpdateTool` | `memory_update` | 更新已有记忆并保留元数据 |
 | `MemoryRecallTool` | `memory_recall` | 检索相关记忆 |
 | `MemoryForgetTool` | `memory_forget` | 删除指定记忆 |
 | `MemoryPurgeTool` | `memory_purge` | 清除过期记忆 |

@@ -41,6 +41,7 @@ use crate::memory_forget::MemoryForgetTool;
 use crate::memory_purge::MemoryPurgeTool;
 use crate::memory_recall::MemoryRecallTool;
 use crate::memory_store::MemoryStoreTool;
+use crate::memory_update::MemoryUpdateTool;
 use crate::model_routing_config::ModelRoutingConfigTool;
 use crate::pdf_read::PdfReadTool;
 use crate::shell::ShellTool;
@@ -142,7 +143,8 @@ pub fn all_tools_with_runtime(
     tools.push(Box::new(MemoryForgetTool::new(memory.clone())));
     tools.push(Box::new(MemoryPurgeTool::new(memory.clone())));
     tools.push(Box::new(MemoryRecallTool::new(memory.clone())));
-    tools.push(Box::new(MemoryStoreTool::new(memory)));
+    tools.push(Box::new(MemoryStoreTool::new(memory.clone())));
+    tools.push(Box::new(MemoryUpdateTool::new(memory)));
     tools.push(Box::new(ModelRoutingConfigTool::new()));
     tools.push(Box::new(PdfReadTool::new()));
     tools.push(Box::new(ShellTool::new()));

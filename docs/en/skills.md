@@ -134,7 +134,7 @@ Skills declare which tools they need via the `permissions` field in manifest.tom
 | `web_search` | `web_search` |
 | `web_fetch` | `web_fetch` |
 | `http_request` | `http_request` |
-| `memory` | `memory_store`, `memory_recall`, `memory_export`, `memory_forget`, `memory_purge` |
+| `memory` | `memory_store`, `memory_update`, `memory_recall`, `memory_export`, `memory_forget`, `memory_purge` |
 | `knowledge` | `knowledge` |
 | `calculator` | `calculator` |
 | `git` | `git` |

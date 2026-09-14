@@ -4,7 +4,7 @@
 //! - Pure computation: calculator, cron_*, knowledge, llm_task, model_routing_config
 //! - Filesystem: file_read, file_write, file_edit, glob_search, content_search, backup, git_operations, pdf_read, shell
 //! - Network: http_request, web_fetch, web_search (tested with config only — no live requests)
-//! - Memory: memory_store, memory_recall, memory_forget, memory_export, memory_purge
+//! - Memory: memory_store, memory_update, memory_recall, memory_forget, memory_export, memory_purge
 
 use clawseed_api::tool::Tool;
 use clawseed_api::tool_context::ToolContext;
@@ -105,6 +105,7 @@ async fn registry_all_tools_instantiated() {
         "memory_purge",
         "memory_recall",
         "memory_store",
+        "memory_update",
         "model_routing_config",
         "pdf_read",
         "shell",

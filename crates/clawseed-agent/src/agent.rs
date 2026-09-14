@@ -135,7 +135,13 @@ fn replace_memory_tools(registry: &DefaultToolRegistry, memory: Arc<dyn Memory>)
         ToolSource::BuiltIn,
     );
     registry.register_or_replace(
-        Box::new(clawseed_tools::memory_store::MemoryStoreTool::new(memory)),
+        Box::new(clawseed_tools::memory_store::MemoryStoreTool::new(
+            memory.clone(),
+        )),
+        ToolSource::BuiltIn,
+    );
+    registry.register_or_replace(
+        Box::new(clawseed_tools::memory_update::MemoryUpdateTool::new(memory)),
         ToolSource::BuiltIn,
     );
 }
