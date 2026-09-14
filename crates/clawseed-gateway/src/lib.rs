@@ -238,6 +238,22 @@ pub async fn run_gateway(
         &config.workspace_dir,
     ));
 
+    // Shared event bus is created before built-in tools so long-running tools can
+    // publish completion independently of the chat turn that started them.
+    let event_tx = external_event_tx.unwrap_or_else(|| {
+        let (tx, _rx) = tokio::sync::broadcast::channel::<serde_json::Value>(256);
+        tx
+    });
+    let background_event_tx = event_tx.clone();
+    let background_event_sink: clawseed_tools::background::BackgroundEventSink =
+        Arc::new(move |event| {
+            let mut value = serde_json::to_value(event).unwrap_or_else(|_| serde_json::json!({}));
+            if let Some(object) = value.as_object_mut() {
+                object.insert("type".into(), serde_json::json!("background_job"));
+            }
+            let _ = background_event_tx.send(value);
+        });
+
     let (composio_key, composio_entity_id) = if config.composio.enabled {
         (
             config.composio.api_key.as_deref(),
@@ -274,6 +290,7 @@ pub async fn run_gateway(
             .and_then(|e| e.api_key.as_deref()),
         &config,
         Some(canvas_store.clone()),
+        Some(background_event_sink),
     );
 
     // ── Wire MCP tools into the gateway tool registry (non-fatal) ───
@@ -356,13 +373,6 @@ pub async fn run_gateway(
         &config.workspace_dir,
     ));
 
-    // SSE broadcast channel for real-time events.
-    // Use an externally provided sender (e.g. from the daemon) so that other
-    // components (cron, heartbeat) can publish events to the same bus.
-    let event_tx = external_event_tx.unwrap_or_else(|| {
-        let (tx, _rx) = tokio::sync::broadcast::channel::<serde_json::Value>(256);
-        tx
-    });
     let event_buffer = Arc::new(EventBuffer::new(500));
     // Extract webhook secret for authentication
     let webhook_secret_hash: Option<Arc<str>> =

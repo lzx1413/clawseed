@@ -50,8 +50,13 @@
 | 工具 | 名称 | 描述 |
 |------|------|------|
 | `ShellTool` | `shell` | 执行 shell 命令 |
+| `BackgroundRunTool` | `background_run` | 启动工作区命令并立即返回作业 ID |
+| `BackgroundStatusTool` | `background_status` | 查询作业状态、退出码和有界 stdout/stderr |
+| `BackgroundCancelTool` | `background_cancel` | 取消排队或运行中的命令并等待其停止 |
 | `GitOperationsTool` | `git_operations` | Git 操作 |
 | `PdfReadTool` | `pdf_read` | 读取 PDF 文件 |
+
+后台命令使用进程内队列，最多同时运行 2 个作业并排队 16 个作业。每个作业最长运行 5 分钟，每个输出流最多保留 1 MiB。`background_run` 与 `shell` 经过相同的 `SecurityPolicy` 命令白名单和敏感路径检查。Gateway 重启后不恢复旧作业。
 
 ### 工具
 

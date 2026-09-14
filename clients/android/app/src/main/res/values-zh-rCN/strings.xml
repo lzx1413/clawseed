@@ -437,6 +437,12 @@
     <string name="svc_notification_start_failed">启动失败</string>
     <string name="svc_gateway_start_failed">Gateway 启动失败</string>
     <string name="svc_notification_executing">正在执行: %1$s</string>
+    <string name="background_job_channel">后台命令</string>
+    <string name="background_job_channel_description">后台命令完成通知</string>
+    <string name="background_job_succeeded">后台命令已完成</string>
+    <string name="background_job_finished">后台命令：%1$s</string>
+    <string name="background_job_exit_code">退出码：%1$d</string>
+    <string name="background_job_status">状态：%1$s</string>
     <string name="svc_alarm_fired">闹钟已响</string>
     <string name="svc_connection_timeout">连接超时</string>
     <string name="svc_no_response">超时无响应</string>

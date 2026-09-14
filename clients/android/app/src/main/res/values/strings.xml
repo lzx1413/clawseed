@@ -437,6 +437,12 @@
     <string name="svc_notification_start_failed">Startup failed</string>
     <string name="svc_gateway_start_failed">Gateway startup failed</string>
     <string name="svc_notification_executing">Executing: %1$s</string>
+    <string name="background_job_channel">Background commands</string>
+    <string name="background_job_channel_description">Completion notifications for background commands</string>
+    <string name="background_job_succeeded">Background command completed</string>
+    <string name="background_job_finished">Background command: %1$s</string>
+    <string name="background_job_exit_code">Exit code: %1$d</string>
+    <string name="background_job_status">Status: %1$s</string>
     <string name="svc_alarm_fired">Alarm fired</string>
     <string name="svc_connection_timeout">Connection timeout</string>
     <string name="svc_no_response">No response (timeout)</string>

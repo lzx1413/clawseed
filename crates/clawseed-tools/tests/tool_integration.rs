@@ -80,6 +80,9 @@ async fn registry_all_tools_instantiated() {
     // Verify all expected tool names are present
     for expected in [
         "backup",
+        "background_cancel",
+        "background_run",
+        "background_status",
         "calculator",
         "content_search",
         "cron_add",

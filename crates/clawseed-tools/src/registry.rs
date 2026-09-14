@@ -5,6 +5,10 @@ use clawseed_config::schema::Config;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::background::{
+    BackgroundCancelTool, BackgroundEventSink, BackgroundJobManager, BackgroundRunTool,
+    BackgroundStatusTool,
+};
 #[cfg(not(feature = "android"))]
 use crate::backup_tool::BackupTool;
 use crate::calculator::CalculatorTool;
@@ -63,7 +67,21 @@ pub fn all_tools(
     config: &Config,
     memory: Arc<dyn clawseed_api::memory_traits::Memory>,
 ) -> Vec<Box<dyn Tool>> {
+    all_tools_with_background_events(workspace_dir, config, memory, None)
+}
+
+/// Return all built-in tools and optionally publish terminal background-job events.
+pub fn all_tools_with_background_events(
+    #[cfg_attr(feature = "android", allow(unused))] workspace_dir: PathBuf,
+    config: &Config,
+    memory: Arc<dyn clawseed_api::memory_traits::Memory>,
+    background_event_sink: Option<BackgroundEventSink>,
+) -> Vec<Box<dyn Tool>> {
+    let background_manager = BackgroundJobManager::new(background_event_sink);
     let mut tools: Vec<Box<dyn Tool>> = vec![
+        Box::new(BackgroundCancelTool::new(background_manager.clone())),
+        Box::new(BackgroundRunTool::new(background_manager.clone())),
+        Box::new(BackgroundStatusTool::new(background_manager)),
         Box::new(CalculatorTool::new()),
         Box::new(ContentSearchTool::new()),
         Box::new(FileEditTool::new()),

@@ -50,8 +50,13 @@
 | Tool | Name | Description |
 |------|------|-------------|
 | `ShellTool` | `shell` | Execute shell commands |
+| `BackgroundRunTool` | `background_run` | Start a workspace command and immediately return a job ID |
+| `BackgroundStatusTool` | `background_status` | Read job state, exit code, and bounded stdout/stderr |
+| `BackgroundCancelTool` | `background_cancel` | Cancel a queued or running command and wait for it to stop |
 | `GitOperationsTool` | `git_operations` | Git operations |
 | `PdfReadTool` | `pdf_read` | Read PDF files |
+
+Background commands use a process-local queue with at most two running and 16 queued jobs. Each job has a five-minute runtime limit and stores at most 1 MiB from each output stream. `background_run` passes through the same `SecurityPolicy` command allowlist and sensitive-path checks as `shell`. Jobs do not survive a gateway restart.
 
 ### Utilities
 

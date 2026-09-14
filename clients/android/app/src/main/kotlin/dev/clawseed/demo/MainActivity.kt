@@ -135,6 +135,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        BackgroundJobNotifier.setAppInForeground(true)
+    }
+
+    override fun onStop() {
+        BackgroundJobNotifier.setAppInForeground(false)
+        super.onStop()
+    }
+
     override fun onSaveInstanceState(outState: android.os.Bundle) {
         shareRequestId?.let { outState.putString("share_request_id", it) }
         super.onSaveInstanceState(outState)

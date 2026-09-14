@@ -239,7 +239,7 @@ impl Hook for AuditHook {
 **网络** — HTTP 请求、网页抓取、网页搜索（DuckDuckGo）
 **记忆** — 存储、回忆、遗忘、清除、导出
 **自动化** — 定时任务增删查改执行
-**开发** — Shell、Git 操作、PDF 读取
+**开发** — Shell、后台命令（启动/查询/取消）、Git 操作、PDF 读取
 **工具** — 计算器、LLM 子任务、知识库、模型路由、备份
 
 Agent 不需要的工具通过配置中的 `allowed_tools` 排除——不会注册，不消耗 token。

@@ -63,6 +63,14 @@ sealed class ChatEvent {
         val args: JsonObject,
     ) : ChatEvent()
 
+    /** Terminal state of a server-side background command. */
+    data class BackgroundJobCompleted(
+        val jobId: String,
+        val status: String,
+        val exitCode: Int?,
+        val error: String?,
+    ) : ChatEvent()
+
     /** Confirms remote tool registration on the gateway. */
     data class ToolsRegistered(val count: Int, val registered: Int) : ChatEvent()
 
@@ -132,6 +140,12 @@ sealed class ChatEvent {
                     id = obj["id"]?.jsonPrimitive?.content ?: "",
                     name = obj["name"]?.jsonPrimitive?.content ?: "",
                     args = obj["args"]?.jsonObject ?: buildJsonObject {},
+                )
+                "background_job" -> BackgroundJobCompleted(
+                    jobId = obj["job_id"]?.jsonPrimitive?.content ?: "",
+                    status = obj["status"]?.jsonPrimitive?.content ?: "failed",
+                    exitCode = obj["exit_code"]?.jsonPrimitive?.intOrNull,
+                    error = obj["error"]?.jsonPrimitive?.contentOrNull,
                 )
                 "tools_registered" -> ToolsRegistered(
                     count = obj["count"]?.jsonPrimitive?.intOrNull ?: 0,

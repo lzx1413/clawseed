@@ -6,6 +6,19 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class ChatEventPresentationTest {
+    @Test
+    fun parsesBackgroundJobCompletion() {
+        val event = ChatEvent.parse(
+            """{"type":"background_job","job_id":"job-1","status":"failed","exit_code":7,"error":"non_zero_exit"}""",
+            Json,
+        )
+
+        val completed = assertIs<ChatEvent.BackgroundJobCompleted>(event)
+        assertEquals("job-1", completed.jobId)
+        assertEquals("failed", completed.status)
+        assertEquals(7, completed.exitCode)
+        assertEquals("non_zero_exit", completed.error)
+    }
 
     @Test
     fun toolResultParsesStructuredSearchPresentation() {

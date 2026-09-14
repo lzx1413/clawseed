@@ -14,6 +14,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dev.clawseed.demo.R
+import dev.clawseed.demo.BackgroundJobNotifier
 import dev.clawseed.demo.data.ChatEntry
 import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.demo.data.ToolCallInfo
@@ -29,6 +30,7 @@ import dev.clawseed.sdk.android.ChatAccumulator
 import dev.clawseed.sdk.android.cetp.AuthRequiredEvent
 import dev.clawseed.sdk.core.ClawSeedSession
 import dev.clawseed.sdk.core.model.ConnectionState
+import dev.clawseed.sdk.core.model.ChatEvent
 import dev.clawseed.sdk.core.model.PersonaInfo
 import dev.clawseed.sdk.core.model.SessionInfo
 import dev.clawseed.sdk.core.model.ToolPresentation
@@ -828,6 +830,17 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                             session.connectionState.collect { state ->
                                 if (state == ConnectionState.DISCONNECTED && acc.isGenerating.value) {
                                     acc.failTurn(getApplication<Application>().getString(R.string.chat_connection_interrupted))
+                                }
+                            }
+                        }
+                        launch {
+                            session.events.collect { event ->
+                                if (event is ChatEvent.BackgroundJobCompleted) {
+                                    BackgroundJobNotifier.notifyIfBackground(
+                                        getApplication<Application>(),
+                                        event,
+                                        sid,
+                                    )
                                 }
                             }
                         }

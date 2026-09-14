@@ -181,8 +181,8 @@ impl Hook for SecurityPolicy {
             return HookResult::Cancel("Action rate limit exceeded".into());
         }
 
-        // 2. For shell/exec tools: validate command
-        if (call.name == "shell" || call.name == "exec")
+        // 2. Shell execution entry points share the same command policy.
+        if (call.name == "shell" || call.name == "exec" || call.name == "background_run")
             && let Some(cmd) = call.arguments.get("command").and_then(|v| v.as_str())
         {
             if let Some(forbidden) = self.forbidden_path_argument(cmd) {
@@ -235,5 +235,33 @@ mod tests {
 
         assert!(policy.is_rate_limited());
         assert!(!policy.record_action());
+    }
+
+    #[test]
+    fn background_run_uses_shell_command_allowlist() {
+        let autonomy = AutonomyConfig {
+            allowed_commands: vec!["echo".into()],
+            ..AutonomyConfig::default()
+        };
+        let policy = SecurityPolicy::from_config(&autonomy, Path::new("."));
+        let mut allowed = ToolCall {
+            id: "allowed".into(),
+            name: "background_run".into(),
+            arguments: serde_json::json!({"command": "echo ok"}),
+        };
+        let mut denied = ToolCall {
+            id: "denied".into(),
+            name: "background_run".into(),
+            arguments: serde_json::json!({"command": "cat /etc/passwd"}),
+        };
+
+        assert!(matches!(
+            policy.before_tool_call(&mut allowed),
+            HookResult::Continue
+        ));
+        assert!(matches!(
+            policy.before_tool_call(&mut denied),
+            HookResult::Cancel(_)
+        ));
     }
 }

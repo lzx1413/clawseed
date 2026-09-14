@@ -238,7 +238,7 @@ Implement the `Provider` trait in `clawseed-providers`, add to the factory. Supp
 **Web** — HTTP request, web fetch, web search (DuckDuckGo)
 **Memory** — store, recall, forget, purge, export
 **Automation** — cron add / list / remove / run / update
-**Development** — shell, git operations, PDF read
+**Development** — shell, background commands (run/status/cancel), git operations, PDF read
 **Utilities** — calculator, LLM sub-task, knowledge base, model routing, backup
 
 Tools that the agent doesn't need are excluded by `allowed_tools` in config — they don't register, don't consume tokens.
