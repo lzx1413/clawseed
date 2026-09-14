@@ -43,7 +43,7 @@ android {
         versionName = "2.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
-        buildConfigField("String", "SDK_VERSION", "\"0.4.0\"")
+        buildConfigField("String", "SDK_VERSION", "\"0.5.0\"")
     }
 
     signingConfigs {
