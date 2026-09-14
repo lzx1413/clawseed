@@ -1,7 +1,10 @@
 use async_trait::async_trait;
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
+use ego_tree::NodeRef;
 use futures_util::StreamExt;
+use scraper::{ElementRef, Html, Selector, node::Node};
+use serde::Serialize;
 use serde_json::json;
 use std::time::Duration;
 
@@ -9,13 +12,89 @@ use std::time::Duration;
 const _DEFAULT_MAX_RESPONSE_SIZE: usize = 1_048_576;
 /// Default timeout in seconds.
 const _DEFAULT_TIMEOUT_SECS: u64 = 30;
+const DEFAULT_PAGE_CHARS: usize = 12_000;
+const MAX_PAGE_CHARS: usize = 50_000;
+const MIN_ARTICLE_CHARS: usize = 80;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FetchMode {
+    Article,
+    Text,
+}
+
+impl FetchMode {
+    fn parse(value: Option<&str>) -> Result<Self, FetchFailure> {
+        match value.unwrap_or("article") {
+            "article" => Ok(Self::Article),
+            "text" => Ok(Self::Text),
+            value => Err(FetchFailure::new(
+                "parse_failed",
+                format!("Unsupported mode '{value}'; expected 'article' or 'text'"),
+            )),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Article => "article",
+            Self::Text => "text",
+        }
+    }
+}
+
+#[derive(Debug)]
+struct FetchFailure {
+    code: &'static str,
+    message: String,
+}
+
+impl FetchFailure {
+    fn new(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+
+    fn into_tool_result(self) -> ToolResult {
+        ToolResult {
+            success: false,
+            output: String::new(),
+            error: Some(
+                json!({
+                    "code": self.code,
+                    "message": self.message,
+                })
+                .to_string(),
+            ),
+            presentation: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct FetchOutput<'a> {
+    content: &'a str,
+    title: Option<&'a str>,
+    mode: &'static str,
+    start_index: usize,
+    next_start_index: usize,
+    has_more: bool,
+}
+
+#[derive(Debug)]
+struct ExtractedPage {
+    content: String,
+    title: Option<String>,
+    mode: FetchMode,
+}
 
 /// Web fetch tool: fetches a web page and converts HTML to plain text for LLM consumption.
 ///
 /// Unlike `http_request` (an API client returning raw responses), this tool:
 /// - Only supports GET
 /// - Follows redirects (up to 10)
-/// - Converts HTML to clean plain text via `nanohtml2text`
+/// - Parses HTML into a DOM and extracts article or visible text
 /// - Passes through text/plain, text/markdown, and application/json as-is
 /// - Sets a descriptive User-Agent
 pub struct WebFetchTool {
@@ -53,66 +132,84 @@ impl WebFetchTool {
         )
     }
 
-    fn truncate_response(&self, text: &str) -> String {
-        if text.len() > self.max_response_size {
-            let mut truncated = text
-                .chars()
-                .take(self.max_response_size)
-                .collect::<String>();
-            truncated.push_str("\n\n... [Response truncated due to size limit] ...");
-            truncated
-        } else {
-            text.to_string()
-        }
-    }
-
     async fn read_response_text_limited(
         &self,
         response: reqwest::Response,
-    ) -> anyhow::Result<String> {
+    ) -> Result<String, FetchFailure> {
+        if response
+            .content_length()
+            .is_some_and(|length| length > self.max_response_size as u64)
+        {
+            return Err(FetchFailure::new(
+                "response_too_large",
+                format!(
+                    "Response exceeds the configured {} byte download limit",
+                    self.max_response_size
+                ),
+            ));
+        }
+
         let mut bytes_stream = response.bytes_stream();
         let hard_cap = self.max_response_size.saturating_add(1);
         let mut bytes = Vec::new();
 
         while let Some(chunk_result) = bytes_stream.next().await {
-            let chunk = chunk_result?;
+            let chunk = chunk_result.map_err(|error| {
+                FetchFailure::new("network", format!("Failed to read response body: {error}"))
+            })?;
             if append_chunk_with_cap(&mut bytes, &chunk, hard_cap) {
                 break;
             }
         }
 
+        if bytes.len() > self.max_response_size {
+            return Err(FetchFailure::new(
+                "response_too_large",
+                format!(
+                    "Response exceeds the configured {} byte download limit",
+                    self.max_response_size
+                ),
+            ));
+        }
+
         Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 
-    /// Perform the standard HTTP GET fetch and convert to text.
-    async fn standard_fetch(&self, client: &reqwest::Client, url: &str) -> ToolResult {
+    async fn standard_fetch(
+        &self,
+        client: &reqwest::Client,
+        url: &str,
+        requested_mode: FetchMode,
+        start_index: usize,
+        max_chars: usize,
+    ) -> ToolResult {
         let response = match client.get(url).send().await {
             Ok(r) => r,
             Err(e) => {
-                return ToolResult {
-                    success: false,
-                    output: String::new(),
-                    error: Some(format!("HTTP request failed: {e}")),
-                    presentation: None,
+                let error = e.to_string();
+                let code = if error.contains("Blocked redirect target") {
+                    "blocked_url"
+                } else {
+                    "network"
                 };
+                return FetchFailure::new(code, format!("HTTP request failed: {e}"))
+                    .into_tool_result();
             }
         };
 
         let status = response.status();
         if !status.is_success() {
-            return ToolResult {
-                success: false,
-                output: String::new(),
-                error: Some(format!(
+            return FetchFailure::new(
+                "http_status",
+                format!(
                     "HTTP {} {}",
                     status.as_u16(),
                     status.canonical_reason().unwrap_or("Unknown")
-                )),
-                presentation: None,
-            };
+                ),
+            )
+            .into_tool_result();
         }
 
-        // Determine content type for processing strategy
         let content_type = response
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
@@ -128,40 +225,57 @@ impl WebFetchTool {
         {
             "plain"
         } else {
-            return ToolResult {
-                success: false,
-                output: String::new(),
-                error: Some(format!(
+            return FetchFailure::new(
+                "unsupported_content",
+                format!(
                     "Unsupported content type: {content_type}. \
                      web_fetch supports text/html, text/plain, text/markdown, and application/json."
-                )),
-                presentation: None,
-            };
+                ),
+            )
+            .into_tool_result();
         };
 
         let body = match self.read_response_text_limited(response).await {
             Ok(t) => t,
-            Err(e) => {
-                return ToolResult {
-                    success: false,
-                    output: String::new(),
-                    error: Some(format!("Failed to read response body: {e}")),
-                    presentation: None,
-                };
+            Err(error) => return error.into_tool_result(),
+        };
+
+        let extracted = if body_mode == "html" {
+            match extract_html(&body, requested_mode) {
+                Ok(page) => page,
+                Err(error) => return error.into_tool_result(),
+            }
+        } else {
+            let content = clean_text(&body);
+            if content.is_empty() {
+                return FetchFailure::new("parse_failed", "Response contained no readable text")
+                    .into_tool_result();
+            }
+            ExtractedPage {
+                content,
+                title: None,
+                mode: FetchMode::Text,
             }
         };
 
-        let text = if body_mode == "html" {
-            nanohtml2text::html2text(&body)
-        } else {
-            body
-        };
+        let (content, next_start_index, has_more) =
+            match paginate_text(&extracted.content, start_index, max_chars) {
+                Ok(page) => page,
+                Err(error) => return error.into_tool_result(),
+            };
 
-        let output = self.truncate_response(&text);
+        let output = FetchOutput {
+            content: &content,
+            title: extracted.title.as_deref(),
+            mode: extracted.mode.as_str(),
+            start_index,
+            next_start_index,
+            has_more,
+        };
 
         ToolResult {
             success: true,
-            output,
+            output: serde_json::to_string(&output).expect("web_fetch output is serializable"),
             error: None,
             presentation: None,
         }
@@ -175,9 +289,9 @@ impl Tool for WebFetchTool {
     }
 
     fn description(&self) -> &str {
-        "Fetch a web page and return its content as clean plain text. \
-         HTML pages are automatically converted to readable text. \
-         JSON and plain text responses are returned as-is. \
+        "Fetch a web page as extracted article content or cleaned visible text. \
+         Results use stable character-based pagination and include the title, actual mode, and next index. \
+         Article extraction falls back to text mode when no reliable article is found. \
          Only GET requests; follows redirects. \
          Security: allowlist-only domains, no local/private hosts."
     }
@@ -189,8 +303,28 @@ impl Tool for WebFetchTool {
                 "url": {
                     "type": "string",
                     "description": "The HTTP or HTTPS URL to fetch"
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["article", "text"],
+                    "default": "article",
+                    "description": "article extracts the main content and falls back to text; text returns cleaned visible page text"
+                },
+                "start_index": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0,
+                    "description": "Unicode character index in the cleaned text"
+                },
+                "max_chars": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAX_PAGE_CHARS,
+                    "default": DEFAULT_PAGE_CHARS,
+                    "description": "Maximum Unicode characters to return"
                 }
             },
+            "additionalProperties": false,
             "required": ["url"]
         })
     }
@@ -208,14 +342,43 @@ impl Tool for WebFetchTool {
         let url = match self.validate_url(url) {
             Ok(v) => v,
             Err(e) => {
-                return Ok(ToolResult {
-                    success: false,
-                    output: String::new(),
-                    error: Some(e.to_string()),
-                    presentation: None,
-                });
+                return Ok(FetchFailure::new("blocked_url", e.to_string()).into_tool_result());
             }
         };
+
+        let mode_arg = match args.get("mode") {
+            Some(value) => match value.as_str() {
+                Some(value) => Some(value),
+                None => {
+                    return Ok(FetchFailure::new(
+                        "parse_failed",
+                        "'mode' must be 'article' or 'text'",
+                    )
+                    .into_tool_result());
+                }
+            },
+            None => None,
+        };
+        let requested_mode = match FetchMode::parse(mode_arg) {
+            Ok(mode) => mode,
+            Err(error) => return Ok(error.into_tool_result()),
+        };
+        let start_index = match parse_usize_arg(&args, "start_index", 0, usize::MAX) {
+            Ok(value) => value,
+            Err(error) => return Ok(error.into_tool_result()),
+        };
+        let max_chars =
+            match parse_usize_arg(&args, "max_chars", DEFAULT_PAGE_CHARS, MAX_PAGE_CHARS) {
+                Ok(0) => {
+                    return Ok(FetchFailure::new(
+                        "parse_failed",
+                        "max_chars must be greater than zero",
+                    )
+                    .into_tool_result());
+                }
+                Ok(value) => value,
+                Err(error) => return Ok(error.into_tool_result()),
+            };
 
         // Build client: follow redirects, set timeout, set User-Agent
         let timeout_secs = if self.timeout_secs == 0 {
@@ -268,12 +431,320 @@ impl Tool for WebFetchTool {
             }
         };
 
-        let standard_result = self.standard_fetch(&client, &url).await;
+        let standard_result = self
+            .standard_fetch(&client, &url, requested_mode, start_index, max_chars)
+            .await;
         Ok(standard_result)
     }
 }
 
 // ── Helper functions ──
+
+fn parse_usize_arg(
+    args: &serde_json::Value,
+    name: &str,
+    default: usize,
+    maximum: usize,
+) -> Result<usize, FetchFailure> {
+    let Some(value) = args.get(name) else {
+        return Ok(default);
+    };
+    let Some(value) = value.as_u64() else {
+        return Err(FetchFailure::new(
+            "parse_failed",
+            format!("'{name}' must be a non-negative integer"),
+        ));
+    };
+    let value = usize::try_from(value)
+        .map_err(|_| FetchFailure::new("parse_failed", format!("'{name}' is too large")))?;
+    if value > maximum {
+        return Err(FetchFailure::new(
+            "parse_failed",
+            format!("'{name}' must not exceed {maximum}"),
+        ));
+    }
+    Ok(value)
+}
+
+fn extract_html(html: &str, requested_mode: FetchMode) -> Result<ExtractedPage, FetchFailure> {
+    let document = Html::parse_document(html);
+    let title = extract_title(&document);
+    let root = select_first(&document, "body").unwrap_or_else(|| document.root_element());
+    let visible_text = extract_element_text(root);
+
+    if visible_text.is_empty() {
+        let script_count = document
+            .select(&Selector::parse("script").expect("static selector is valid"))
+            .count();
+        let message = if script_count > 0 {
+            "Page has no readable HTML text and may require JavaScript rendering; browser rendering is not supported"
+        } else {
+            "Page contained no readable HTML text"
+        };
+        return Err(FetchFailure::new("parse_failed", message));
+    }
+
+    if requested_mode == FetchMode::Article
+        && let Some(article) = extract_article(&document)
+    {
+        return Ok(ExtractedPage {
+            content: article,
+            title,
+            mode: FetchMode::Article,
+        });
+    }
+
+    Ok(ExtractedPage {
+        content: visible_text,
+        title,
+        mode: FetchMode::Text,
+    })
+}
+
+fn extract_title(document: &Html) -> Option<String> {
+    let metadata = Selector::parse(
+        "meta[property='og:title'], meta[name='twitter:title'], meta[name='title']",
+    )
+    .expect("static selector is valid");
+    for element in document.select(&metadata) {
+        if let Some(content) = element.value().attr("content") {
+            let title = clean_inline_text(content);
+            if !title.is_empty() {
+                return Some(title);
+            }
+        }
+    }
+
+    for selector in ["title", "h1"] {
+        if let Some(element) = select_first(document, selector) {
+            let title = clean_inline_text(&extract_element_text(element));
+            if !title.is_empty() {
+                return Some(title);
+            }
+        }
+    }
+    None
+}
+
+fn extract_article(document: &Html) -> Option<String> {
+    let selector = Selector::parse(
+        "article, main, [role='main'], [itemprop='articleBody'], \
+         .article-body, .article-content, .post-content, .entry-content, .story-body, \
+         #article-body, #article-content, #main-content, \
+         [class*='article'], [class*='post-content'], [class*='entry-content'], \
+         [id*='article'], [id*='main-content']",
+    )
+    .expect("static selector is valid");
+    let link_selector = Selector::parse("a").expect("static selector is valid");
+    let paragraph_selector = Selector::parse("p").expect("static selector is valid");
+
+    document
+        .select(&selector)
+        .filter_map(|element| {
+            let text = extract_element_text(element);
+            let text_chars = text.chars().count();
+            if text_chars < MIN_ARTICLE_CHARS {
+                return None;
+            }
+
+            let link_chars = element
+                .select(&link_selector)
+                .map(extract_element_text)
+                .map(|text| text.chars().count())
+                .sum::<usize>();
+            let paragraphs = element.select(&paragraph_selector).count();
+            let marker = format!(
+                "{} {}",
+                element.value().id().unwrap_or_default(),
+                element.value().classes().collect::<Vec<_>>().join(" ")
+            )
+            .to_ascii_lowercase();
+            let boilerplate_penalty = if [
+                "comment",
+                "footer",
+                "nav",
+                "recommend",
+                "related",
+                "share",
+                "sidebar",
+            ]
+            .iter()
+            .any(|word| marker.contains(word))
+            {
+                text_chars
+            } else {
+                0
+            };
+            let score = text_chars
+                .saturating_add(paragraphs.saturating_mul(80))
+                .saturating_sub(link_chars.saturating_mul(2))
+                .saturating_sub(boilerplate_penalty);
+            Some((score, text))
+        })
+        .max_by_key(|(score, _)| *score)
+        .map(|(_, text)| text)
+}
+
+fn select_first<'a>(document: &'a Html, selector: &str) -> Option<ElementRef<'a>> {
+    let selector = Selector::parse(selector).expect("static selector is valid");
+    document.select(&selector).next()
+}
+
+#[derive(Default)]
+struct TextCollector {
+    output: String,
+    pending_space: bool,
+}
+
+impl TextCollector {
+    fn text(&mut self, value: &str) {
+        for character in value.chars() {
+            if character.is_whitespace() {
+                self.pending_space = true;
+            } else {
+                if self.pending_space
+                    && !self.output.is_empty()
+                    && !self.output.ends_with([' ', '\n'])
+                {
+                    self.output.push(' ');
+                }
+                self.output.push(character);
+                self.pending_space = false;
+            }
+        }
+    }
+
+    fn line_break(&mut self) {
+        while self.output.ends_with(' ') {
+            self.output.pop();
+        }
+        if !self.output.is_empty() && !self.output.ends_with('\n') {
+            self.output.push('\n');
+        }
+        self.pending_space = false;
+    }
+}
+
+fn extract_element_text(element: ElementRef<'_>) -> String {
+    let mut collector = TextCollector::default();
+    collect_node_text(*element, &mut collector);
+    clean_text(&collector.output)
+}
+
+fn collect_node_text(node: NodeRef<'_, Node>, collector: &mut TextCollector) {
+    if let Some(element) = node.value().as_element() {
+        if should_skip_element(element) {
+            return;
+        }
+        let is_block = is_block_element(element.name());
+        if is_block {
+            collector.line_break();
+        }
+        if element.name() == "br" {
+            collector.line_break();
+        } else {
+            for child in node.children() {
+                collect_node_text(child, collector);
+            }
+        }
+        if is_block {
+            collector.line_break();
+        }
+    } else if let Some(text) = node.value().as_text() {
+        collector.text(text);
+    } else {
+        for child in node.children() {
+            collect_node_text(child, collector);
+        }
+    }
+}
+
+fn should_skip_element(element: &scraper::node::Element) -> bool {
+    const SKIPPED: &[&str] = &[
+        "script", "style", "noscript", "template", "svg", "canvas", "iframe", "object", "nav",
+        "footer", "aside", "form",
+    ];
+    if SKIPPED.contains(&element.name())
+        || element.attr("hidden").is_some()
+        || element
+            .attr("aria-hidden")
+            .is_some_and(|value| value.eq_ignore_ascii_case("true"))
+    {
+        return true;
+    }
+
+    element.attr("style").is_some_and(|style| {
+        let style = style.to_ascii_lowercase().replace(' ', "");
+        style.contains("display:none") || style.contains("visibility:hidden")
+    })
+}
+
+fn is_block_element(name: &str) -> bool {
+    matches!(
+        name,
+        "address"
+            | "article"
+            | "blockquote"
+            | "dd"
+            | "div"
+            | "dl"
+            | "dt"
+            | "figcaption"
+            | "figure"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "header"
+            | "li"
+            | "main"
+            | "p"
+            | "pre"
+            | "section"
+            | "table"
+            | "td"
+            | "th"
+            | "tr"
+            | "ul"
+            | "ol"
+    )
+}
+
+fn clean_inline_text(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn clean_text(text: &str) -> String {
+    text.lines()
+        .map(clean_inline_text)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn paginate_text(
+    text: &str,
+    start_index: usize,
+    max_chars: usize,
+) -> Result<(String, usize, bool), FetchFailure> {
+    let total_chars = text.chars().count();
+    if start_index > total_chars {
+        return Err(FetchFailure::new(
+            "parse_failed",
+            format!("start_index {start_index} exceeds content length {total_chars}"),
+        ));
+    }
+
+    let end_index = start_index.saturating_add(max_chars).min(total_chars);
+    let content = text
+        .chars()
+        .skip(start_index)
+        .take(end_index - start_index)
+        .collect();
+    Ok((content, end_index, end_index < total_chars))
+}
 
 fn validate_target_url(
     raw_url: &str,
@@ -534,6 +1005,7 @@ fn is_non_global_v6(v6: std::net::Ipv6Addr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
 
     fn test_tool(allowed_domains: Vec<&str>) -> WebFetchTool {
         test_tool_with_blocklist(allowed_domains, vec![])
@@ -582,6 +1054,9 @@ mod tests {
         let tool = test_tool(vec!["example.com"]);
         let schema = tool.parameters_schema();
         assert!(schema["properties"]["url"].is_object());
+        assert_eq!(schema["properties"]["mode"]["default"], "article");
+        assert_eq!(schema["properties"]["start_index"]["minimum"], 0);
+        assert_eq!(schema["properties"]["max_chars"]["maximum"], MAX_PAGE_CHARS);
         let required = schema["required"].as_array().unwrap();
         assert!(required.iter().any(|v| v.as_str() == Some("url")));
     }
@@ -589,14 +1064,104 @@ mod tests {
     // ── HTML to text conversion ──────────────────────────────────
 
     #[test]
-    fn html_to_text_conversion() {
-        let html = "<html><body><h1>Title</h1><p>Hello <b>world</b></p></body></html>";
-        let text = nanohtml2text::html2text(html);
-        assert!(text.contains("Title"));
-        assert!(text.contains("Hello"));
-        assert!(text.contains("world"));
-        assert!(!text.contains("<h1>"));
-        assert!(!text.contains("<p>"));
+    fn article_mode_extracts_main_content_and_removes_noise() {
+        let html = r#"
+            <html>
+              <head><title>Document title</title><script>tracking()</script></head>
+              <body>
+                <nav>Home Products Pricing</nav>
+                <main>
+                  <article>
+                    <h1>Article heading</h1>
+                    <p>This is the first paragraph with enough useful article text for extraction.</p>
+                    <p>This is the second paragraph, with more details and a stable conclusion.</p>
+                    <aside>Related advertisement</aside>
+                  </article>
+                </main>
+                <footer>Copyright and privacy links</footer>
+              </body>
+            </html>
+        "#;
+
+        let page = extract_html(html, FetchMode::Article).unwrap();
+        assert_eq!(page.mode, FetchMode::Article);
+        assert_eq!(page.title.as_deref(), Some("Document title"));
+        assert!(page.content.contains("Article heading"));
+        assert!(page.content.contains("first paragraph"));
+        assert!(!page.content.contains("Home Products"));
+        assert!(!page.content.contains("advertisement"));
+        assert!(!page.content.contains("Copyright"));
+        assert!(!page.content.contains("tracking"));
+    }
+
+    #[test]
+    fn article_mode_falls_back_to_actual_text_mode() {
+        let html = r#"
+            <html><head><meta property="og:title" content="Fallback title"></head>
+            <body><div>A short page without a reliable article container.</div></body></html>
+        "#;
+
+        let page = extract_html(html, FetchMode::Article).unwrap();
+        assert_eq!(page.mode, FetchMode::Text);
+        assert_eq!(page.title.as_deref(), Some("Fallback title"));
+        assert_eq!(
+            page.content,
+            "A short page without a reliable article container."
+        );
+    }
+
+    #[test]
+    fn text_mode_omits_hidden_and_non_content_elements() {
+        let html = r#"
+            <body>
+              <nav>Navigation</nav>
+              <p>Visible <strong>content</strong>.</p>
+              <p hidden>Hidden attribute</p>
+              <p aria-hidden="true">ARIA hidden</p>
+              <p style="display: none">CSS hidden</p>
+              <form>Form controls</form>
+            </body>
+        "#;
+
+        let page = extract_html(html, FetchMode::Text).unwrap();
+        assert_eq!(page.mode, FetchMode::Text);
+        assert_eq!(page.content, "Visible content.");
+    }
+
+    #[test]
+    fn javascript_only_page_returns_rendering_hint() {
+        let error = extract_html(
+            "<html><body><div id='root'></div><script>renderApp()</script></body></html>",
+            FetchMode::Article,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "parse_failed");
+        assert!(error.message.contains("JavaScript rendering"));
+    }
+
+    #[test]
+    fn pagination_is_stable_for_ascii_and_multibyte_text() {
+        let (first, next, has_more) = paginate_text("abcdef", 0, 3).unwrap();
+        assert_eq!(first, "abc");
+        assert_eq!(next, 3);
+        assert!(has_more);
+
+        let (second, next, has_more) = paginate_text("abcdef", next, 3).unwrap();
+        assert_eq!(second, "def");
+        assert_eq!(next, 6);
+        assert!(!has_more);
+
+        let (unicode, next, has_more) = paginate_text("甲乙🙂丁", 1, 2).unwrap();
+        assert_eq!(unicode, "乙🙂");
+        assert_eq!(next, 3);
+        assert!(has_more);
+    }
+
+    #[test]
+    fn pagination_rejects_index_past_content() {
+        let error = paginate_text("abc", 4, 1).unwrap_err();
+        assert_eq!(error.code, "parse_failed");
+        assert!(error.message.contains("content length 3"));
     }
 
     // ── URL validation ───────────────────────────────────────────
@@ -757,21 +1322,87 @@ mod tests {
         assert!(err.contains("blocked_domains"));
     }
 
-    // ── Response truncation ──────────────────────────────────────
+    // ── Response limits and structured output ───────────────────
 
-    #[test]
-    fn truncate_within_limit() {
-        let tool = test_tool(vec!["example.com"]);
-        let text = "hello world";
-        assert_eq!(tool.truncate_response(text), "hello world");
+    #[tokio::test]
+    async fn response_larger_than_download_limit_is_rejected() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/plain")
+                    .set_body_string("0123456789"),
+            )
+            .mount(&server)
+            .await;
+        let tool = WebFetchTool::new(vec!["*".into()], vec![], 5, 30, vec![]);
+        let response = reqwest::Client::new()
+            .get(server.uri())
+            .send()
+            .await
+            .unwrap();
+
+        let error = tool.read_response_text_limited(response).await.unwrap_err();
+        assert_eq!(error.code, "response_too_large");
     }
 
-    #[test]
-    fn truncate_over_limit() {
-        let tool = WebFetchTool::new(vec!["example.com".into()], vec![], 10, 30, vec![]);
-        let text = "hello world this is long";
-        let truncated = tool.truncate_response(text);
-        assert!(truncated.contains("[Response truncated"));
+    #[tokio::test]
+    async fn standard_fetch_returns_structured_page_metadata() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_bytes(
+                        "<html><head><title>Page</title></head><body><p>甲乙🙂丁戊</p></body></html>"
+                            .as_bytes(),
+                    )
+                    .insert_header("content-type", "text/html"),
+            )
+            .mount(&server)
+            .await;
+        let tool = test_tool(vec!["*"]);
+
+        let result = tool
+            .standard_fetch(
+                &reqwest::Client::new(),
+                &server.uri(),
+                FetchMode::Text,
+                1,
+                2,
+            )
+            .await;
+        assert!(result.success);
+        let output: serde_json::Value = serde_json::from_str(&result.output).unwrap();
+        assert_eq!(output["content"], "乙🙂");
+        assert_eq!(output["title"], "Page");
+        assert_eq!(output["mode"], "text");
+        assert_eq!(output["start_index"], 1);
+        assert_eq!(output["next_start_index"], 3);
+        assert_eq!(output["has_more"], true);
+    }
+
+    #[tokio::test]
+    async fn http_status_uses_fixed_error_code() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+        let tool = test_tool(vec!["*"]);
+
+        let result = tool
+            .standard_fetch(
+                &reqwest::Client::new(),
+                &server.uri(),
+                FetchMode::Article,
+                0,
+                DEFAULT_PAGE_CHARS,
+            )
+            .await;
+        assert!(!result.success);
+        let error: serde_json::Value =
+            serde_json::from_str(result.error.as_deref().unwrap()).unwrap();
+        assert_eq!(error["code"], "http_status");
     }
 
     // ── Domain normalization ─────────────────────────────────────

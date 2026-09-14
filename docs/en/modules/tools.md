@@ -21,8 +21,12 @@
 | Tool | Name | Description |
 |------|------|-------------|
 | `HttpRequestTool` | `http_request` | Send HTTP requests (configurable domain allowlists) |
-| `WebFetchTool` | `web_fetch` | Fetch web page content |
+| `WebFetchTool` | `web_fetch` | Extract article content or cleaned visible page text with pagination |
 | `WebSearchTool` | `web_search_tool` | Web search via DuckDuckGo, Brave, SearXNG, Tavily, or Bing |
+
+`web_fetch` accepts `mode` (`article` by default or `text`), `start_index` (default `0`), and `max_chars` (default `12000`, maximum `50000`). `article` selects the strongest semantic content container and falls back to `text` when no reliable article is found. The JSON result reports `content`, `title`, the mode actually used, `start_index`, `next_start_index`, and `has_more`. Indexes count Unicode characters, so passing `next_start_index` to the next call neither repeats nor splits multibyte text.
+
+HTML extraction removes scripts, styles, navigation, footers, sidebars, forms, and hidden elements. Pages with no readable server-rendered text return a JavaScript-rendering hint; no browser engine is started. Response bodies are streamed into a configured byte limit and rejected as `response_too_large` instead of being read fully and truncated afterward. Failures use one of six stable codes: `network`, `http_status`, `blocked_url`, `unsupported_content`, `parse_failed`, or `response_too_large`. Existing domain allowlists, blocked domains, private-host controls, redirect validation, and timeouts still apply.
 
 ### Memory
 

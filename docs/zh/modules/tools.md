@@ -21,8 +21,12 @@
 | 工具 | 名称 | 描述 |
 |------|------|------|
 | `HttpRequestTool` | `http_request` | 发送 HTTP 请求（可配置域名白名单） |
-| `WebFetchTool` | `web_fetch` | 抓取网页内容 |
+| `WebFetchTool` | `web_fetch` | 提取文章正文或清理后的页面可见文本，并支持分页 |
 | `WebSearchTool` | `web_search_tool` | 通过 DuckDuckGo、Brave、SearXNG、Tavily 或 Bing 搜索 |
+
+`web_fetch` 接受 `mode`（默认 `article`，也可选 `text`）、`start_index`（默认 `0`）和 `max_chars`（默认 `12000`，最大 `50000`）。`article` 会选择得分最高的语义正文容器；找不到可靠正文时降级为 `text`。JSON 结果包含 `content`、`title`、实际使用的模式、`start_index`、`next_start_index` 和 `has_more`。索引按 Unicode 字符计数，把 `next_start_index` 传给下一次调用不会重复内容，也不会切断多字节字符。
+
+HTML 提取会移除脚本、样式、导航、页脚、侧栏、表单和隐藏元素。页面没有服务端渲染的可读文本时会提示可能依赖 JavaScript，不启动浏览器引擎。响应正文以流式方式读入配置的字节上限，超过上限会返回 `response_too_large`，不会完整读入后再截断。错误使用六种稳定代码之一：`network`、`http_status`、`blocked_url`、`unsupported_content`、`parse_failed` 或 `response_too_large`。原有域名白名单、阻止列表、私网控制、重定向校验和超时继续生效。
 
 ### 记忆
 
