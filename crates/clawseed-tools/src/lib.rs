@@ -28,6 +28,7 @@ pub mod file_write;
 pub mod git_operations;
 pub mod glob_search;
 pub mod http_request;
+pub mod javascript;
 pub mod knowledge_tool;
 pub mod llm_task;
 pub mod memory_export;

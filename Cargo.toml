@@ -62,6 +62,8 @@ tempfile = "3.26"
 wiremock = "0.6"
 pdf-extract = "0.7"
 rustyline = "15"
+rquickjs = "0.13.0"
+rquickjs-sys = "0.13.0"
 
 [profile.dev]
 incremental = true

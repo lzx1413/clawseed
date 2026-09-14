@@ -28,6 +28,7 @@ use crate::file_write::FileWriteTool;
 use crate::git_operations::GitOperationsTool;
 use crate::glob_search::GlobSearchTool;
 use crate::http_request::HttpRequestTool;
+use crate::javascript::JavaScriptTool;
 use crate::knowledge_tool::KnowledgeTool;
 use crate::llm_task::LlmTaskTool;
 use crate::memory_export::MemoryExportTool;
@@ -69,6 +70,7 @@ pub fn all_tools(
         Box::new(FileReadTool::new()),
         Box::new(FileWriteTool::new()),
         Box::new(GlobSearchTool::new()),
+        Box::new(JavaScriptTool::new()),
     ];
 
     #[cfg(not(feature = "android"))]

@@ -58,6 +58,7 @@
 | 工具 | 名称 | 描述 |
 |------|------|------|
 | `CalculatorTool` | `calculator` | 数学计算（25+ 函数） |
+| `JavaScriptTool` | `eval_javascript` | 沙箱化 QuickJS ES2020 执行，限制运行时间和输出大小 |
 | `LlmTaskTool` | `llm_task` | LLM 子任务 |
 | `KnowledgeTool` | `knowledge` | 知识库查询 |
 | `ModelRoutingConfigTool` | `model_routing_config` | 模型路由配置 |

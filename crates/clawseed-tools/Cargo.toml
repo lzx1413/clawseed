@@ -31,12 +31,17 @@ glob = { workspace = true }
 sha2 = { workspace = true }
 parking_lot = { workspace = true }
 futures-util = { workspace = true }
+rquickjs = { workspace = true }
 
 pdf-extract = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
 wiremock = { workspace = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+# rquickjs-sys does not publish pre-generated Android bindings.
+rquickjs-sys = { workspace = true, features = ["bindgen"] }
 
 [features]
 rag-pdf = ["pdf-extract"]

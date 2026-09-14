@@ -58,6 +58,7 @@
 | Tool | Name | Description |
 |------|------|-------------|
 | `CalculatorTool` | `calculator` | Math calculations (25+ functions) |
+| `JavaScriptTool` | `eval_javascript` | Sandboxed QuickJS ES2020 evaluation with bounded execution and output |
 | `LlmTaskTool` | `llm_task` | LLM sub-tasks |
 | `KnowledgeTool` | `knowledge` | Knowledge base queries |
 | `ModelRoutingConfigTool` | `model_routing_config` | Model routing configuration |

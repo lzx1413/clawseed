@@ -88,6 +88,7 @@ async fn registry_all_tools_instantiated() {
         "cron_run",
         "cron_runs",
         "cron_update",
+        "eval_javascript",
         "file_edit",
         "file_read",
         "file_write",

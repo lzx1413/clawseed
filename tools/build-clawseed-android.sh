@@ -15,6 +15,7 @@ ACTION="${2:-build}"
 
 NDK_ROOT="${ANDROID_NDK_ROOT:-${ANDROID_HOME:-/home/zuoxin/Android/Sdk}/ndk/29.0.14206865}"
 NDK_BIN="${NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+NDK_LIB="${NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/lib"
 FEATURES="android,local-embedding"
 ORT_AAR_URL="https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.24.2/onnxruntime-android-1.24.2.aar"
 
@@ -42,6 +43,8 @@ esac
 
 AR="${NDK_BIN}/llvm-ar"
 CXX="${CC}++"
+CLANG_RESOURCE_DIR="$("${CC}" -print-resource-dir)"
+NDK_SYSROOT="${NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
 
 echo "==> Building clawseed for ${TARGET} (${ABI}), action=${ACTION}"
 echo "    NDK: ${NDK_ROOT}"
@@ -58,6 +61,8 @@ export CC="${CC}"
 export AR="${AR}"
 export CXX="${CXX}"
 export ANDROID_NDK_ROOT="${NDK_ROOT}"
+export LIBCLANG_PATH="${LIBCLANG_PATH:-${NDK_LIB}}"
+export BINDGEN_EXTRA_CLANG_ARGS="${BINDGEN_EXTRA_CLANG_ARGS:---sysroot=${NDK_SYSROOT} -I${CLANG_RESOURCE_DIR}/include}"
 
 CARGO_ARGS=(
     "${ACTION}"
