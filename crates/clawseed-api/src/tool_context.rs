@@ -16,4 +16,14 @@ pub trait ToolContext: Send + Sync {
     fn user_context(&self) -> Option<&UserContext> {
         None
     }
+
+    /// Identifier of the agent turn currently executing this tool.
+    fn turn_id(&self) -> Option<&str> {
+        None
+    }
+
+    /// Provider-assigned identifier of the current tool call.
+    fn tool_call_id(&self) -> Option<&str> {
+        None
+    }
 }

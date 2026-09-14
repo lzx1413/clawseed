@@ -78,6 +78,12 @@ async fn run_chat(
     }
 
     let mut agent = Agent::from_config(&config).await?;
+    let cli_session_id = uuid::Uuid::new_v4().to_string();
+    agent.set_user_context(Some(clawseed_api::user_profile::UserContext {
+        user_id: "owner".into(),
+        session_id: Some(cli_session_id),
+        persona_id: None,
+    }));
 
     let fallback_name = config.providers.fallback.as_deref().unwrap_or("unknown");
     let model_name = config
@@ -156,12 +162,14 @@ async fn run_chat(
             }
         });
 
+        agent.set_turn_id(Some(uuid::Uuid::new_v4().to_string()));
         match agent.turn_streamed(trimmed, tx, None, false).await {
             Ok(_) => {}
             Err(e) => {
                 eprintln!("\n\x1b[31mError: {e}\x1b[0m");
             }
         }
+        agent.set_turn_id(None);
 
         printer.await?;
         println!("\n");

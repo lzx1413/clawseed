@@ -721,6 +721,10 @@ mod tests {
             session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            active_turn_ids: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            ask_user_manager: Arc::new(crate::ask_user::AskUserManager::new(
+                tokio::sync::broadcast::channel(1).0,
+            )),
         };
 
         let response = handle_metrics(State(state)).await.into_response();
@@ -778,6 +782,10 @@ mod tests {
             session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            active_turn_ids: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            ask_user_manager: Arc::new(crate::ask_user::AskUserManager::new(
+                tokio::sync::broadcast::channel(1).0,
+            )),
         };
 
         let response = handle_metrics(State(state)).await.into_response();
@@ -1022,6 +1030,10 @@ mod tests {
             session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            active_turn_ids: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            ask_user_manager: Arc::new(crate::ask_user::AskUserManager::new(
+                tokio::sync::broadcast::channel(1).0,
+            )),
         };
 
         let mut headers = HeaderMap::new();
@@ -1095,6 +1107,10 @@ mod tests {
             session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            active_turn_ids: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            ask_user_manager: Arc::new(crate::ask_user::AskUserManager::new(
+                tokio::sync::broadcast::channel(1).0,
+            )),
         };
 
         let headers = HeaderMap::new();
@@ -1176,6 +1192,10 @@ mod tests {
             session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            active_turn_ids: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            ask_user_manager: Arc::new(crate::ask_user::AskUserManager::new(
+                tokio::sync::broadcast::channel(1).0,
+            )),
         };
 
         let response = handle_webhook(
@@ -1232,6 +1252,10 @@ mod tests {
             session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            active_turn_ids: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            ask_user_manager: Arc::new(crate::ask_user::AskUserManager::new(
+                tokio::sync::broadcast::channel(1).0,
+            )),
         };
 
         let mut headers = HeaderMap::new();
@@ -1293,6 +1317,10 @@ mod tests {
             session_queue: std::sync::Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            active_turn_ids: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            ask_user_manager: Arc::new(crate::ask_user::AskUserManager::new(
+                tokio::sync::broadcast::channel(1).0,
+            )),
         };
 
         let mut headers = HeaderMap::new();

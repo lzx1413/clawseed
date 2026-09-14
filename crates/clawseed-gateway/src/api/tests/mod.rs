@@ -124,6 +124,10 @@ fn test_state(config: clawseed_config::schema::Config) -> AppState {
         web_dist_dir: None,
         canvas_store: clawseed_agent::tools::CanvasStore::new(),
         cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        active_turn_ids: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        ask_user_manager: Arc::new(crate::ask_user::AskUserManager::new(
+            tokio::sync::broadcast::channel(1).0,
+        )),
     }
 }
 

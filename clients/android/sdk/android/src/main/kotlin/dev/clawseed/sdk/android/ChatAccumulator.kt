@@ -266,6 +266,8 @@ class ChatAccumulator(private val session: ClawSeedSession) {
             is ChatEvent.ToolsRegistered,
             is ChatEvent.ResultAcknowledged,
             is ChatEvent.BackgroundJobCompleted,
+            is ChatEvent.AskUserRequested,
+            is ChatEvent.AskUserAcknowledged,
             is ChatEvent.ToolCallRequested -> {}
         }
     }

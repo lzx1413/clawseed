@@ -70,6 +70,9 @@ Background commands use a process-local queue with at most two running and 16 qu
 | `JavaScriptTool` | `eval_javascript` | Sandboxed QuickJS ES2020 evaluation with bounded execution and output |
 | `LlmTaskTool` | `llm_task` | LLM sub-tasks |
 | `KnowledgeTool` | `knowledge` | Knowledge base queries |
+| `AskUserTool` | `ask_user` | Request confirmation, a selection, or short text from the current user |
+
+`ask_user` supports `confirm`, `single_select`, `multi_select`, and `text` questions. Gateway requests are bound to the session, turn, and tool-call IDs; only the first valid response is accepted. Pending questions expire after five minutes and are cancelled with their agent turn. The tool rejects prompts for passwords, API keys, access tokens, and payment information. Interactive CLI chat uses terminal input, while non-interactive callers receive `interaction_unavailable`.
 | `ModelRoutingConfigTool` | `model_routing_config` | Model routing configuration |
 | `BackupTool` | `backup` | Backup management |
 

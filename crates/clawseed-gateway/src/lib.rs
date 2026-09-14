@@ -8,6 +8,7 @@
 //! - Header sanitization (handled by axum/hyper)
 
 pub mod api;
+pub mod ask_user;
 pub mod auth_rate_limit;
 pub mod handlers;
 pub mod ratelimit;
@@ -151,6 +152,9 @@ pub struct AppState {
     pub cancel_tokens: Arc<
         std::sync::Mutex<std::collections::HashMap<String, tokio_util::sync::CancellationToken>>,
     >,
+    pub active_turn_ids: Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>,
+    /// In-process structured interaction broker shared by all WebSocket sessions.
+    pub ask_user_manager: Arc<ask_user::AskUserManager>,
 }
 
 /// Run the HTTP gateway using axum with proper HTTP/1.1 compliance.
@@ -253,6 +257,7 @@ pub async fn run_gateway(
             }
             let _ = background_event_tx.send(value);
         });
+    let ask_user_manager = Arc::new(ask_user::AskUserManager::new(event_tx.clone()));
 
     let (composio_key, composio_entity_id) = if config.composio.enabled {
         (
@@ -291,6 +296,7 @@ pub async fn run_gateway(
         &config,
         Some(canvas_store.clone()),
         Some(background_event_sink),
+        Some(ask_user_manager.clone()),
     );
 
     // ── Wire MCP tools into the gateway tool registry (non-fatal) ───
@@ -584,6 +590,8 @@ pub async fn run_gateway(
         web_dist_dir,
         canvas_store,
         cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        active_turn_ids: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        ask_user_manager,
     };
 
     // Config PUT needs larger body limit (1MB)

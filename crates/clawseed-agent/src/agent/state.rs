@@ -198,6 +198,11 @@ impl Agent {
         self.user_profile_items.clear();
     }
 
+    /// Set transport-provided identity for the next/current turn.
+    pub fn set_turn_id(&mut self, turn_id: Option<String>) {
+        self.active_turn_id = turn_id;
+    }
+
     /// Activate a skill by name.
     pub fn activate_skill(&mut self, name: &str) -> Result<String> {
         // Check if skill system is enabled

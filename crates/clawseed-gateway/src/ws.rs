@@ -10,6 +10,7 @@
 //! {"type":"tool_call","id":"...","name":"shell","args":{...}}
 //! {"type":"tool_result","id":"...","name":"shell","output":"..."}
 //! {"type":"tool_call_request","id":"...","name":"local_contacts","args":{...}}  ← Android bridge
+//! {"type":"ask_user_request","request_id":"...","turn_id":"...","tool_call_id":"...",...}
 //! {"type":"result_acknowledged","id":"..."}                                      ← Android bridge
 //! {"type":"tools_registered","count":N,"registered":N}                          ← Android bridge
 //! {"type":"registered_tools","tools":[...]}                                     ← Android bridge
@@ -27,6 +28,7 @@
 //! {"type":"tool_result","id":"...","output":"...","success":true}                ← Android bridge
 //! {"type":"tool_result","id":"...","output":"...","success":false,"error":"..."}← Android bridge
 //! {"type":"tool_error","id":"...","error":"Permission denied"}                   ← Android bridge
+//! {"type":"ask_user_response","request_id":"...","turn_id":"...","tool_call_id":"...","status":"accepted","answer":...}
 //! {"type":"get_registered_tools"}                                                ← Android bridge
 //! ```
 //!
@@ -437,6 +439,13 @@ async fn handle_socket(
     let _ = sender
         .send(Message::Text(session_start.to_string().into()))
         .await;
+    for request in state.ask_user_manager.pending_for_session(&session_id) {
+        if let Ok(mut event) = serde_json::to_value(request) {
+            event["kind"] = event["type"].clone();
+            event["type"] = serde_json::json!("ask_user_request");
+            let _ = sender.send(Message::Text(event.to_string().into())).await;
+        }
+    }
 
     // ── Optional connect handshake ──────────────────────────────────
     // The first message may be a `{"type":"connect",...}` frame carrying
@@ -632,6 +641,11 @@ async fn handle_socket(
 
                 let msg_type = parsed["type"].as_str().unwrap_or("");
 
+                if msg_type == "ask_user_response" {
+                    handle_ask_user_response(&parsed, &state, &session_id, &mut sender).await;
+                    continue;
+                }
+
                 // ── Remote tool protocol (Android integration PoC) ────────────────
                 // Handle register_tools: client registers tools it can execute locally
                 if msg_type == "register_tools" {
@@ -711,6 +725,11 @@ async fn handle_socket(
                         .cloned();
                     if let Some(token) = token {
                         token.cancel();
+                        if let Some(turn_id) = state.active_turn_ids
+                            .lock().expect("active_turn_ids lock poisoned")
+                            .get(&session_key).cloned() {
+                            state.ask_user_manager.cancel_turn(&session_id, &turn_id);
+                        }
                         tracing::info!(session_key, "session abort via WebSocket");
                         let ack = serde_json::json!({ "type": "abort_ack", "status": "aborted" });
                         let _ = sender.send(Message::Text(ack.to_string().into())).await;
@@ -869,7 +888,7 @@ async fn handle_socket(
 
             // ── Broadcast event (cron/heartbeat results) ──────────────
             event = broadcast_rx.recv() => {
-                if let Ok(event) = event {
+                if let Ok(event) = event && event_matches_session(&event, &session_id) {
                     let _ = sender.send(Message::Text(event.to_string().into())).await;
                 }
             }
@@ -973,6 +992,52 @@ async fn handle_mid_turn_client_message(
     }
 }
 
+fn event_matches_session(event: &serde_json::Value, session_id: &str) -> bool {
+    event["type"].as_str() != Some("ask_user_request")
+        || event["session_id"].as_str() == Some(session_id)
+}
+
+async fn handle_ask_user_response(
+    parsed: &serde_json::Value,
+    state: &AppState,
+    session_id: &str,
+    sender: &mut futures_util::stream::SplitSink<WebSocket, Message>,
+) {
+    let parsed_response = serde_json::from_value::<clawseed_tools::ask_user::AskUserResponse>(
+        serde_json::json!({"status": parsed["status"], "answer": parsed.get("answer")}),
+    );
+    let result = match (
+        parsed["request_id"].as_str(),
+        parsed["turn_id"].as_str(),
+        parsed["tool_call_id"].as_str(),
+        parsed_response,
+    ) {
+        (Some(request_id), Some(turn_id), Some(tool_call_id), Ok(response)) => state
+            .ask_user_manager
+            .submit(session_id, request_id, turn_id, tool_call_id, response),
+        _ => Err(crate::ask_user::SubmitError::InvalidResponse(
+            "missing or invalid response fields".into(),
+        )),
+    };
+    let (status, error) = match result {
+        Ok(()) => ("accepted", None),
+        Err(crate::ask_user::SubmitError::NotPending) => ("not_pending", None),
+        Err(crate::ask_user::SubmitError::IdentityMismatch) => {
+            ("rejected", Some("request identity mismatch"))
+        }
+        Err(crate::ask_user::SubmitError::InvalidResponse(ref error)) => {
+            ("rejected", Some(error.as_str()))
+        }
+    };
+    let ack = serde_json::json!({
+        "type": "ask_user_ack",
+        "request_id": parsed["request_id"],
+        "status": status,
+        "error": error,
+    });
+    let _ = sender.send(Message::Text(ack.to_string().into())).await;
+}
+
 /// Process a single chat message through the agent and send the response.
 ///
 /// Uses [`Agent::turn_streamed`] so that intermediate text chunks, tool calls,
@@ -1034,6 +1099,12 @@ async fn process_chat_message(
 
     // Set session state to running
     let turn_id = uuid::Uuid::new_v4().to_string();
+    agent.set_turn_id(Some(turn_id.clone()));
+    state
+        .active_turn_ids
+        .lock()
+        .expect("active_turn_ids lock poisoned")
+        .insert(session_key.to_string(), turn_id.clone());
     if let Some(ref backend) = state.session_backend {
         let _ = backend.set_session_state(session_key, "running", Some(&turn_id));
     }
@@ -1053,6 +1124,7 @@ async fn process_chat_message(
 
     // Channel for streaming turn events from the agent.
     let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<TurnEvent>(64);
+    let mut broadcast_rx = state.event_tx.subscribe();
 
     // Run the streamed turn concurrently: the agent produces events
     // while we forward them to the WebSocket below.  We cannot move
@@ -1173,6 +1245,12 @@ async fn process_chat_message(
                     }
                 }
 
+                event = broadcast_rx.recv() => {
+                    if let Ok(event) = event && event_matches_session(&event, &session_key[GW_SESSION_PREFIX.len()..]) {
+                        let _ = sender.send(Message::Text(event.to_string().into())).await;
+                    }
+                }
+
                 // ── Incoming client messages during the turn ───────────
                 // While the turn is running, the client may send tool_result or
                 // tool_error replies for remote tool calls.  Handle them here so
@@ -1180,7 +1258,20 @@ async fn process_chat_message(
                 ws_msg = receiver.next() => {
                     match ws_msg {
                         Some(Ok(Message::Text(ref text))) => {
-                            handle_mid_turn_client_message(text, sender, &pending_remote_calls).await;
+                            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(text) {
+                                match parsed["type"].as_str() {
+                                    Some("ask_user_response") => {
+                                        handle_ask_user_response(&parsed, state, &session_key[GW_SESSION_PREFIX.len()..], sender).await;
+                                    }
+                                    Some("abort") => {
+                                        cancel_token.cancel();
+                                        state.ask_user_manager.cancel_turn(&session_key[GW_SESSION_PREFIX.len()..], &turn_id);
+                                        let ack = serde_json::json!({ "type": "abort_ack", "status": "aborted" });
+                                        let _ = sender.send(Message::Text(ack.to_string().into())).await;
+                                    }
+                                    _ => handle_mid_turn_client_message(text, sender, &pending_remote_calls).await,
+                                }
+                            }
                         }
                         Some(Ok(Message::Close(_))) | None | Some(Err(_)) => {
                             cancel_token.cancel();
@@ -1194,6 +1285,12 @@ async fn process_chat_message(
     };
 
     let (result, ()) = tokio::join!(turn_fut, forward_fut);
+    agent.set_turn_id(None);
+    state
+        .active_turn_ids
+        .lock()
+        .expect("active_turn_ids lock poisoned")
+        .remove(session_key);
 
     // ── Remove cancel token (turn finished) ──────────────────────
     {

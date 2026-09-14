@@ -5,6 +5,7 @@ import dev.clawseed.sdk.core.model.ChatEvent
 import dev.clawseed.sdk.core.model.ConnectionState
 import dev.clawseed.sdk.core.model.SessionInfo
 import dev.clawseed.sdk.core.tool.ToolRegistry
+import kotlinx.serialization.json.JsonElement
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.Closeable
@@ -17,6 +18,9 @@ interface ClawSeedSession : Closeable {
     val connectionState: StateFlow<ConnectionState>
     /** Session metadata reported after connection or resume. */
     val sessionInfo: StateFlow<SessionInfo?>
+    /** Current structured question, retained across UI recreation and reconnect. */
+    val pendingQuestion: StateFlow<ChatEvent.AskUserRequested?>
+        get() = kotlinx.coroutines.flow.MutableStateFlow(null)
     /** Raw event stream emitted by the gateway. */
     val events: SharedFlow<ChatEvent>
     /** Registry of remote-callable tools exposed by the client. */
@@ -49,6 +53,10 @@ interface ClawSeedSession : Closeable {
     fun regenerate(debug: Boolean = false)
     /** Requests cancellation of the current agent turn. */
     suspend fun abort()
+    /** Answers a pending structured question from the agent. */
+    fun answerQuestion(request: ChatEvent.AskUserRequested, status: String, answer: JsonElement? = null) {
+        error("This session implementation does not support structured questions")
+    }
 
     override fun close() {
         // Default: no-op, subclasses manage their own lifecycle

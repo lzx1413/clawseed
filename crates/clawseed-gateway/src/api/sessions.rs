@@ -305,6 +305,15 @@ pub async fn handle_api_session_abort(
 
     if let Some(token) = token {
         token.cancel();
+        if let Some(turn_id) = state
+            .active_turn_ids
+            .lock()
+            .expect("active_turn_ids lock poisoned")
+            .get(&session_key)
+            .cloned()
+        {
+            state.ask_user_manager.cancel_turn(&id, &turn_id);
+        }
         tracing::info!(session_key, "session abort requested");
         Json(serde_json::json!({ "status": "aborted" })).into_response()
     } else {

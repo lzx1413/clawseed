@@ -68,6 +68,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.clawseed.sdk.core.model.ConnectionState
 import dev.clawseed.demo.data.ChatEntry
 import dev.clawseed.demo.ui.chat.components.ChatBottomBar
+import dev.clawseed.demo.ui.chat.components.AskUserPrompt
 import dev.clawseed.demo.ui.chat.components.MessageBubble
 import dev.clawseed.demo.ui.chat.components.SpeakerOffIcon
 import dev.clawseed.demo.ui.chat.components.SpeakerStopIcon
@@ -441,6 +442,15 @@ fun ChatScreen(
                 item(key = "__bottom_anchor__", contentType = "anchor") {
                     Spacer(Modifier.size(1.dp))
                 }
+            }
+
+            uiState.pendingQuestion?.let { request ->
+                AskUserPrompt(
+                    request = request,
+                    submitting = uiState.questionSubmitting,
+                    enabled = uiState.connState == ConnectionState.CONNECTED,
+                    onAnswer = viewModel::answerQuestion,
+                )
             }
 
             // Error banner

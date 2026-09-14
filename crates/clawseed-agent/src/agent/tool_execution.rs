@@ -32,8 +32,13 @@ struct ResolvedToolCall {
 
 impl Agent {
     /// Build the tool context for a single tool execution.
-    fn build_tool_context(&self) -> AgentToolContext {
-        AgentToolContext::new(self.workspace_dir.clone(), self.user_context.clone())
+    fn build_tool_context(&self, tool_call_id: Option<String>) -> AgentToolContext {
+        AgentToolContext::new(
+            self.workspace_dir.clone(),
+            self.user_context.clone(),
+            self.active_turn_id.clone(),
+            tool_call_id,
+        )
     }
 
     async fn execute_tool_call(&self, call: &ParsedToolCall) -> ToolExecutionResult {
@@ -65,7 +70,7 @@ impl Agent {
         }
 
         // Execute the tool
-        let ctx = self.build_tool_context();
+        let ctx = self.build_tool_context(call.tool_call_id.clone());
         let (result, success, presentation) =
             if let Some(tool) = self.tool_registry.get_tool(&tool_name) {
                 match tool.execute(tool_args.clone(), &ctx).await {
@@ -196,7 +201,7 @@ impl Agent {
         }
 
         let start = Instant::now();
-        let ctx = self.build_tool_context();
+        let ctx = self.build_tool_context(resolved.tool_call_id.clone());
         let (result, success, presentation) =
             if let Some(tool) = self.tool_registry.get_tool(&resolved.name) {
                 match tool.execute(resolved.args.clone(), &ctx).await {

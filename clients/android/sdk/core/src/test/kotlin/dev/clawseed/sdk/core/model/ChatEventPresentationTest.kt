@@ -7,6 +7,20 @@ import kotlin.test.assertIs
 
 class ChatEventPresentationTest {
     @Test
+    fun parsesStructuredAskUserRequest() {
+        val event = ChatEvent.parse(
+            """{"type":"ask_user_request","request_id":"r1","session_id":"s1","turn_id":"t1","tool_call_id":"c1","kind":"single_select","question":"Choose","options":[{"id":"a","label":"Alpha","description":"First"}]}""",
+            Json,
+        )
+
+        val request = assertIs<ChatEvent.AskUserRequested>(event)
+        assertEquals("r1", request.requestId)
+        assertEquals("single_select", request.kind)
+        assertEquals("a", request.options.single().id)
+        assertEquals("First", request.options.single().description)
+    }
+
+    @Test
     fun parsesBackgroundJobCompletion() {
         val event = ChatEvent.parse(
             """{"type":"background_job","job_id":"job-1","status":"failed","exit_code":7,"error":"non_zero_exit"}""",

@@ -359,6 +359,10 @@ fn test_app_state(
         web_dist_dir: None,
         canvas_store: clawseed_agent::tools::CanvasStore::new(),
         cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        active_turn_ids: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        ask_user_manager: Arc::new(clawseed_gateway::ask_user::AskUserManager::new(
+            tokio::sync::broadcast::channel(1).0,
+        )),
     }
 }
 
@@ -1167,6 +1171,10 @@ async fn ws_shared_provider_init_succeeds() {
         web_dist_dir: None,
         canvas_store: clawseed_agent::tools::CanvasStore::new(),
         cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        active_turn_ids: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        ask_user_manager: Arc::new(clawseed_gateway::ask_user::AskUserManager::new(
+            tokio::sync::broadcast::channel(1).0,
+        )),
     };
     let app = Router::new()
         .route("/ws/chat", get(handle_ws_chat))

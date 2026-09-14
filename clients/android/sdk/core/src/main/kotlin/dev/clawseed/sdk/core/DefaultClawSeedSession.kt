@@ -38,6 +38,8 @@ internal class DefaultClawSeedSession(
 
     private val _sessionInfo = MutableStateFlow<SessionInfo?>(null)
     override val sessionInfo: StateFlow<SessionInfo?> = _sessionInfo.asStateFlow()
+    private val _pendingQuestion = MutableStateFlow<ChatEvent.AskUserRequested?>(null)
+    override val pendingQuestion: StateFlow<ChatEvent.AskUserRequested?> = _pendingQuestion.asStateFlow()
 
     override val connectionState: StateFlow<ConnectionState> = chatClient.connectionState
     override val events: SharedFlow<ChatEvent> = chatClient.events
@@ -56,6 +58,15 @@ internal class DefaultClawSeedSession(
                         imageAttachmentsSupported = event.imageAttachmentsSupported,
                         fileAttachmentsSupported = event.fileAttachmentsSupported,
                     )
+                }
+                when (event) {
+                    is ChatEvent.AskUserRequested -> _pendingQuestion.value = event
+                    is ChatEvent.AskUserAcknowledged -> if (
+                        event.requestId == _pendingQuestion.value?.requestId &&
+                        event.status in setOf("accepted", "not_pending")
+                    ) _pendingQuestion.value = null
+                    ChatEvent.Aborted -> _pendingQuestion.value = null
+                    else -> Unit
                 }
             }
         }
@@ -92,6 +103,14 @@ internal class DefaultClawSeedSession(
         // Also call REST abort as fallback for reliability
         val sid = _sessionInfo.value?.sessionId ?: return
         runCatching { gateway.abortSession(sid) }
+    }
+
+    override fun answerQuestion(
+        request: ChatEvent.AskUserRequested,
+        status: String,
+        answer: kotlinx.serialization.json.JsonElement?,
+    ) {
+        chatClient.sendAskUserResponse(request, status, answer)
     }
 
     override fun close() {

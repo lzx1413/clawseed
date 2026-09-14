@@ -53,6 +53,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.JsonElement
 import java.util.Locale
 
 /**
@@ -92,6 +93,8 @@ data class ChatUiState(
     val currentSessionId: String? = null,
     val error: String? = null,
     val authPrompt: AuthPrompt? = null,
+    val pendingQuestion: ChatEvent.AskUserRequested? = null,
+    val questionSubmitting: Boolean = false,
     val speechOutputEnabled: Boolean = false,
     val isSpeaking: Boolean = false,
     val speakingMessageId: String? = null,
@@ -110,6 +113,8 @@ internal data class SessionSlot(
     val accumulator: ChatAccumulator,
     var history: List<ChatEntry> = emptyList(),
     var lifetimeJob: Job? = null,
+    var pendingQuestion: ChatEvent.AskUserRequested? = null,
+    var questionSubmitting: Boolean = false,
 ) {
     fun close() {
         lifetimeJob?.cancel()
@@ -733,6 +738,8 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
             currentPersona = null,
             imageAttachmentsSupported = false,
             fileAttachmentsSupported = false,
+            pendingQuestion = null,
+            questionSubmitting = false,
             error = null,
         )
 
@@ -778,6 +785,8 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
             currentPersona = slot.session.sessionInfo.value?.persona,
             imageAttachmentsSupported = slot.session.sessionInfo.value?.imageAttachmentsSupported == true,
             fileAttachmentsSupported = slot.session.sessionInfo.value?.fileAttachmentsSupported == true,
+            pendingQuestion = slot.pendingQuestion,
+            questionSubmitting = slot.questionSubmitting,
         )
 
         // Resume observation
@@ -816,7 +825,12 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                 val acc = ChatAccumulator(session)
                 acc.startIn(viewModelScope)
                 accumulator = acc
-                val slot = SessionSlot(session, acc, history)
+                val slot = SessionSlot(
+                    session = session,
+                    accumulator = acc,
+                    history = history,
+                    pendingQuestion = session.pendingQuestion.value,
+                )
                 currentSlot = slot
 
                 // Save to pool immediately so it survives future switches
@@ -834,13 +848,55 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                             }
                         }
                         launch {
+                            session.pendingQuestion.collect { question ->
+                                slot.pendingQuestion = question
+                                if (currentSlot === slot) _uiState.value = _uiState.value.copy(
+                                    pendingQuestion = question,
+                                    questionSubmitting = if (question == null) false else slot.questionSubmitting,
+                                )
+                            }
+                        }
+                        launch {
                             session.events.collect { event ->
-                                if (event is ChatEvent.BackgroundJobCompleted) {
-                                    BackgroundJobNotifier.notifyIfBackground(
-                                        getApplication<Application>(),
-                                        event,
-                                        sid,
+                                when (event) {
+                                    is ChatEvent.BackgroundJobCompleted -> BackgroundJobNotifier.notifyIfBackground(
+                                        getApplication<Application>(), event, sid,
                                     )
+                                    is ChatEvent.AskUserRequested -> {
+                                        slot.pendingQuestion = event
+                                        slot.questionSubmitting = false
+                                        if (currentSlot === slot) _uiState.value = _uiState.value.copy(
+                                            pendingQuestion = event,
+                                            questionSubmitting = false,
+                                        )
+                                    }
+                                    is ChatEvent.AskUserAcknowledged -> {
+                                        if (slot.pendingQuestion?.requestId == event.requestId) {
+                                            if (event.status == "accepted" || event.status == "not_pending") {
+                                                slot.pendingQuestion = null
+                                                slot.questionSubmitting = false
+                                                if (currentSlot === slot) _uiState.value = _uiState.value.copy(
+                                                    pendingQuestion = null,
+                                                    questionSubmitting = false,
+                                                )
+                                            } else {
+                                                slot.questionSubmitting = false
+                                                if (currentSlot === slot) _uiState.value = _uiState.value.copy(
+                                                    questionSubmitting = false,
+                                                    error = event.error ?: "回答未被接受",
+                                                )
+                                            }
+                                        }
+                                    }
+                                    ChatEvent.Aborted -> {
+                                        slot.pendingQuestion = null
+                                        slot.questionSubmitting = false
+                                        if (currentSlot === slot) _uiState.value = _uiState.value.copy(
+                                            pendingQuestion = null,
+                                            questionSubmitting = false,
+                                        )
+                                    }
+                                    else -> Unit
                                 }
                             }
                         }
@@ -929,6 +985,22 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
         ) { args ->
             handleSetAlarm(args)
         }
+    }
+
+    fun answerQuestion(status: String, answer: JsonElement? = null) {
+        val slot = currentSlot ?: return
+        val request = slot.pendingQuestion ?: return
+        if (slot.questionSubmitting) return
+        slot.questionSubmitting = true
+        _uiState.value = _uiState.value.copy(questionSubmitting = true)
+        runCatching { slot.session.answerQuestion(request, status, answer) }
+            .onFailure { error ->
+                slot.questionSubmitting = false
+                _uiState.value = _uiState.value.copy(
+                    questionSubmitting = false,
+                    error = error.message ?: "回答发送失败",
+                )
+            }
     }
 
     private suspend fun loadHistory(session: ClawSeedSession, sessionId: String): List<ChatEntry> {

@@ -70,6 +70,9 @@ HTML 提取会移除脚本、样式、导航、页脚、侧栏、表单和隐藏
 | `JavaScriptTool` | `eval_javascript` | 沙箱化 QuickJS ES2020 执行，限制运行时间和输出大小 |
 | `LlmTaskTool` | `llm_task` | LLM 子任务 |
 | `KnowledgeTool` | `knowledge` | 知识库查询 |
+| `AskUserTool` | `ask_user` | 请求当前用户确认、选择或输入短文本 |
+
+`ask_user` 支持 `confirm`、`single_select`、`multi_select` 和 `text` 四类问题。Gateway 请求绑定会话、回合和工具调用 ID，只接受第一次有效回答。待回答问题五分钟后过期，并随 Agent 回合取消。工具拒绝索取密码、API Key、访问令牌和支付信息。交互式 CLI 使用终端输入，非交互入口返回 `interaction_unavailable`。
 | `ModelRoutingConfigTool` | `model_routing_config` | 模型路由配置 |
 | `BackupTool` | `backup` | 备份管理 |
 

@@ -5,6 +5,7 @@ use clawseed_config::schema::Config;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::ask_user::{AskUserHandler, AskUserTool, CliAskUserHandler};
 use crate::background::{
     BackgroundCancelTool, BackgroundEventSink, BackgroundJobManager, BackgroundRunTool,
     BackgroundStatusTool,
@@ -67,7 +68,7 @@ pub fn all_tools(
     config: &Config,
     memory: Arc<dyn clawseed_api::memory_traits::Memory>,
 ) -> Vec<Box<dyn Tool>> {
-    all_tools_with_background_events(workspace_dir, config, memory, None)
+    all_tools_with_runtime(workspace_dir, config, memory, None, None)
 }
 
 /// Return all built-in tools and optionally publish terminal background-job events.
@@ -77,8 +78,22 @@ pub fn all_tools_with_background_events(
     memory: Arc<dyn clawseed_api::memory_traits::Memory>,
     background_event_sink: Option<BackgroundEventSink>,
 ) -> Vec<Box<dyn Tool>> {
+    all_tools_with_runtime(workspace_dir, config, memory, background_event_sink, None)
+}
+
+/// Return all built-ins with transport-specific runtime handlers.
+pub fn all_tools_with_runtime(
+    #[cfg_attr(feature = "android", allow(unused))] workspace_dir: PathBuf,
+    config: &Config,
+    memory: Arc<dyn clawseed_api::memory_traits::Memory>,
+    background_event_sink: Option<BackgroundEventSink>,
+    ask_user_handler: Option<Arc<dyn AskUserHandler>>,
+) -> Vec<Box<dyn Tool>> {
     let background_manager = BackgroundJobManager::new(background_event_sink);
     let mut tools: Vec<Box<dyn Tool>> = vec![
+        Box::new(AskUserTool::new(
+            ask_user_handler.unwrap_or_else(|| Arc::new(CliAskUserHandler)),
+        )),
         Box::new(BackgroundCancelTool::new(background_manager.clone())),
         Box::new(BackgroundRunTool::new(background_manager.clone())),
         Box::new(BackgroundStatusTool::new(background_manager)),

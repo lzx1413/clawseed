@@ -29,6 +29,7 @@ pub fn all_tools_with_runtime(
     _cfg: &clawseed_config::schema::Config,
     _canvas_store: Option<CanvasStore>,
     background_event_sink: Option<clawseed_tools::background::BackgroundEventSink>,
+    ask_user_handler: Option<Arc<dyn clawseed_tools::ask_user::AskUserHandler>>,
 ) -> (
     Vec<Box<dyn Tool>>,
     Option<Arc<parking_lot::RwLock<Vec<Arc<dyn DynTool>>>>>,
@@ -37,11 +38,12 @@ pub fn all_tools_with_runtime(
     Option<Arc<parking_lot::RwLock<Vec<Arc<dyn DynTool>>>>>,
     Option<Arc<parking_lot::RwLock<Vec<Arc<dyn DynTool>>>>>,
 ) {
-    let tools = clawseed_tools::registry::all_tools_with_background_events(
+    let tools = clawseed_tools::registry::all_tools_with_runtime(
         workspace_dir.to_path_buf(),
         &_config,
         _memory,
         background_event_sink,
+        ask_user_handler,
     );
     (tools, None, None, None, None, None)
 }

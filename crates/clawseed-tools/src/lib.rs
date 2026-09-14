@@ -4,6 +4,7 @@
 //! Tools that need runtime dependencies (Memory, etc.) receive them via
 //! constructor injection.
 
+pub mod ask_user;
 pub mod background;
 #[cfg(not(feature = "android"))]
 pub mod backup_tool;

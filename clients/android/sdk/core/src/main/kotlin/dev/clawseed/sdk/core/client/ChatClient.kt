@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -174,6 +175,25 @@ internal class ChatClient(
             put("type", "abort")
         }.toString()
         webSocket?.send(msg)
+    }
+
+    fun sendAskUserResponse(
+        request: ChatEvent.AskUserRequested,
+        status: String,
+        answer: JsonElement? = null,
+    ) {
+        check(_connectionState.value == ConnectionState.CONNECTED) {
+            "Cannot answer a question while disconnected"
+        }
+        val msg = buildJsonObject {
+            put("type", "ask_user_response")
+            put("request_id", request.requestId)
+            put("turn_id", request.turnId)
+            put("tool_call_id", request.toolCallId)
+            put("status", status)
+            if (answer != null) put("answer", answer)
+        }.toString()
+        check(webSocket?.send(msg) == true) { "WebSocket rejected answer" }
     }
 
     fun sendRegenerate(debug: Boolean = false) {

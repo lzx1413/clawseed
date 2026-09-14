@@ -13,6 +13,28 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /** Streaming events emitted by the ClawSeed gateway chat protocol. */
 sealed class ChatEvent {
+    data class AskUserOption(
+        val id: String,
+        val label: String,
+        val description: String?,
+    )
+
+    data class AskUserRequested(
+        val requestId: String,
+        val sessionId: String,
+        val turnId: String,
+        val toolCallId: String,
+        val kind: String,
+        val question: String,
+        val options: List<AskUserOption>,
+        val placeholder: String?,
+    ) : ChatEvent()
+
+    data class AskUserAcknowledged(
+        val requestId: String,
+        val status: String,
+        val error: String?,
+    ) : ChatEvent()
     /** Session established or resumed successfully. */
     data class SessionStarted(
         val sessionId: String,
@@ -140,6 +162,26 @@ sealed class ChatEvent {
                     id = obj["id"]?.jsonPrimitive?.content ?: "",
                     name = obj["name"]?.jsonPrimitive?.content ?: "",
                     args = obj["args"]?.jsonObject ?: buildJsonObject {},
+                )
+                "ask_user_request" -> AskUserRequested(
+                    requestId = obj["request_id"]?.jsonPrimitive?.content ?: "",
+                    sessionId = obj["session_id"]?.jsonPrimitive?.content ?: "",
+                    turnId = obj["turn_id"]?.jsonPrimitive?.content ?: "",
+                    toolCallId = obj["tool_call_id"]?.jsonPrimitive?.content ?: "",
+                    kind = obj["kind"]?.jsonPrimitive?.content ?: "",
+                    question = obj["question"]?.jsonPrimitive?.content ?: "",
+                    options = obj["options"]?.jsonArray?.mapNotNull { option ->
+                        val value = option as? JsonObject ?: return@mapNotNull null
+                        val id = value["id"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                        val label = value["label"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                        AskUserOption(id, label, value["description"]?.jsonPrimitive?.contentOrNull)
+                    }.orEmpty(),
+                    placeholder = obj["placeholder"]?.jsonPrimitive?.contentOrNull,
+                )
+                "ask_user_ack" -> AskUserAcknowledged(
+                    requestId = obj["request_id"]?.jsonPrimitive?.content ?: "",
+                    status = obj["status"]?.jsonPrimitive?.content ?: "rejected",
+                    error = obj["error"]?.jsonPrimitive?.contentOrNull,
                 )
                 "background_job" -> BackgroundJobCompleted(
                     jobId = obj["job_id"]?.jsonPrimitive?.content ?: "",
