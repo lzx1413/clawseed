@@ -137,6 +137,7 @@ fun PersonaManagerScreen(
                     tools = uiState.tools,
                     skills = uiState.skills,
                     availableModels = uiState.availableModels,
+                    availableProviders = uiState.availableProviders,
                     isSaving = uiState.isSaving,
                     onDraftChange = { viewModel.updateDraft { _ -> it } },
                     onSave = { viewModel.save() },
@@ -627,6 +628,7 @@ private fun PersonaEditor(
     tools: List<ToolInfo>,
     skills: List<SkillInfo>,
     availableModels: List<String>,
+    availableProviders: List<dev.clawseed.sdk.core.model.ProviderInfo>,
     isSaving: Boolean,
     onDraftChange: (PersonaDraft) -> Unit,
     onSave: () -> Unit,
@@ -634,6 +636,7 @@ private fun PersonaEditor(
     onCancel: () -> Unit,
 ) {
     var modelExpanded by remember { mutableStateOf(false) }
+    var providerExpanded by remember { mutableStateOf(false) }
     var soulExpanded by remember { mutableStateOf(false) }
     var toolsExpanded by remember { mutableStateOf(false) }
     var skillsExpanded by remember { mutableStateOf(false) }
@@ -684,6 +687,47 @@ private fun PersonaEditor(
         item {
             PersonaSection(title = stringResource(R.string.persona_llm_section)) {
                 ExposedDropdownMenuBox(
+                    expanded = providerExpanded,
+                    onExpandedChange = { providerExpanded = it },
+                ) {
+                    OutlinedTextField(
+                        value = draft.provider.ifBlank { "继承全局 Provider" },
+                        onValueChange = {},
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                        readOnly = true,
+                        singleLine = true,
+                        label = { Text("Provider") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = providerExpanded) },
+                    )
+                    ExposedDropdownMenu(
+                        expanded = providerExpanded,
+                        onDismissRequest = { providerExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("继承全局 Provider") },
+                            onClick = {
+                                onDraftChange(draft.copy(provider = "", model = "", vision = null))
+                                providerExpanded = false
+                            },
+                        )
+                        availableProviders.forEach { provider ->
+                            DropdownMenuItem(
+                                text = { Text(provider.name.ifBlank { provider.id }) },
+                                onClick = {
+                                    onDraftChange(draft.copy(
+                                        provider = provider.id,
+                                        model = provider.models.firstOrNull() ?: provider.model.orEmpty(),
+                                        vision = null,
+                                    ))
+                                    providerExpanded = false
+                                },
+                            )
+                        }
+                    }
+                }
+                ExposedDropdownMenuBox(
                     expanded = modelExpanded,
                     onExpandedChange = { modelExpanded = it },
                 ) {
@@ -709,7 +753,12 @@ private fun PersonaEditor(
                                 modelExpanded = false
                             },
                         )
-                        availableModels.forEach { model ->
+                        val providerModels = availableProviders
+                            .firstOrNull { it.id == draft.provider }
+                            ?.models
+                            ?.ifEmpty { listOfNotNull(availableProviders.firstOrNull { it.id == draft.provider }?.model) }
+                            ?: availableModels
+                        providerModels.forEach { model ->
                             DropdownMenuItem(
                                 text = { Text(model, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                 onClick = {

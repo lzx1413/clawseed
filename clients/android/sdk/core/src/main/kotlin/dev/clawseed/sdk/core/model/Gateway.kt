@@ -30,6 +30,17 @@ data class MemoryStatus(
     val count: Int = 0,
 )
 
+/** One configured LLM provider profile available to persona selection. */
+@Serializable
+data class ProviderInfo(
+    val id: String = "",
+    val name: String = "",
+    @SerialName("base_url") val baseUrl: String? = null,
+    val model: String? = null,
+    val models: List<String> = emptyList(),
+    val active: Boolean = false,
+)
+
 /** Description of one tool exposed by the gateway. */
 @Serializable
 data class ToolInfo(
@@ -48,6 +59,7 @@ data class PersonaInfo(
     @SerialName("has_identity") val hasIdentity: Boolean = false,
     @SerialName("has_system_prompt") val hasSystemPrompt: Boolean = false,
     @SerialName("memory_namespace") val memoryNamespace: String? = null,
+    val provider: String? = null,
     @SerialName("allowed_tools") val allowedTools: List<String> = emptyList(),
     @SerialName("denied_tools") val deniedTools: List<String> = emptyList(),
     @SerialName("denied_skills") val deniedSkills: List<String> = emptyList(),
@@ -68,6 +80,7 @@ data class PersonaDetail(
     @SerialName("system_prompt") val systemPrompt: String? = null,
     @SerialName("has_system_prompt") val hasSystemPrompt: Boolean = false,
     @SerialName("memory_namespace") val memoryNamespace: String? = null,
+    val provider: String? = null,
     @SerialName("allowed_tools") val allowedTools: List<String> = emptyList(),
     @SerialName("denied_tools") val deniedTools: List<String> = emptyList(),
     @SerialName("denied_skills") val deniedSkills: List<String> = emptyList(),
@@ -81,6 +94,7 @@ data class PersonaDetail(
 /** Payload for creating or updating a persona. */
 @Serializable
 data class PersonaUpsert(
+    val provider: String? = null,
     val identity: JsonElement? = null,
     @SerialName("system_prompt") val systemPrompt: String? = null,
     @SerialName("memory_namespace") val memoryNamespace: String? = null,

@@ -5,6 +5,34 @@ use axum::{
     response::{IntoResponse, Json},
 };
 
+/// GET /api/providers — list every configured LLM provider profile.
+pub async fn handle_api_providers(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    let config = state.config.lock().clone();
+    let mut providers: Vec<serde_json::Value> = config
+        .providers
+        .models
+        .iter()
+        .map(|(id, entry)| {
+            serde_json::json!({
+                "id": id,
+                "name": entry.name.as_deref().unwrap_or(id),
+                "base_url": entry.base_url,
+                "model": entry.model,
+                "models": entry.model.iter().cloned().collect::<Vec<_>>(),
+                "active": config.providers.fallback.as_deref() == Some(id),
+            })
+        })
+        .collect();
+    providers.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
+    Json(serde_json::json!({"providers": providers})).into_response()
+}
+
 /// GET /api/provider/models — proxy model list fetch using configured API key
 pub async fn handle_api_provider_models(
     State(state): State<AppState>,

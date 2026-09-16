@@ -297,7 +297,10 @@ async fn handle_socket(
         .as_ref()
         .and_then(|name| agent_config.agents.get(name))
         .is_some_and(|entry| {
-            entry.model.is_some() || entry.vision.is_some() || entry.thinking_enabled.is_some()
+            entry.provider.is_some()
+                || entry.model.is_some()
+                || entry.vision.is_some()
+                || entry.thinking_enabled.is_some()
         });
     let agent_provider = if persona_has_llm_override {
         let profile = agent_config.providers.fallback_provider();

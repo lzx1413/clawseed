@@ -20,6 +20,7 @@ async fn persona_api_round_trips_model_thinking_and_visuals() {
         headers.clone(),
         axum::extract::Path("translator".to_string()),
         axum::Json(PersonaPutBody {
+            provider: None,
             identity: None,
             system_prompt: Some("Translate between English and Chinese.".to_string()),
             memory_namespace: Some("translator".to_string()),

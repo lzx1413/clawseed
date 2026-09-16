@@ -207,8 +207,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val embeddingDim = extractEmbeddingDims(toml)
             val sessionTtl = extractSessionTtlHours(toml)
 
-            val presetIdx = PROVIDER_PRESETS.indexOfFirst { it.baseUrl.isNotBlank() && currentBaseUrl.contains(it.baseUrl.removeSuffix("/v1").removeSuffix("/")) }
-                .let { if (it == -1) PROVIDER_PRESETS.size - 1 else it }
+            // Provider identity is authoritative. A provider may use a custom
+            // base URL (notably Mimo), so never infer it from the URL alone.
+            val activeProviderId = activeProviderKey(toml).orEmpty()
+            val presetIdx = PROVIDER_PRESETS.indexOfFirst { it.id == activeProviderId }
+                .let { found ->
+                    if (found >= 0) found else PROVIDER_PRESETS.indexOfFirst {
+                        it.baseUrl.isNotBlank() && currentBaseUrl.trimEnd('/') == it.baseUrl.trimEnd('/')
+                    }.let { byUrl -> if (byUrl >= 0) byUrl else PROVIDER_PRESETS.size - 1 }
+                }
 
             _uiState.value = _uiState.value.copy(
                 status = status,
@@ -249,7 +256,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
         val preset = PROVIDER_PRESETS[index]
         val toml = _uiState.value.configToml
-        val saved = findSavedProviderSettings(toml, preset.baseUrl)
+        val providerKey = if (preset.id == "custom") {
+            "custom:${preset.baseUrl.trimEnd('/')}"
+        } else {
+            preset.id
+        }
+        val saved = findSavedProviderSettings(toml, providerKey)
         val draft = providerDrafts[preset.baseUrl.trimEnd('/')]
         val storedKey = storedApiKeys[preset.baseUrl.trimEnd('/')]
 
@@ -678,18 +690,29 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private fun buildConfigToml(state: SettingsUiState): String {
         val baseUrl = state.baseUrl.trimEnd('/')
-        val newProviderId = "custom:$baseUrl"
+        val selectedPreset = PROVIDER_PRESETS.getOrNull(state.selectedPresetIndex)
+        val newProviderId = if (selectedPreset != null && selectedPreset.id != "custom") {
+            selectedPreset.id
+        } else {
+            "custom:$baseUrl"
+        }
 
         var toml = state.configToml
         val oldFallback = extractTomlValue(toml, "fallback") ?: ""
 
         if (oldFallback.isNotBlank() && oldFallback != newProviderId) {
-            toml = toml.replace("\"$oldFallback\"", "\"$newProviderId\"")
+            // Change only the active fallback assignment. Renaming every
+            // occurrence can turn an existing provider table (e.g. deepseek)
+            // into a duplicate table when the target provider already exists.
+            toml = toml.replaceFirst(
+                Regex("(?m)^\\s*fallback\\s*=\\s*\\\"[^\\\"]*\\\""),
+                "fallback = ${tomlString(newProviderId)}",
+            )
         } else if (oldFallback.isBlank()) {
             toml = replaceOrAppendTomlValue(toml, "fallback", newProviderId)
         }
 
-        val sectionHeader = "[providers.models.\"$newProviderId\"]"
+        val sectionHeader = "[providers.models.${tomlKey(newProviderId)}]"
         if (toml.contains(sectionHeader)) {
             toml = replaceInSection(toml, sectionHeader, "base_url", baseUrl)
             toml = replaceInSection(toml, sectionHeader, "model", state.selectedModel)
@@ -706,15 +729,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val section = buildString {
                 appendLine()
                 appendLine(sectionHeader)
-                appendLine("base_url = \"$baseUrl\"")
-                appendLine("model = \"${state.selectedModel}\"")
+                appendLine("base_url = ${tomlString(baseUrl)}")
+                appendLine("model = ${tomlString(state.selectedModel)}")
                 val isRealKey = state.apiKey.isNotBlank()
                         && state.apiKey != MASKED_KEY_PLACEHOLDER
                         && !state.apiKey.contains("***")
                 if (isRealKey) {
-                    appendLine("api_key = \"${state.apiKey}\"")
+                    appendLine("api_key = ${tomlString(state.apiKey)}")
                 }
-                appendLine("vision = \"${state.vision}\"")
+                appendLine("vision = ${tomlString(state.vision)}")
                 appendLine("max_tokens = ${state.maxTokens}")
                 if (state.thinkingEnabled) {
                     appendLine(THINKING_ENABLED_LINE)
@@ -742,9 +765,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 appendLine()
                 appendLine(webSearchHeader)
                 appendLine("enabled = true")
-                appendLine("provider = \"${state.searchEngine}\"")
+                appendLine("provider = ${tomlString(state.searchEngine)}")
                 if (state.searchEngine == "tavily" && state.tavilyApiKey.isNotBlank()) {
-                    appendLine("tavily_api_key = \"${state.tavilyApiKey}\"")
+                    appendLine("tavily_api_key = ${tomlString(state.tavilyApiKey)}")
                 }
             }
             toml = toml.trimEnd() + section
@@ -791,16 +814,16 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val memorySection = buildString {
                 append(memoryHeader)
                 appendLine()
-                append("embedding_provider = \"${state.embeddingProvider}\"")
+                append("embedding_provider = ${tomlString(state.embeddingProvider)}")
                 appendLine()
-                append("embedding_model = \"$embeddingModel\"")
+                append("embedding_model = ${tomlString(embeddingModel)}")
                 appendLine()
                 if (embeddingDims.isNotBlank()) {
                     append("embedding_dims = $embeddingDims")
                     appendLine()
                 }
                 if (!isLocal && isRealEmbeddingApiKey) {
-                    append("embedding_api_key = \"${state.embeddingApiKey}\"")
+                    append("embedding_api_key = ${tomlString(state.embeddingApiKey)}")
                     appendLine()
                 }
                 // Memory system upgrade fields (Phase A-E defaults)
@@ -1069,9 +1092,38 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun getInstallPermissionIntent(): Intent = ApkInstaller.installPermissionIntent()
 
     companion object {
+        /** Encode a TOML basic string so user-entered URLs, keys and model IDs
+         * cannot break the document when they contain quotes or backslashes. */
+        private fun tomlString(value: String): String = buildString {
+            append('"')
+            for (ch in value) {
+                when (ch) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> append(ch)
+                }
+            }
+            append('"')
+        }
+
+        /** Use the same canonical table-key form as Rust's TOML serializer:
+         * bare keys for ordinary provider IDs, quoted keys for URLs/custom IDs. */
+        private fun tomlKey(value: String): String =
+            if (value.matches(Regex("[A-Za-z0-9_-]+"))) value else tomlString(value)
+
+        private fun activeProviderKey(toml: String): String? {
+            extractTomlValue(toml, "fallback")?.takeIf { it.isNotBlank() }?.let { return it }
+            val match = Regex("(?m)^\\[providers\\.models\\.(\\\"(?:\\\\.|[^\\\"])*\\\"|[A-Za-z0-9_-]+)\\]\\s*$")
+                .find(toml) ?: return null
+            return match.groupValues[1].removeSurrounding("\"")
+        }
+
         private fun extractProviderBaseUrl(toml: String): String {
-            val fallback = extractTomlValue(toml, "fallback") ?: return ""
-            val section = findSection(toml, "[providers.models.\"$fallback\"]")
+            val fallback = activeProviderKey(toml) ?: return ""
+            val section = findSection(toml, "[providers.models.${tomlKey(fallback)}]")
             if (section.isNotEmpty()) {
                 val url = extractTomlValueInBlock(section, "base_url")
                 if (url != null) return url
@@ -1083,8 +1135,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
 
         private fun extractProviderApiKey(toml: String): String {
-            val fallback = extractTomlValue(toml, "fallback") ?: return ""
-            val section = findSection(toml, "[providers.models.\"$fallback\"]")
+            val fallback = activeProviderKey(toml) ?: return ""
+            val section = findSection(toml, "[providers.models.${tomlKey(fallback)}]")
             if (section.isNotEmpty()) {
                 return extractTomlValueInBlock(section, "api_key") ?: ""
             }
@@ -1092,16 +1144,16 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
 
         private fun extractProviderModel(toml: String, status: GatewayStatus?): String {
-            val fallback = extractTomlValue(toml, "fallback") ?: return ""
-            val section = findSection(toml, "[providers.models.\"$fallback\"]")
+            val fallback = activeProviderKey(toml) ?: return ""
+            val section = findSection(toml, "[providers.models.${tomlKey(fallback)}]")
             return extractTomlValueInBlock(section, "model") ?: ""
         }
 
         private fun extractProviderThinking(toml: String): Boolean {
-            val fallback = extractTomlValue(toml, "fallback") ?: return false
-            val section = findSection(toml, "[providers.models.\"$fallback\"]")
+            val fallback = activeProviderKey(toml) ?: return false
+            val section = findSection(toml, "[providers.models.${tomlKey(fallback)}]")
             if (sectionHasThinkingEnabled(section)) return true
-            val subTableHeader = "[providers.models.\"$fallback\".provider_extra.thinking]"
+            val subTableHeader = "[providers.models.${tomlKey(fallback)}.provider_extra.thinking]"
             val subSection = findSection(toml, subTableHeader)
             if (subSection.isNotEmpty()) {
                 val typeVal = extractTomlValueInBlock(subSection, "type")
@@ -1111,8 +1163,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
 
         private fun extractProviderMaxTokens(toml: String): String {
-            val fallback = extractTomlValue(toml, "fallback") ?: return "262144"
-            val section = findSection(toml, "[providers.models.\"$fallback\"]")
+            val fallback = activeProviderKey(toml) ?: return "262144"
+            val section = findSection(toml, "[providers.models.${tomlKey(fallback)}]")
             return extractTomlValueInBlock(section, "max_tokens") ?: "262144"
         }
 
@@ -1123,8 +1175,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
 
         internal fun extractProviderVision(toml: String): String {
-            val fallback = extractTomlValue(toml, "fallback") ?: return "auto"
-            val section = findSection(toml, "[providers.models.\"$fallback\"]")
+            val fallback = activeProviderKey(toml) ?: return "auto"
+            val section = findSection(toml, "[providers.models.${tomlKey(fallback)}]")
             return extractTomlValueInBlock(section, "vision") ?: "auto"
         }
 
@@ -1136,11 +1188,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val maxTokens: String,
         )
 
-        private fun findSavedProviderSettings(toml: String, baseUrl: String): SavedProviderSettings? {
-            if (baseUrl.isBlank()) return null
-            val trimmedUrl = baseUrl.trimEnd('/')
-            val providerKey = "custom:$trimmedUrl"
-            val sectionHeader = "[providers.models.\"$providerKey\"]"
+        private fun findSavedProviderSettings(toml: String, providerKey: String): SavedProviderSettings? {
+            if (providerKey.isBlank()) return null
+            val sectionHeader = "[providers.models.${tomlKey(providerKey)}]"
             val section = findSection(toml, sectionHeader)
             if (section.isEmpty()) return null
             val apiKey = extractTomlValueInBlock(section, "api_key") ?: ""
@@ -1148,7 +1198,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val maxTokens = extractTomlValueInBlock(section, "max_tokens") ?: "262144"
             var thinking = sectionHasThinkingEnabled(section)
             if (!thinking) {
-                val subSection = findSection(toml, "[providers.models.\"$providerKey\".provider_extra.thinking]")
+            val subSection = findSection(toml, "[providers.models.${tomlKey(providerKey)}.provider_extra.thinking]")
                 if (subSection.isNotEmpty()) {
                     thinking = extractTomlValueInBlock(subSection, "type") == "enabled"
                 }
@@ -1240,7 +1290,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
 
         private fun replaceInSection(toml: String, sectionHeader: String, key: String, value: String): String {
-            return replaceInSectionRaw(toml, sectionHeader, key, " \"$value\"")
+            return replaceInSectionRaw(toml, sectionHeader, key, " ${tomlString(value)}")
         }
 
         private fun replaceInIntSection(toml: String, sectionHeader: String, key: String, value: String): String {
@@ -1282,14 +1332,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 if (trimmed.startsWith("$key ") || trimmed.startsWith("$key=")) {
                     val eqIdx = lines[i].indexOf('=')
                     if (eqIdx >= 0) {
-                        lines[i] = lines[i].substring(0, eqIdx + 1) + " \"$value\""
+                        lines[i] = lines[i].substring(0, eqIdx + 1) + " ${tomlString(value)}"
                         return lines.joinToString("\n")
                     }
                 }
             }
             val providersIdx = lines.indexOfFirst { it.trim() == "[providers]" }
             if (providersIdx >= 0) {
-                lines.add(providersIdx + 1, "$key = \"$value\"")
+                lines.add(providersIdx + 1, "$key = ${tomlString(value)}")
             }
             return lines.joinToString("\n")
         }

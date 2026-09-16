@@ -1622,6 +1622,9 @@ pub struct WebSearchConfig {
 /// `api_key` keep working unchanged.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentEntryConfig {
+    /// Provider profile selected by this persona. When absent, inherits the global fallback.
+    #[serde(default)]
+    pub provider: Option<String>,
     #[serde(default)]
     pub api_key: Option<String>,
 
@@ -1691,7 +1694,8 @@ impl AgentEntryConfig {
     /// than just a named API key). Used to decide whether resolving a persona
     /// should produce overrides at all.
     pub fn has_persona_overrides(&self) -> bool {
-        self.identity.is_some()
+        self.provider.is_some()
+            || self.identity.is_some()
             || self.memory_namespace.is_some()
             || !self.allowed_tools.is_empty()
             || !self.denied_tools.is_empty()

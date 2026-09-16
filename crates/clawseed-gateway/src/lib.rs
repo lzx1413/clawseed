@@ -670,6 +670,7 @@ pub async fn run_gateway(
             get(api::handle_api_skill_get).put(api::handle_api_skill_put),
         )
         .route("/api/provider/models", get(api::handle_api_provider_models))
+        .route("/api/providers", get(api::handle_api_providers))
         .route(
             "/api/provider/balance",
             post(api::handle_api_provider_balance),

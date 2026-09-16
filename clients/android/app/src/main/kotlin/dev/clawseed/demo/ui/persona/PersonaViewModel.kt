@@ -10,6 +10,7 @@ import dev.clawseed.sdk.core.model.PersonaInfo
 import dev.clawseed.sdk.core.model.PersonaUpsert
 import dev.clawseed.sdk.core.model.SkillInfo
 import dev.clawseed.sdk.core.model.ToolInfo
+import dev.clawseed.sdk.core.model.ProviderInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +21,7 @@ data class PersonaDraft(
     val name: String = "",
     val systemPrompt: String = "",
     val model: String = "",
+    val provider: String = "",
     val thinkingEnabled: Boolean? = null,
     val vision: String? = null,
     val avatar: String = "",
@@ -34,6 +36,7 @@ data class PersonaUiState(
     val tools: List<ToolInfo> = emptyList(),
     val skills: List<SkillInfo> = emptyList(),
     val availableModels: List<String> = emptyList(),
+    val availableProviders: List<ProviderInfo> = emptyList(),
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,
     val editing: PersonaDraft? = null,
@@ -53,11 +56,13 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             val toolsResult = ClawSeedAndroid.gatewayClient().tools()
             val skillsResult = ClawSeedAndroid.gatewayClient().skills()
             val modelsResult = ClawSeedAndroid.gatewayClient().models()
+            val providersResult = ClawSeedAndroid.gatewayClient().providers()
             _uiState.value = _uiState.value.copy(
                 personas = personasResult.getOrElse { emptyList() }.filter { it.isPersona },
                 tools = toolsResult.getOrElse { emptyList() },
                 skills = skillsResult.getOrElse { emptyList() },
                 availableModels = modelsResult.getOrElse { emptyList() },
+                availableProviders = providersResult.getOrElse { emptyList() },
                 isLoading = false,
                 error = personasResult.exceptionOrNull()?.message
                     ?: toolsResult.exceptionOrNull()?.message
@@ -178,6 +183,7 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             name = name,
             systemPrompt = systemPrompt ?: identity?.toString().orEmpty(),
             model = model.orEmpty(),
+            provider = provider.orEmpty(),
             thinkingEnabled = thinkingEnabled,
             vision = vision,
             avatar = avatar.orEmpty(),
@@ -190,6 +196,7 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
 
     private fun PersonaDraft.toUpsert(): PersonaUpsert {
         return PersonaUpsert(
+            provider = provider.trim().ifEmpty { null },
             identity = null,
             systemPrompt = systemPrompt.trim().ifEmpty { null },
             memoryNamespace = if (memoryMode == "isolated") {
@@ -213,6 +220,7 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             || memoryMode == "isolated"
             || allowedTools.isNotEmpty()
             || deniedSkills.isNotEmpty()
+            || provider.isNotBlank()
             || model.isNotBlank()
             || thinkingEnabled != null
             || vision != null

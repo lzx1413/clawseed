@@ -5,6 +5,7 @@ import dev.clawseed.sdk.core.model.HealthInfo
 import dev.clawseed.sdk.core.model.PersonaDetail
 import dev.clawseed.sdk.core.model.PersonaInfo
 import dev.clawseed.sdk.core.model.PersonaUpsert
+import dev.clawseed.sdk.core.model.ProviderInfo
 import dev.clawseed.sdk.core.model.SessionMessage
 import dev.clawseed.sdk.core.model.SessionSummary
 import dev.clawseed.sdk.core.model.SkillDetail
@@ -484,6 +485,19 @@ class GatewayClient(
             val body = resp.body?.string() ?: ""
             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}: ${body.take(200)}")
             parseModelsResponse(body)
+        }
+    }
+
+    /** Lists all configured provider profiles for persona-level routing. */
+    suspend fun providers(): Result<List<ProviderInfo>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val req = Request.Builder().url("$baseUrl/api/providers").addAuth().build()
+            val body = execute(req).getOrThrow()
+            val root = json.parseToJsonElement(body).jsonObject
+            json.decodeFromJsonElement(
+                ListSerializer(ProviderInfo.serializer()),
+                root["providers"]?.jsonArray ?: kotlinx.serialization.json.JsonArray(emptyList()),
+            )
         }
     }
 

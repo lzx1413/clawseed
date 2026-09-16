@@ -110,6 +110,7 @@ pub async fn handle_api_personas_list(
                 "has_identity": entry.identity.is_some(),
                 "has_system_prompt": entry.system_prompt.is_some(),
                 "memory_namespace": entry.memory_namespace,
+                "provider": entry.provider,
                 "allowed_tools": entry.allowed_tools,
                 "denied_tools": entry.denied_tools,
                 "denied_skills": entry.denied_skills,
@@ -152,6 +153,7 @@ pub async fn handle_api_persona_get(
         "system_prompt": entry.system_prompt,
         "has_system_prompt": entry.system_prompt.is_some(),
         "memory_namespace": entry.memory_namespace,
+        "provider": entry.provider,
         "allowed_tools": entry.allowed_tools,
         "denied_tools": entry.denied_tools,
         "denied_skills": entry.denied_skills,
@@ -171,6 +173,8 @@ pub async fn handle_api_persona_get(
 /// null/empty effectively demotes the entry back to a plain named API key.
 #[derive(Deserialize)]
 pub struct PersonaPutBody {
+    #[serde(default)]
+    pub provider: Option<String>,
     #[serde(default)]
     pub identity: Option<clawseed_config::schema::IdentityConfig>,
     #[serde(default)]
@@ -210,6 +214,7 @@ pub async fn handle_api_persona_put(
     // Upsert, preserving any existing api_key.
     let existing = config.agents.get(&name).cloned();
     let entry = clawseed_config::schema::AgentEntryConfig {
+        provider: body.provider,
         api_key: existing.and_then(|e| e.api_key),
         identity: body.identity,
         system_prompt: body.system_prompt,

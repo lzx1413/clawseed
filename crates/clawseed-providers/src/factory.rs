@@ -279,7 +279,14 @@ impl ProviderFactory for OpenAiCompatFactory {
             provider = provider.with_provider_extra(extra);
         }
         if options.provider_max_tokens.is_some() {
-            provider = provider.with_max_tokens(options.provider_max_tokens);
+            // Mimo currently rejects completion limits above 131072 even
+            // though the shared UI default is 262144.
+            let max_tokens = if self.name == "mimo" {
+                options.provider_max_tokens.map(|value| value.min(131_072))
+            } else {
+                options.provider_max_tokens
+            };
+            provider = provider.with_max_tokens(max_tokens);
         }
 
         Ok(Box::new(provider.with_image_options(options)))

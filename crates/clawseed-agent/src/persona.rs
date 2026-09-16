@@ -117,14 +117,53 @@ fn apply_skill_overrides(cfg: &mut Config, entry: &AgentEntryConfig) {
 
 /// Apply model/thinking overrides to the active provider profile.
 fn apply_provider_overrides(cfg: &mut Config, entry: &AgentEntryConfig) {
+    let requested_provider = entry
+        .provider
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty());
+    if let Some(provider) = entry.provider.as_ref().filter(|p| !p.trim().is_empty())
+        && cfg.providers.models.contains_key(provider.trim())
+    {
+        cfg.providers.fallback = Some(provider.trim().to_string());
+    }
     let Some(fallback) = cfg.providers.fallback.clone() else {
         return;
     };
+    let selected_default_model = cfg
+        .providers
+        .models
+        .get(&fallback)
+        .and_then(|p| p.model.clone());
+    let stale_cross_provider_model = entry
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+        .is_some_and(|model| {
+            requested_provider.is_some_and(|_selected| {
+                selected_default_model.as_deref() != Some(model)
+                    && cfg.providers.models.values().any(|p| {
+                        p.model.as_deref() == Some(model)
+                            && p.model.as_deref() != selected_default_model.as_deref()
+                    })
+            })
+        });
     let Some(provider) = cfg.providers.models.get_mut(&fallback) else {
         return;
     };
 
     if let Some(model) = entry.model.as_ref().filter(|m| !m.trim().is_empty()) {
+        // A persona saved before provider routing was added can retain the
+        // previous provider's model. If that model is exactly another saved
+        // profile's default, prefer the selected provider's default so a
+        // DeepSeek persona cannot accidentally call Mimo with a Mimo model.
+        if stale_cross_provider_model {
+            if let Some(selected_model) = selected_default_model.clone() {
+                provider.model = Some(selected_model);
+            }
+            return;
+        }
         if provider.model.as_deref() != Some(model.trim()) {
             provider.vision = Default::default();
         }
