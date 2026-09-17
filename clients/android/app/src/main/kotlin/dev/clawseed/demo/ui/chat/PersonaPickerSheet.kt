@@ -50,10 +50,10 @@ import dev.clawseed.sdk.core.model.PersonaInfo
 import kotlinx.coroutines.launch
 
 /**
- * A persona entry selectable in the picker. [name] is `null` for the always
- * present "Default" (global agent) option.
+ * A persona entry selectable in the picker. The default assistant is an
+ * explicit persona named `default`, just like every other chat target.
  */
-private data class PickerEntry(val name: String?, val subtitle: String?)
+private data class PickerEntry(val name: String, val subtitle: String?)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,8 +69,7 @@ fun PersonaPickerSheet(
     var loading by remember { mutableStateOf(true) }
     var personas by remember { mutableStateOf<List<PersonaInfo>>(emptyList()) }
     var loadError by remember { mutableStateOf(false) }
-    // Selected persona: null = Default. Saved across config changes.
-    var selected by rememberSaveable { mutableStateOf<String?>(null) }
+    var selected by rememberSaveable { mutableStateOf("default") }
 
     LaunchedEffect(Unit) {
         if (!ClawSeedAndroid.isInitialized) {
@@ -92,8 +91,9 @@ fun PersonaPickerSheet(
             )
 
             val entries = buildList {
-                add(PickerEntry(null, null)) // Default
-                personas.forEach { add(PickerEntry(it.name, it.subtitle())) }
+                add(PickerEntry("default", personas.firstOrNull { it.name == "default" }?.subtitle()))
+                personas.filterNot { it.name == "default" }
+                    .forEach { add(PickerEntry(it.name, it.subtitle())) }
             }
 
             when {
@@ -131,7 +131,7 @@ fun PersonaPickerSheet(
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = entry.name ?: stringResource(R.string.persona_default),
+                                    text = if (entry.name == "default") stringResource(R.string.persona_default) else entry.name,
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
                                 val sub = entry.subtitle ?: stringResource(R.string.persona_default_desc)

@@ -100,28 +100,19 @@ pub async fn handle_api_personas_list(
     }
 
     let config = state.config.lock().clone();
-    let personas: Vec<serde_json::Value> = config
+    let mut personas: Vec<serde_json::Value> = config
         .agents
         .iter()
-        .map(|(name, entry)| {
-            serde_json::json!({
-                "name": name,
-                "is_persona": entry.has_persona_overrides(),
-                "has_identity": entry.identity.is_some(),
-                "has_system_prompt": entry.system_prompt.is_some(),
-                "memory_namespace": entry.memory_namespace,
-                "provider": entry.provider,
-                "allowed_tools": entry.allowed_tools,
-                "denied_tools": entry.denied_tools,
-                "denied_skills": entry.denied_skills,
-                "model": entry.model,
-                "thinking_enabled": entry.thinking_enabled,
-                "vision": entry.vision,
-                "avatar": entry.avatar,
-                "color": entry.color,
-            })
-        })
+        .filter(|(name, _)| name.as_str() != "default")
+        .map(|(name, entry)| persona_entry_json(name, entry, entry.has_persona_overrides()))
         .collect();
+
+    personas.push(default_persona_json(&config));
+    personas.sort_by(|a, b| {
+        let a_name = a["name"].as_str().unwrap_or_default();
+        let b_name = b["name"].as_str().unwrap_or_default();
+        (a_name != "default", a_name).cmp(&(b_name != "default", b_name))
+    });
 
     Json(serde_json::json!({"personas": personas})).into_response()
 }
@@ -137,6 +128,9 @@ pub async fn handle_api_persona_get(
     }
 
     let config = state.config.lock().clone();
+    if name == "default" {
+        return Json(default_persona_json(&config)).into_response();
+    }
     let Some(entry) = config.agents.get(&name) else {
         return (
             StatusCode::NOT_FOUND,
@@ -145,9 +139,66 @@ pub async fn handle_api_persona_get(
             .into_response();
     };
 
-    Json(serde_json::json!({
+    Json(persona_entry_json(
+        &name,
+        entry,
+        entry.has_persona_overrides(),
+    ))
+    .into_response()
+}
+
+fn default_persona_json(config: &clawseed_config::schema::Config) -> serde_json::Value {
+    if let Some(entry) = config
+        .agents
+        .get("default")
+        .filter(|entry| entry.has_persona_overrides())
+    {
+        return persona_entry_json("default", entry, true);
+    }
+
+    let provider_id = config.providers.fallback.clone();
+    let provider = provider_id
+        .as_ref()
+        .and_then(|id| config.providers.models.get(id));
+    let thinking_enabled = provider
+        .and_then(|entry| entry.provider_extra.as_ref())
+        .and_then(|extra| extra.get("thinking"))
+        .and_then(|thinking| thinking.get("type"))
+        .and_then(serde_json::Value::as_str)
+        .map(|kind| kind == "enabled")
+        .or(config.providers.reasoning_enabled)
+        .unwrap_or(false);
+
+    serde_json::json!({
+        "name": "default",
+        "is_persona": true,
+        "identity": config.identity,
+        "has_identity": config.identity.aieos_inline.is_some()
+            || config.identity.aieos_path.is_some()
+            || config.identity.personality_dir.is_some(),
+        "system_prompt": config.agent.system_prompt,
+        "has_system_prompt": config.agent.system_prompt.is_some(),
+        "memory_namespace": config.agent.memory_namespace,
+        "provider": provider_id,
+        "allowed_tools": config.agent.allowed_tools,
+        "denied_tools": config.agent.denied_tools,
+        "denied_skills": config.skills.excluded,
+        "model": provider.and_then(|entry| entry.model.clone()),
+        "thinking_enabled": thinking_enabled,
+        "vision": provider.map(|entry| entry.vision),
+        "avatar": serde_json::Value::Null,
+        "color": serde_json::Value::Null,
+    })
+}
+
+fn persona_entry_json(
+    name: &str,
+    entry: &clawseed_config::schema::AgentEntryConfig,
+    is_persona: bool,
+) -> serde_json::Value {
+    serde_json::json!({
         "name": name,
-        "is_persona": entry.has_persona_overrides(),
+        "is_persona": is_persona,
         "identity": entry.identity,
         "has_identity": entry.identity.is_some(),
         "system_prompt": entry.system_prompt,
@@ -159,11 +210,10 @@ pub async fn handle_api_persona_get(
         "denied_skills": entry.denied_skills,
         "model": entry.model,
         "thinking_enabled": entry.thinking_enabled,
-                "vision": entry.vision,
+        "vision": entry.vision,
         "avatar": entry.avatar,
         "color": entry.color,
-    }))
-    .into_response()
+    })
 }
 
 /// PUT /api/personas/:name — upsert a persona's override fields.
@@ -250,6 +300,14 @@ pub async fn handle_api_persona_delete(
 ) -> impl IntoResponse {
     if let Err(e) = require_auth(&state, &headers) {
         return e.into_response();
+    }
+
+    if name == "default" {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "The default persona cannot be deleted"})),
+        )
+            .into_response();
     }
 
     let mut config = state.config.lock().clone();

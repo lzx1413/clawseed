@@ -474,9 +474,12 @@ class GatewayClient(
     }
 
     /** Lists models through the gateway provider proxy endpoint. */
-    suspend fun models(): Result<List<String>> = withContext(Dispatchers.IO) {
+    suspend fun models(provider: String? = null): Result<List<String>> = withContext(Dispatchers.IO) {
         runCatching {
-            val req = Request.Builder().url("$baseUrl/api/provider/models").addAuth().build()
+            val url = "$baseUrl/api/provider/models".toHttpUrl().newBuilder().apply {
+                provider?.takeIf { it.isNotBlank() }?.let { addQueryParameter("provider", it) }
+            }.build()
+            val req = Request.Builder().url(url).addAuth().build()
             val longClient = client.newBuilder()
                 .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
                 .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)

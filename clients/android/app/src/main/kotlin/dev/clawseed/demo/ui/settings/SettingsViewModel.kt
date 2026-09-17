@@ -106,6 +106,7 @@ sealed class UpdateCheckResult {
 private data class ProviderDraft(
     val apiKey: String,
     val selectedModel: String,
+    val availableModels: List<String>,
     val thinkingEnabled: Boolean,
     val vision: String,
     val maxTokens: String,
@@ -133,6 +134,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         providerDrafts[state.baseUrl.trimEnd('/')] = ProviderDraft(
             apiKey = state.apiKey,
             selectedModel = state.selectedModel,
+            availableModels = state.availableModels,
             thinkingEnabled = state.thinkingEnabled,
             vision = state.vision,
             maxTokens = state.maxTokens,
@@ -194,6 +196,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             providerDrafts[currentBaseUrl] = ProviderDraft(
                 apiKey = currentApiKey,
                 selectedModel = currentModel,
+                availableModels = extractProviderModels(toml),
                 thinkingEnabled = thinking,
                 vision = extractProviderVision(toml),
                 maxTokens = maxTokens,
@@ -230,6 +233,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 apiKey = currentApiKey,
                 hasServerApiKey = serverHasKey,
                 selectedModel = currentModel,
+                availableModels = extractProviderModels(toml),
                 thinkingEnabled = thinking,
                 vision = extractProviderVision(toml),
                 maxTokens = maxTokens,
@@ -285,11 +289,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             isFetchingBalance = true,
             hasServerApiKey = hasServerKey,
             selectedModel = draft?.selectedModel ?: saved?.model ?: "",
+            availableModels = draft?.availableModels ?: saved?.models.orEmpty(),
             thinkingEnabled = draft?.thinkingEnabled ?: saved?.thinking ?: false,
             vision = draft?.vision ?: saved?.vision ?: "auto",
             maxTokens = draft?.maxTokens ?: saved?.maxTokens ?: "262144",
             autoContinueOnTruncation = true,
-            availableModels = emptyList(),
             connectionOk = null,
             successMessage = null,
         )
@@ -432,18 +436,26 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isFetchingModels = true, connectionOk = null, error = null)
             val useProxy = state.apiKey == MASKED_KEY_PLACEHOLDER || state.apiKey.contains("***")
+            val preset = PROVIDER_PRESETS.getOrNull(state.selectedPresetIndex)
+            val providerId = if (preset != null && preset.id != "custom") {
+                preset.id
+            } else {
+                "custom:${state.baseUrl.trimEnd('/')}"
+            }
             val result = if (useProxy) {
-                client().models()
+                client().models(providerId)
             } else {
                 client().fetchProviderModels(state.baseUrl, state.apiKey)
             }
             result
                 .onSuccess { models ->
+                    val normalized = models.map(String::trim).filter(String::isNotBlank).distinct()
                     _uiState.value = _uiState.value.copy(
                         isFetchingModels = false,
-                        availableModels = models,
+                        availableModels = normalized,
                         connectionOk = true,
                     )
+                    saveFetchedModels(normalized)
                 }
                 .onFailure { e ->
                     _uiState.value = _uiState.value.copy(
@@ -452,6 +464,33 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                         error = getApplication<Application>().getString(R.string.settings_fetch_models_failed, e.message?.take(100) ?: ""),
                     )
                 }
+        }
+    }
+
+    /** Persist a discovered model catalog immediately so persona editors can
+     * use it after the settings screen is closed. */
+    private fun saveFetchedModels(models: List<String>) {
+        if (models.isEmpty()) return
+        val state = _uiState.value
+        val preset = PROVIDER_PRESETS.getOrNull(state.selectedPresetIndex)
+        val providerKey = if (preset != null && preset.id != "custom") {
+            preset.id
+        } else {
+            "custom:${state.baseUrl.trimEnd('/')}"
+        }
+        val header = "[providers.models.${tomlKey(providerKey)}]"
+        val toml = updateTomlArray(state.configToml, header, "models", models)
+        viewModelScope.launch {
+            val result = if (ClawSeedAndroid.isInitialized) {
+                client().updateConfig(toml)
+            } else {
+                runCatching { saveToLocalConfig(toml) }
+            }
+            result.onSuccess {
+                if (_uiState.value.baseUrl == state.baseUrl) {
+                    _uiState.value = _uiState.value.copy(configToml = toml)
+                }
+            }
         }
     }
 
@@ -477,6 +516,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         providerDrafts[currentBaseUrl] = ProviderDraft(
             apiKey = currentApiKey,
             selectedModel = currentModel,
+            availableModels = extractProviderModels(toml),
             thinkingEnabled = thinking,
             vision = extractProviderVision(toml),
             maxTokens = maxTokens,
@@ -504,6 +544,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             apiKey = currentApiKey,
             hasServerApiKey = serverHasKey,
             selectedModel = currentModel,
+            availableModels = extractProviderModels(toml),
             thinkingEnabled = thinking,
             vision = extractProviderVision(toml),
             maxTokens = maxTokens,
@@ -716,6 +757,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         if (toml.contains(sectionHeader)) {
             toml = replaceInSection(toml, sectionHeader, "base_url", baseUrl)
             toml = replaceInSection(toml, sectionHeader, "model", state.selectedModel)
+            toml = updateTomlArray(toml, sectionHeader, "models", state.availableModels)
             toml = replaceInSection(toml, sectionHeader, "vision", state.vision)
             val isRealKey = state.apiKey.isNotBlank()
                     && state.apiKey != MASKED_KEY_PLACEHOLDER
@@ -731,6 +773,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 appendLine(sectionHeader)
                 appendLine("base_url = ${tomlString(baseUrl)}")
                 appendLine("model = ${tomlString(state.selectedModel)}")
+                if (state.availableModels.isNotEmpty()) {
+                    appendLine("models = ${state.availableModels.joinToString(", ", "[", "]") { tomlString(it) }}")
+                }
                 val isRealKey = state.apiKey.isNotBlank()
                         && state.apiKey != MASKED_KEY_PLACEHOLDER
                         && !state.apiKey.contains("***")
@@ -1149,6 +1194,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             return extractTomlValueInBlock(section, "model") ?: ""
         }
 
+        private fun extractProviderModels(toml: String): List<String> {
+            val fallback = activeProviderKey(toml) ?: return emptyList()
+            val section = findSection(toml, "[providers.models.${tomlKey(fallback)}]")
+            val saved = parseTomlArray(section, "", "models")
+            if (saved.isNotEmpty()) return saved
+            return listOfNotNull(extractTomlValueInBlock(section, "model")?.takeIf(String::isNotBlank))
+        }
+
         private fun extractProviderThinking(toml: String): Boolean {
             val fallback = activeProviderKey(toml) ?: return false
             val section = findSection(toml, "[providers.models.${tomlKey(fallback)}]")
@@ -1183,6 +1236,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         private data class SavedProviderSettings(
             val apiKey: String,
             val model: String,
+            val models: List<String>,
             val thinking: Boolean,
             val vision: String,
             val maxTokens: String,
@@ -1195,15 +1249,16 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             if (section.isEmpty()) return null
             val apiKey = extractTomlValueInBlock(section, "api_key") ?: ""
             val model = extractTomlValueInBlock(section, "model") ?: ""
+            val models = parseTomlArray(section, "", "models")
             val maxTokens = extractTomlValueInBlock(section, "max_tokens") ?: "262144"
             var thinking = sectionHasThinkingEnabled(section)
             if (!thinking) {
-            val subSection = findSection(toml, "[providers.models.${tomlKey(providerKey)}.provider_extra.thinking]")
+                val subSection = findSection(toml, "[providers.models.${tomlKey(providerKey)}.provider_extra.thinking]")
                 if (subSection.isNotEmpty()) {
                     thinking = extractTomlValueInBlock(subSection, "type") == "enabled"
                 }
             }
-            return SavedProviderSettings(apiKey, model, thinking, extractTomlValueInBlock(section, "vision") ?: "auto", maxTokens)
+            return SavedProviderSettings(apiKey, model, models, thinking, extractTomlValueInBlock(section, "vision") ?: "auto", maxTokens)
         }
 
         private fun sectionHasThinkingEnabled(section: String): Boolean {
@@ -1381,7 +1436,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
         /** Parse a TOML array value like `denied_tools = ["shell", "http_request"]` from a section. */
         fun parseTomlArray(toml: String, sectionHeader: String, key: String): List<String> {
-            val section = findSection(toml, sectionHeader)
+            val section = if (sectionHeader.isBlank()) toml else findSection(toml, sectionHeader)
             if (section.isEmpty()) return emptyList()
             for (line in section.lines()) {
                 val trimmed = line.trim()
@@ -1392,7 +1447,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                         if (value.startsWith("[") && value.endsWith("]")) {
                             val inner = value.substring(1, value.length - 1)
                             return inner.split(",")
-                                .map { it.trim().removeSurrounding("\"") }
+                                .map { it.trim().removeSurrounding("\"").replace("\\\"", "\"") }
                                 .filter { it.isNotBlank() }
                         }
                     }
@@ -1406,7 +1461,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val arrayStr = if (values.isEmpty()) {
                 "[]"
             } else {
-                values.joinToString(", ", "[", "]") { "\"$it\"" }
+                values.joinToString(", ", "[", "]") { tomlString(it) }
             }
             val newLine = "$key = $arrayStr"
 

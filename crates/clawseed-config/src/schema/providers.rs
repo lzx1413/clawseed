@@ -81,6 +81,10 @@ pub struct ModelProviderConfig {
     pub api_path: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
+    /// Models discovered from the provider's `/models` endpoint. This is a
+    /// cached list used by clients when selecting a model per persona.
+    #[serde(default)]
+    pub models: Vec<String>,
     #[serde(default)]
     pub temperature: Option<f64>,
     #[serde(default)]

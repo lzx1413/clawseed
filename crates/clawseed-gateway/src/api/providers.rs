@@ -1,9 +1,16 @@
 use super::{AppState, require_auth};
 use axum::{
-    extract::State,
+    extract::{Query, State},
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Json},
 };
+
+#[derive(Default, serde::Deserialize)]
+pub struct ProviderModelsQuery {
+    /// Configured provider profile to query. When omitted, uses the default
+    /// provider for backward compatibility.
+    pub provider: Option<String>,
+}
 
 /// GET /api/providers — list every configured LLM provider profile.
 pub async fn handle_api_providers(
@@ -24,7 +31,11 @@ pub async fn handle_api_providers(
                 "name": entry.name.as_deref().unwrap_or(id),
                 "base_url": entry.base_url,
                 "model": entry.model,
-                "models": entry.model.iter().cloned().collect::<Vec<_>>(),
+                "models": if entry.models.is_empty() {
+                    entry.model.iter().cloned().collect::<Vec<_>>()
+                } else {
+                    entry.models.clone()
+                },
                 "active": config.providers.fallback.as_deref() == Some(id),
             })
         })
@@ -38,14 +49,24 @@ pub async fn handle_api_provider_models(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
+    handle_api_provider_models_query(State(state), headers, Query(ProviderModelsQuery::default()))
+        .await
+}
+
+/// GET /api/provider/models?provider=:id — fetch and cache a configured
+/// provider's model catalog.
+pub async fn handle_api_provider_models_query(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ProviderModelsQuery>,
+) -> impl IntoResponse {
     if let Err(e) = require_auth(&state, &headers) {
         return e.into_response();
     }
 
     let config = state.config.lock().clone();
-    let entry = config
-        .providers
-        .fallback
+    let provider_key = query.provider.or_else(|| config.providers.fallback.clone());
+    let entry = provider_key
         .as_ref()
         .and_then(|key| config.providers.models.get(key));
 
@@ -82,6 +103,18 @@ pub async fn handle_api_provider_models(
     match req.send().await {
         Ok(resp) if resp.status().is_success() => {
             let body = resp.text().await.unwrap_or_default();
+            if let (Some(key), Some(models)) = (
+                provider_key,
+                parse_model_ids(&body).filter(|models| !models.is_empty()),
+            ) {
+                let mut updated = state.config.lock().clone();
+                if let Some(entry) = updated.providers.models.get_mut(&key) {
+                    entry.models = models;
+                    if updated.save().is_ok() {
+                        *state.config.lock() = updated;
+                    }
+                }
+            }
             (
                 StatusCode::OK,
                 [(header::CONTENT_TYPE, "application/json")],
@@ -103,6 +136,46 @@ pub async fn handle_api_provider_models(
             Json(serde_json::json!({"error": format!("连接失败: {e}")})),
         )
             .into_response(),
+    }
+}
+
+fn parse_model_ids(body: &str) -> Option<Vec<String>> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    let items = value
+        .get("data")
+        .or_else(|| value.get("models"))
+        .and_then(serde_json::Value::as_array)?;
+    let mut models: Vec<String> = items
+        .iter()
+        .filter_map(|item| {
+            item.as_str().map(str::to_owned).or_else(|| {
+                item.get("id")
+                    .or_else(|| item.get("name"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned)
+            })
+        })
+        .filter(|model| !model.trim().is_empty())
+        .collect();
+    models.sort();
+    models.dedup();
+    Some(models)
+}
+
+#[cfg(test)]
+mod model_catalog_tests {
+    use super::parse_model_ids;
+
+    #[test]
+    fn parses_and_normalizes_common_model_catalog_shapes() {
+        assert_eq!(
+            parse_model_ids(r#"{"data":[{"id":"z-model"},{"id":"a-model"},{"id":"a-model"}]}"#),
+            Some(vec!["a-model".to_string(), "z-model".to_string()])
+        );
+        assert_eq!(
+            parse_model_ids(r#"{"models":[{"name":"gemini-pro"},"custom-model"]}"#),
+            Some(vec!["custom-model".to_string(), "gemini-pro".to_string()])
+        );
     }
 }
 

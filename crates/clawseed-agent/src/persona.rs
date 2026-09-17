@@ -47,9 +47,7 @@ pub struct PersonaOverrides {
 ///   default (openclaw, no AIEOS) so the prompt builder's system_prompt branch
 ///   takes effect. This guarantees a persona's system_prompt is not shadowed
 ///   by a global AIEOS identity.
-/// - Neither set → `config.identity` and `config.agent.system_prompt` are
-///   left untouched (persona only customises memory/tools, inheriting the
-///   global soul).
+/// - Neither set → both are reset to the neutral built-in identity.
 pub fn resolve_persona(
     config: &Config,
     name: Option<&str>,
@@ -79,7 +77,7 @@ pub fn resolve_persona(
     })
 }
 
-/// Apply the mutually-exclusive soul override (identity XOR system_prompt).
+/// Apply the mutually-exclusive persona soul (identity XOR system_prompt).
 fn apply_soul_override(cfg: &mut Config, entry: &AgentEntryConfig) {
     if let Some(identity) = entry.identity.as_ref() {
         cfg.identity = identity.clone();
@@ -93,26 +91,28 @@ fn apply_soul_override(cfg: &mut Config, entry: &AgentEntryConfig) {
         // prompt builder). With a default openclaw identity and no
         // personality_dir, the builder falls through to the system_prompt.
         cfg.identity = IdentityConfig::default();
+    } else {
+        // A persona with no custom soul uses the built-in neutral identity;
+        // it does not inherit a separately configured global soul.
+        cfg.agent.system_prompt = None;
+        cfg.identity = IdentityConfig::default();
     }
 }
 
-/// Apply tool-filter overrides (only when the persona sets them).
+/// Apply the persona's complete tool selection. An empty selection is
+/// represented by a non-matching allow pattern so it means “no tools”.
 fn apply_tool_overrides(cfg: &mut Config, entry: &AgentEntryConfig) {
-    if !entry.allowed_tools.is_empty() {
+    if entry.allowed_tools.is_empty() {
+        cfg.agent.allowed_tools = vec!["__persona_no_tools__".to_string()];
+    } else {
         cfg.agent.allowed_tools = entry.allowed_tools.clone();
     }
-    if !entry.denied_tools.is_empty() {
-        cfg.agent.denied_tools = entry.denied_tools.clone();
-    }
+    cfg.agent.denied_tools = entry.denied_tools.clone();
 }
 
-/// Apply persona-specific skill exclusions.
+/// Apply the persona's complete skill selection.
 fn apply_skill_overrides(cfg: &mut Config, entry: &AgentEntryConfig) {
-    for skill in &entry.denied_skills {
-        if !cfg.skills.excluded.contains(skill) {
-            cfg.skills.excluded.push(skill.clone());
-        }
-    }
+    cfg.skills.excluded = entry.denied_skills.clone();
 }
 
 /// Apply model/thinking overrides to the active provider profile.
@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    fn skill_overrides_merge_with_global_exclusions() {
+    fn skill_selection_replaces_global_exclusions() {
         let mut cfg = base_config();
         cfg.skills.excluded = vec!["global-skill".into()];
         cfg.agents.insert(
@@ -415,7 +415,7 @@ mod tests {
         let ov = resolve_persona(&cfg, Some("focused"), none_mem()).expect("persona resolved");
         assert_eq!(
             ov.config.skills.excluded,
-            vec!["global-skill".to_string(), "persona-skill".to_string()]
+            vec!["persona-skill".to_string(), "global-skill".to_string()]
         );
         assert_eq!(cfg.skills.excluded, vec!["global-skill"]);
     }
@@ -433,6 +433,7 @@ mod tests {
                 base_url: None,
                 api_path: None,
                 model: Some("global-model".into()),
+                models: vec!["global-model".into(), "persona-model".into()],
                 temperature: None,
                 timeout_secs: None,
                 extra_headers: std::collections::HashMap::new(),
@@ -494,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    fn no_soul_no_tools_only_namespace_still_resolves() {
+    fn omitted_soul_and_tools_resolve_to_explicit_neutral_defaults() {
         let mut cfg = base_config();
         cfg.agents.insert(
             "memonly".into(),
@@ -505,8 +506,11 @@ mod tests {
         );
 
         let ov = resolve_persona(&cfg, Some("memonly"), none_mem()).expect("persona resolved");
-        // Inherits global soul (AIEOS marker preserved).
-        assert!(identity::is_aieos_configured(&ov.config.identity));
+        assert!(!identity::is_aieos_configured(&ov.config.identity));
+        assert_eq!(
+            ov.config.agent.allowed_tools,
+            vec!["__persona_no_tools__".to_string()]
+        );
         assert_eq!(
             ov.config.agent.memory_namespace.as_deref(),
             Some("persona_memonly")

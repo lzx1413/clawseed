@@ -212,15 +212,19 @@ pub(crate) async fn run_gateway_chat_with_tools(
     #[cfg(not(test))]
     {
         let config = _state.config.lock().clone();
+        let effective_persona = persona.or(Some("default"));
 
         // Resolve a named persona into config + memory overrides, if requested.
         // Falls back to the global config + shared memory when persona is unset
         // or names an entry with no persona-specific overrides.
-        let (config, shared_memory) =
-            match clawseed_agent::persona::resolve_persona(&config, persona, _state.mem.clone()) {
-                Some(ov) => (ov.config, ov.memory.unwrap_or_else(|| _state.mem.clone())),
-                None => (config, _state.mem.clone()),
-            };
+        let (config, shared_memory) = match clawseed_agent::persona::resolve_persona(
+            &config,
+            effective_persona,
+            _state.mem.clone(),
+        ) {
+            Some(ov) => (ov.config, ov.memory.unwrap_or_else(|| _state.mem.clone())),
+            None => (config, _state.mem.clone()),
+        };
 
         let mut agent = clawseed_agent::agent::Agent::from_config_with_shared_components(
             &config,
@@ -248,7 +252,7 @@ pub(crate) async fn run_gateway_chat_with_tools(
         agent.set_user_context(Some(clawseed_api::user_profile::UserContext {
             user_id: crate::LOCAL_OWNER_USER_ID.to_string(),
             session_id: session_id.map(str::to_string),
-            persona_id: persona.map(str::to_string),
+            persona_id: effective_persona.map(str::to_string),
         }));
         agent.turn(message).await
     }

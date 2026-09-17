@@ -10,6 +10,66 @@ fn config_with_temp_save_path() -> (clawseed_config::schema::Config, tempfile::T
 }
 
 #[tokio::test]
+async fn persona_api_exposes_a_non_deletable_default_persona() {
+    let (mut config, _temp_dir) = config_with_temp_save_path();
+    config.providers.fallback = Some("openai".to_string());
+    config.providers.models.insert(
+        "openai".to_string(),
+        serde_json::from_value(serde_json::json!({"model": "gpt-default"})).unwrap(),
+    );
+    config.agents.insert(
+        "default".to_string(),
+        clawseed_config::schema::AgentEntryConfig {
+            api_key: Some("existing-key".to_string()),
+            ..Default::default()
+        },
+    );
+    let state = test_state(config);
+    let headers = axum::http::HeaderMap::new();
+
+    let get_response = handle_api_persona_get(
+        axum::extract::State(state.clone()),
+        headers.clone(),
+        axum::extract::Path("default".to_string()),
+    )
+    .await
+    .into_response();
+    assert_eq!(get_response.status(), axum::http::StatusCode::OK);
+    let detail = response_json(get_response).await;
+    assert_eq!(detail["is_persona"], true);
+    assert_eq!(detail["provider"], "openai");
+    assert_eq!(detail["model"], "gpt-default");
+
+    let list_response =
+        handle_api_personas_list(axum::extract::State(state.clone()), headers.clone())
+            .await
+            .into_response();
+    assert_eq!(list_response.status(), axum::http::StatusCode::OK);
+    let list = response_json(list_response).await;
+    let defaults: Vec<_> = list["personas"]
+        .as_array()
+        .expect("personas array")
+        .iter()
+        .filter(|entry| entry["name"] == "default")
+        .collect();
+    assert_eq!(defaults.len(), 1);
+    assert_eq!(defaults[0]["is_persona"], true);
+    assert_eq!(defaults[0]["model"], "gpt-default");
+
+    let delete_response = handle_api_persona_delete(
+        axum::extract::State(state),
+        headers,
+        axum::extract::Path("default".to_string()),
+    )
+    .await
+    .into_response();
+    assert_eq!(
+        delete_response.status(),
+        axum::http::StatusCode::BAD_REQUEST
+    );
+}
+
+#[tokio::test]
 async fn persona_api_round_trips_model_thinking_and_visuals() {
     let (config, _temp_dir) = config_with_temp_save_path();
     let state = test_state(config);

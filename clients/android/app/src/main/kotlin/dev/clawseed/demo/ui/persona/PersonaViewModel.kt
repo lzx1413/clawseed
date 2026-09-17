@@ -22,8 +22,8 @@ data class PersonaDraft(
     val systemPrompt: String = "",
     val model: String = "",
     val provider: String = "",
-    val thinkingEnabled: Boolean? = null,
-    val vision: String? = null,
+    val thinkingEnabled: Boolean = false,
+    val vision: String = "auto",
     val avatar: String = "",
     val color: String = "",
     val memoryMode: String = "shared",
@@ -38,6 +38,7 @@ data class PersonaUiState(
     val availableModels: List<String> = emptyList(),
     val availableProviders: List<ProviderInfo> = emptyList(),
     val isLoading: Boolean = false,
+    val isFetchingModels: Boolean = false,
     val isSaving: Boolean = false,
     val editing: PersonaDraft? = null,
     val viewing: PersonaDetail? = null,
@@ -72,8 +73,12 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun newPersona() {
+        val provider = _uiState.value.availableProviders.firstOrNull { it.active }
+            ?: _uiState.value.availableProviders.firstOrNull()
         _uiState.value = _uiState.value.copy(
             editing = PersonaDraft(
+                provider = provider?.id.orEmpty(),
+                model = provider?.models?.firstOrNull() ?: provider?.model.orEmpty(),
                 allowedTools = defaultAllowedTools(_uiState.value.tools),
             ),
             viewing = null,
@@ -89,7 +94,7 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         viewing = null,
-                        editing = detail.toDraft(_uiState.value.tools),
+                        editing = detail.toDraft(_uiState.value.tools, _uiState.value.availableProviders),
                     )
                 }
                 .onFailure { e ->
@@ -116,6 +121,34 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
         _uiState.value = _uiState.value.copy(editing = transform(draft), error = null)
     }
 
+    fun fetchModelsForEditingProvider() {
+        val providerId = _uiState.value.editing?.provider?.takeIf(String::isNotBlank) ?: return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isFetchingModels = true, error = null)
+            ClawSeedAndroid.gatewayClient().models(providerId)
+                .onSuccess { models ->
+                    val normalized = models.map(String::trim).filter(String::isNotBlank).distinct()
+                    val state = _uiState.value
+                    val draft = state.editing
+                    _uiState.value = state.copy(
+                        isFetchingModels = false,
+                        availableProviders = state.availableProviders.map { provider ->
+                            if (provider.id == providerId) provider.copy(models = normalized) else provider
+                        },
+                        editing = draft?.takeIf { it.provider == providerId }?.let {
+                            if (it.model.isBlank()) it.copy(model = normalized.firstOrNull().orEmpty()) else it
+                        } ?: draft,
+                    )
+                }
+                .onFailure { error ->
+                    _uiState.value = _uiState.value.copy(
+                        isFetchingModels = false,
+                        error = error.message,
+                    )
+                }
+        }
+    }
+
     fun closeEditor() {
         _uiState.value = _uiState.value.copy(editing = null, viewing = null, error = null)
     }
@@ -125,6 +158,10 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
         val name = draft.name.trim()
         if (name.isEmpty()) {
             _uiState.value = _uiState.value.copy(error = getApplication<Application>().getString(R.string.persona_name_required))
+            return
+        }
+        if (draft.provider.isBlank() || draft.model.isBlank()) {
+            _uiState.value = _uiState.value.copy(error = getApplication<Application>().getString(R.string.persona_llm_required))
             return
         }
         if (!draft.hasPersonaOverrides()) {
@@ -157,7 +194,7 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             ClawSeedAndroid.gatewayClient().persona(info.name)
                 .onSuccess { detail ->
                     _uiState.value = _uiState.value.copy(
-                        editing = detail.toDraft(_uiState.value.tools).copy(
+                        editing = detail.toDraft(_uiState.value.tools, _uiState.value.availableProviders).copy(
                             originalName = null,
                             name = "${detail.name}-copy",
                         ),
@@ -176,27 +213,36 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun PersonaDetail.toDraft(tools: List<ToolInfo>): PersonaDraft {
+    private fun PersonaDetail.toDraft(tools: List<ToolInfo>, providers: List<ProviderInfo>): PersonaDraft {
         val ns = memoryNamespace.orEmpty()
+        val selectedProvider = providers.firstOrNull { it.id == provider }
+            ?: providers.firstOrNull { it.active }
+            ?: providers.firstOrNull()
         return PersonaDraft(
             originalName = name,
             name = name,
-            systemPrompt = systemPrompt ?: identity?.toString().orEmpty(),
-            model = model.orEmpty(),
-            provider = provider.orEmpty(),
-            thinkingEnabled = thinkingEnabled,
-            vision = vision,
+            systemPrompt = systemPrompt ?: identity?.takeIf { hasIdentity }?.toString().orEmpty(),
+            model = model?.takeIf(String::isNotBlank)
+                ?: selectedProvider?.models?.firstOrNull()
+                ?: selectedProvider?.model.orEmpty(),
+            provider = provider?.takeIf(String::isNotBlank) ?: selectedProvider?.id.orEmpty(),
+            thinkingEnabled = thinkingEnabled ?: false,
+            vision = vision ?: "auto",
             avatar = avatar.orEmpty(),
             color = color.orEmpty(),
             memoryMode = if (ns.isBlank()) "shared" else "isolated",
-            allowedTools = if (allowedTools.isEmpty()) defaultAllowedTools(tools) else allowedTools.toSet(),
+            allowedTools = if (allowedTools.isEmpty() || "*" in allowedTools) {
+                defaultAllowedTools(tools)
+            } else {
+                allowedTools.toSet()
+            },
             deniedSkills = deniedSkills.toSet(),
         )
     }
 
     private fun PersonaDraft.toUpsert(): PersonaUpsert {
         return PersonaUpsert(
-            provider = provider.trim().ifEmpty { null },
+            provider = provider.trim(),
             identity = null,
             systemPrompt = systemPrompt.trim().ifEmpty { null },
             memoryNamespace = if (memoryMode == "isolated") {
@@ -207,7 +253,7 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             allowedTools = allowedTools.sorted(),
             deniedTools = emptyList(),
             deniedSkills = deniedSkills.sorted(),
-            model = model.trim().ifEmpty { null },
+            model = model.trim(),
             thinkingEnabled = thinkingEnabled,
             vision = vision,
             avatar = avatar.trim().ifEmpty { null },
@@ -222,8 +268,6 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             || deniedSkills.isNotEmpty()
             || provider.isNotBlank()
             || model.isNotBlank()
-            || thinkingEnabled != null
-            || vision != null
             || avatar.isNotBlank()
             || color.isNotBlank()
 

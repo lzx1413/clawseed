@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -99,7 +100,7 @@ fun PersonaManagerScreen(
                     Text(
                         when {
                             uiState.editing != null -> stringResource(R.string.persona_edit_title)
-                            uiState.viewing != null -> uiState.viewing!!.name
+                            uiState.viewing != null -> personaDisplayName(uiState.viewing!!.name)
                             else -> stringResource(R.string.persona_manager_title)
                         },
                     )
@@ -138,7 +139,9 @@ fun PersonaManagerScreen(
                     skills = uiState.skills,
                     availableModels = uiState.availableModels,
                     availableProviders = uiState.availableProviders,
+                    isFetchingModels = uiState.isFetchingModels,
                     isSaving = uiState.isSaving,
+                    onFetchModels = viewModel::fetchModelsForEditingProvider,
                     onDraftChange = { viewModel.updateDraft { _ -> it } },
                     onSave = { viewModel.save() },
                     onSaveAndStart = { viewModel.save(onStartChat) },
@@ -246,7 +249,7 @@ private fun PersonaList(
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            persona.name,
+                            personaDisplayName(persona.name),
                             style = MaterialTheme.typography.titleSmall,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -268,8 +271,10 @@ private fun PersonaList(
                     IconButton(onClick = { onDuplicate(persona) }) {
                         Icon(Icons.Default.Add, contentDescription = stringResource(R.string.persona_duplicate))
                     }
-                    IconButton(onClick = { confirmDelete = true }) {
-                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.error)
+                    if (persona.name != "default") {
+                        IconButton(onClick = { confirmDelete = true }) {
+                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
             }
@@ -312,16 +317,21 @@ private fun PersonaDetailView(
         item {
             PersonaSection(title = stringResource(R.string.persona_llm_section)) {
                 SettingLine(
+                    label = stringResource(R.string.persona_provider_label),
+                    value = detail.provider?.takeIf { it.isNotBlank() }
+                        ?: stringResource(R.string.persona_not_configured),
+                )
+                SettingLine(
                     label = stringResource(R.string.persona_model_label),
                     value = detail.model?.takeIf { it.isNotBlank() }
-                        ?: stringResource(R.string.persona_model_inherit),
+                        ?: stringResource(R.string.persona_model_not_configured),
                 )
                 SettingLine(
                     label = stringResource(R.string.persona_thinking_override),
                     value = when (detail.thinkingEnabled) {
                         true -> stringResource(R.string.persona_thinking_on)
                         false -> stringResource(R.string.persona_thinking_off)
-                        null -> stringResource(R.string.persona_thinking_inherit)
+                        null -> stringResource(R.string.persona_not_configured)
                     },
                 )
             }
@@ -338,7 +348,7 @@ private fun PersonaDetailView(
         item {
             Text(stringResource(R.string.persona_tools_section), style = MaterialTheme.typography.titleMedium)
             if (detail.allowedTools.isEmpty()) {
-                Text(stringResource(R.string.persona_tools_inherit), style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.persona_tools_none), style = MaterialTheme.typography.bodySmall)
             }
         }
         groupToolNames(detail.allowedTools).forEach { (group, names) ->
@@ -410,7 +420,7 @@ private fun PersonaIdentityHeader(detail: PersonaDetail) {
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    text = detail.name,
+                    text = personaDisplayName(detail.name),
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -453,13 +463,13 @@ private fun personaFeatureTags(detail: PersonaDetail): List<String> {
         )
         add(
             detail.model?.takeIf { it.isNotBlank() }
-                ?: stringResource(R.string.persona_model_inherit)
+                ?: stringResource(R.string.persona_not_configured)
         )
         add(
             when (detail.thinkingEnabled) {
                 true -> stringResource(R.string.persona_feature_thinking_on)
                 false -> stringResource(R.string.persona_feature_thinking_off)
-                null -> stringResource(R.string.persona_feature_thinking_inherit)
+                null -> stringResource(R.string.persona_not_configured)
             }
         )
         add(
@@ -593,8 +603,8 @@ private fun PersonaAppearanceSection(
 
 @Composable
 private fun ThinkingModeSelector(
-    value: Boolean?,
-    onChange: (Boolean?) -> Unit,
+    value: Boolean,
+    onChange: (Boolean) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(stringResource(R.string.persona_thinking_mode))
@@ -603,17 +613,12 @@ private fun ThinkingModeSelector(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             FilterChip(
-                selected = value == null,
-                onClick = { onChange(null) },
-                label = { Text(stringResource(R.string.persona_thinking_inherit)) },
-            )
-            FilterChip(
-                selected = value == true,
+                selected = value,
                 onClick = { onChange(true) },
                 label = { Text(stringResource(R.string.persona_thinking_on)) },
             )
             FilterChip(
-                selected = value == false,
+                selected = !value,
                 onClick = { onChange(false) },
                 label = { Text(stringResource(R.string.persona_thinking_off)) },
             )
@@ -629,7 +634,9 @@ private fun PersonaEditor(
     skills: List<SkillInfo>,
     availableModels: List<String>,
     availableProviders: List<dev.clawseed.sdk.core.model.ProviderInfo>,
+    isFetchingModels: Boolean,
     isSaving: Boolean,
+    onFetchModels: () -> Unit,
     onDraftChange: (PersonaDraft) -> Unit,
     onSave: () -> Unit,
     onSaveAndStart: () -> Unit,
@@ -648,10 +655,15 @@ private fun PersonaEditor(
     ) {
         item {
             OutlinedTextField(
-                value = draft.name,
+                value = if (draft.originalName == "default") {
+                    stringResource(R.string.persona_default_desc)
+                } else {
+                    draft.name
+                },
                 onValueChange = { onDraftChange(draft.copy(name = it)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
+                enabled = draft.originalName != "default",
                 label = { Text(stringResource(R.string.persona_name_label)) },
             )
         }
@@ -691,7 +703,8 @@ private fun PersonaEditor(
                     onExpandedChange = { providerExpanded = it },
                 ) {
                     OutlinedTextField(
-                        value = draft.provider.ifBlank { "继承全局 Provider" },
+                        value = availableProviders.firstOrNull { it.id == draft.provider }?.name
+                            ?.ifBlank { draft.provider } ?: draft.provider,
                         onValueChange = {},
                         modifier = Modifier
                             .fillMaxWidth()
@@ -705,13 +718,6 @@ private fun PersonaEditor(
                         expanded = providerExpanded,
                         onDismissRequest = { providerExpanded = false },
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("继承全局 Provider") },
-                            onClick = {
-                                onDraftChange(draft.copy(provider = "", model = "", vision = null))
-                                providerExpanded = false
-                            },
-                        )
                         availableProviders.forEach { provider ->
                             DropdownMenuItem(
                                 text = { Text(provider.name.ifBlank { provider.id }) },
@@ -719,7 +725,7 @@ private fun PersonaEditor(
                                     onDraftChange(draft.copy(
                                         provider = provider.id,
                                         model = provider.models.firstOrNull() ?: provider.model.orEmpty(),
-                                        vision = null,
+                                        vision = "auto",
                                     ))
                                     providerExpanded = false
                                 },
@@ -727,51 +733,53 @@ private fun PersonaEditor(
                         }
                     }
                 }
-                ExposedDropdownMenuBox(
-                    expanded = modelExpanded,
-                    onExpandedChange = { modelExpanded = it },
-                ) {
-                    OutlinedTextField(
-                        value = draft.model.ifBlank { stringResource(R.string.persona_model_inherit) },
-                        onValueChange = {},
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-                        readOnly = true,
-                        singleLine = true,
-                        label = { Text(stringResource(R.string.persona_model_label)) },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded) },
-                    )
-                    ExposedDropdownMenu(
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ExposedDropdownMenuBox(
                         expanded = modelExpanded,
-                        onDismissRequest = { modelExpanded = false },
+                        onExpandedChange = { modelExpanded = it },
+                        modifier = Modifier.weight(1f),
                     ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.persona_model_inherit)) },
-                            onClick = {
-                                onDraftChange(draft.copy(model = "", vision = null))
-                                modelExpanded = false
-                            },
+                        OutlinedTextField(
+                            value = draft.model,
+                            onValueChange = { onDraftChange(draft.copy(model = it, vision = "auto")) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable),
+                            singleLine = true,
+                            label = { Text(stringResource(R.string.persona_model_label)) },
+                            placeholder = { Text(stringResource(R.string.persona_model_placeholder)) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded) },
                         )
-                        val providerModels = availableProviders
-                            .firstOrNull { it.id == draft.provider }
-                            ?.models
-                            ?.ifEmpty { listOfNotNull(availableProviders.firstOrNull { it.id == draft.provider }?.model) }
-                            ?: availableModels
-                        providerModels.forEach { model ->
-                            DropdownMenuItem(
-                                text = { Text(model, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                onClick = {
-                                    onDraftChange(draft.copy(model = model, vision = null))
-                                    modelExpanded = false
-                                },
-                            )
+                        ExposedDropdownMenu(
+                            expanded = modelExpanded,
+                            onDismissRequest = { modelExpanded = false },
+                        ) {
+                            val providerModels = availableProviders
+                                .firstOrNull { it.id == draft.provider }
+                                ?.models
+                                ?.ifEmpty { listOfNotNull(availableProviders.firstOrNull { it.id == draft.provider }?.model) }
+                                ?: availableModels
+                            providerModels.forEach { model ->
+                                DropdownMenuItem(
+                                    text = { Text(model, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    onClick = {
+                                        onDraftChange(draft.copy(model = model, vision = "auto"))
+                                        modelExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    IconButton(onClick = onFetchModels, enabled = draft.provider.isNotBlank() && !isFetchingModels) {
+                        if (isFetchingModels) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.common_refresh))
                         }
                     }
                 }
                 dev.clawseed.demo.ui.components.VisionModeSelector(
                     value = draft.vision,
-                    allowInherit = true,
                     onChange = { onDraftChange(draft.copy(vision = it)) },
                 )
                 ThinkingModeSelector(
@@ -871,6 +879,10 @@ private fun PersonaEditor(
         }
     }
 }
+
+@Composable
+private fun personaDisplayName(name: String): String =
+    if (name == "default") stringResource(R.string.persona_default_desc) else name
 
 @Composable
 private fun CollapsiblePersonaSection(
@@ -1184,6 +1196,7 @@ private fun PersonaDetail.toInfo(): PersonaInfo =
         hasIdentity = hasIdentity,
         hasSystemPrompt = hasSystemPrompt,
         memoryNamespace = memoryNamespace,
+        provider = provider,
         allowedTools = allowedTools,
         deniedTools = deniedTools,
         deniedSkills = deniedSkills,

@@ -268,6 +268,7 @@ fn make_config(api_addr: std::net::SocketAddr) -> clawseed_config::schema::Confi
             name: None,
             api_path: None,
             temperature: None,
+            models: vec!["test-model".into()],
             timeout_secs: None,
             extra_headers: Default::default(),
             wire_api: None,

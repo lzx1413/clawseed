@@ -149,12 +149,8 @@ fun SettingsScreen(
     var llmExpanded by rememberSaveable { mutableStateOf(false) }
     val settingsListState = rememberLazyListState()
     val providerScrollState = rememberScrollState()
-    var memoryExpanded by remember { mutableStateOf(false) }
     var userModelExpanded by remember { mutableStateOf(false) }
     var searchEngineExpanded by remember { mutableStateOf(false) }
-    var soulExpanded by remember { mutableStateOf(false) }
-    var toolsExpanded by remember { mutableStateOf(false) }
-    var skillsExpanded by remember { mutableStateOf(false) }
     var developerExpanded by remember { mutableStateOf(false) }
     var appearanceExpanded by remember { mutableStateOf(false) }
     var sessionExpanded by remember { mutableStateOf(false) }
@@ -378,60 +374,6 @@ fun SettingsScreen(
                     }
                 }
 
-                // Memory section (向量搜索/Embedding)
-                item {
-                    val memorySubtitle = when (uiState.embeddingProvider) {
-                        "local" -> stringResource(R.string.settings_memory_local_model)
-                        "openai" -> stringResource(R.string.settings_memory_openai)
-                        "openrouter" -> stringResource(R.string.settings_memory_openrouter)
-                        "" -> stringResource(R.string.settings_memory_off)
-                        else -> if (uiState.embeddingProvider.startsWith("custom:")) stringResource(R.string.settings_memory_custom) else uiState.embeddingProvider
-                    }
-                    ExpandableSection(
-                        title = stringResource(R.string.settings_memory),
-                        expanded = memoryExpanded,
-                        onToggle = { memoryExpanded = !memoryExpanded },
-                        subtitle = if (!memoryExpanded) memorySubtitle else null,
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            EmbeddingCard(
-                                embeddingProvider = uiState.embeddingProvider,
-                                embeddingModel = uiState.embeddingModel,
-                                embeddingDims = uiState.embeddingDims,
-                                embeddingApiKey = uiState.embeddingApiKey,
-                                embeddingApiKeyVisible = uiState.embeddingApiKeyVisible,
-                                onProviderChange = viewModel::updateEmbeddingProvider,
-                                onModelChange = viewModel::updateEmbeddingModel,
-                                onDimsChange = viewModel::updateEmbeddingDims,
-                                onApiKeyChange = viewModel::updateEmbeddingApiKey,
-                                onToggleApiKeyVisibility = viewModel::toggleEmbeddingApiKeyVisibility,
-                            )
-                            val progress = uiState.downloadProgress
-                            if (uiState.embeddingProvider == "local" && progress != null && !progress.isComplete) {
-                                DownloadProgressIndicator(progress)
-                            }
-                            if (uiState.embeddingProvider == "local" && progress != null && progress.isComplete) {
-                                Text(
-                                    text = stringResource(R.string.settings_memory_model_downloaded),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                            }
-                            Button(
-                                onClick = { viewModel.saveConfig() },
-                                enabled = !uiState.isSaving,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                if (uiState.isSaving) {
-                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                }
-                                Text(if (uiState.isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_memory_config))
-                            }
-                        }
-                    }
-                }
-
                 // User modeling section
                 item {
                     ExpandableSection(
@@ -481,103 +423,6 @@ fun SettingsScreen(
                                     } else {
                                         stringResource(R.string.settings_save_user_model)
                                     },
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Soul section
-                item {
-                    val soulLoaded = uiState.soulContent != null
-                    val soulPreview = uiState.soulContent?.lineSequence()
-                        ?.firstOrNull()?.removePrefix("# ")?.trim()
-                    ExpandableSection(
-                        title = "Soul",
-                        expanded = soulExpanded,
-                        onToggle = { soulExpanded = !soulExpanded },
-                        subtitle = if (!soulExpanded && !soulLoaded) stringResource(R.string.settings_soul_load_error)
-                        else if (!soulExpanded && soulPreview.isNullOrBlank()) stringResource(R.string.settings_soul_not_customized)
-                        else if (!soulExpanded) soulPreview
-                        else null,
-                    ) {
-                        if (soulLoaded) {
-                            SoulEditor(
-                                content = uiState.soulContent!!,
-                                onContentChange = viewModel::updateSoulContent,
-                                isSaving = uiState.isSavingSoul,
-                                onSave = viewModel::saveSoul,
-                            )
-                        } else {
-                            Text(
-                                text = stringResource(R.string.settings_soul_load_failed),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
-                    }
-                }
-
-                // Tools section
-                item {
-                    ExpandableSection(
-                        title = stringResource(R.string.settings_registered_tools, uiState.tools.size),
-                        expanded = toolsExpanded,
-                        onToggle = { toolsExpanded = !toolsExpanded },
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            uiState.tools.forEach { tool ->
-                                ToolCard(
-                                    tool = tool,
-                                    onToggle = { viewModel.toggleTool(tool.name, it) },
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Skills section
-                item {
-                    ExpandableSection(
-                        title = stringResource(R.string.settings_available_skills, uiState.skills.size),
-                        expanded = skillsExpanded,
-                        onToggle = { skillsExpanded = !skillsExpanded },
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            // Skill editor (shown when a skill is being edited)
-                            if (uiState.editingSkill != null) {
-                                SkillEditor(
-                                    skillName = uiState.editingSkill!!.name,
-                                    content = uiState.skillContent,
-                                    isLoading = uiState.isLoadingSkill,
-                                    isSaving = uiState.isSavingSkill,
-                                    onContentChange = viewModel::updateSkillContent,
-                                    onSave = viewModel::saveSkill,
-                                    onClose = viewModel::closeSkillEditor,
-                                )
-                            }
-                            OutlinedButton(
-                                onClick = { viewModel.refreshSkills() },
-                                enabled = !uiState.isRefreshingSkills,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                if (uiState.isRefreshingSkills) {
-                                    CircularProgressIndicator(modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                }
-                                Icon(
-                                    Icons.Default.Refresh,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(if (uiState.isRefreshingSkills) stringResource(R.string.common_saving) else stringResource(R.string.settings_refresh_skills))
-                            }
-                            uiState.skills.forEach { skill ->
-                                SkillCard(
-                                    skill = skill,
-                                    onToggle = { viewModel.toggleSkill(skill.name, it) },
-                                    onClick = { viewModel.editSkill(skill) },
                                 )
                             }
                         }
@@ -1160,7 +1005,7 @@ private fun ProviderFormEditor(
 
             dev.clawseed.demo.ui.components.VisionModeSelector(
                 value = state.vision,
-                onChange = { onVisionChange(it ?: "auto") },
+                onChange = onVisionChange,
             )
 
             if (state.vision == "auto") {

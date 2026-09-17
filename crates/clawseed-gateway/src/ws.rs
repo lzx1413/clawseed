@@ -259,10 +259,12 @@ async fn handle_socket(
     let is_first_binding = stored_persona.is_none();
     // Stored binding is authoritative on resume (ignores ?persona=); only on
     // first connect does the query param take effect.
-    let effective_persona = stored_persona.or(persona);
+    let effective_persona = stored_persona
+        .or(persona)
+        .or_else(|| Some("default".to_string()));
     if is_first_binding && let Some(ref backend) = state.session_backend {
-        // Persist the binding on first connect. Only non-None personas are
-        // recorded to keep the table sparse (None == no row == default global).
+        // Persist every new chat against a persona. An omitted selection is
+        // the explicit default persona.
         if effective_persona.is_some() {
             let _ = backend.set_session_persona(&session_key, effective_persona.as_deref());
         }

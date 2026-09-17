@@ -13,15 +13,13 @@ import dev.clawseed.demo.R
 
 @Composable
 fun VisionModeSelector(
-    value: String?,
-    onChange: (String?) -> Unit,
-    allowInherit: Boolean = false,
+    value: String,
+    onChange: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(stringResource(R.string.settings_vision))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            val options = buildList<Pair<String?, Int>> {
-                if (allowInherit) add(null to R.string.settings_vision_inherit)
+            val options = buildList<Pair<String, Int>> {
                 add("auto" to R.string.settings_vision_auto)
                 add("enabled" to R.string.settings_vision_on)
                 add("disabled" to R.string.settings_vision_off)
@@ -35,7 +33,7 @@ fun VisionModeSelector(
             }
         }
         Text(
-            stringResource(if (allowInherit) R.string.settings_vision_persona_hint else R.string.settings_vision_hint),
+            stringResource(R.string.settings_vision_hint),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

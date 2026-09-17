@@ -1622,7 +1622,7 @@ pub struct WebSearchConfig {
 /// `api_key` keep working unchanged.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentEntryConfig {
-    /// Provider profile selected by this persona. When absent, inherits the global fallback.
+    /// Provider profile selected by this persona. Optional only for legacy configs.
     #[serde(default)]
     pub provider: Option<String>,
     #[serde(default)]
@@ -1661,12 +1661,12 @@ pub struct AgentEntryConfig {
     #[serde(default)]
     pub model: Option<String>,
 
-    /// Vision override for this persona; absent inherits only for the same model.
+    /// Vision mode for this persona. Optional only for legacy configs.
     #[serde(default)]
     pub vision: Option<VisionMode>,
 
-    /// Optional thinking/reasoning toggle for this persona. `None` inherits the
-    /// global provider profile; `Some(true/false)` writes
+    /// Thinking/reasoning toggle for this persona. `None` is accepted for
+    /// legacy configs; `Some(true/false)` writes
     /// `provider_extra.thinking.type = enabled/disabled` for this persona's
     /// resolved config.
     #[serde(default)]
