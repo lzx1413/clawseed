@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use clawseed_agent::history::ContextCompaction;
 use clawseed_api::{provider::ChatMessage, tool::ToolPresentation};
 use parking_lot::Mutex;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -94,6 +95,16 @@ impl SqliteSessionBackend {
                 schema_version  INTEGER NOT NULL,
                 presentation_json TEXT NOT NULL,
                 FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+            );
+
+            -- Request-only compacted context. The original messages remain in
+            -- `messages` so the UI and exports retain the complete transcript.
+            CREATE TABLE IF NOT EXISTS session_compactions (
+                session_key          TEXT PRIMARY KEY,
+                summary              TEXT NOT NULL,
+                source_chat_messages INTEGER NOT NULL,
+                created_at           TEXT NOT NULL,
+                FOREIGN KEY (session_key) REFERENCES sessions(session_key) ON DELETE CASCADE
             );
 
             -- Persona↔session binding (旁路表，不碰 sessions 主表 schema).
@@ -257,6 +268,56 @@ impl SessionBackend for SqliteSessionBackend {
             return Vec::new();
         };
         rows.filter_map(|r| r.ok()).collect()
+    }
+
+    fn load_compaction(&self, session_key: &str) -> Option<ContextCompaction> {
+        let conn = self.conn.lock();
+        conn.query_row(
+            "SELECT summary, source_chat_messages FROM session_compactions WHERE session_key = ?1",
+            params![session_key],
+            |row| {
+                Ok(ContextCompaction {
+                    summary: row.get(0)?,
+                    source_chat_messages: row.get(1)?,
+                })
+            },
+        )
+        .optional()
+        .ok()
+        .flatten()
+    }
+
+    fn save_compaction(
+        &self,
+        session_key: &str,
+        compaction: &ContextCompaction,
+    ) -> anyhow::Result<()> {
+        let conn = self.conn.lock();
+        self.ensure_session(&conn, session_key)?;
+        conn.execute(
+            "INSERT INTO session_compactions (session_key, summary, source_chat_messages, created_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(session_key) DO UPDATE SET
+                summary = excluded.summary,
+                source_chat_messages = excluded.source_chat_messages,
+                created_at = excluded.created_at",
+            params![
+                session_key,
+                compaction.summary,
+                i64::try_from(compaction.source_chat_messages).unwrap_or(i64::MAX),
+                Utc::now().to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn clear_compaction(&self, session_key: &str) -> anyhow::Result<()> {
+        let conn = self.conn.lock();
+        conn.execute(
+            "DELETE FROM session_compactions WHERE session_key = ?1",
+            params![session_key],
+        )?;
+        Ok(())
     }
 
     fn load_with_presentations(&self, session_key: &str) -> Vec<PersistedMessage> {
@@ -628,6 +689,29 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         SqliteSessionBackend::new(tmp.path()).unwrap()
         // tmp keeps the temp dir alive for the test via the backend's open conn
+    }
+
+    #[test]
+    fn context_compaction_round_trip_survives_reopen() {
+        let tmp = tempfile::tempdir().unwrap();
+        let compaction = ContextCompaction {
+            summary: "deployment uses the blue environment".into(),
+            source_chat_messages: 6,
+        };
+        {
+            let backend = SqliteSessionBackend::new(tmp.path()).unwrap();
+            backend
+                .save_compaction("gw_compaction", &compaction)
+                .unwrap();
+            assert_eq!(
+                backend.load_compaction("gw_compaction"),
+                Some(compaction.clone())
+            );
+        }
+        let backend = SqliteSessionBackend::new(tmp.path()).unwrap();
+        assert_eq!(backend.load_compaction("gw_compaction"), Some(compaction));
+        backend.clear_compaction("gw_compaction").unwrap();
+        assert_eq!(backend.load_compaction("gw_compaction"), None);
     }
 
     #[test]

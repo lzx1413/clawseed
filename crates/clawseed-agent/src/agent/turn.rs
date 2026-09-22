@@ -209,15 +209,24 @@ impl Agent {
         // The system contains only lookup references, so their bodies remain
         // eligible for relevant recall.
         self.inject_recalled_memory(user_message).await;
+        if self.maybe_compact_context(None).await? {
+            self.clear_prompt_calibration();
+        }
 
         let effective_model = self.model_name.clone();
 
-        let mut auto_continue_count: usize = 0;
-
         for _ in 0..self.config.max_tool_iterations {
+            if self.maybe_compact_context(None).await? {
+                self.clear_prompt_calibration();
+            }
             let messages = self.tool_dispatcher.to_provider_messages(&self.history);
 
             let tool_specs = self.tool_registry.tool_specs();
+            let prompt_estimate = super::metrics::estimate_prompt_tokens(
+                &messages,
+                &tool_specs,
+                self.tool_dispatcher.should_send_tool_specs(),
+            );
             let response = match self
                 .provider
                 .chat(
@@ -238,6 +247,7 @@ impl Agent {
                 Ok(resp) => resp,
                 Err(err) => return Err(err),
             };
+            self.remember_prompt_calibration(prompt_estimate.total_tokens, response.usage.as_ref());
 
             let (text, calls) = self.tool_dispatcher.parse_response(&response);
             if calls.is_empty() {
@@ -252,27 +262,6 @@ impl Agent {
                         final_text.clone(),
                     )));
                 self.trim_history();
-
-                // Auto-continue when truncated due to max_tokens
-                if response.stop_reason == clawseed_api::provider::StopReason::MaxTokens
-                    && self.config.auto_continue_on_truncation
-                    && auto_continue_count < self.config.max_auto_continue
-                {
-                    auto_continue_count += 1;
-                    tracing::warn!(
-                        auto_continue = auto_continue_count,
-                        max = self.config.max_auto_continue,
-                        "Response truncated by max_tokens, auto-continuing"
-                    );
-                    print!("\n[⚠ 输出被截断，自动续接中...]\n");
-                    use std::io::Write;
-                    let _ = std::io::stdout().lock().flush();
-                    self.history
-                        .push(ConversationMessage::Chat(ChatMessage::user(
-                            "请继续输出，不要重复已输出的内容",
-                        )));
-                    continue;
-                }
 
                 self.complete_turn(user_message, &final_text);
                 return Ok(final_text);
@@ -363,15 +352,19 @@ impl Agent {
         // When stable memory injection is enabled, entries already in the system
         // prompt (tracked by injected_core_state) are deduplicated.
         self.inject_recalled_memory(user_message).await;
+        if self.maybe_compact_context(Some(&event_tx)).await? {
+            self.clear_prompt_calibration();
+        }
 
         let effective_model = self.model_name.clone();
 
         // Try streaming first, fall back to non-streaming
         use futures_util::StreamExt;
 
-        let mut auto_continue_count: usize = 0;
-
-        for iteration in 0..self.config.max_tool_iterations {
+        for _iteration in 0..self.config.max_tool_iterations {
+            if self.maybe_compact_context(Some(&event_tx)).await? {
+                self.clear_prompt_calibration();
+            }
             if cancel_token
                 .as_ref()
                 .is_some_and(tokio_util::sync::CancellationToken::is_cancelled)
@@ -382,7 +375,12 @@ impl Agent {
             let messages = self.tool_dispatcher.to_provider_messages(&self.history);
 
             let tool_specs = self.tool_registry.tool_specs();
-            if debug && iteration == 0 {
+            let prompt_estimate = super::metrics::estimate_prompt_tokens(
+                &messages,
+                &tool_specs,
+                self.tool_dispatcher.should_send_tool_specs(),
+            );
+            let debug_prompt = if debug {
                 let mut debug_messages = serde_json::to_value(&messages).unwrap_or_default();
                 if let Some(messages) = debug_messages.as_array_mut() {
                     for message in messages {
@@ -394,19 +392,30 @@ impl Agent {
                     }
                 }
                 let messages_json = debug_messages.to_string();
-                let estimated_tokens = crate::history::estimate_history_tokens(&messages);
+                let estimated_tokens = self.calibrated_prompt_tokens(prompt_estimate.total_tokens);
                 let tools_json = self
                     .tool_dispatcher
                     .should_send_tool_specs()
                     .then(|| serde_json::to_string(&tool_specs).unwrap_or_default());
-                let estimated_tool_tokens =
-                    tools_json.as_ref().map_or(0, |json| json.len().div_ceil(4));
+                let estimated_tool_tokens = prompt_estimate.tool_tokens;
+                Some((
+                    messages_json,
+                    tools_json,
+                    estimated_tool_tokens,
+                    estimated_tokens,
+                ))
+            } else {
+                None
+            };
+            if let Some((messages_json, tools_json, estimated_tool_tokens, estimated_tokens)) =
+                debug_prompt.as_ref()
+            {
                 let _ = event_tx
                     .send(TurnEvent::DebugPrompt {
-                        messages_json,
-                        estimated_tokens,
-                        tools_json,
-                        estimated_tool_tokens,
+                        messages_json: messages_json.clone(),
+                        estimated_tokens: *estimated_tokens,
+                        tools_json: tools_json.clone(),
+                        estimated_tool_tokens: *estimated_tool_tokens,
                     })
                     .await;
             }
@@ -573,6 +582,25 @@ impl Agent {
                     None
                 },
             );
+            if let Some((messages_json, tools_json, estimated_tool_tokens, estimated_tokens)) =
+                debug_prompt
+            {
+                let exact_input_tokens = response
+                    .usage
+                    .as_ref()
+                    .and_then(|usage| usage.input_tokens)
+                    .map(|tokens| usize::try_from(tokens).unwrap_or(usize::MAX))
+                    .unwrap_or(estimated_tokens);
+                let _ = event_tx
+                    .send(TurnEvent::DebugPrompt {
+                        messages_json,
+                        estimated_tokens: exact_input_tokens,
+                        tools_json,
+                        estimated_tool_tokens,
+                    })
+                    .await;
+            }
+            self.remember_prompt_calibration(prompt_estimate.total_tokens, response.usage.as_ref());
             let (text, mut calls) = self.tool_dispatcher.parse_response(&response);
             if calls.is_empty() {
                 let final_text = if text.is_empty() {
@@ -594,29 +622,6 @@ impl Agent {
                         final_text.clone(),
                     )));
                 self.trim_history();
-
-                // Auto-continue when truncated due to max_tokens
-                if response.stop_reason == clawseed_api::provider::StopReason::MaxTokens
-                    && self.config.auto_continue_on_truncation
-                    && auto_continue_count < self.config.max_auto_continue
-                {
-                    auto_continue_count += 1;
-                    tracing::warn!(
-                        auto_continue = auto_continue_count,
-                        max = self.config.max_auto_continue,
-                        "Response truncated by max_tokens, auto-continuing"
-                    );
-                    let _ = event_tx
-                        .send(TurnEvent::Chunk {
-                            delta: "\n[⚠ 输出被截断，自动续接中...]\n".to_string(),
-                        })
-                        .await;
-                    self.history
-                        .push(ConversationMessage::Chat(ChatMessage::user(
-                            "请继续输出，不要重复已输出的内容",
-                        )));
-                    continue;
-                }
 
                 if debug {
                     let _ = event_tx

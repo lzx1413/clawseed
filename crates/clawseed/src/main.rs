@@ -154,6 +154,36 @@ async fn run_chat(
                         };
                         println!("\x1b[32m[result: {name}]\x1b[0m {preview}");
                     }
+                    TurnEvent::ContextCompactionStarted {
+                        before_tokens,
+                        total_chunks,
+                        ..
+                    } => {
+                        println!(
+                            "\n\x1b[33m[context compaction started: ~{before_tokens} tokens, {total_chunks} chunks]\x1b[0m"
+                        );
+                    }
+                    TurnEvent::ContextCompactionProgress {
+                        completed_chunks,
+                        total_chunks,
+                        stage,
+                    } => {
+                        println!(
+                            "\x1b[33m[context compaction {stage}: {completed_chunks}/{total_chunks}]\x1b[0m"
+                        );
+                    }
+                    TurnEvent::ContextCompactionCompleted {
+                        before_tokens,
+                        after_tokens,
+                        ..
+                    } => {
+                        println!(
+                            "\x1b[33m[context compaction complete: {before_tokens} -> {after_tokens} tokens]\x1b[0m"
+                        );
+                    }
+                    TurnEvent::ContextCompactionFailed { message, .. } => {
+                        println!("\x1b[31m[context compaction skipped: {message}]\x1b[0m");
+                    }
                     TurnEvent::DebugPrompt { .. } | TurnEvent::Metrics(_) => {}
                 }
             }

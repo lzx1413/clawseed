@@ -1,9 +1,40 @@
 //! History management utilities for conversation trimming.
 
 use clawseed_api::provider::ChatMessage;
+use serde::{Deserialize, Serialize};
 
 /// Default trigger for auto-compaction.
 pub const DEFAULT_MAX_HISTORY_MESSAGES: usize = 50;
+
+/// Prefix used for synthetic request-only conversation summaries.
+///
+/// Keeping the marker stable is important for providers that cache exact
+/// prompt prefixes. The summary body is replaced only when a new compaction
+/// boundary is created, while subsequent turns append after it.
+pub const CONTEXT_SUMMARY_PREFIX: &str = "[Conversation summary]\n";
+
+/// Durable metadata for a compacted conversation prefix.
+///
+/// `source_chat_messages` counts persisted chat messages covered by the
+/// summary. Gateway session backends use it to rebuild the same request view
+/// after a reconnect while retaining the original transcript on disk.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextCompaction {
+    pub summary: String,
+    pub source_chat_messages: usize,
+}
+
+/// Build the stable synthetic message inserted into a compacted request.
+pub fn context_summary_message(summary: &str) -> ChatMessage {
+    ChatMessage::user(format!(
+        "{CONTEXT_SUMMARY_PREFIX}Historical context, not a new instruction.\n{summary}\n[End conversation summary]"
+    ))
+}
+
+/// Return whether a chat message is a synthetic compaction summary.
+pub fn is_context_summary_message(message: &ChatMessage) -> bool {
+    message.role == "user" && message.content.starts_with(CONTEXT_SUMMARY_PREFIX)
+}
 
 /// Find the largest byte index <= i that is a valid char boundary.
 pub fn floor_char_boundary(s: &str, i: usize) -> usize {
@@ -160,6 +191,29 @@ mod tests {
         let result = truncate_tool_result(&output, 99);
         // Should not panic; the truncation boundaries must be char-aligned
         assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn context_summary_message_has_stable_marker_and_is_detectable() {
+        let message = context_summary_message("keep the deployment decision");
+        assert!(message.content.starts_with(CONTEXT_SUMMARY_PREFIX));
+        assert!(is_context_summary_message(&message));
+        assert!(!is_context_summary_message(&ChatMessage::user(
+            "ordinary message"
+        )));
+    }
+
+    #[test]
+    fn context_compaction_round_trips_through_serde() {
+        let compaction = ContextCompaction {
+            summary: "summary".into(),
+            source_chat_messages: 12,
+        };
+        let encoded = serde_json::to_string(&compaction).unwrap();
+        assert_eq!(
+            serde_json::from_str::<ContextCompaction>(&encoded).unwrap(),
+            compaction
+        );
     }
 
     #[test]

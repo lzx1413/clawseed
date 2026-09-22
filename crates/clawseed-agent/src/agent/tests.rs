@@ -311,18 +311,14 @@ async fn failed_and_cancelled_turns_do_not_schedule_learning() {
 }
 
 #[tokio::test]
-async fn truncated_turn_schedules_learning_only_after_final_success() {
+async fn truncated_turn_returns_without_automatic_continuation() {
     use clawseed_api::provider::StopReason;
 
-    let (mut agent, calls, _dir) = learning_test_agent(vec![
-        Ok(response("partial", StopReason::MaxTokens)),
-        Ok(response("finished", StopReason::EndTurn)),
-    ]);
-    agent.config.auto_continue_on_truncation = true;
-    agent.config.max_auto_continue = 1;
+    let (mut agent, calls, _dir) =
+        learning_test_agent(vec![Ok(response("partial", StopReason::MaxTokens))]);
     assert_eq!(
         agent.turn("Please keep responses concise.").await.unwrap(),
-        "finished"
+        "partial"
     );
     agent.shutdown_learning().await;
     assert_eq!(calls.load(Ordering::SeqCst), 1);
@@ -616,4 +612,110 @@ description = "A test skill"
         has_activation_msg,
         "History should contain skill activation message"
     );
+}
+
+#[tokio::test]
+async fn token_compaction_replaces_old_prefix_and_keeps_recent_tail() {
+    let provider = Box::new(MockProvider {
+        responses: Mutex::new(vec![ChatResponse {
+            text: Some("summary of the old context".into()),
+            tool_calls: vec![],
+            usage: None,
+            reasoning_content: None,
+            stop_reason: clawseed_api::provider::StopReason::EndTurn,
+        }]),
+    });
+    let config = clawseed_config::schema::AgentConfig {
+        context_compaction_enabled: true,
+        context_compaction_trigger_tokens: Some(2_000),
+        context_compaction_target_tokens: 256,
+        context_compaction_keep_recent_messages: 1,
+        context_compaction_keep_recent_turns: Some(1),
+        ..Default::default()
+    };
+
+    let old_context = "old decision and tool output ".repeat(500);
+    let newest = "newest request must remain verbatim";
+    let mut agent = Agent::builder()
+        .provider(provider)
+        .tools(Vec::new())
+        .memory(make_memory())
+        .observer(Arc::new(crate::observer::NoopObserver))
+        .tool_dispatcher(Box::new(NativeToolDispatcher))
+        .workspace_dir(std::path::PathBuf::from("/tmp"))
+        .config(config)
+        .build()
+        .expect("agent builder should succeed");
+    agent.seed_history(&[
+        clawseed_api::provider::ChatMessage::system("stable system prompt"),
+        clawseed_api::provider::ChatMessage::user(old_context.clone()),
+        clawseed_api::provider::ChatMessage::assistant(old_context.clone()),
+        clawseed_api::provider::ChatMessage::user(old_context.clone()),
+        clawseed_api::provider::ChatMessage::assistant("old answer"),
+        clawseed_api::provider::ChatMessage::user(newest),
+    ]);
+
+    assert!(agent.maybe_compact_context(None).await.unwrap());
+    assert!(agent.context_compaction().is_some());
+    assert!(agent
+        .history()
+        .iter()
+        .any(|message| matches!(message, ConversationMessage::Chat(chat) if chat.content.contains("summary of the old context"))));
+    assert!(agent.history().iter().any(
+        |message| matches!(message, ConversationMessage::Chat(chat) if chat.content == newest)
+    ));
+    let raw_old_context_messages = agent.history().iter().filter(
+        |message| matches!(message, ConversationMessage::Chat(chat) if chat.content == old_context),
+    );
+    assert_eq!(raw_old_context_messages.count(), 1);
+}
+
+#[tokio::test]
+async fn token_compaction_runs_when_fixed_prompt_pushes_request_over_threshold() {
+    let provider = Box::new(MockProvider {
+        responses: Mutex::new(vec![ChatResponse {
+            text: Some("summary of the completed turn".into()),
+            tool_calls: vec![],
+            usage: None,
+            reasoning_content: None,
+            stop_reason: clawseed_api::provider::StopReason::EndTurn,
+        }]),
+    });
+    let config = clawseed_config::schema::AgentConfig {
+        context_compaction_enabled: true,
+        context_compaction_trigger_tokens: Some(2_000),
+        context_compaction_target_tokens: 256,
+        context_compaction_keep_recent_messages: 1,
+        system_prompt: Some("fixed system context ".repeat(600)),
+        context_compaction_keep_recent_turns: Some(1),
+        ..Default::default()
+    };
+
+    let mut agent = Agent::builder()
+        .provider(provider)
+        .tools(Vec::new())
+        .memory(make_memory())
+        .observer(Arc::new(crate::observer::NoopObserver))
+        .tool_dispatcher(Box::new(NativeToolDispatcher))
+        .workspace_dir(std::path::PathBuf::from("/tmp"))
+        .config(config)
+        .build()
+        .expect("agent builder should succeed");
+    agent.seed_history(&[
+        clawseed_api::provider::ChatMessage::user("completed turn question"),
+        clawseed_api::provider::ChatMessage::assistant("completed turn answer"),
+        clawseed_api::provider::ChatMessage::user("current request"),
+    ]);
+
+    assert!(agent.maybe_compact_context(None).await.unwrap());
+    assert!(agent
+        .history()
+        .iter()
+        .any(|message| matches!(message, ConversationMessage::Chat(chat) if chat.content.contains("summary of the completed turn"))));
+    assert!(agent.history().iter().any(
+        |message| matches!(message, ConversationMessage::Chat(chat) if chat.content == "current request")
+    ));
+    assert!(!agent.history().iter().any(
+        |message| matches!(message, ConversationMessage::Chat(chat) if chat.content == "completed turn question" || chat.content == "completed turn answer")
+    ));
 }

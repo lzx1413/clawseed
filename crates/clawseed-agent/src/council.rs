@@ -525,8 +525,6 @@ fn build_reviewer_agent(
         max_tool_iterations: REVIEWER_MAX_TOOL_ITERATIONS,
         temperature: Some(0.3),
         max_tokens: Some(1024),
-        auto_continue_on_truncation: false,
-        max_auto_continue: 0,
         web_search_enabled: false,
         web_search_provider: None,
         system_prompt: Some(system_prompt),
@@ -536,6 +534,7 @@ fn build_reviewer_agent(
         allowed_tools: Vec::new(),
         denied_tools: Vec::new(),
         mcp_tool_filters: std::collections::HashMap::new(),
+        ..Default::default()
     };
 
     // IdentityConfig: reviewer identity (use default with openclaw format)

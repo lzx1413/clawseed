@@ -138,6 +138,8 @@ pub struct TokenUsage {
 }
 
 /// UI-only statistics for a complete assistant turn (including tool iterations).
+/// Input and cached-input counts refer to the latest provider request; output
+/// counts and generation speed aggregate the complete tool loop.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ResponseMetrics {
     pub input_tokens: Option<u64>,

@@ -406,6 +406,16 @@ async fn handle_socket(
         }
         if !messages.is_empty() {
             message_count = messages.len();
+            if agent_config.agent.context_compaction_enabled
+                && (agent_config
+                    .agent
+                    .context_compaction_trigger_tokens
+                    .is_some()
+                    || agent_config.agent.context_window_tokens.is_some())
+                && let Some(compaction) = backend.load_compaction(&session_key)
+            {
+                agent.set_context_compaction(Some(compaction));
+            }
             agent.seed_history(&messages);
             resumed = true;
         }
@@ -1222,6 +1232,37 @@ async fn process_chat_message(
                         TurnEvent::DebugPrompt { messages_json, estimated_tokens, tools_json, estimated_tool_tokens } => {
                             serde_json::json!({ "type": "debug_prompt", "messages": messages_json, "estimated_tokens": estimated_tokens, "tools": tools_json, "estimated_tool_tokens": estimated_tool_tokens })
                         }
+                        TurnEvent::ContextCompactionStarted { before_tokens, source_tokens, total_chunks } => {
+                            serde_json::json!({
+                                "type": "context_compaction_started",
+                                "before_tokens": before_tokens,
+                                "source_tokens": source_tokens,
+                                "total_chunks": total_chunks,
+                            })
+                        }
+                        TurnEvent::ContextCompactionProgress { completed_chunks, total_chunks, stage } => {
+                            serde_json::json!({
+                                "type": "context_compaction_progress",
+                                "completed_chunks": completed_chunks,
+                                "total_chunks": total_chunks,
+                                "stage": stage,
+                            })
+                        }
+                        TurnEvent::ContextCompactionCompleted { before_tokens, after_tokens, summary_tokens } => {
+                            serde_json::json!({
+                                "type": "context_compaction_completed",
+                                "before_tokens": before_tokens,
+                                "after_tokens": after_tokens,
+                                "summary_tokens": summary_tokens,
+                            })
+                        }
+                        TurnEvent::ContextCompactionFailed { before_tokens, message } => {
+                            serde_json::json!({
+                                "type": "context_compaction_failed",
+                                "before_tokens": before_tokens,
+                                "message": message,
+                            })
+                        }
                     };
                     let _ = sender.send(Message::Text(ws_msg.to_string().into())).await;
                 }
@@ -1400,6 +1441,12 @@ async fn process_chat_message(
                 if let Some(enriched) = agent.last_user_message_content() {
                     let enriched_msg = clawseed_api::provider::ChatMessage::user(&enriched);
                     let _ = backend.update_last_user(session_key, &enriched_msg);
+                }
+
+                if let Some(compaction) = agent.context_compaction()
+                    && let Err(error) = backend.save_compaction(session_key, compaction)
+                {
+                    tracing::warn!(%error, "failed to persist context compaction");
                 }
             }
 

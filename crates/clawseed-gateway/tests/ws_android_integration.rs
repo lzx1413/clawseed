@@ -839,9 +839,9 @@ async fn ws_full_remote_tool_round_trip() {
         done["full_response"],
         "Your device is a Pixel 8 running Android 14."
     );
-    assert_eq!(done["metrics"]["input_tokens"], 200);
+    assert_eq!(done["metrics"]["input_tokens"], 100);
     assert_eq!(done["metrics"]["output_tokens"], 40);
-    assert_eq!(done["metrics"]["cached_input_tokens"], 120);
+    assert_eq!(done["metrics"]["cached_input_tokens"], 60);
     assert_eq!(done["metrics"]["cache_hit_ratio"], 0.6);
     assert!(
         done["metrics"]["output_tokens_per_second"]

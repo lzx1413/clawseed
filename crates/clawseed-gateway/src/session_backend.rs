@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use clawseed_agent::history::ContextCompaction;
 use clawseed_api::provider::{ChatMessage, ImageAttachment};
 use clawseed_api::tool::ToolPresentation;
 
@@ -78,6 +79,26 @@ pub trait SessionBackend: Send + Sync + 'static {
 
     /// Load all messages for a session.
     fn load(&self, session_key: &str) -> Vec<ChatMessage>;
+
+    /// Load the request-only context compaction for a session, if present.
+    /// The full transcript remains available through [`Self::load`].
+    fn load_compaction(&self, _session_key: &str) -> Option<ContextCompaction> {
+        None
+    }
+
+    /// Persist the request-only context compaction for a session.
+    fn save_compaction(
+        &self,
+        _session_key: &str,
+        _compaction: &ContextCompaction,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    /// Remove a stale request-only context compaction.
+    fn clear_compaction(&self, _session_key: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
 
     /// Load transcript entries for client history, including optional UI-only
     /// rich-content data. Backends that do not support it remain compatible.

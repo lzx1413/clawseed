@@ -4,6 +4,7 @@
 //! child modules while the public `agent::Agent` path remains stable.
 
 use crate::dispatcher::ToolDispatcher;
+use crate::history::ContextCompaction;
 use crate::hooks::HookRunner;
 use crate::observer::Observer;
 use crate::security::SecurityPolicy;
@@ -45,9 +46,34 @@ pub enum TurnEvent {
     },
     DebugPrompt {
         messages_json: String,
+        /// Estimated total input tokens for this provider request, including
+        /// tool definitions when they are sent. After the request completes,
+        /// this event is emitted again with the provider's exact input when
+        /// available.
         estimated_tokens: usize,
         tools_json: Option<String>,
+        /// Tool-definition portion of `estimated_tokens`, shown separately
+        /// as a debug breakdown.
         estimated_tool_tokens: usize,
+    },
+    ContextCompactionStarted {
+        before_tokens: usize,
+        source_tokens: usize,
+        total_chunks: usize,
+    },
+    ContextCompactionProgress {
+        completed_chunks: usize,
+        total_chunks: usize,
+        stage: String,
+    },
+    ContextCompactionCompleted {
+        before_tokens: usize,
+        after_tokens: usize,
+        summary_tokens: usize,
+    },
+    ContextCompactionFailed {
+        before_tokens: usize,
+        message: String,
     },
 }
 
@@ -107,6 +133,14 @@ pub struct Agent {
     /// on the system ChatMessage in history. With DateTimeSection removed,
     /// this is always equal to the full system prompt content.
     stable_system_content: String,
+    /// Request-only summary replacing an old conversation prefix when token
+    /// aware compaction is enabled. The durable transcript remains external
+    /// to the Agent (for example in the gateway session backend).
+    context_compaction: Option<ContextCompaction>,
+    /// Calibration from the last provider request. The raw prompt estimate is
+    /// used only to project changes into the next request; the provider's
+    /// reported input tokens provide the baseline.
+    prompt_calibration: Option<metrics::PromptCalibration>,
 }
 
 fn replace_memory_tools(registry: &DefaultToolRegistry, memory: Arc<dyn Memory>) {
@@ -527,6 +561,8 @@ impl AgentBuilder {
             injected_core_state: std::collections::HashMap::new(),
             stable_core_memories: Vec::new(),
             stable_system_content: String::new(),
+            context_compaction: None,
+            prompt_calibration: None,
         })
     }
 }

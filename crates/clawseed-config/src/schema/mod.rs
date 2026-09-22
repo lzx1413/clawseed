@@ -927,6 +927,15 @@ name = "claude-sonnet-4-5"
 
 [agent]
 max_tool_iterations = 10
+# Token-aware history compaction is enabled by default for a 512k token context.
+# Override context_window_tokens or use context_compaction_trigger_tokens for a
+# provider with a different context limit.
+context_compaction_enabled = true
+context_window_tokens = 512000
+# context_compaction_trigger_tokens = 100000
+context_compaction_threshold_percent = 80
+context_compaction_target_tokens = 2048
+context_compaction_keep_recent_turns = 1
 
 [autonomy]
 level = "supervised"
@@ -1078,6 +1087,11 @@ mod tests {
             parsed.agent.max_tool_iterations,
             config.agent.max_tool_iterations
         );
+        assert!(parsed.agent.context_compaction_enabled);
+        assert_eq!(parsed.agent.context_window_tokens, Some(512_000));
+        assert_eq!(parsed.agent.context_compaction_threshold_percent, 80);
+        assert_eq!(parsed.agent.context_compaction_target_tokens, 2_048);
+        assert_eq!(parsed.agent.context_compaction_keep_recent_messages, 1);
     }
 
     #[test]
@@ -1115,6 +1129,9 @@ mod tests {
             Some("custom:https://api.deepseek.com")
         );
         assert_eq!(config.agent.max_tool_iterations, 10);
+        assert!(config.agent.context_compaction_enabled);
+        assert_eq!(config.agent.context_window_tokens, Some(512_000));
+        assert_eq!(config.agent.context_compaction_threshold_percent, 80);
         assert!(config.memory.auto_save);
         assert_eq!(config.memory.backend, "sqlite");
     }
