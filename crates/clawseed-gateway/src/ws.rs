@@ -94,6 +94,12 @@ use crate::remote_tool::{
 type PendingRemoteCalls =
     std::collections::HashMap<String, tokio::sync::oneshot::Sender<RemoteToolResult>>;
 
+/// One broadcast receiver is shared by the idle WebSocket loop and an active
+/// streamed turn. Creating a second receiver for a turn would leave the outer
+/// receiver holding the same event and replaying it after the turn completes.
+type SharedBroadcastReceiver =
+    Arc<tokio::sync::Mutex<tokio::sync::broadcast::Receiver<serde_json::Value>>>;
+
 /// The sub-protocol we support for the chat WebSocket.
 const WS_PROTOCOL: &str = "clawseed.v1";
 
@@ -518,6 +524,12 @@ async fn handle_socket(
         }
     }
 
+    // Keep one receiver for both the idle WebSocket loop and active turns.
+    // A broadcast receiver is stateful, so a second subscription would retain
+    // and replay an event after the active turn returns.
+    let broadcast_rx: SharedBroadcastReceiver =
+        Arc::new(tokio::sync::Mutex::new(state.event_tx.subscribe()));
+
     // Process the first message if it was not a connect frame
     if let Some(ref text) = first_msg_fallback {
         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(text) {
@@ -562,6 +574,7 @@ async fn handle_socket(
                         &mut receiver,
                         &mut remote_request_rx,
                         pending_remote_calls.clone(),
+                        broadcast_rx.clone(),
                         &content,
                         user_message.attachments.clone(),
                         user_message.files.clone(),
@@ -624,10 +637,6 @@ async fn handle_socket(
             let _ = sender.send(Message::Text(err.to_string().into())).await;
         }
     }
-
-    // Subscribe to the shared broadcast channel so cron/heartbeat events
-    // are forwarded to this WebSocket client.
-    let mut broadcast_rx = state.event_tx.subscribe();
 
     loop {
         tokio::select! {
@@ -814,6 +823,7 @@ async fn handle_socket(
                         &mut receiver,
                         &mut remote_request_rx,
                         pending_remote_calls.clone(),
+                        broadcast_rx.clone(),
                         &content,
                         user_message.attachments.clone(),
                         user_message.files.clone(),
@@ -892,6 +902,7 @@ async fn handle_socket(
                     &mut receiver,
                     &mut remote_request_rx,
                     pending_remote_calls.clone(),
+                    broadcast_rx.clone(),
                     &content,
                     user_message.attachments.clone(),
                         user_message.files.clone(),
@@ -902,7 +913,7 @@ async fn handle_socket(
             }
 
             // ── Broadcast event (cron/heartbeat results) ──────────────
-            event = broadcast_rx.recv() => {
+            event = recv_broadcast(&broadcast_rx) => {
                 if let Ok(event) = event && event_matches_session(&event, &session_id) {
                     let _ = sender.send(Message::Text(event.to_string().into())).await;
                 }
@@ -1007,6 +1018,13 @@ async fn handle_mid_turn_client_message(
     }
 }
 
+async fn recv_broadcast(
+    receiver: &SharedBroadcastReceiver,
+) -> Result<serde_json::Value, tokio::sync::broadcast::error::RecvError> {
+    let mut receiver = receiver.lock().await;
+    receiver.recv().await
+}
+
 fn event_matches_session(event: &serde_json::Value, session_id: &str) -> bool {
     event["type"].as_str() != Some("ask_user_request")
         || event["session_id"].as_str() == Some(session_id)
@@ -1072,6 +1090,7 @@ async fn process_chat_message(
     receiver: &mut futures_util::stream::SplitStream<WebSocket>,
     remote_request_rx: &mut tokio::sync::mpsc::Receiver<RemoteToolRequest>,
     pending_remote_calls: std::sync::Arc<tokio::sync::RwLock<PendingRemoteCalls>>,
+    broadcast_rx: SharedBroadcastReceiver,
     content: &str,
     attachments: Vec<clawseed_api::provider::ImageAttachment>,
     files: Vec<clawseed_api::file_attachment::FileAttachment>,
@@ -1139,8 +1158,6 @@ async fn process_chat_message(
 
     // Channel for streaming turn events from the agent.
     let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<TurnEvent>(64);
-    let mut broadcast_rx = state.event_tx.subscribe();
-
     // Run the streamed turn concurrently: the agent produces events
     // while we forward them to the WebSocket below.  We cannot move
     // `agent` into a spawned task (it is `&mut`), so we use a join
@@ -1291,7 +1308,7 @@ async fn process_chat_message(
                     }
                 }
 
-                event = broadcast_rx.recv() => {
+                event = recv_broadcast(&broadcast_rx) => {
                     if let Ok(event) = event && event_matches_session(&event, &session_key[GW_SESSION_PREFIX.len()..]) {
                         let _ = sender.send(Message::Text(event.to_string().into())).await;
                     }
@@ -1588,6 +1605,32 @@ async fn process_chat_message(
 mod tests {
     use super::*;
     use axum::http::HeaderMap;
+
+    #[tokio::test]
+    async fn shared_broadcast_receiver_consumes_event_once() {
+        let (event_tx, _) = tokio::sync::broadcast::channel(8);
+        let receiver: SharedBroadcastReceiver =
+            Arc::new(tokio::sync::Mutex::new(event_tx.subscribe()));
+        let event = serde_json::json!({
+            "type": "ask_user_request",
+            "request_id": "request-1",
+            "session_id": "session-1",
+        });
+
+        event_tx.send(event.clone()).unwrap();
+        assert_eq!(recv_broadcast(&receiver).await.unwrap(), event);
+
+        // The outer loop must not see the same event again after an active
+        // turn has consumed it.
+        assert!(
+            tokio::time::timeout(
+                std::time::Duration::from_millis(20),
+                recv_broadcast(&receiver),
+            )
+            .await
+            .is_err()
+        );
+    }
 
     #[test]
     fn extract_ws_token_from_authorization_header() {
