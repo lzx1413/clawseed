@@ -193,6 +193,8 @@ internal data class SessionSlot(
                         content = msg.content,
                         presentation = presentation,
                         metrics = msg.metrics,
+                        estimatedTokens = msg.estimatedTokens,
+                        estimatedToolTokens = msg.estimatedToolTokens,
                     ))
                 }
                 is dev.clawseed.sdk.android.AccumulatedMessage.ToolCall -> {
@@ -225,6 +227,18 @@ internal data class SessionSlot(
                     estimatedTokens = msg.estimatedTokens,
                     toolsJson = msg.toolsJson,
                     estimatedToolTokens = msg.estimatedToolTokens,
+                ))
+                is dev.clawseed.sdk.android.AccumulatedMessage.ContextCompaction -> intermediate.add(ChatEntry.ContextCompactionStatus(
+                    id = msg.id,
+                    timestamp = msg.timestamp,
+                    beforeTokens = msg.beforeTokens,
+                    sourceTokens = msg.sourceTokens,
+                    completedChunks = msg.completedChunks,
+                    totalChunks = msg.totalChunks,
+                    stage = msg.stage,
+                    afterTokens = msg.afterTokens,
+                    summaryTokens = msg.summaryTokens,
+                    error = msg.error,
                 ))
                 is dev.clawseed.sdk.android.AccumulatedMessage.Error -> {
                     errors.add(msg.message)

@@ -112,8 +112,33 @@ sealed class ChatEvent {
 
     /** Extra debug payload emitted when debug mode is enabled. */
     data class DebugPrompt(
+        /** Estimated total input tokens, including tool definitions. */
         val messages: String, val estimatedTokens: Int,
         val toolsJson: String? = null, val estimatedToolTokens: Int = 0,
+    ) : ChatEvent()
+
+    /** Server-side token-aware context compaction progress. */
+    data class ContextCompactionStarted(
+        val beforeTokens: Int,
+        val sourceTokens: Int,
+        val totalChunks: Int,
+    ) : ChatEvent()
+
+    data class ContextCompactionProgress(
+        val completedChunks: Int,
+        val totalChunks: Int,
+        val stage: String,
+    ) : ChatEvent()
+
+    data class ContextCompactionCompleted(
+        val beforeTokens: Int,
+        val afterTokens: Int,
+        val summaryTokens: Int,
+    ) : ChatEvent()
+
+    data class ContextCompactionFailed(
+        val beforeTokens: Int,
+        val message: String,
     ) : ChatEvent()
 
     companion object {
@@ -209,6 +234,25 @@ sealed class ChatEvent {
                     estimatedTokens = obj["estimated_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
                     toolsJson = obj["tools"]?.jsonPrimitive?.contentOrNull,
                     estimatedToolTokens = obj["estimated_tool_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
+                )
+                "context_compaction_started" -> ContextCompactionStarted(
+                    beforeTokens = obj["before_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
+                    sourceTokens = obj["source_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
+                    totalChunks = obj["total_chunks"]?.jsonPrimitive?.intOrNull ?: 0,
+                )
+                "context_compaction_progress" -> ContextCompactionProgress(
+                    completedChunks = obj["completed_chunks"]?.jsonPrimitive?.intOrNull ?: 0,
+                    totalChunks = obj["total_chunks"]?.jsonPrimitive?.intOrNull ?: 0,
+                    stage = obj["stage"]?.jsonPrimitive?.content ?: "summarizing",
+                )
+                "context_compaction_completed" -> ContextCompactionCompleted(
+                    beforeTokens = obj["before_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
+                    afterTokens = obj["after_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
+                    summaryTokens = obj["summary_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
+                )
+                "context_compaction_failed" -> ContextCompactionFailed(
+                    beforeTokens = obj["before_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
+                    message = obj["message"]?.jsonPrimitive?.content ?: "unknown error",
                 )
                 else -> null
             }

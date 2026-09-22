@@ -43,4 +43,28 @@ class ResponseMetricsTest {
         assertNull(unknown.metrics?.inputTokens)
         assertNull(unknown.metrics?.cacheHitRatio)
     }
+
+    @Test
+    fun contextCompactionEventsDecodeProgressAndTokenCounts() {
+        val started = assertIs<ChatEvent.ContextCompactionStarted>(ChatEvent.parse(
+            """{"type":"context_compaction_started","before_tokens":20100,"source_tokens":18000,"total_chunks":3}""",
+            json,
+        ))
+        assertEquals(20_100, started.beforeTokens)
+        assertEquals(3, started.totalChunks)
+
+        val progress = assertIs<ChatEvent.ContextCompactionProgress>(ChatEvent.parse(
+            """{"type":"context_compaction_progress","completed_chunks":2,"total_chunks":3,"stage":"summarizing"}""",
+            json,
+        ))
+        assertEquals(2, progress.completedChunks)
+        assertEquals("summarizing", progress.stage)
+
+        val completed = assertIs<ChatEvent.ContextCompactionCompleted>(ChatEvent.parse(
+            """{"type":"context_compaction_completed","before_tokens":20100,"after_tokens":7500,"summary_tokens":1900}""",
+            json,
+        ))
+        assertEquals(7_500, completed.afterTokens)
+        assertEquals(1_900, completed.summaryTokens)
+    }
 }

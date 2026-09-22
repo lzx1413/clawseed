@@ -3,8 +3,10 @@ package dev.clawseed.sdk.core.model
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** Provider-reported counts for one assistant turn, summed across tool iterations.
- * Null means unavailable, not zero. Speed excludes tools and first-token wait.
+/** Provider-reported counts for one assistant turn.
+ * Input and cached-input counts refer to the latest provider request, while
+ * output counts may include the complete tool loop. Null means unavailable,
+ * not zero. Speed excludes tools and first-token wait.
  */
 @Serializable
 data class ResponseMetrics(

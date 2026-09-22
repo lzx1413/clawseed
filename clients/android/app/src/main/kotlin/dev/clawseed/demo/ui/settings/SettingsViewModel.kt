@@ -64,7 +64,10 @@ data class SettingsUiState(
     val thinkingEnabled: Boolean = false,
     val vision: String = "auto",
     val maxTokens: String = "262144",
-    val autoContinueOnTruncation: Boolean = true,
+    val contextWindowTokens: String = "512000",
+    val contextCompactionEnabled: Boolean = true,
+    val contextCompactionKeepRecentTurns: String = "1",
+    val contextCompactionThresholdPercent: String = "80",
     val userModelAutoInfer: Boolean = false,
     val sessionTtlHours: String = "0",
     // Keep the app default aligned with the selector: Bing supplies image
@@ -192,6 +195,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val currentModel = extractProviderModel(toml, status)
             val thinking = extractProviderThinking(toml)
             val maxTokens = extractProviderMaxTokens(toml)
+            val contextWindowTokens = extractContextWindowTokens(toml)
+            val contextCompactionEnabled = extractContextCompactionEnabled(toml)
+            val contextCompactionKeepRecentTurns = extractContextCompactionKeepRecentTurns(toml)
+            val contextCompactionThresholdPercent = extractContextCompactionThresholdPercent(toml)
             // Update draft with resolved data (preserving real key over masked)
             providerDrafts[currentBaseUrl] = ProviderDraft(
                 apiKey = currentApiKey,
@@ -201,7 +208,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 vision = extractProviderVision(toml),
                 maxTokens = maxTokens,
             )
-            val autoContinue = extractAutoContinueOnTruncation(toml)
             val userModelAutoInfer = UserModelConfigToml.extractAutoInfer(toml)
             val searchEngine = extractSearchEngine(toml)
             val tavilyKey = extractTavilyApiKey(toml)
@@ -237,7 +243,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 thinkingEnabled = thinking,
                 vision = extractProviderVision(toml),
                 maxTokens = maxTokens,
-                autoContinueOnTruncation = autoContinue,
+                contextWindowTokens = contextWindowTokens,
+                contextCompactionEnabled = contextCompactionEnabled,
+                contextCompactionKeepRecentTurns = contextCompactionKeepRecentTurns,
+                contextCompactionThresholdPercent = contextCompactionThresholdPercent,
                 userModelAutoInfer = userModelAutoInfer,
                 searchEngine = searchEngine,
                 tavilyApiKey = tavilyKey,
@@ -293,7 +302,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             thinkingEnabled = draft?.thinkingEnabled ?: saved?.thinking ?: false,
             vision = draft?.vision ?: saved?.vision ?: "auto",
             maxTokens = draft?.maxTokens ?: saved?.maxTokens ?: "262144",
-            autoContinueOnTruncation = true,
+            contextWindowTokens = extractContextWindowTokens(toml),
+            contextCompactionEnabled = extractContextCompactionEnabled(toml),
+            contextCompactionKeepRecentTurns = extractContextCompactionKeepRecentTurns(toml),
+            contextCompactionThresholdPercent = extractContextCompactionThresholdPercent(toml),
             connectionOk = null,
             successMessage = null,
         )
@@ -335,8 +347,20 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(maxTokens = value, successMessage = null)
     }
 
-    fun toggleAutoContinueOnTruncation(enabled: Boolean) {
-        _uiState.value = _uiState.value.copy(autoContinueOnTruncation = enabled, successMessage = null)
+    fun updateContextWindowTokens(value: String) {
+        _uiState.value = _uiState.value.copy(contextWindowTokens = value, successMessage = null)
+    }
+
+    fun toggleContextCompaction(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(contextCompactionEnabled = enabled, successMessage = null)
+    }
+
+    fun updateContextCompactionKeepRecentTurns(value: String) {
+        _uiState.value = _uiState.value.copy(contextCompactionKeepRecentTurns = value, successMessage = null)
+    }
+
+    fun updateContextCompactionThresholdPercent(value: String) {
+        _uiState.value = _uiState.value.copy(contextCompactionThresholdPercent = value, successMessage = null)
     }
 
     fun toggleUserModelAutoInfer(enabled: Boolean) {
@@ -521,7 +545,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             vision = extractProviderVision(toml),
             maxTokens = maxTokens,
         )
-        val autoContinue = extractAutoContinueOnTruncation(toml)
         val userModelAutoInfer = UserModelConfigToml.extractAutoInfer(toml)
         val searchEngine = extractSearchEngine(toml)
         val tavilyKey = extractTavilyApiKey(toml)
@@ -529,6 +552,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val embeddingMod = extractEmbeddingModel(toml)
         val embeddingDim = extractEmbeddingDims(toml)
         val sessionTtl = extractSessionTtlHours(toml)
+        val contextWindowTokens = extractContextWindowTokens(toml)
+        val contextCompactionEnabled = extractContextCompactionEnabled(toml)
+        val contextCompactionKeepRecentTurns = extractContextCompactionKeepRecentTurns(toml)
+        val contextCompactionThresholdPercent = extractContextCompactionThresholdPercent(toml)
 
         val presetIdx = PROVIDER_PRESETS.indexOfFirst { it.baseUrl.isNotBlank() && currentBaseUrl.contains(it.baseUrl.removeSuffix("/v1").removeSuffix("/")) }
             .let { if (it == -1) PROVIDER_PRESETS.size - 1 else it }
@@ -548,7 +575,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             thinkingEnabled = thinking,
             vision = extractProviderVision(toml),
             maxTokens = maxTokens,
-            autoContinueOnTruncation = autoContinue,
+            contextWindowTokens = contextWindowTokens,
+            contextCompactionEnabled = contextCompactionEnabled,
+            contextCompactionKeepRecentTurns = contextCompactionKeepRecentTurns,
+            contextCompactionThresholdPercent = contextCompactionThresholdPercent,
             userModelAutoInfer = userModelAutoInfer,
             searchEngine = searchEngine,
             tavilyApiKey = tavilyKey,
@@ -753,7 +783,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             toml = replaceOrAppendTomlValue(toml, "fallback", newProviderId)
         }
 
-        val sectionHeader = "[providers.models.${tomlKey(newProviderId)}]"
+        val sectionHeader = providerSectionHeader(toml, newProviderId)
         if (toml.contains(sectionHeader)) {
             toml = replaceInSection(toml, sectionHeader, "base_url", baseUrl)
             toml = replaceInSection(toml, sectionHeader, "model", state.selectedModel)
@@ -818,13 +848,36 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             toml = toml.trimEnd() + section
         }
 
-        // Update [agent] auto_continue_on_truncation
         val agentHeader = "[agent]"
-        if (toml.contains(agentHeader)) {
-            toml = replaceInSectionRaw(toml, agentHeader, "auto_continue_on_truncation", if (state.autoContinueOnTruncation) " true" else " false")
-        } else {
-            toml = toml.trimEnd() + "\n\n[agent]\nauto_continue_on_truncation = ${state.autoContinueOnTruncation}\n"
+        if (!toml.contains(agentHeader)) {
+            toml = toml.trimEnd() + "\n\n$agentHeader\n"
         }
+
+        // Context compaction settings. The trigger is derived from the model
+        // context window and percentage, so remove any legacy explicit token
+        // override when saving from the structured settings UI.
+        val contextWindowTokens = state.contextWindowTokens.toLongOrNull()
+            ?.coerceIn(1_000L, 10_000_000L)
+            ?: 512_000L
+        val compactionKeepTurns = state.contextCompactionKeepRecentTurns.toIntOrNull()
+            ?.coerceIn(1, 100)
+            ?: 1
+        val compactionThreshold = state.contextCompactionThresholdPercent.toIntOrNull()
+            ?.coerceIn(5, 95)
+            ?: 80
+        toml = replaceInSectionRaw(
+            toml,
+            agentHeader,
+            "context_compaction_enabled",
+            if (state.contextCompactionEnabled) " true" else " false",
+        )
+        toml = replaceInIntSection(toml, agentHeader, "context_window_tokens", contextWindowTokens.toString())
+        toml = replaceInIntSection(toml, agentHeader, "context_compaction_threshold_percent", compactionThreshold.toString())
+        toml = replaceInIntSection(toml, agentHeader, "context_compaction_keep_recent_turns", compactionKeepTurns.toString())
+        toml = removeFromSection(toml, agentHeader, "auto_continue_on_truncation")
+        toml = removeFromSection(toml, agentHeader, "max_auto_continue")
+        toml = removeFromSection(toml, agentHeader, "context_compaction_trigger_tokens")
+        toml = removeFromSection(toml, agentHeader, "context_compaction_keep_recent_messages")
 
         // Update [gateway] session_ttl_hours
         val gatewayHeader = "[gateway]"
@@ -1221,10 +1274,41 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             return extractTomlValueInBlock(section, "max_tokens") ?: "262144"
         }
 
-        private fun extractAutoContinueOnTruncation(toml: String): Boolean {
+        private fun extractContextWindowTokens(toml: String): String {
             val section = findSection(toml, "[agent]")
-            val value = extractTomlValueInBlock(section, "auto_continue_on_truncation")
-            return value != "false"
+            return extractTomlValueInBlock(section, "context_window_tokens") ?: "512000"
+        }
+
+        private fun extractContextCompactionEnabled(toml: String): Boolean {
+            val section = findSection(toml, "[agent]")
+            return extractTomlValueInBlock(section, "context_compaction_enabled") != "false"
+        }
+
+        private fun extractContextCompactionKeepRecentTurns(toml: String): String {
+            val section = findSection(toml, "[agent]")
+            extractTomlValueInBlock(section, "context_compaction_keep_recent_turns")
+                ?.toIntOrNull()
+                ?.coerceIn(1, 100)
+                ?.let { return it.toString() }
+            // Legacy configs counted messages. Convert their value to a
+            // conservative number of user/assistant turns for the UI.
+            return extractTomlValueInBlock(section, "context_compaction_keep_recent_messages")
+                ?.toIntOrNull()
+                ?.coerceAtLeast(1)
+                ?.plus(1)
+                ?.div(2)
+                ?.coerceIn(1, 100)
+                ?.toString()
+                ?: "1"
+        }
+
+        private fun extractContextCompactionThresholdPercent(toml: String): String {
+            val section = findSection(toml, "[agent]")
+            return extractTomlValueInBlock(section, "context_compaction_threshold_percent")
+                ?.toIntOrNull()
+                ?.coerceIn(5, 95)
+                ?.toString()
+                ?: "80"
         }
 
         internal fun extractProviderVision(toml: String): String {
@@ -1311,11 +1395,40 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
 
         private fun findSection(toml: String, header: String): String {
-            val idx = toml.indexOf(header)
-            if (idx == -1) return ""
-            val afterHeader = idx + header.length
-            val nextSection = toml.indexOf("\n[", afterHeader).let { if (it == -1) toml.length else it }
-            return toml.substring(afterHeader, nextSection)
+            val headers = buildList {
+                add(header)
+                if (header.startsWith("[providers.models.")) {
+                    val prefix = "[providers.models."
+                    val rest = header.removePrefix(prefix)
+                    val keyEnd = rest.indexOfAny(charArrayOf('.', ']'))
+                    if (keyEnd >= 0) {
+                        val keyToken = rest.substring(0, keyEnd)
+                        val tail = rest.substring(keyEnd)
+                        val unquoted = keyToken.removeSurrounding("\"")
+                        val alternate = if (keyToken.startsWith('"')) {
+                            "$prefix$unquoted$tail"
+                        } else {
+                            "$prefix\"$unquoted\"$tail"
+                        }
+                        if (alternate != header) add(alternate)
+                    }
+                }
+            }
+            for (candidate in headers) {
+                val idx = toml.indexOf(candidate)
+                if (idx == -1) continue
+                val afterHeader = idx + candidate.length
+                val nextSection = toml.indexOf("\n[", afterHeader).let { if (it == -1) toml.length else it }
+                return toml.substring(afterHeader, nextSection)
+            }
+            return ""
+        }
+
+        private fun providerSectionHeader(toml: String, providerKey: String): String {
+            val canonical = "[providers.models.${tomlKey(providerKey)}]"
+            if (toml.contains(canonical)) return canonical
+            val quoted = "[providers.models.${tomlString(providerKey)}]"
+            return if (toml.contains(quoted)) quoted else canonical
         }
 
         private fun extractTomlValueInBlock(block: String, key: String): String? {
@@ -1380,6 +1493,21 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             return before + lines.joinToString("\n") + after
         }
 
+        private fun removeFromSection(toml: String, sectionHeader: String, key: String): String {
+            val idx = toml.indexOf(sectionHeader)
+            if (idx == -1) return toml
+            val afterHeader = idx + sectionHeader.length
+            val nextSection = toml.indexOf("\n[", afterHeader).let { if (it == -1) toml.length else it }
+            val before = toml.substring(0, afterHeader)
+            val section = toml.substring(afterHeader, nextSection)
+            val after = toml.substring(nextSection)
+            val filtered = section.lines().filterNot { line ->
+                val trimmed = line.trim()
+                trimmed.startsWith("$key ") || trimmed.startsWith("$key=")
+            }
+            return before + filtered.joinToString("\n") + after
+        }
+
         private fun replaceOrAppendTomlValue(toml: String, key: String, value: String): String {
             val lines = toml.lines().toMutableList()
             for (i in lines.indices) {
@@ -1438,22 +1566,69 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         fun parseTomlArray(toml: String, sectionHeader: String, key: String): List<String> {
             val section = if (sectionHeader.isBlank()) toml else findSection(toml, sectionHeader)
             if (section.isEmpty()) return emptyList()
-            for (line in section.lines()) {
-                val trimmed = line.trim()
+            val lines = section.lines()
+            for (i in lines.indices) {
+                val trimmed = lines[i].trim()
                 if (trimmed.startsWith("$key ") || trimmed.startsWith("$key=")) {
-                    val eqIdx = trimmed.indexOf('=')
-                    if (eqIdx >= 0) {
-                        val value = trimmed.substring(eqIdx + 1).trim()
-                        if (value.startsWith("[") && value.endsWith("]")) {
-                            val inner = value.substring(1, value.length - 1)
-                            return inner.split(",")
-                                .map { it.trim().removeSurrounding("\"").replace("\\\"", "\"") }
-                                .filter { it.isNotBlank() }
-                        }
-                    }
+                    val endIndex = tomlArrayEndLine(lines, i)
+                    val value = lines.subList(i, endIndex + 1)
+                        .joinToString(" ")
+                        .substringAfter('=')
+                        .trim()
+                    if (!value.startsWith("[") || !value.endsWith("]")) return emptyList()
+                    return splitTomlArrayItems(value.substring(1, value.length - 1))
                 }
             }
             return emptyList()
+        }
+
+        private fun splitTomlArrayItems(inner: String): List<String> {
+            val items = mutableListOf<String>()
+            val current = StringBuilder()
+            var basicString = false
+            var literalString = false
+            var escaped = false
+            for (ch in inner) {
+                if (basicString) {
+                    current.append(ch)
+                    if (escaped) {
+                        escaped = false
+                    } else if (ch == '\\') {
+                        escaped = true
+                    } else if (ch == '"') {
+                        basicString = false
+                    }
+                    continue
+                }
+                if (literalString) {
+                    current.append(ch)
+                    if (ch == '\'') literalString = false
+                    continue
+                }
+                when (ch) {
+                    '"' -> {
+                        basicString = true
+                        current.append(ch)
+                    }
+                    '\'' -> {
+                        literalString = true
+                        current.append(ch)
+                    }
+                    ',' -> {
+                        val item = current.toString().trim()
+                        if (item.isNotBlank()) items.add(item)
+                        current.clear()
+                    }
+                    else -> current.append(ch)
+                }
+            }
+            val last = current.toString().trim()
+            if (last.isNotBlank()) items.add(last)
+            return items.map { item ->
+                item.removeSurrounding("\"")
+                    .replace("\\\"", "\"")
+                    .replace("\\\\", "\\")
+            }
         }
 
         /** Update or add a TOML array value in a section. Creates the section if missing. */
@@ -1482,7 +1657,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             for (i in lines.indices) {
                 val trimmed = lines[i].trim()
                 if (trimmed.startsWith("$key ") || trimmed.startsWith("$key=")) {
-                    lines[i] = newLine
+                    // TOML arrays may be formatted over several lines. Replace
+                    // the whole value, otherwise the old continuation lines
+                    // remain after the new one and make the document invalid.
+                    val endIndex = tomlArrayEndLine(lines, i)
+                    lines.subList(i, endIndex + 1).clear()
+                    lines.add(i, newLine)
                     found = true
                     break
                 }
@@ -1491,6 +1671,50 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 lines.add(newLine)
             }
             return before + lines.joinToString("\n") + after
+        }
+
+        /** Return the last line belonging to an array value starting at [start]. */
+        private fun tomlArrayEndLine(lines: List<String>, start: Int): Int {
+            var depth = 0
+            var basicString = false
+            var literalString = false
+            var escaped = false
+            var sawArray = false
+
+            for (lineIndex in start until lines.size) {
+                val line = lines[lineIndex]
+                val charStart = if (lineIndex == start) line.indexOf('=').let { if (it >= 0) it + 1 else 0 } else 0
+                for (charIndex in charStart until line.length) {
+                    val ch = line[charIndex]
+                    if (basicString) {
+                        if (escaped) {
+                            escaped = false
+                        } else if (ch == '\\') {
+                            escaped = true
+                        } else if (ch == '"') {
+                            basicString = false
+                        }
+                        continue
+                    }
+                    if (literalString) {
+                        if (ch == '\'') literalString = false
+                        continue
+                    }
+                    when (ch) {
+                        '"' -> basicString = true
+                        '\'' -> literalString = true
+                        '[' -> {
+                            depth++
+                            sawArray = true
+                        }
+                        ']' -> {
+                            depth--
+                            if (sawArray && depth <= 0) return lineIndex
+                        }
+                    }
+                }
+            }
+            return start
         }
     }
 }

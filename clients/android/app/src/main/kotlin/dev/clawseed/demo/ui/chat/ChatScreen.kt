@@ -406,7 +406,11 @@ fun ChatScreen(
                     MessageBubble(
                         onReadImage = { id -> viewModel.readImage(uiState.currentSessionId.orEmpty(), id) },
                         entry = if (entry is ChatEntry.AssistantMessage && !uiState.showDebugInfo)
-                            entry.copy(metrics = null) else entry,
+                            entry.copy(
+                                metrics = null,
+                                estimatedTokens = null,
+                                estimatedToolTokens = null,
+                            ) else entry,
                         onRegenerate = if (isLastAssistant && !isLoading) ({ viewModel.regenerateLastResponse() }) else null,
                         onSpeak = if (canSpeak) ({ viewModel.speakMessage(entry.content, entry.id) }) else null,
                         onStop = if (canSpeak) ({ viewModel.stopSpeech() }) else null,

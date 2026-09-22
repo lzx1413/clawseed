@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
@@ -103,6 +104,8 @@ fun MessageBubble(
         is ChatEntry.AssistantMessage -> AssistantBubble(
             content = entry.content,
             metrics = entry.metrics,
+            estimatedTokens = entry.estimatedTokens,
+            estimatedToolTokens = entry.estimatedToolTokens,
             isStreaming = entry.isStreaming,
             presentation = entry.presentation,
             onRegenerate = onRegenerate,
@@ -116,6 +119,7 @@ fun MessageBubble(
         is ChatEntry.Thinking -> ThinkingCard(entry.content, modifier)
         is ChatEntry.SystemMessage -> SystemBubble(entry.content, modifier)
         is ChatEntry.DebugInfo -> DebugInfoCard(entry, modifier)
+        is ChatEntry.ContextCompactionStatus -> ContextCompactionBubble(entry, modifier)
     }
 }
 
@@ -154,6 +158,8 @@ private fun UserBubble(content: String, modifier: Modifier = Modifier) {
 private fun AssistantBubble(
     content: String,
     metrics: dev.clawseed.sdk.core.model.ResponseMetrics?,
+    estimatedTokens: Int?,
+    estimatedToolTokens: Int?,
     isStreaming: Boolean,
     presentation: dev.clawseed.sdk.core.model.ToolPresentation?,
     onRegenerate: (() -> Unit)?,
@@ -181,22 +187,34 @@ private fun AssistantBubble(
                 }
             }
         }
-        if (!isStreaming && metrics != null) {
+        if (!isStreaming && (metrics != null || estimatedTokens != null || estimatedToolTokens != null)) {
             val unavailable = stringResource(R.string.metrics_unavailable)
-            val ratio = metrics.cacheHitRatio?.takeIf { it.isFinite() && it in 0.0..1.0 }
+            val ratio = metrics?.cacheHitRatio?.takeIf { it.isFinite() && it in 0.0..1.0 }
                 ?.let { String.format(java.util.Locale.getDefault(), "%.1f%%", it * 100) } ?: unavailable
-            val speed = metrics.outputTokensPerSecond?.takeIf { it.isFinite() && it >= 0 }
+            val speed = metrics?.outputTokensPerSecond?.takeIf { it.isFinite() && it >= 0 }
                 ?.let { String.format(java.util.Locale.getDefault(), "%.1f tok/s", it) } ?: unavailable
-            val elapsed = metrics.elapsedMs?.takeIf { it >= 0 }
+            val elapsed = metrics?.elapsedMs?.takeIf { it >= 0 }
                 ?.let { String.format(java.util.Locale.getDefault(), "%.2f s", it / 1000.0) } ?: unavailable
             Text(
                 text = stringResource(R.string.msg_response_metrics,
-                    metrics.inputTokens?.toString() ?: unavailable,
-                    metrics.outputTokens?.toString() ?: unavailable, ratio, speed, elapsed),
+                    metrics?.inputTokens?.toString() ?: unavailable,
+                    metrics?.outputTokens?.toString() ?: unavailable, ratio, speed, elapsed),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (estimatedTokens != null || estimatedToolTokens != null) {
+                Text(
+                    text = stringResource(
+                        R.string.msg_response_estimates,
+                        estimatedTokens?.toString() ?: unavailable,
+                        estimatedToolTokens?.toString() ?: unavailable,
+                    ),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 1.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         if (!isStreaming && content.isNotBlank()) {
             Row(
@@ -1038,6 +1056,75 @@ private fun SystemBubble(content: String, modifier: Modifier = Modifier) {
             Text(
                 text = content,
                 style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ContextCompactionBubble(
+    entry: ChatEntry.ContextCompactionStatus,
+    modifier: Modifier = Modifier,
+) {
+    val progress = if (entry.totalChunks > 0) {
+        (entry.completedChunks.toFloat() / entry.totalChunks.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val completed = entry.afterTokens != null
+    val failed = entry.error != null
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Text(
+            text = if (completed) {
+                stringResource(R.string.chat_compaction_divider_complete)
+            } else if (failed) {
+                stringResource(R.string.chat_compaction_divider_failed)
+            } else {
+                stringResource(R.string.chat_compaction_divider)
+            },
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        if (completed) {
+            Text(
+                text = stringResource(
+                    R.string.chat_compaction_completed,
+                    entry.beforeTokens,
+                    entry.afterTokens ?: 0,
+                    entry.summaryTokens ?: 0,
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else if (failed) {
+            Text(
+                text = stringResource(
+                    R.string.chat_compaction_failed,
+                    entry.error.orEmpty(),
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        } else {
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth(0.72f),
+            )
+            Text(
+                text = stringResource(
+                    R.string.chat_compaction_progress,
+                    entry.completedChunks,
+                    entry.totalChunks,
+                    entry.beforeTokens,
+                ),
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }

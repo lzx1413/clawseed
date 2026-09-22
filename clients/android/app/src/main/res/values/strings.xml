@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="debug_prompt_token_estimates">Debug · messages ~%1$d · tools ~%2$d tokens</string>
+    <string name="debug_prompt_token_estimates">Debug · input ~%1$d · tools ~%2$d tokens</string>
     <string name="debug_prompt_native_tools">Show / hide native tool definitions</string>
-    <string name="debug_prompt_context_hint">This is the first model call of the turn, including history. Only the current user message contains newly recalled context. Token estimates are approximate; usage below the reply totals all model calls in the turn. Native tool definitions are shown separately.</string>
+    <string name="debug_prompt_context_hint">This is the latest model call, including history and tool definitions. The pre-request estimate is calibrated from the previous provider input when available, then replaced by the exact input reported for this request. Native tool definitions are shown separately.</string>
     <string name="debug_prompt_system">System prompt and persistent context</string>
     <string name="debug_prompt_history">History · context from earlier turns</string>
     <string name="debug_prompt_current">Current turn · new input and recalled context</string>
@@ -38,6 +38,13 @@
     <string name="tools_group_count">%1$s (%2$d)</string>
     <string name="enum_task_repeat_custom">Selected days</string>
     <string name="chat_connection_interrupted">Connection interrupted. Please retry.</string>
+    <string name="chat_compaction_divider">──────── Context compaction ────────</string>
+    <string name="chat_compaction_divider_complete">──── Context compaction complete ────</string>
+    <string name="chat_compaction_divider_failed">──── Context compaction skipped ────</string>
+    <string name="chat_compaction_progress">Compressing context · %1$d/%2$d chunks · before ~%3$d tokens</string>
+    <string name="chat_compaction_completed">Context reduced from ~%1$d to ~%2$d tokens (summary ~%3$d)</string>
+    <string name="chat_compaction_failed">Compression unavailable: %1$s</string>
+    <string name="msg_response_estimates">Latest request input (estimate/exact, including tools): %1$s · Tools: ~%2$s tokens</string>
     <!-- ========== Common ========== -->
     <string name="app_name">ClawSeed</string>
     <string name="common_confirm">Confirm</string>
@@ -201,6 +208,17 @@
     <string name="settings_council_reviewers">%1$d reviewers</string>
     <string name="settings_council_off">Off</string>
     <string name="settings_save_session_config">Save Session Config</string>
+    <string name="settings_context_compaction_title">Context Compaction</string>
+    <string name="settings_context_compaction_subtitle">Triggers at %1$s, keeps %2$s turns</string>
+    <string name="settings_context_compaction_disabled">Disabled</string>
+    <string name="settings_context_compaction_enabled">Enable Context Compaction</string>
+    <string name="settings_context_compaction_enabled_desc">Summarize older conversation when the context approaches its maximum size</string>
+    <string name="settings_context_compaction_keep_turns">Recent turns to keep</string>
+    <string name="settings_context_compaction_keep_turns_value">%1$s turns</string>
+    <string name="settings_context_compaction_keep_turns_desc">Keep the most recent complete conversation turns after compaction</string>
+    <string name="settings_context_compaction_threshold">Compaction threshold</string>
+    <string name="settings_context_compaction_threshold_desc">Trigger compaction at this percentage of the maximum context</string>
+    <string name="settings_save_context_compaction">Save Compaction Settings</string>
 
     <string name="settings_llm_config">LLM Config</string>
     <string name="settings_not_configured">Not configured</string>
@@ -217,8 +235,8 @@
     <string name="settings_thinking_mode">Thinking Mode</string>
     <string name="settings_thinking_desc">When enabled, the model will think before answering. Suitable for complex tasks</string>
     <string name="settings_max_tokens_desc">Max output tokens (thinking + reply shared). Recommended 262144 (256K). Too small may truncate long responses</string>
-    <string name="settings_auto_continue">Auto Continue</string>
-    <string name="settings_auto_continue_desc">Automatically continue output when response is truncated by token limit</string>
+    <string name="settings_context_window">Maximum context</string>
+    <string name="settings_context_window_desc">Compaction trigger = maximum context × compaction threshold</string>
 
     <string name="settings_search_engine">Search Engine</string>
     <string name="settings_save_search_config">Save Search Config</string>
@@ -501,7 +519,7 @@
     <string name="settings_vision_unsupported">Current model: vision unavailable</string>
     <string name="settings_vision_unknown">Vision capability unknown; configure manually if needed</string>
     <string name="metrics_unavailable">Not provided</string>
-    <string name="msg_response_metrics">Input tokens: %1$s · Output tokens: %2$s · Cache hit: %3$s\nOutput speed: %4$s · Total time: %5$s</string>
+    <string name="msg_response_metrics">Latest input tokens: %1$s · Output tokens: %2$s · Cache hit: %3$s\nOutput speed: %4$s · Total time: %5$s</string>
     <string name="settings_provider_balance">Balance: %1$s</string>
     <string name="balance_loading">Loading…</string>
     <string name="balance_unsupported">Balance lookup is not supported</string>

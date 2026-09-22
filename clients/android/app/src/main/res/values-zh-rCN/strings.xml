@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="debug_prompt_token_estimates">Debug · 消息约 %1$d · 工具约 %2$d tokens</string>
+    <string name="debug_prompt_token_estimates">Debug · input 约 %1$d · 工具约 %2$d tokens</string>
     <string name="debug_prompt_native_tools">展开 / 收起原生工具定义</string>
-    <string name="debug_prompt_context_hint">此处为本轮首次模型调用，包含会话历史。只有本轮用户消息中的 Memory context 是本轮新增。Token 数为粗估；回复底部是本轮所有模型调用的实际用量合计。原生工具定义单独展示。</string>
+    <string name="debug_prompt_context_hint">此处为最近一次模型调用，包含会话历史和工具定义。请求前会用上次 Provider 真实 input 校准估算，请求完成后会替换为本次请求的真实 input。原生工具定义单独展示。</string>
     <string name="debug_prompt_system">系统提示与固定上下文</string>
     <string name="debug_prompt_history">历史消息 · 之前轮次的上下文</string>
     <string name="debug_prompt_current">本轮消息 · 新输入与本轮召回的上下文</string>
@@ -38,6 +38,13 @@
     <string name="tools_group_count">%1$s（%2$d）</string>
     <string name="enum_task_repeat_custom">指定星期</string>
     <string name="chat_connection_interrupted">连接中断，请重试。</string>
+    <string name="chat_compaction_divider">──────── 开始压缩上下文 ────────</string>
+    <string name="chat_compaction_divider_complete">──── 上下文压缩完成 ────</string>
+    <string name="chat_compaction_divider_failed">──── 上下文压缩跳过 ────</string>
+    <string name="chat_compaction_progress">正在压缩上下文 · 第 %1$d/%2$d 个分块 · 压缩前约 %3$d tokens</string>
+    <string name="chat_compaction_completed">上下文已从约 %1$d tokens 压缩到约 %2$d tokens（摘要约 %3$d）</string>
+    <string name="chat_compaction_failed">压缩不可用：%1$s</string>
+    <string name="msg_response_estimates">最近一次请求 input（预估/实际，含工具）：%1$s · 工具约 %2$s tokens</string>
     <!-- ========== Common ========== -->
     <string name="app_name">爪籽</string>
     <string name="common_confirm">确定</string>
@@ -201,6 +208,17 @@
     <string name="settings_council_reviewers">%1$d 个审阅者</string>
     <string name="settings_council_off">关闭</string>
     <string name="settings_save_session_config">保存会话配置</string>
+    <string name="settings_context_compaction_title">会话压缩</string>
+    <string name="settings_context_compaction_subtitle">触发 %1$s，保留 %2$s 轮</string>
+    <string name="settings_context_compaction_disabled">已关闭</string>
+    <string name="settings_context_compaction_enabled">启用会话压缩</string>
+    <string name="settings_context_compaction_enabled_desc">在上下文接近最大容量时自动总结较早的对话</string>
+    <string name="settings_context_compaction_keep_turns">保留会话轮数</string>
+    <string name="settings_context_compaction_keep_turns_value">%1$s 轮</string>
+    <string name="settings_context_compaction_keep_turns_desc">压缩后保留最近的完整对话轮次</string>
+    <string name="settings_context_compaction_threshold">压缩阈值</string>
+    <string name="settings_context_compaction_threshold_desc">达到最大上下文的此比例时触发压缩</string>
+    <string name="settings_save_context_compaction">保存压缩设置</string>
 
     <string name="settings_llm_config">LLM 配置</string>
     <string name="settings_not_configured">未配置</string>
@@ -217,8 +235,8 @@
     <string name="settings_thinking_mode">Thinking Mode</string>
     <string name="settings_thinking_desc">启用后模型会先推理思考再回答，适用于复杂任务</string>
     <string name="settings_max_tokens_desc">最大输出 Token 数（思考+回复共享），建议 262144 (256K)。过小可能导致长回复被截断</string>
-    <string name="settings_auto_continue">自动续接</string>
-    <string name="settings_auto_continue_desc">当回复因 Token 限制被截断时自动续接输出</string>
+    <string name="settings_context_window">最大上下文</string>
+    <string name="settings_context_window_desc">用于计算压缩触发阈值：最大上下文 × 压缩阈值</string>
 
     <string name="settings_search_engine">搜索引擎</string>
     <string name="settings_save_search_config">保存搜索配置</string>
@@ -501,7 +519,7 @@
     <string name="settings_vision_unsupported">当前模型：视觉不可用</string>
     <string name="settings_vision_unknown">视觉能力未知，如模型支持图片，请手动开启</string>
     <string name="metrics_unavailable">未提供</string>
-    <string name="msg_response_metrics">Input tokens：%1$s · Output tokens：%2$s · Cache 命中：%3$s\n输出速度：%4$s · 整体耗时：%5$s</string>
+    <string name="msg_response_metrics">最近一次请求 input tokens：%1$s · Output tokens：%2$s · Cache 命中：%3$s\n输出速度：%4$s · 整体耗时：%5$s</string>
     <string name="settings_provider_balance">余额：%1$s</string>
     <string name="balance_loading">查询中…</string>
     <string name="balance_unsupported">不支持余额查询</string>

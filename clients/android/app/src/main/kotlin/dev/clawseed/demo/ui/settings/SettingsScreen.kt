@@ -154,6 +154,7 @@ fun SettingsScreen(
     var developerExpanded by remember { mutableStateOf(false) }
     var appearanceExpanded by remember { mutableStateOf(false) }
     var sessionExpanded by remember { mutableStateOf(false) }
+    var compactionExpanded by remember { mutableStateOf(false) }
     var dataTransferExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.error) {
@@ -221,7 +222,7 @@ fun SettingsScreen(
                     onToggleThinking = viewModel::toggleThinking,
                     onVisionChange = viewModel::updateVision,
                     onUpdateMaxTokens = viewModel::updateMaxTokens,
-                    onToggleAutoContinue = viewModel::toggleAutoContinueOnTruncation,
+                    onUpdateContextWindowTokens = viewModel::updateContextWindowTokens,
                 )
             }
         }
@@ -320,6 +321,57 @@ fun SettingsScreen(
                                     Spacer(modifier = Modifier.width(8.dp))
                                 }
                                 Text(if (uiState.isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_session_config))
+                            }
+                        }
+                    }
+                }
+
+                // Context compaction section
+                item {
+                    val contextWindow = uiState.contextWindowTokens.toLongOrNull() ?: 0L
+                    val threshold = uiState.contextCompactionThresholdPercent.toIntOrNull() ?: 80
+                    val trigger = (contextWindow * threshold / 100L).coerceAtLeast(0L)
+                    ExpandableSection(
+                        title = stringResource(R.string.settings_context_compaction_title),
+                        expanded = compactionExpanded,
+                        onToggle = { compactionExpanded = !compactionExpanded },
+                        subtitle = if (!compactionExpanded) {
+                            if (uiState.contextCompactionEnabled) {
+                                stringResource(
+                                    R.string.settings_context_compaction_subtitle,
+                                    formatTokenCount(trigger),
+                                    uiState.contextCompactionKeepRecentTurns,
+                                )
+                            } else {
+                                stringResource(R.string.settings_context_compaction_disabled)
+                            }
+                        } else null,
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            ContextCompactionCard(
+                                enabled = uiState.contextCompactionEnabled,
+                                keepRecentTurns = uiState.contextCompactionKeepRecentTurns,
+                                thresholdPercent = uiState.contextCompactionThresholdPercent,
+                                onToggleEnabled = viewModel::toggleContextCompaction,
+                                onKeepRecentTurnsChange = viewModel::updateContextCompactionKeepRecentTurns,
+                                onThresholdChange = viewModel::updateContextCompactionThresholdPercent,
+                            )
+                            Button(
+                                onClick = { viewModel.saveConfig() },
+                                enabled = !uiState.isSaving,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                if (uiState.isSaving) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                                Text(
+                                    if (uiState.isSaving) stringResource(R.string.common_saving)
+                                    else stringResource(R.string.settings_save_context_compaction),
+                                )
                             }
                         }
                     }
@@ -811,10 +863,11 @@ private fun ProviderFormEditor(
     onToggleThinking: (Boolean) -> Unit,
     onVisionChange: (String) -> Unit,
     onUpdateMaxTokens: (String) -> Unit,
-    onToggleAutoContinue: (Boolean) -> Unit,
+    onUpdateContextWindowTokens: (String) -> Unit,
 ) {
     var providerExpanded by remember { mutableStateOf(false) }
     var modelExpanded by remember { mutableStateOf(false) }
+    var contextWindowExpanded by remember { mutableStateOf(false) }
     var showApiKey by remember { mutableStateOf(false) }
 
     Card(
@@ -1064,26 +1117,52 @@ private fun ProviderFormEditor(
                 },
             )
 
+            val contextWindowOptions = listOf(
+                "256000" to "256K",
+                "512000" to "512K",
+                "1000000" to "1M",
+            )
+            val currentContextWindowLabel = contextWindowOptions
+                .firstOrNull { it.first == state.contextWindowTokens }
+                ?.second
+                ?: "${formatTokenCount(state.contextWindowTokens.toLongOrNull() ?: 0L)} (custom)"
+            ExposedDropdownMenuBox(
+                expanded = contextWindowExpanded,
+                onExpandedChange = { contextWindowExpanded = it },
+            ) {
+                OutlinedTextField(
+                    value = currentContextWindowLabel,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(stringResource(R.string.settings_context_window)) },
+                    supportingText = {
+                        Text(stringResource(R.string.settings_context_window_desc))
+                    },
+                    trailingIcon = {
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = contextWindowExpanded)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                )
+                ExposedDropdownMenu(
+                    expanded = contextWindowExpanded,
+                    onDismissRequest = { contextWindowExpanded = false },
+                ) {
+                    contextWindowOptions.forEach { (tokens, label) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                onUpdateContextWindowTokens(tokens)
+                                contextWindowExpanded = false
+                            },
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.settings_auto_continue), style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        stringResource(R.string.settings_auto_continue_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(
-                    checked = state.autoContinueOnTruncation,
-                    onCheckedChange = onToggleAutoContinue,
-                )
-            }
         }
     }
 }
@@ -1613,6 +1692,12 @@ private fun ttlDaysToHours(days: String): String {
     return if (d == 0) "0" else (d * 24).toString()
 }
 
+private fun formatTokenCount(tokens: Long): String = when {
+    tokens >= 1_000_000L && tokens % 1_000_000L == 0L -> "${tokens / 1_000_000L}M"
+    tokens >= 1_000L -> "${tokens / 1_000L}K"
+    else -> tokens.toString()
+}
+
 @Composable
 private fun SessionSettingsCard(
     ttlHours: String,
@@ -1652,6 +1737,117 @@ private fun SessionSettingsCard(
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ContextCompactionCard(
+    enabled: Boolean,
+    keepRecentTurns: String,
+    thresholdPercent: String,
+    onToggleEnabled: (Boolean) -> Unit,
+    onKeepRecentTurnsChange: (String) -> Unit,
+    onThresholdChange: (String) -> Unit,
+) {
+    val keepOptions = listOf("1", "2", "3", "5", "10")
+    val thresholdOptions = listOf("50", "60", "70", "80", "85", "90", "95")
+    var keepExpanded by remember { mutableStateOf(false) }
+    var thresholdExpanded by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.settings_context_compaction_enabled),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        stringResource(R.string.settings_context_compaction_enabled_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = enabled, onCheckedChange = onToggleEnabled)
+            }
+
+            ExposedDropdownMenuBox(
+                expanded = keepExpanded,
+                onExpandedChange = { keepExpanded = it },
+            ) {
+                OutlinedTextField(
+                    value = stringResource(R.string.settings_context_compaction_keep_turns_value, keepRecentTurns),
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(stringResource(R.string.settings_context_compaction_keep_turns)) },
+                    supportingText = { Text(stringResource(R.string.settings_context_compaction_keep_turns_desc)) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = keepExpanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                    enabled = enabled,
+                )
+                ExposedDropdownMenu(
+                    expanded = keepExpanded,
+                    onDismissRequest = { keepExpanded = false },
+                ) {
+                    keepOptions.forEach { turns ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.settings_context_compaction_keep_turns_value, turns)) },
+                            onClick = {
+                                onKeepRecentTurnsChange(turns)
+                                keepExpanded = false
+                            },
+                        )
+                    }
+                }
+            }
+
+            ExposedDropdownMenuBox(
+                expanded = thresholdExpanded,
+                onExpandedChange = { thresholdExpanded = it },
+            ) {
+                OutlinedTextField(
+                    value = "$thresholdPercent%",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(stringResource(R.string.settings_context_compaction_threshold)) },
+                    supportingText = { Text(stringResource(R.string.settings_context_compaction_threshold_desc)) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = thresholdExpanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                    enabled = enabled,
+                )
+                ExposedDropdownMenu(
+                    expanded = thresholdExpanded,
+                    onDismissRequest = { thresholdExpanded = false },
+                ) {
+                    thresholdOptions.forEach { percent ->
+                        DropdownMenuItem(
+                            text = { Text("$percent%") },
+                            onClick = {
+                                onThresholdChange(percent)
+                                thresholdExpanded = false
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
 }

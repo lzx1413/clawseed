@@ -83,6 +83,10 @@ class ChatAccumulator(private val session: ClawSeedSession) {
     }
     private var currentTurnFlushed = false
     private var regenerating = false
+    private var compactionMessageId: String? = null
+    private var debugMessageId: String? = null
+    private var pendingEstimatedTokens: Int? = null
+    private var pendingEstimatedToolTokens: Int? = null
     var generationId: Long = 0
         private set
 
@@ -134,11 +138,17 @@ class ChatAccumulator(private val session: ClawSeedSession) {
         idCounter.set(0)
         currentTurnFlushed = false
         regenerating = false
+        compactionMessageId = null
+        debugMessageId = null
+        clearPendingDebugEstimates()
     }
 
     private fun beginTurn() {
         generationId++
         clearBuffers()
+        compactionMessageId = null
+        debugMessageId = null
+        clearPendingDebugEstimates()
         currentTurnFlushed = false
         clearError()
         _isGenerating.value = true
@@ -146,6 +156,8 @@ class ChatAccumulator(private val session: ClawSeedSession) {
 
     fun finishTurn() {
         clearBuffers()
+        debugMessageId = null
+        clearPendingDebugEstimates()
         _isGenerating.value = false
     }
 
@@ -198,13 +210,37 @@ class ChatAccumulator(private val session: ClawSeedSession) {
                     reconcileCompletedAssistantMessage(event.fullResponse)
                 }
                 event.metrics?.let { metrics ->
+                    val exactInputTokens = metrics.inputTokens
+                        ?.coerceAtMost(Int.MAX_VALUE.toLong())
+                        ?.toInt()
+                    val updatedMessages = _messages.value.toMutableList()
                     val index = _messages.value.indexOfLast { it is AccumulatedMessage.Assistant }
                     val userIndex = _messages.value.indexOfLast { it is AccumulatedMessage.User }
                     if (index > userIndex) {
-                        _messages.value = _messages.value.toMutableList().apply {
-                            val assistant = get(index) as AccumulatedMessage.Assistant
-                            set(index, assistant.copy(metrics = metrics))
+                        val assistant = updatedMessages[index] as AccumulatedMessage.Assistant
+                        updatedMessages[index] = assistant.copy(
+                            metrics = metrics,
+                            // Once Done arrives this is the exact input from
+                            // the latest provider request, not a prediction.
+                            estimatedTokens = exactInputTokens ?: assistant.estimatedTokens,
+                        )
+                    }
+                    if (exactInputTokens != null) {
+                        pendingEstimatedTokens = exactInputTokens
+                        debugMessageId?.let { debugId ->
+                            val debugIndex = updatedMessages.indexOfFirst { it.id == debugId }
+                            if (debugIndex >= 0) {
+                                val debug = updatedMessages[debugIndex] as? AccumulatedMessage.Debug
+                                if (debug != null) {
+                                    updatedMessages[debugIndex] = debug.copy(
+                                        estimatedTokens = exactInputTokens,
+                                    )
+                                }
+                            }
                         }
+                    }
+                    if (updatedMessages != _messages.value) {
+                        _messages.value = updatedMessages
                     }
                 }
                 currentTurnFlushed = true
@@ -251,14 +287,78 @@ class ChatAccumulator(private val session: ClawSeedSession) {
                 ))
             }
             is ChatEvent.DebugPrompt -> {
-                append(AccumulatedMessage.Debug(
-                    id = nextId(),
+                pendingEstimatedTokens = event.estimatedTokens
+                pendingEstimatedToolTokens = event.estimatedToolTokens
+                val id = debugMessageId ?: nextId().also { debugMessageId = it }
+                upsertDebug(AccumulatedMessage.Debug(
+                    id = id,
                     timestamp = System.currentTimeMillis(),
                     messagesJson = event.messages,
                     estimatedTokens = event.estimatedTokens,
                     toolsJson = event.toolsJson,
                     estimatedToolTokens = event.estimatedToolTokens,
                 ))
+            }
+            is ChatEvent.ContextCompactionStarted -> {
+                _isGenerating.value = true
+                val id = compactionMessageId ?: nextId().also { compactionMessageId = it }
+                upsertCompaction(AccumulatedMessage.ContextCompaction(
+                    id = id,
+                    timestamp = System.currentTimeMillis(),
+                    beforeTokens = event.beforeTokens,
+                    sourceTokens = event.sourceTokens,
+                    totalChunks = event.totalChunks,
+                ))
+            }
+            is ChatEvent.ContextCompactionProgress -> {
+                val current = _messages.value
+                    .filterIsInstance<AccumulatedMessage.ContextCompaction>()
+                    .lastOrNull { it.id == compactionMessageId }
+                val id = compactionMessageId ?: nextId().also { compactionMessageId = it }
+                upsertCompaction(AccumulatedMessage.ContextCompaction(
+                    id = id,
+                    timestamp = current?.timestamp ?: System.currentTimeMillis(),
+                    beforeTokens = current?.beforeTokens ?: 0,
+                    sourceTokens = current?.sourceTokens ?: 0,
+                    completedChunks = event.completedChunks,
+                    totalChunks = event.totalChunks,
+                    stage = event.stage,
+                ))
+            }
+            is ChatEvent.ContextCompactionCompleted -> {
+                val current = _messages.value
+                    .filterIsInstance<AccumulatedMessage.ContextCompaction>()
+                    .lastOrNull { it.id == compactionMessageId }
+                val id = compactionMessageId ?: nextId().also { compactionMessageId = it }
+                upsertCompaction(AccumulatedMessage.ContextCompaction(
+                    id = id,
+                    timestamp = System.currentTimeMillis(),
+                    beforeTokens = event.beforeTokens,
+                    sourceTokens = current?.sourceTokens ?: 0,
+                    completedChunks = current?.completedChunks ?: 0,
+                    totalChunks = current?.totalChunks ?: 0,
+                    afterTokens = event.afterTokens,
+                    summaryTokens = event.summaryTokens,
+                    stage = "completed",
+                ))
+                compactionMessageId = null
+            }
+            is ChatEvent.ContextCompactionFailed -> {
+                val current = _messages.value
+                    .filterIsInstance<AccumulatedMessage.ContextCompaction>()
+                    .lastOrNull { it.id == compactionMessageId }
+                val id = compactionMessageId ?: nextId().also { compactionMessageId = it }
+                upsertCompaction(AccumulatedMessage.ContextCompaction(
+                    id = id,
+                    timestamp = System.currentTimeMillis(),
+                    beforeTokens = event.beforeTokens,
+                    sourceTokens = current?.sourceTokens ?: 0,
+                    completedChunks = current?.completedChunks ?: 0,
+                    totalChunks = current?.totalChunks ?: 0,
+                    stage = "failed",
+                    error = event.message,
+                ))
+                compactionMessageId = null
             }
             // SessionStarted, Connected, ToolsRegistered, ResultAcknowledged — no accumulation needed
             is ChatEvent.SessionStarted,
@@ -285,11 +385,14 @@ class ChatAccumulator(private val session: ClawSeedSession) {
         val completedContent = fullResponseFallback
             ?.takeIf { it.isNotEmpty() }
             ?: textBuffer.toString()
+        val (estimatedTokens, estimatedToolTokens) = consumePendingDebugEstimates()
         if (completedContent.isNotEmpty()) {
             append(AccumulatedMessage.Assistant(
                 id = nextId(),
                 timestamp = System.currentTimeMillis(),
                 content = completedContent,
+                estimatedTokens = estimatedTokens,
+                estimatedToolTokens = estimatedToolTokens,
             ))
         }
         clearBuffers()
@@ -308,10 +411,13 @@ class ChatAccumulator(private val session: ClawSeedSession) {
         }
 
         if (assistantIndices.isEmpty()) {
+            val (estimatedTokens, estimatedToolTokens) = consumePendingDebugEstimates()
             append(AccumulatedMessage.Assistant(
                 id = nextId(),
                 timestamp = System.currentTimeMillis(),
                 content = fullResponse,
+                estimatedTokens = estimatedTokens,
+                estimatedToolTokens = estimatedToolTokens,
             ))
             return
         }
@@ -339,6 +445,35 @@ class ChatAccumulator(private val session: ClawSeedSession) {
 
     private fun append(msg: AccumulatedMessage) {
         _messages.value = _messages.value + msg
+    }
+
+    private fun upsertCompaction(msg: AccumulatedMessage.ContextCompaction) {
+        val index = _messages.value.indexOfFirst { it.id == msg.id }
+        if (index < 0) {
+            append(msg)
+        } else {
+            _messages.value = _messages.value.toMutableList().apply { set(index, msg) }
+        }
+    }
+
+    private fun upsertDebug(msg: AccumulatedMessage.Debug) {
+        val index = _messages.value.indexOfFirst { it.id == msg.id }
+        if (index < 0) {
+            append(msg)
+        } else {
+            _messages.value = _messages.value.toMutableList().apply { set(index, msg) }
+        }
+    }
+
+    private fun clearPendingDebugEstimates() {
+        pendingEstimatedTokens = null
+        pendingEstimatedToolTokens = null
+    }
+
+    private fun consumePendingDebugEstimates(): Pair<Int?, Int?> {
+        val estimates = pendingEstimatedTokens to pendingEstimatedToolTokens
+        clearPendingDebugEstimates()
+        return estimates
     }
 
     private fun nextId(): String = "msg-${idCounter.incrementAndGet()}"

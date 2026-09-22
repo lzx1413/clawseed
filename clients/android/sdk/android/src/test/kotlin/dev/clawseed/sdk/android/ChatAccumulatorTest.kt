@@ -4,6 +4,7 @@ import dev.clawseed.sdk.core.ClawSeedSession
 import dev.clawseed.sdk.core.client.GatewayClient
 import dev.clawseed.sdk.core.model.ChatEvent
 import dev.clawseed.sdk.core.model.ConnectionState
+import dev.clawseed.sdk.core.model.ResponseMetrics
 import dev.clawseed.sdk.core.model.SessionInfo
 import dev.clawseed.sdk.core.tool.ToolRegistry
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -31,6 +32,80 @@ class ChatAccumulatorTest {
         assertEquals("[{\"name\":\"lookup\"}]", debug.toolsJson)
         assertEquals(34, debug.estimatedToolTokens)
         assertEquals(12, debug.estimatedTokens)
+    }
+
+    @Test
+    fun debugPromptEstimatesAreAttachedToTheCompletedAssistantReply() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+
+        session.emit(ChatEvent.DebugPrompt("[]", 12, "[]", 34))
+        session.emit(ChatEvent.DebugPrompt("[updated]", 56, "[updated-tools]", 78))
+        session.emit(ChatEvent.Done("answer"))
+        runCurrent()
+
+        val debug = accumulator.messages.value
+            .filterIsInstance<AccumulatedMessage.Debug>()
+            .single()
+        assertEquals("[updated]", debug.messagesJson)
+        assertEquals(56, debug.estimatedTokens)
+        assertEquals(78, debug.estimatedToolTokens)
+        val assistant = accumulator.messages.value
+            .filterIsInstance<AccumulatedMessage.Assistant>()
+            .single()
+        assertEquals(56, assistant.estimatedTokens)
+        assertEquals(78, assistant.estimatedToolTokens)
+    }
+
+    @Test
+    fun doneReplacesThePreRequestEstimateWithTheLatestExactInput() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+
+        session.emit(ChatEvent.DebugPrompt("[initial]", 9_930, "[]", 0))
+        session.emit(
+            ChatEvent.Done(
+                "answer",
+                ResponseMetrics(inputTokens = 40_000),
+            ),
+        )
+        runCurrent()
+
+        val debug = accumulator.messages.value
+            .filterIsInstance<AccumulatedMessage.Debug>()
+            .single()
+        assertEquals(40_000, debug.estimatedTokens)
+        val assistant = accumulator.messages.value
+            .filterIsInstance<AccumulatedMessage.Assistant>()
+            .single()
+        assertEquals(40_000, assistant.estimatedTokens)
+    }
+
+    @Test
+    fun contextCompactionProgressUpdatesOneDividerAndKeepsFinalTokenCounts() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+
+        session.emit(ChatEvent.ContextCompactionStarted(20_100, 18_000, 3))
+        session.emit(ChatEvent.ContextCompactionProgress(2, 3, "summarizing"))
+        runCurrent()
+        session.emit(ChatEvent.ContextCompactionCompleted(20_100, 7_500, 1_900))
+        runCurrent()
+
+        val compactions = accumulator.messages.value.filterIsInstance<AccumulatedMessage.ContextCompaction>()
+        assertEquals(1, compactions.size)
+        assertEquals(20_100, compactions.single().beforeTokens)
+        assertEquals(2, compactions.single().completedChunks)
+        assertEquals(3, compactions.single().totalChunks)
+        assertEquals(7_500, compactions.single().afterTokens)
+        assertEquals(1_900, compactions.single().summaryTokens)
+        assertEquals("completed", compactions.single().stage)
     }
 
 

@@ -22,6 +22,10 @@ sealed class AccumulatedMessage {
         override val timestamp: Long,
         val content: String,
         val metrics: dev.clawseed.sdk.core.model.ResponseMetrics? = null,
+        /** Debug-only estimate for the provider message payload. */
+        val estimatedTokens: Int? = null,
+        /** Debug-only estimate for native tool specifications. */
+        val estimatedToolTokens: Int? = null,
     ) : AccumulatedMessage()
 
     /** Server-side tool invocation entry. */
@@ -72,5 +76,19 @@ sealed class AccumulatedMessage {
         val estimatedTokens: Int,
         val toolsJson: String? = null,
         val estimatedToolTokens: Int = 0,
+    ) : AccumulatedMessage()
+
+    /** Gateway context-compaction divider and live progress state. */
+    data class ContextCompaction(
+        override val id: String,
+        override val timestamp: Long,
+        val beforeTokens: Int,
+        val sourceTokens: Int = 0,
+        val completedChunks: Int = 0,
+        val totalChunks: Int = 0,
+        val stage: String = "summarizing",
+        val afterTokens: Int? = null,
+        val summaryTokens: Int? = null,
+        val error: String? = null,
     ) : AccumulatedMessage()
 }

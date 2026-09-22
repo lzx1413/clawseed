@@ -28,6 +28,8 @@ sealed class ChatEntry {
         val content: String,
         val isStreaming: Boolean = false,
         val metrics: dev.clawseed.sdk.core.model.ResponseMetrics? = null,
+        val estimatedTokens: Int? = null,
+        val estimatedToolTokens: Int? = null,
         val presentation: dev.clawseed.sdk.core.model.ToolPresentation? = null,
     ) : ChatEntry()
 
@@ -56,6 +58,19 @@ sealed class ChatEntry {
         val estimatedTokens: Int,
         val toolsJson: String? = null,
         val estimatedToolTokens: Int = 0,
+    ) : ChatEntry()
+
+    data class ContextCompactionStatus(
+        override val id: String,
+        override val timestamp: Long,
+        val beforeTokens: Int,
+        val sourceTokens: Int = 0,
+        val completedChunks: Int = 0,
+        val totalChunks: Int = 0,
+        val stage: String = "summarizing",
+        val afterTokens: Int? = null,
+        val summaryTokens: Int? = null,
+        val error: String? = null,
     ) : ChatEntry()
 }
 
