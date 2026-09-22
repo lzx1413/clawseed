@@ -66,7 +66,7 @@ Defines `Agent`, `AgentBuilder`, `TurnEvent`, and the configuration-based constr
 
 ### agent/state.rs — Conversation State and Prompt Context
 
-Owns conversation history, memory and user-profile refresh, skill activation, prompt rebuilding, remote tool registration, and history trimming.
+Owns conversation history, memory and user-profile refresh, skill activation, prompt rebuilding, remote tool registration, and history trimming. When `AgentConfig.context_compaction_enabled` is set, it also performs token-thresholded chunk summarization while retaining a stable summary prefix and recent raw tail.
 
 ### agent/tool_execution.rs — Hook and Tool Execution
 

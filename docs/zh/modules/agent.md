@@ -57,7 +57,7 @@ let agent = Agent::from_config_with_registry(&config, Some(provider_factory_regi
 
 ### agent/state.rs — 会话状态与提示上下文
 
-负责会话历史、记忆和用户画像刷新、技能激活、提示词重建、远程工具注册以及历史裁剪。
+负责会话历史、记忆和用户画像刷新、技能激活、提示词重建、远程工具注册以及历史裁剪。启用 `AgentConfig.context_compaction_enabled` 后，还会按 token 阈值执行分块摘要，保留稳定摘要前缀和最近原文尾部。
 
 ### agent/tool_execution.rs — Hook 与工具执行
 

@@ -21,13 +21,15 @@ history. SQLite stores this separately from model conversation context.
 Disabling debug hides the statistics and stops collecting them for new turns.
 Older messages with no recorded metrics remain unchanged.
 
-- `input_tokens` and `output_tokens`: provider-reported totals across all model
-  requests in the turn, including tool iterations and automatic continuations.
-  Gemini output includes reported thinking tokens.
-- `cached_input_tokens`: input tokens read from cache. Anthropic and Bedrock input
-  totals include uncached input, cache writes, and cache reads.
-- `cache_hit_ratio`: sum of cached input / sum of total input, as a fraction in
-  `[0, 1]`. Cache writes do not count as hits. Ratios are not averaged per call.
+- `input_tokens` and `cached_input_tokens`: provider-reported usage from the latest
+  model request. Input is no longer summed across tool-loop requests, so it describes
+  the prompt actually sent to the provider for that request.
+- `output_tokens`: provider-reported output total across all model requests in the turn,
+  including tool iterations. Gemini output includes reported
+  thinking tokens.
+- Anthropic and Bedrock input totals include uncached input, cache writes, and cache reads.
+- `cache_hit_ratio`: cached input / total input for the latest request, as a fraction in
+  `[0, 1]`. Cache writes do not count as hits.
 - `output_tokens_per_second`: total output / sum of streaming generation times,
   from first text/reasoning/tool-generation event to stream completion for each
   model call. Excludes first-token wait and tool execution. This is a client-side
@@ -37,9 +39,10 @@ Older messages with no recorded metrics remain unchanged.
   tools. Excludes client transport, queueing before the agent starts, and background
   title generation or learning.
 
-Missing fields stay null and display **Not provided**. If any model request lacks
-a count, the corresponding turn total is unavailable rather than a partial sum.
-Prompt token estimates are not substituted for provider usage.
+Missing fields stay null and display **Not provided**. If the latest request lacks
+input or cache usage, that field is unavailable; if any model request lacks output,
+the whole-turn output total is unavailable rather than a partial sum. Prompt token
+estimates are not substituted for provider usage.
 
 References: [DeepSeek balance](https://api-docs.deepseek.com/api/get-user-balance/),
 [Moonshot balance](https://platform.kimi.com/docs/api/balance),
@@ -53,4 +56,10 @@ References: [DeepSeek balance](https://api-docs.deepseek.com/api/get-user-balanc
 
 Tool specs are sorted by name and shared by system rendering and the native tools payload. Native mode submits complete schemas only through tools; XML mode retains prompt definitions. Skill discovery uses a bounded first-sentence summary; full rules must be loaded through Skill.
 
-Debug estimated_tokens approximates messages in the first model call. Optional tools (JSON string) and estimated_tool_tokens expose native definitions separately. The message snapshot omits duplicate internal stable_prefix metadata. These estimates are not provider usage or cache-ratio denominators; reply metrics still aggregate every call in the turn.
+Before a request, Debug `estimated_tokens` approximates the complete input of the latest model
+call, including native tool definitions. After the provider responds, the same Debug card is
+updated with that request's exact input when available. `estimated_tool_tokens` exposes the
+tool-definition portion separately. The next pre-request estimate uses the previous exact input
+as a baseline and projects prompt changes forward. The message snapshot omits duplicate internal
+stable_prefix metadata. Estimates are not used as cache-ratio denominators; reply input/cache
+metrics describe the latest request, while output and generation speed cover the whole tool loop.

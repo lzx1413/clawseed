@@ -100,8 +100,12 @@ pub struct AgentConfig {
     pub max_tool_iterations: usize,           // Max tool loop iterations (default 25)
     pub temperature: Option<f64>,
     pub max_tokens: Option<u32>,
-    pub auto_continue_on_truncation: bool,
-    pub max_auto_continue: usize,
+    pub context_compaction_enabled: bool,     // Token-aware history compaction (default true)
+    pub context_window_tokens: Option<usize>, // Provider context window (default 512000)
+    pub context_compaction_trigger_tokens: Option<usize>, // Explicit trigger (takes precedence)
+    pub context_compaction_threshold_percent: u8, // Window trigger percentage (default 80)
+    pub context_compaction_target_tokens: usize, // Summary target (default 2048)
+    pub context_compaction_keep_recent_turns: Option<usize>, // Raw tail conversation turns (default 1)
     pub web_search_enabled: bool,
     pub web_search_provider: Option<String>,
     pub system_prompt: Option<String>,

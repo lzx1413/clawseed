@@ -268,6 +268,20 @@ Each agent turn appends messages to a conversation history (`Vec<ChatMessage>`) 
 - **`trim_history()`** — Drops the oldest non-system messages when history exceeds `max_history` (default 50), always preserving the system prompt at position 0
 - **`truncate_tool_result()`** — Truncates oversized tool output to `max_chars`, keeping the head (2/3) and tail (1/3) with a `[... N characters truncated ...]` marker
 - **`estimate_history_tokens()`** — Rough token count estimation (`content.len() / 4 + 4` per message) for budget decisions
+- **Optional token-aware compaction** — Set `[agent].context_compaction_enabled = true` and configure either `context_window_tokens` or `context_compaction_trigger_tokens`. Once the threshold is reached, the oldest prefix is summarized in chunks while a recent raw tail is retained. The stable synthetic summary keeps the provider cache prefix from shifting on every trim.
+- **Map/reduce summarization** — Large histories are summarized per chunk and reduced toward the configured target. The summarizer is instructed to preserve goals, decisions, constraints, facts, paths, tool results, and unresolved questions while treating the source as data.
+- **Separate request and transcript state** — Gateway SQLite keeps the full `messages` transcript and stores request-only metadata in `session_compactions`; reconnects restore the summary plus raw tail without changing UI/export history.
+
+Compaction is enabled by default with a 512K-token context limit. For a provider with a larger known context window, override it; for example, configure a 1M-token context:
+
+```toml
+[agent]
+context_compaction_enabled = true
+context_window_tokens = 1_000_000
+context_compaction_threshold_percent = 80
+context_compaction_target_tokens = 8_000
+context_compaction_keep_recent_turns = 1
+```
 
 ```
 System prompt (always kept)

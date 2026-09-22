@@ -263,6 +263,20 @@ Agent::from_config_with_registry(&config, Some(Arc::new(reg))).await?;
 - **`trim_history()`** — 当历史消息数超过 `max_history`（默认 50）时，删除最早的非 system 消息，始终保留位置 0 的 system prompt
 - **`truncate_tool_result()`** — 将过大的工具输出截断到 `max_chars`，保留头部（2/3）和尾部（1/3），中间插入 `[... N characters truncated ...]` 标记
 - **`estimate_history_tokens()`** — 粗略估算 token 数（每条消息 `content.len() / 4 + 4`），用于预算决策
+- **token-aware compaction（可选）** — 设置 `[agent]` 的 `context_compaction_enabled = true`，并配置 `context_window_tokens` 或 `context_compaction_trigger_tokens` 后，在达到阈值时把最早的对话按 chunk 做摘要，再保留最近消息原文。摘要以稳定的合成消息放在历史前缀中，避免每轮因为简单截断而让 provider cache 前缀整体失效。
+- **map/reduce 摘要** — 超长历史先分块摘要，再按目标 token 数继续归并；摘要提示明确把历史当作数据，保留目标、决定、约束、事实、文件路径、工具结果和未解决问题。
+- **请求态与持久化态分离** — 网关 SQLite 保留完整 `messages` transcript，另存 `session_compactions` 作为请求态摘要元数据；重连时恢复摘要和原始尾部，不破坏 UI 导出历史。
+
+默认使用 512k token context，并启用 compaction。对于明确支持更大窗口的模型，可以覆盖配置；例如 1M token 上下文：
+
+```toml
+[agent]
+context_compaction_enabled = true
+context_window_tokens = 1_000_000
+context_compaction_threshold_percent = 80
+context_compaction_target_tokens = 8_000
+context_compaction_keep_recent_turns = 1
+```
 
 ```
 System prompt（始终保留）

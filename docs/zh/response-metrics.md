@@ -16,12 +16,13 @@ Android 的 LLM 配置页面会在进入页面、修改 URL 或密钥后自动�
 发送回模型上下文。关闭 debug 后隐藏统计，新回复也不再记录。历史消息没有
 记录过的统计不进行补算。
 
-- `input_tokens`、`output_tokens`：本轮所有模型调用的真实用量总和，包括工具
-  循环和自动续接。Gemini 的输出计入已上报的思考 token。
-- `cached_input_tokens`：缓存读取 token。Anthropic 和 Bedrock 的输入总量会
-  合并未缓存输入、缓存写入与缓存读取。
-- `cache_hit_ratio`：缓存读取总量 / 输入总量，范围为 `[0, 1]`。缓存写入不算
-  命中，不对每次调用的百分比取平均。
+- `input_tokens`、`cached_input_tokens`：最近一次模型请求的真实用量，不再把工具
+  循环中的多次 input 相加。这样它表示当前实际发送给 Provider 的这一份 prompt。
+- `output_tokens`：本轮所有模型调用的真实输出用量总和，包括工具循环。
+  Gemini 的输出计入已上报的思考 token。
+- Anthropic 和 Bedrock 的输入总量会合并未缓存输入、缓存写入与缓存读取。
+- `cache_hit_ratio`：最近一次请求的缓存读取 token / 最近一次请求 input token，
+  范围为 `[0, 1]`。缓存写入不算命中。
 - `output_tokens_per_second`：输出总量 / 各模型调用的流式生成时长之和。
   每次调用从第一个正文、思考或工具生成事件计时，至流结束；不包含首 token
   等待和工具执行。该值受网络缓冲影响。非流式调用无法分离生成时间，因此
@@ -29,8 +30,9 @@ Android 的 LLM 配置页面会在进入页面、修改 URL 或密钥后自动�
 - `elapsed_ms`：Agent 整轮处理耗时，包括准备、模型等待与工具执行；不含客户端
   传输、Agent 开始前的排队，以及后台标题生成或学习。
 
-缺失数据显示 **未提供**。若任一次模型调用未提供某项 token 数，本轮对应总量
-也显示未知，避免将部分统计当作完整统计。不以 prompt 估算值代替真实用量。
+缺失数据显示 **未提供**。最近一次请求缺少 input 或 cache 字段时，对应字段显示未知；
+任一次模型调用缺少 output 时，整轮 output 总量显示未知，避免将部分统计当作完整统计。
+不以 prompt 估算值代替真实用量。
 
 官方字段依据见[英文文档](../en/response-metrics.md)中的链接。
 
@@ -38,4 +40,9 @@ Android 的 LLM 配置页面会在进入页面、修改 URL 或密钥后自动�
 
 工具注册表按名称排序，系统提示与原生 tools 使用同一顺序。原生模式只在 tools 字段提交完整 schema，XML 模式仍在系统提示中提供工具说明。技能目录只展示有长度上限的首句用途摘要，完整规则必须用 Skill 工具加载。
 
-Debug 的 `estimated_tokens` 是首次模型调用的消息粗估；新增可选 `tools`（JSON 字符串）和 `estimated_tool_tokens` 单独展示原生工具定义和粗估。消息快照去掉重复的内部 `stable_prefix` 字段。粗估不等于供应商 token 用量，不用于计算命中率；回复底部 metrics 仍是整轮所有调用的合计。
+Debug 的 `estimated_tokens` 在请求发出前是最近一次模型调用的完整 input 估算，包含原生
+工具定义；Provider 返回后会用本次真实 input 回写同一张 Debug 卡。`estimated_tool_tokens`
+作为工具定义明细单独展示。若已有上一次 Provider 的真实 input，下一次请求前的估算会以
+它为基准，再按 prompt 内容变化量校准。消息快照去掉重复的内部 `stable_prefix` 字段。
+估算不用于计算命中率；回复底部的 input/cache 是最近一次请求，output 和输出速度仍覆盖
+整轮工具循环。

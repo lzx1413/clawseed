@@ -100,8 +100,12 @@ pub struct AgentConfig {
     pub max_tool_iterations: usize,           // 最大工具循环次数（默认 25）
     pub temperature: Option<f64>,
     pub max_tokens: Option<u32>,
-    pub auto_continue_on_truncation: bool,
-    pub max_auto_continue: usize,
+    pub context_compaction_enabled: bool,     // 启用 token-aware 历史压缩（默认 true）
+    pub context_window_tokens: Option<usize>, // provider 上下文窗口（默认 512000）
+    pub context_compaction_trigger_tokens: Option<usize>, // 显式触发阈值（优先）
+    pub context_compaction_threshold_percent: u8, // 上下文窗口触发百分比（默认 80）
+    pub context_compaction_target_tokens: usize, // 摘要目标大小（默认 2048）
+    pub context_compaction_keep_recent_turns: Option<usize>, // 原文保留会话轮数（默认 1）
     pub web_search_enabled: bool,
     pub web_search_provider: Option<String>,
     pub system_prompt: Option<String>,

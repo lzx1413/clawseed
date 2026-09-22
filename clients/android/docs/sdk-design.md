@@ -283,8 +283,13 @@ sealed class ChatEvent {
     /** Error from the gateway. */
     data class Error(val message: String, val code: String? = null) : ChatEvent()
 
-    /** Debug prompt info (when debug=true). */
-    data class DebugPrompt(val messages: String, val estimatedTokens: Int) : ChatEvent()
+    /** Debug prompt info (when debug=true); estimatedTokens includes tools. */
+    data class DebugPrompt(
+        val messages: String,
+        val estimatedTokens: Int,
+        val toolsJson: String? = null,
+        val estimatedToolTokens: Int = 0,
+    ) : ChatEvent()
 }
 ```
 
@@ -695,7 +700,14 @@ sealed class AccumulatedMessage {
     data class ToolResult(override val id: String, override val timestamp: Long, val callId: String, val name: String, val output: String) : AccumulatedMessage()
     data class Thinking(override val id: String, override val timestamp: Long, val content: String) : AccumulatedMessage()
     data class Error(override val id: String, override val timestamp: Long, val message: String) : AccumulatedMessage()
-    data class Debug(override val id: String, override val timestamp: Long, val messagesJson: String, val estimatedTokens: Int) : AccumulatedMessage()
+    data class Debug(
+        override val id: String,
+        override val timestamp: Long,
+        val messagesJson: String,
+        val estimatedTokens: Int,
+        val toolsJson: String? = null,
+        val estimatedToolTokens: Int = 0,
+    ) : AccumulatedMessage()
 }
 ```
 
@@ -950,7 +962,7 @@ The SDK communicates with the ClawSeed gateway via two channels:
 | `aborted` | (none) | Turn aborted |
 | `title_updated` | `title` | Session title changed |
 | `error` | `message, code?` | Error occurred |
-| `debug_prompt` | `messages, estimated_tokens` | Debug info |
+| `debug_prompt` | `messages, estimated_tokens, tools?, estimated_tool_tokens?` | Debug info; estimated input includes tools |
 
 #### Error Codes
 
