@@ -31,6 +31,60 @@ class LocalStore(private val context: Context) {
         }
     }
 
+    // --- Conversation history preferences (JSON strings preserve preference export/import) ---
+    private val KEY_PINNED_SESSION_IDS = stringPreferencesKey("pinned_session_ids")
+    private val KEY_COLLAPSED_PERSONAS = stringPreferencesKey("collapsed_history_personas")
+
+    val pinnedSessionIds: Flow<Set<String>> = store.data.map { prefs ->
+        decodeHistoryKeys(prefs[KEY_PINNED_SESSION_IDS].orEmpty())
+    }
+
+    val collapsedHistoryPersonas: Flow<Set<String>> = store.data.map { prefs ->
+        decodeHistoryKeys(prefs[KEY_COLLAPSED_PERSONAS].orEmpty())
+    }
+
+    suspend fun toggleHistoryPersonaCollapsed(key: String) {
+        store.edit { prefs ->
+            val keys = decodeHistoryKeys(prefs[KEY_COLLAPSED_PERSONAS].orEmpty()).toMutableSet()
+            if (!keys.remove(key)) keys.add(key)
+            prefs[KEY_COLLAPSED_PERSONAS] = encodeHistoryKeys(keys)
+        }
+    }
+
+    suspend fun toggleSessionPinned(sessionId: String) {
+        store.edit { prefs ->
+            val ids = decodeHistoryKeys(prefs[KEY_PINNED_SESSION_IDS].orEmpty()).toMutableSet()
+            if (!ids.remove(sessionId)) ids.add(sessionId)
+            prefs[KEY_PINNED_SESSION_IDS] = encodeHistoryKeys(ids)
+        }
+    }
+
+    suspend fun removePinnedSessions(sessionIds: Set<String>) {
+        store.edit { prefs ->
+            val ids = decodeHistoryKeys(prefs[KEY_PINNED_SESSION_IDS].orEmpty()).toMutableSet()
+            ids.removeAll(sessionIds)
+            prefs[KEY_PINNED_SESSION_IDS] = encodeHistoryKeys(ids)
+        }
+    }
+
+    private fun decodeHistoryKeys(value: String): Set<String> {
+        if (value.isBlank()) return emptySet()
+        return runCatching {
+            val array = org.json.JSONArray(value)
+            buildSet {
+                for (index in 0 until array.length()) {
+                    array.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+                }
+            }
+        }.getOrDefault(emptySet())
+    }
+
+    private fun encodeHistoryKeys(ids: Set<String>): String {
+        val array = org.json.JSONArray()
+        ids.filter { it.isNotBlank() }.sorted().forEach(array::put)
+        return array.toString()
+    }
+
     // --- Draft message ---
     private val KEY_DRAFT = stringPreferencesKey("draft_message")
 

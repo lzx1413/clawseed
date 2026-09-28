@@ -1,6 +1,5 @@
 package dev.clawseed.demo.ui.drawer
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -23,6 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -50,16 +51,19 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.SpanStyle
@@ -71,8 +75,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.clawseed.demo.BuildConfig
 import dev.clawseed.demo.R
 import dev.clawseed.demo.ui.persona.PersonaDot
-import dev.clawseed.demo.ui.persona.personaContainerColor
-import dev.clawseed.demo.ui.persona.personaContentColor
 import dev.clawseed.demo.ui.settings.UpdateCheckResult
 import dev.clawseed.demo.ui.settings.SettingsViewModel
 import dev.clawseed.sdk.core.model.PersonaInfo
@@ -80,6 +82,8 @@ import dev.clawseed.sdk.core.model.SessionSummary
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+
+private data class PersonaDeletionRequest(val persona: String?, val sessionIds: List<String>)
 
 @Composable
 fun SessionDrawer(
@@ -96,9 +100,19 @@ fun SessionDrawer(
     val uiState by viewModel.uiState.collectAsState()
     var showAbout by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
-    val groups = remember(uiState.sessions, query) { groupSessionHistory(uiState.sessions, query) }
-    val dateFormatter = remember { DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM) }
+    val history = remember(uiState.sessions, query, uiState.pinnedSessionIds) {
+        buildSessionHistory(uiState.sessions, query, uiState.pinnedSessionIds)
+    }
+    val groups = history.groups
+    var deletionRequest by remember { mutableStateOf<PersonaDeletionRequest?>(null) }
+    val deleting = uiState.deletingSessionIds.isNotEmpty()
+    val latestSessionId by rememberUpdatedState(currentSessionId)
+    val latestDeleteCurrent by rememberUpdatedState(onDeleteCurrentSession)
+    // Searching expands matches without changing the saved browsing preference.
+    var searchCollapsedKeys by rememberSaveable(query) { mutableStateOf(emptyList<String>()) }
+    val searching = query.isNotBlank()
     val today = remember(isDrawerOpen) { LocalDate.now() }
+    val dateFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -118,6 +132,59 @@ fun SessionDrawer(
 
     if (showAbout) {
         AboutDialog(onDismiss = { showAbout = false })
+    }
+
+    deletionRequest?.let { request ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { deletionRequest = null },
+            title = { Text(stringResource(R.string.drawer_delete_persona_sessions)) },
+            text = {
+                Text(stringResource(
+                    R.string.drawer_delete_persona_confirm,
+                    request.persona ?: stringResource(R.string.drawer_default_persona),
+                    request.sessionIds.size,
+                ))
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !deleting,
+                    onClick = {
+                        deletionRequest = null
+                        viewModel.deleteSessions(request.sessionIds) { id ->
+                            if (id == latestSessionId) latestDeleteCurrent()
+                        }
+                    },
+                ) { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletionRequest = null }) { Text(stringResource(R.string.common_cancel)) }
+            },
+        )
+    }
+
+    val renderSession: @Composable (SessionSummary, Boolean) -> Unit = { session, pinned ->
+        SessionItem(
+            session = session,
+            dateLabel = when (val date = sessionHistoryDate(session)) {
+                today -> stringResource(R.string.drawer_today)
+                today.minusDays(1) -> stringResource(R.string.drawer_yesterday)
+                null -> stringResource(R.string.drawer_older)
+                else -> date.format(dateFormatter)
+            },
+            personaLabel = if (pinned) sessionPersona(session)
+                ?: stringResource(R.string.drawer_default_persona) else null,
+            isSelected = session.id == currentSessionId,
+            isPinned = pinned,
+            actionsEnabled = !deleting,
+            onSelect = { onSelectSession(session.id) },
+            onDelete = {
+                viewModel.deleteSession(session.id) {
+                    if (session.id == latestSessionId) latestDeleteCurrent()
+                }
+            },
+            onRename = { name -> viewModel.renameSession(session.id, name) },
+            onTogglePinned = { viewModel.togglePinned(session.id) },
+        )
     }
 
     ModalDrawerSheet {
@@ -150,6 +217,20 @@ fun SessionDrawer(
                     TextButton(onClick = viewModel::loadSessions) { Text(stringResource(R.string.common_retry)) }
                 }
             }
+            if (deleting) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Text(
+                    stringResource(R.string.drawer_deleting_sessions),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (uiState.deletionError != null) {
+                Column(Modifier.padding(horizontal = 16.dp)) {
+                    Text(uiState.deletionError!!, color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = viewModel::dismissDeletionError) { Text(stringResource(R.string.common_close)) }
+                }
+            }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (uiState.isLoading && uiState.sessions.isEmpty()) {
                     Text(
@@ -166,33 +247,59 @@ fun SessionDrawer(
                     )
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                        groups.forEach { group ->
-                            item(key = "date:${group.date}", contentType = "date") {
+                        if (history.pinned.isNotEmpty()) {
+                            item(key = "pinned-header", contentType = "pinned-header") {
                                 Text(
-                                    when (group.date) {
-                                        today -> stringResource(R.string.drawer_today)
-                                        today.minusDays(1) -> stringResource(R.string.drawer_yesterday)
-                                        null -> stringResource(R.string.drawer_older)
-                                        else -> group.date.format(dateFormatter)
-                                    },
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    text = stringResource(R.string.drawer_pinned_section),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                                 )
                             }
-                            items(group.sessions, key = { "session:${it.id}" }, contentType = { "session" }) { session ->
-                                SessionItem(
-                                    session = session,
+                            items(history.pinned, key = { "session:${it.id}" }, contentType = { "session" }) {
+                                renderSession(it, true)
+                            }
+                        }
+                        groups.forEach { group ->
+                            val groupKey = group.key
+                            val expanded = if (searching) groupKey !in searchCollapsedKeys
+                            else groupKey !in uiState.collapsedPersonaKeys
+                            item(key = "persona:$groupKey", contentType = "persona") {
+                                PersonaGroupHeader(
+                                    persona = group.persona,
                                     personaVisuals = uiState.personaVisuals,
-                                    isSelected = session.id == currentSessionId,
-                                    onSelect = { onSelectSession(session.id) },
-                                    onDelete = {
-                                        viewModel.deleteSession(session.id) {
-                                            if (session.id == currentSessionId) onDeleteCurrentSession()
+                                    expanded = expanded,
+                                    sessionCount = group.sessions.size + group.pinnedCount,
+                                    actionsEnabled = !deleting,
+                                    onDeleteAll = {
+                                        deletionRequest = PersonaDeletionRequest(
+                                            group.persona, personaSessionIds(uiState.sessions, group.persona),
+                                        )
+                                    },
+                                    onClick = {
+                                        if (searching) {
+                                            searchCollapsedKeys = if (expanded) searchCollapsedKeys + groupKey
+                                            else searchCollapsedKeys - groupKey
+                                        } else {
+                                            viewModel.togglePersonaCollapsed(groupKey)
                                         }
                                     },
-                                    onRename = { name -> viewModel.renameSession(session.id, name) },
                                 )
+                            }
+                            if (expanded) {
+                                if (group.sessions.isEmpty() && group.pinnedCount > 0) {
+                                    item(key = "pinned-only:$groupKey", contentType = "hint") {
+                                        Text(
+                                            stringResource(R.string.drawer_persona_all_pinned),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(start = 24.dp, end = 16.dp, bottom = 8.dp),
+                                        )
+                                    }
+                                }
+                                items(group.sessions, key = { "session:${it.id}" }, contentType = { "session" }) { session ->
+                                    renderSession(session, false)
+                                }
                             }
                         }
                     }
@@ -233,13 +340,84 @@ fun SessionDrawer(
 }
 
 @Composable
+private fun PersonaGroupHeader(
+    persona: String?,
+    personaVisuals: Map<String, PersonaInfo>,
+    expanded: Boolean,
+    sessionCount: Int,
+    actionsEnabled: Boolean,
+    onDeleteAll: () -> Unit,
+    onClick: () -> Unit,
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    val visual = persona?.let(personaVisuals::get)
+    val actionLabel = stringResource(if (expanded) R.string.drawer_collapse_persona else R.string.drawer_expand_persona)
+    val expandedLabel = stringResource(if (expanded) R.string.drawer_group_expanded else R.string.drawer_group_collapsed)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { stateDescription = expandedLabel }
+            .clickable(onClickLabel = actionLabel, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (persona != null) {
+            PersonaDot(
+                persona,
+                Modifier.size(24.dp),
+                showInitial = true,
+                avatar = visual?.avatar,
+                color = visual?.color,
+            )
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(
+            text = persona ?: stringResource(R.string.drawer_default_persona),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = sessionCount.toString(),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 8.dp),
+        )
+        Icon(
+            imageVector = if (expanded) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Box {
+            IconButton(enabled = actionsEnabled, onClick = { showMenu = true }) {
+                Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.drawer_persona_actions))
+            }
+            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                DropdownMenuItem(
+                    enabled = actionsEnabled,
+                    text = { Text(stringResource(R.string.drawer_delete_persona_sessions), color = MaterialTheme.colorScheme.error) },
+                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                    onClick = { showMenu = false; onDeleteAll() },
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun SessionItem(
     session: SessionSummary,
-    personaVisuals: Map<String, PersonaInfo>,
+    dateLabel: String,
+    personaLabel: String?,
+    actionsEnabled: Boolean,
     isSelected: Boolean,
+    isPinned: Boolean,
     onSelect: () -> Unit,
     onDelete: () -> Unit,
     onRename: (String) -> Unit,
+    onTogglePinned: () -> Unit,
 ) {
     var showRenameDialog by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
@@ -251,7 +429,7 @@ private fun SessionItem(
             title = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) },
             text = { Text(stringResource(R.string.drawer_delete_confirm, session.name ?: session.id.take(8))) },
             confirmButton = {
-                TextButton(onClick = { confirmDelete = false; onDelete() }) { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) }
+                TextButton(enabled = actionsEnabled, onClick = { confirmDelete = false; onDelete() }) { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
                 TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.common_cancel)) }
@@ -269,56 +447,63 @@ private fun SessionItem(
 
     NavigationDrawerItem(
         label = {
-            val persona = session.persona
-            val personaVisual = persona?.let { personaVisuals[it] }
             Column {
-                Text(
-                    text = session.name ?: session.id.take(8),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (!persona.isNullOrEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .padding(top = 3.dp)
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(personaContainerColor(persona, personaVisual?.color))
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        PersonaDot(
-                            persona,
-                            Modifier.size(14.dp),
-                            showInitial = true,
-                            avatar = personaVisual?.avatar,
-                            color = personaVisual?.color,
-                        )
-                        Spacer(Modifier.width(5.dp))
-                        Text(
-                            text = persona,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = personaContentColor(persona, personaVisual?.color),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = session.name ?: session.id.take(8),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (isPinned) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            Icons.Default.Star,
+                            contentDescription = stringResource(R.string.drawer_pinned),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp),
                         )
                     }
                 }
+                if (personaLabel != null) {
+                    Text(
+                        text = personaLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
+                    text = dateLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 3.dp),
+                )
             }
         },
         selected = isSelected,
-        onClick = onSelect,
+        onClick = { if (actionsEnabled) onSelect() },
         badge = {
             Box {
-                IconButton(onClick = { showMenu = true }) {
+                IconButton(enabled = actionsEnabled, onClick = { showMenu = true }) {
                     Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.drawer_session_actions))
                 }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                     DropdownMenuItem(
+                        enabled = actionsEnabled,
+                        text = { Text(stringResource(if (isPinned) R.string.drawer_unpin else R.string.drawer_pin)) },
+                        leadingIcon = { Icon(Icons.Default.Star, contentDescription = null) },
+                        onClick = { showMenu = false; onTogglePinned() },
+                    )
+                    DropdownMenuItem(
+                        enabled = actionsEnabled,
                         text = { Text(stringResource(R.string.drawer_rename)) },
                         leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
                         onClick = { showMenu = false; showRenameDialog = true },
                     )
                     DropdownMenuItem(
+                        enabled = actionsEnabled,
                         text = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) },
                         leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
                         onClick = { showMenu = false; confirmDelete = true },
