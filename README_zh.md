@@ -4,7 +4,11 @@
 
 
 <p align="center">
-  <strong>支持远程工具调用的 Rust AI Agent 运行时。</strong>
+  <strong>基于 Rust、可在 Android 手机上运行的 AI Agent。</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/lzx1413/clawseed/releases/latest"><strong>下载最新 Android APK</strong></a>
 </p>
 
 <p align="center">
@@ -16,14 +20,36 @@
 
 ---
 
-ClawSeed 是一个 AI Agent **运行时**，用 Rust 编写。它连接 LLM 提供商（Anthropic、Gemini、Bedrock、DeepSeek、OpenAI 兼容接口等），通过可插拔的工具执行操作，并通过 HTTP/WebSocket 服务客户端。它附带一个 Android Demo 应用，可在设备上运行完整的 Agent 栈。
+ClawSeed 是一个可以直接运行在 Android 手机上的移动端 AI Agent。应用会在设备本地运行 Rust Gateway、Agent 循环、记忆和工具系统，再连接你选择的 LLM 提供商。它同时也是一个开源的 Rust Agent 运行时和 SDK，方便开发者构建自己的 Agent 与 Android 集成。
+
+## 在 Android 上体验 ClawSeed
+
+[下载最新 APK](https://github.com/lzx1413/clawseed/releases/latest)，安装到 Android 设备后，打开应用，在设置中配置 Provider 和模型，即可开始对话。所有已发布 APK 和更新说明都在 [GitHub Releases](https://github.com/lzx1413/clawseed/releases) 页面。
+
+Android 应用提供：
+
+- 支持流式 Markdown 的聊天，以及图片、PDF、DOCX、Markdown、文本和 CSV 附件
+- 可为不同任务设置独立人格、模型、思考模式、记忆、工具和技能的分身
+- 用户画像、会话记忆、定时提示和可选的语音播报
+- 设备信息、位置等设备端工具
+- 通过 [CETP 协议](docs/zh/external-tool-protocol.md)调用其他 Android App 提供的工具
+- DeepSeek、通义千问、OpenAI 兼容接口、Anthropic、Ollama 等 Provider 预设
+- 浅色、深色和 OLED 主题，会话管理、重新生成和用量统计
+
+Agent 栈运行在手机上；所选 LLM Provider 通常通过网络访问。安装和运行方式参见 [Android 使用指南](docs/zh/android-demo.md)，支持的附件格式与限制参见[附件使用说明](docs/zh/android-file-attachments.md)。
+
+## ClawSeed 是什么？
+
+ClawSeed 既是一个可以直接使用的 Android 应用，也是一个 Rust AI Agent 运行时。想先体验功能，可以直接安装 Android 应用；想构建 CLI、机器人、移动客户端或嵌入式 Agent，则可以使用它提供的稳定 trait 和可复用 crate。
 
 ## NEWS
 
 - 2026-09-11：**ClawSeed Android 2.0.0** 带来图片与文件对话：支持添加图片、PDF、DOCX、Markdown、文本和 CSV 附件；附件面板提供最近图片预览及拍照、相册、文件入口；支持从其他 Android 应用分享图片和文件到新会话草稿。本次更新还优化了拍照预览与上传速度、聊天滚动和会话资源占用，并完善了模型用量统计。支持格式与限制详见[附件使用说明](docs/zh/android-file-attachments.md)。
-- 2026-07-03：我们今天正式支持了分身功能。
+- 2026-07-03：ClawSeed 正式支持分身功能。
 
-一个 agent 运行时应该只做三件事：接收消息、调用 LLM、执行工具。其他一切——渠道、面板、集成——都属于应用层。ClawSeed 提供稳定的 trait crate，应用自己组装。
+## 面向开发者的运行时
+
+一个 Agent 运行时应该只做三件事：接收消息、调用 LLM、执行工具。其他一切——渠道、面板和集成——都属于应用层。ClawSeed 提供稳定的 trait crate，由应用自行组装。
 
 ```toml
 # 一个 Discord 机器人应用
@@ -43,9 +69,9 @@ clawseed-agent = "0.7"
 clawseed-tools = "0.7"
 ```
 
-Agent 运行在服务端，但移动客户端（Android、iOS）可以通过 WebSocket 注册自己的工具。当 Agent 调用这些工具时，网关将请求转发给客户端执行。这使得 Agent 可以访问设备能力——通讯录、摄像头、传感器——而无需在服务端编写设备特定代码。
+在随项目提供的 Android 应用中，Gateway 和 Agent 运行在设备本地。在其他部署方式中，Agent 也可以运行在服务端，由 Android、iOS 或其他客户端通过 WebSocket 注册设备工具；当 Agent 调用这些工具时，Gateway 会将请求转发给客户端执行。
 
-ClawSeed 的 trait 驱动架构借鉴自 [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw)，但定位不同：ZeroClaw 把渠道、面板、硬件、SOP 引擎都塞进一个二进制（做的是应用）；ClawSeed 提供 crate 让应用自己组装（做的是运行时）。ClawSeed 还新增了 Android Demo 应用、扩展思维链支持和模块化 prompt 构建器，这些是 ZeroClaw 没有的。
+ClawSeed 的 trait 驱动架构借鉴自 [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw)，但定位不同：ZeroClaw 把渠道、面板、硬件和 SOP 集成在一个应用中；ClawSeed 提供 crate，让应用自行组装。ClawSeed 还加入了 Android 应用、扩展思维支持和模块化 prompt 构建器。
 
 ## 架构
 

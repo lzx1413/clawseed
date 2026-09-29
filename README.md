@@ -3,7 +3,11 @@
 </p>
 
 <p align="center">
-  <strong>A Rust AI agent runtime with remote tool execution.</strong>
+  <strong>An on-device Android AI agent powered by Rust.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/lzx1413/clawseed/releases/latest"><strong>Download the latest Android APK</strong></a>
 </p>
 
 <p align="center">
@@ -15,14 +19,36 @@
 
 ---
 
-ClawSeed is an AI agent **runtime** written in Rust. It connects to LLM providers (Anthropic, Gemini, Bedrock, DeepSeek, OpenAI-compatible, and more), acts through pluggable tools, and serves clients over HTTP/WebSocket. It ships with an Android demo app that runs the full agent stack on-device.
+ClawSeed is a mobile AI agent you can run on your Android phone. The app runs the Rust gateway, agent loop, memory, and tools on-device, then connects to the LLM provider you choose. It is also an open-source runtime and SDK for building your own agents and Android integrations.
+
+## Try ClawSeed on Android
+
+[Download the latest APK](https://github.com/lzx1413/clawseed/releases/latest) and install it on an Android device. Open the app, configure a provider and model in Settings, then start a conversation. Published APKs and release notes are available on the [GitHub Releases page](https://github.com/lzx1413/clawseed/releases).
+
+The Android app includes:
+
+- Streaming Markdown chat with images, PDF, DOCX, Markdown, text, and CSV attachments
+- Personas with their own personality, model, thinking mode, memory, tools, and skills
+- User profiles, conversation memory, scheduled prompts, and optional speech output
+- Device tools such as device information and location
+- Tools supplied by other Android apps through the [CETP protocol](docs/en/external-tool-protocol.md)
+- Provider presets for DeepSeek, Qwen, OpenAI-compatible APIs, Anthropic, Ollama, and more
+- Light, dark, and OLED themes, session management, regeneration, and usage metrics
+
+The agent stack runs on the phone; the selected LLM provider is normally reached over the network. See the [Android guide](docs/en/android-demo.md) for setup details and the [attachment guide](docs/en/android-file-attachments.md) for supported formats and limits.
+
+## What is ClawSeed?
+
+ClawSeed is both a ready-to-use Android application and a Rust AI agent runtime. The application is the quickest way to try it. The runtime provides stable traits and reusable crates for developers who want to build a CLI, bot, mobile client, or embedded agent of their own.
 
 ## NEWS
 
 - 2026-09-11: **ClawSeed Android 2.0.0** brings image and file conversations: attach images, PDF, DOCX, Markdown, text, and CSV files; browse recent photos or choose Camera, Gallery, and Files from the attachment picker; and share images and files from other Android apps into a new conversation draft. This update also improves photo preview and upload performance, chat scrolling, session resource usage, and LLM usage metrics. See the [attachment guide](docs/en/android-file-attachments.md) for supported formats and limits.
 - 2026-07-03: ClawSeed now officially supports personas.
 
-An agent runtime should do three things: receive messages, call an LLM, execute tools. Everything else — channels, dashboards, integrations — belongs to the application layer. ClawSeed provides crates with stable traits; applications compose them.
+## Runtime for developers
+
+An agent runtime should do three things: receive messages, call an LLM, and execute tools. Everything else — channels, dashboards, and integrations — belongs to the application layer. ClawSeed provides crates with stable traits; applications compose them.
 
 ```toml
 # A Discord bot application
@@ -42,9 +68,9 @@ clawseed-agent = "0.7"
 clawseed-tools = "0.7"
 ```
 
-The agent runs server-side, but mobile clients (Android, iOS) can register their own tools over WebSocket. When the agent calls one of these tools, the gateway forwards the request to the client for execution. This lets the agent access device capabilities — contacts, camera, sensors — without device-specific code on the server.
+In the included Android app, the gateway and agent run on the device. In other deployments, the agent can run on a server while Android, iOS, or another client registers device tools over WebSocket. When the agent calls one of these tools, the gateway forwards the request to the client for execution.
 
-ClawSeed borrows its trait-based architecture from [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw), with a smaller scope and a different positioning: ZeroClaw bundled channels, dashboards, hardware, and SOP into one binary (an application); ClawSeed provides crates for applications to assemble (a runtime). ClawSeed also adds an Android demo app, extended thinking support, and a modular prompt builder that ZeroClaw does not have.
+ClawSeed borrows its trait-based architecture from [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw), with a smaller scope and a different positioning: ZeroClaw bundles channels, dashboards, hardware, and SOP into one application; ClawSeed provides crates for applications to assemble. ClawSeed also adds an Android app, extended thinking support, and a modular prompt builder.
 
 ## Architecture
 
