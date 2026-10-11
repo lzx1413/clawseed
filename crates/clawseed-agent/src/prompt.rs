@@ -231,7 +231,7 @@ impl PromptSection for PlatformSection {
                  listed above.",
             );
             out.push_str(
-                "\n\nVisualization: this Android chat client renders statistical charts from a fenced `visualize` JSON block. When a chart helps answer the user, emit a block with type `line`, `bar`, `pie`, or `doughnut`, plus `labels` and `datasets` whose data lengths match. Keep the payload valid JSON and do not put executable HTML or JavaScript in it.",
+                "\n\nVisualization: this Android chat client renders statistical charts from a fenced `visualize` JSON block. When a chart helps answer the user, emit a block with type `line`, `bar`, `pie`, or `doughnut`, plus `labels` and `datasets` whose data lengths match. For an interactive multi-chart dashboard, use type `dashboard` with a `charts` array containing those chart objects. Keep the payload valid JSON and do not put executable HTML or JavaScript in it.",
             );
         }
 

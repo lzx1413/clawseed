@@ -21,6 +21,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.put
 
 /** Render a validated visualization in a local, network-disabled Chart.js WebView. */
@@ -82,7 +83,7 @@ internal fun VisualizationBlock(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(260.dp)
+                    .height(if (config.type == "dashboard") 320.dp else 260.dp)
                     .clip(RoundedCornerShape(8.dp)),
             )
         }
@@ -90,17 +91,68 @@ internal fun VisualizationBlock(
 }
 
 private fun buildVisualizationHtml(config: VisualizationConfig): String {
-    val data = buildJsonObject {
-        put("labels", kotlinx.serialization.json.buildJsonArray {
-            config.labels.forEach { add(JsonPrimitive(it)) }
-        })
-        put("datasets", kotlinx.serialization.json.buildJsonArray {
-            config.datasets.forEach { dataset ->
+    val charts = if (config.type == "dashboard") {
+        config.charts
+    } else {
+        listOf(VisualizationChart(config.type, config.title, config.labels, config.datasets))
+    }
+    val chartsJson = Json.encodeToString(
+        kotlinx.serialization.json.JsonArray.serializer(),
+        buildJsonArray { charts.forEach { add(buildChartJson(it)) } },
+    ).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    val dashboard = config.type == "dashboard"
+    return """
+        <!doctype html>
+        <html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+        <script src="chart.umd.js"></script>
+        <style>html,body{margin:0;padding:0;background:transparent;font-family:sans-serif;color:#777}#picker{width:100%;padding:8px;margin-bottom:8px;border:1px solid #ccc;border-radius:6px;background:transparent;color:inherit}#chart-wrap{height:240px}canvas{width:100%!important;height:240px!important}</style>
+        </head><body>
+        ${if (dashboard) "<select id=\"picker\"></select>" else ""}
+        <div id="chart-wrap"><canvas id="chart"></canvas></div><script>
+        const charts = $chartsJson;
+        const picker = document.getElementById('picker');
+        let chartInstance = null;
+        if (picker) {
+          charts.forEach((chart, index) => {
+            const option = document.createElement('option');
+            option.value = index;
+            option.textContent = chart.title || ('Chart ' + (index + 1));
+            picker.appendChild(option);
+          });
+          picker.addEventListener('change', () => renderChart(Number(picker.value)));
+        }
+        function renderChart(index) {
+          const chart = charts[index];
+          if (!chart) return;
+          if (chartInstance) chartInstance.destroy();
+          const circular = chart.type === 'pie' || chart.type === 'doughnut';
+          chartInstance = new Chart(document.getElementById('chart'), {
+            type: chart.type,
+            data: chart.data,
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false,
+              plugins: { legend: { display: true, position: 'bottom' } },
+              scales: circular ? {} : { x: { ticks: { color: '#777' } }, y: { beginAtZero: true, ticks: { color: '#777' } } }
+            }
+          });
+        }
+        renderChart(0);
+        </script></body></html>
+    """.trimIndent()
+}
+
+private fun buildChartJson(chart: VisualizationChart): JsonObject = buildJsonObject {
+    put("type", chart.type)
+    put("title", chart.title.orEmpty())
+    put("data", buildJsonObject {
+        put("labels", buildJsonArray { chart.labels.forEach { add(JsonPrimitive(it)) } })
+        put("datasets", buildJsonArray {
+            chart.datasets.forEach { dataset ->
                 add(buildJsonObject {
                     put("label", dataset.label)
-                    put("data", kotlinx.serialization.json.buildJsonArray {
-                        dataset.data.forEach { add(JsonPrimitive(it)) }
-                    })
+                    put("data", buildJsonArray { dataset.data.forEach { add(JsonPrimitive(it)) } })
                     dataset.color?.let { color ->
                         put("borderColor", color)
                         put("backgroundColor", color)
@@ -110,33 +162,5 @@ private fun buildVisualizationHtml(config: VisualizationConfig): String {
                 })
             }
         })
-    }
-    val dataJson = Json.encodeToString(JsonObject.serializer(), data)
-        .replace("<", "\\u003c")
-        .replace(">", "\\u003e")
-        .replace("&", "\\u0026")
-    val type = config.type
-    val isCircular = type == "pie" || type == "doughnut"
-    val scales = if (isCircular) "{}" else "{ x: { ticks: { color: '#777' } }, y: { beginAtZero: true, ticks: { color: '#777' } } }"
-    return """
-        <!doctype html>
-        <html><head><meta name="viewport" content="width=device-width, initial-scale=1">
-        <script src="chart.umd.js"></script>
-        <style>html,body{margin:0;padding:0;background:transparent}canvas{width:100%!important;height:240px!important}</style>
-        </head><body><canvas id="chart"></canvas><script>
-        const payload = $dataJson;
-        const circular = $isCircular;
-        new Chart(document.getElementById('chart'), {
-          type: '$type',
-          data: payload,
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: false,
-            plugins: { legend: { display: true, position: 'bottom' } },
-            scales: $scales
-          }
-        });
-        </script></body></html>
-    """.trimIndent()
+    })
 }

@@ -32,6 +32,21 @@ class MarkdownParserTest {
     }
 
     @Test
+    fun dashboardFenceParsesMultipleCharts() {
+        val document = parseMarkdown(
+            """
+            ```visualize
+            {"type":"dashboard","title":"Overview","charts":[{"type":"line","title":"Trend","labels":["A","B"],"datasets":[{"label":"Count","data":[1,2]}]},{"type":"pie","title":"Share","labels":["X","Y"],"datasets":[{"label":"Share","data":[3,7]}]}]}
+            ```
+            """.trimIndent(),
+        )
+
+        val dashboard = document.blocks.single() as Visualization
+        assertEquals("dashboard", dashboard.config?.type)
+        assertEquals(listOf("Trend", "Share"), dashboard.config?.charts?.map { it.title })
+    }
+
+    @Test
     fun tableKeepsPipeInsideInlineCodeInOneCell() {
         val document = parseMarkdown(
             """

@@ -35,6 +35,15 @@ data class VisualizationConfig(
     val title: String?,
     val labels: List<String>,
     val datasets: List<VisualizationDataset>,
+    val charts: List<VisualizationChart> = emptyList(),
+)
+
+@Immutable
+data class VisualizationChart(
+    val type: String,
+    val title: String?,
+    val labels: List<String>,
+    val datasets: List<VisualizationDataset>,
 )
 
 @Immutable

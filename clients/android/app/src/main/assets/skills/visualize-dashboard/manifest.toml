@@ -1,0 +1,6 @@
+[skill]
+name = "visualize-dashboard"
+version = "0.1.0"
+description = "生成可交互的多图统计仪表盘"
+permissions = []
+triggers = ["仪表盘", "交互式图表", "多张图表", "dashboard", "interactive chart"]

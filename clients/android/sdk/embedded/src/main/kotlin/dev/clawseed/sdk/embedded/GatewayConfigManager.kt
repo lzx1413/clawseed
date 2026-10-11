@@ -215,25 +215,34 @@ class GatewayConfigManager(private val context: Context) {
             if (targetDir.exists()) continue // Don't overwrite user-modified skills
 
             val skillAssetBase = "$assetBase/$skillName"
-            val skillFiles = try {
-                context.assets.list(skillAssetBase)?.filterNotNull() ?: emptyList()
-            } catch (_: Exception) { emptyList() }
-
-            targetDir.mkdirs()
-            for (filename in skillFiles) {
-                val assetPath = "$skillAssetBase/$filename"
-                try {
-                    context.assets.open(assetPath).use { input ->
-                        File(targetDir, filename).outputStream().use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                    Log.i(TAG, "Copied bundled skill file: $assetPath → ${File(targetDir, filename).absolutePath}")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to copy bundled skill file: $assetPath", e)
-                }
-            }
+            copyBundledSkillTree(skillAssetBase, targetDir)
             Log.i(TAG, "Seeded bundled skill: $skillName")
+        }
+    }
+
+    /** Copy a skill asset tree, including nested scripts/assets directories. */
+    private fun copyBundledSkillTree(assetPath: String, target: File) {
+        val children = try {
+            context.assets.list(assetPath)?.filterNotNull().orEmpty()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        if (children.isEmpty()) {
+            try {
+                target.parentFile?.mkdirs()
+                context.assets.open(assetPath).use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
+                }
+                Log.i(TAG, "Copied bundled skill file: $assetPath → ${target.absolutePath}")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to copy bundled skill file: $assetPath", e)
+            }
+            return
+        }
+
+        target.mkdirs()
+        for (child in children) {
+            copyBundledSkillTree("$assetPath/$child", File(target, child))
         }
     }
 

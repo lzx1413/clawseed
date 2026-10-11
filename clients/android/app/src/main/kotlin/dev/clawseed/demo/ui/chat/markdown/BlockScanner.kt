@@ -166,34 +166,63 @@ internal object BlockScanner {
         return runCatching {
             val root = kotlinx.serialization.json.Json.parseToJsonElement(raw).jsonObject
             val type = root["type"]?.jsonPrimitive?.content?.lowercase()
-                ?.takeIf { it in setOf("line", "bar", "pie", "doughnut") }
+                ?.takeIf { it in setOf("line", "bar", "pie", "doughnut", "dashboard") }
                 ?: return null
-            val labels = root["labels"]?.jsonArray
-                ?.map { it.jsonPrimitive.content }
-                ?.takeIf { it.isNotEmpty() && it.size <= 64 }
-                ?: return null
-            val datasets = root["datasets"]?.jsonArray
-                ?.takeIf { it.isNotEmpty() && it.size <= 8 }
-                ?.map { item ->
-                    val obj = item.jsonObject
-                    val data = obj["data"]?.jsonArray
-                        ?.map { it.jsonPrimitive.double }
-                        ?.takeIf { it.size == labels.size && it.all { value -> value.isFinite() } }
-                        ?: return null
-                    VisualizationDataset(
-                        label = obj["label"]?.jsonPrimitive?.content.orEmpty().take(80),
-                        data = data,
-                        color = obj["color"]?.jsonPrimitive?.contentOrNull?.take(32),
-                    )
-                }
-                ?: return null
+            if (type == "dashboard") {
+                val charts = root["charts"]?.jsonArray
+                    ?.takeIf { it.isNotEmpty() && it.size <= 6 }
+                    ?.map { parseVisualizationChart(it.jsonObject) }
+                    ?: return null
+                return VisualizationConfig(
+                    type = type,
+                    title = root["title"]?.jsonPrimitive?.contentOrNull?.take(120),
+                    labels = emptyList(),
+                    datasets = emptyList(),
+                    charts = charts,
+                )
+            }
+            val chart = parseVisualizationChart(root, type)
             VisualizationConfig(
                 type = type,
                 title = root["title"]?.jsonPrimitive?.contentOrNull?.take(120),
-                labels = labels,
-                datasets = datasets,
+                labels = chart.labels,
+                datasets = chart.datasets,
             )
         }.getOrNull()
+    }
+
+    private fun parseVisualizationChart(
+        obj: kotlinx.serialization.json.JsonObject,
+        chartType: String? = null,
+    ): VisualizationChart {
+        val type = chartType ?: obj["type"]?.jsonPrimitive?.content?.lowercase()
+            ?.takeIf { it in setOf("line", "bar", "pie", "doughnut") }
+            ?: throw IllegalArgumentException("unsupported chart type")
+        val labels = obj["labels"]?.jsonArray
+            ?.map { it.jsonPrimitive.content }
+            ?.takeIf { it.isNotEmpty() && it.size <= 64 }
+            ?: throw IllegalArgumentException("invalid chart labels")
+        val datasets = obj["datasets"]?.jsonArray
+            ?.takeIf { it.isNotEmpty() && it.size <= 8 }
+            ?.map { item ->
+                val dataset = item.jsonObject
+                val data = dataset["data"]?.jsonArray
+                    ?.map { it.jsonPrimitive.double }
+                    ?.takeIf { it.size == labels.size && it.all { value -> value.isFinite() } }
+                    ?: throw IllegalArgumentException("invalid chart data")
+                VisualizationDataset(
+                    label = dataset["label"]?.jsonPrimitive?.content.orEmpty().take(80),
+                    data = data,
+                    color = dataset["color"]?.jsonPrimitive?.contentOrNull?.take(32),
+                )
+            }
+            ?: throw IllegalArgumentException("invalid chart datasets")
+        return VisualizationChart(
+            type = type,
+            title = obj["title"]?.jsonPrimitive?.contentOrNull?.take(120),
+            labels = labels,
+            datasets = datasets,
+        )
     }
 
     private data class FenceBody(val body: String, val closed: Boolean, val nextIndex: Int)
