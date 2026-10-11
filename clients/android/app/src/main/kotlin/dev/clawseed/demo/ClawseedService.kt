@@ -18,6 +18,7 @@ import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.os.Binder
 import android.os.IBinder
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -45,6 +46,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
@@ -75,6 +77,8 @@ class ClawseedService : Service() {
     private var alarmMediaPlayer: MediaPlayer? = null
     private var alarmVibrator: Vibrator? = null
     private val ringingAlarmIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private var generationKeepAliveJob: Job? = null
+    private var chatWakeLock: PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent): IBinder {
         isBound = true
@@ -140,6 +144,7 @@ class ClawseedService : Service() {
                             gateway.localConfig(),
                         )
                         ClawSeedAndroid.setGatewayRestarter { gateway.restart() }
+                        startGenerationKeepAlive()
                         isReady = true
                         withContext(Dispatchers.Main) {
                             readyCallbacks.forEach { it() }
@@ -170,6 +175,9 @@ class ClawseedService : Service() {
         stopAlarmSound()
         ringingAlarmIds.clear()
         serviceJob?.cancel()
+        generationKeepAliveJob?.cancel()
+        generationKeepAliveJob = null
+        releaseChatWakeLock()
         // IMPORTANT: stop gateway BEFORE cancelling the coroutine scope.
         // The old code did supervisorJob.cancel() first, then scope.launch { gateway.stop() }
         // on a cancelled scope — so gateway.stop() never ran, leaving a zombie process
@@ -211,10 +219,10 @@ class ClawseedService : Service() {
                     // Woken by unbind, fall through to shutdown check
                 }
             }
-            if (!isBound && taskChannel.isEmpty && ringingAlarmIds.isEmpty()) {
+            if (!isBound && taskChannel.isEmpty && ringingAlarmIds.isEmpty() && !hasActiveChatGeneration()) {
                 val stopCandidateId = latestStartId
                 delay(REBIND_GRACE_PERIOD_MS)
-                if (isBound || !taskChannel.isEmpty || ringingAlarmIds.isNotEmpty()) {
+                if (isBound || !taskChannel.isEmpty || ringingAlarmIds.isNotEmpty() || hasActiveChatGeneration()) {
                     continue
                 }
                 // Signal intent to stop, but don't exit the loop.
@@ -746,9 +754,53 @@ class ClawseedService : Service() {
         }
     }
 
+    private fun startGenerationKeepAlive() {
+        generationKeepAliveJob?.cancel()
+        val sessionManager = ClawSeedAndroid.sessionManager()
+        generationKeepAliveJob = scope.launch {
+            sessionManager.generatingSessionCount
+                .collect { count ->
+                    // Wake the unbind grace-period loop so it can retain the service while
+                    // a turn is active and stop it promptly after the turn completes.
+                    unbindSignal.trySend(Unit)
+                    if (count > 0) {
+                        acquireChatWakeLock()
+                        updateNotification(getString(R.string.svc_notification_chat_generating))
+                    } else {
+                        releaseChatWakeLock()
+                        val running = gateway.state.value as? GatewayState.Running
+                        if (running != null) {
+                            updateNotification(getString(R.string.svc_notification_running, running.port))
+                        }
+                    }
+                }
+        }
+    }
+
+    private fun hasActiveChatGeneration(): Boolean =
+        runCatching { ClawSeedAndroid.sessionManager().generatingSessionCount.value > 0 }
+            .getOrDefault(false)
+
+    private fun acquireChatWakeLock() {
+        val lock = chatWakeLock ?: getSystemService(PowerManager::class.java)
+            ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "clawseed:chat_generation")
+            ?.also {
+                it.setReferenceCounted(false)
+                chatWakeLock = it
+            } ?: return
+        if (!lock.isHeld) runCatching { lock.acquire() }
+    }
+
+    private fun releaseChatWakeLock() {
+        chatWakeLock?.let { lock ->
+            if (lock.isHeld) runCatching { lock.release() }
+        }
+    }
+
     private fun buildNotification(text: String): Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("ClawSeed")
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .setSilent(true)

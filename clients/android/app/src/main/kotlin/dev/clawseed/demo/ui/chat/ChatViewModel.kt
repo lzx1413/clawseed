@@ -115,6 +115,7 @@ internal data class SessionSlot(
     var lifetimeJob: Job? = null,
     var pendingQuestion: ChatEvent.AskUserRequested? = null,
     var questionSubmitting: Boolean = false,
+    val onGenerationStateChanged: (Boolean) -> Unit = {},
 ) {
     fun close() {
         lifetimeJob?.cancel()
@@ -127,8 +128,15 @@ internal data class SessionSlot(
         if ((content.isBlank() && attachments.isEmpty() && files.isEmpty()) || accumulator.isGenerating.value || session.connectionState.value != ConnectionState.CONNECTED) return false
         if (expectedSessionId != null && session.sessionInfo.value?.sessionId != expectedSessionId) return false
         accumulator.addUserMessage(content, attachments, files)
+        // Mark the turn before writing to the WebSocket. If the Activity goes to
+        // the background immediately after sendMessage(), the foreground service
+        // must already know that it has work to keep alive.
+        onGenerationStateChanged(true)
         return runCatching { session.sendMessage(content, debug, attachments, files) }
-            .onFailure { accumulator.failTurn(it.message ?: "Failed to send message") }
+            .onFailure {
+                onGenerationStateChanged(false)
+                accumulator.failTurn(it.message ?: "Failed to send message")
+            }
             .isSuccess
     }
 
@@ -844,6 +852,11 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                     accumulator = acc,
                     history = history,
                     pendingQuestion = session.pendingQuestion.value,
+                    onGenerationStateChanged = sid?.let { generationSessionId ->
+                        { generating ->
+                            sessionManager().setSessionGenerating(generationSessionId, generating)
+                        }
+                    } ?: {},
                 )
                 currentSlot = slot
 
@@ -873,6 +886,12 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                         launch {
                             session.events.collect { event ->
                                 when (event) {
+                                    is ChatEvent.Done -> BackgroundJobNotifier.notifyChatCompleted(
+                                        getApplication<Application>(), sid, event.fullResponse,
+                                    )
+                                    is ChatEvent.Error -> BackgroundJobNotifier.notifyChatFailed(
+                                        getApplication<Application>(), sid, event.message,
+                                    )
                                     is ChatEvent.BackgroundJobCompleted -> BackgroundJobNotifier.notifyIfBackground(
                                         getApplication<Application>(), event, sid,
                                     )

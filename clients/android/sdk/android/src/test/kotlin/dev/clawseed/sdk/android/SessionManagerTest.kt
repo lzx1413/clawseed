@@ -254,6 +254,24 @@ class SessionManagerTest {
     }
 
     @Test
+    fun generationCountTracksTerminalEvents() = runTest {
+        val manager = SessionManager(
+            ClawSeedConfig("http://localhost"),
+            sessionFactory = { FakeSession() },
+            scope = backgroundScope,
+        )
+        val session = manager.connect("generating") as FakeSession
+        runCurrent()
+
+        manager.setSessionGenerating("generating", true)
+        assertEquals(1, manager.generatingSessionCount.value)
+
+        session.emit(ChatEvent.Done("finished"))
+        runCurrent()
+        assertEquals(0, manager.generatingSessionCount.value)
+    }
+
+    @Test
     fun cancelledConnectClosesUnpooledSession() = runTest {
         val failed = FakeSession(onConnect = { throw CancellationException("switched away") })
         val manager = SessionManager(
@@ -336,5 +354,9 @@ class SessionManagerTest {
         override fun regenerate(debug: Boolean) = Unit
 
         override suspend fun abort() = Unit
+
+        fun emit(event: ChatEvent) {
+            mutableEvents.tryEmit(event)
+        }
     }
 }

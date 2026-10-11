@@ -471,6 +471,7 @@
     <!-- ========== Service Notifications ========== -->
     <string name="svc_notification_starting">Starting clawseed gateway…</string>
     <string name="svc_notification_running">Gateway running :%1$d</string>
+    <string name="svc_notification_chat_generating">Generating a chat response…</string>
     <string name="svc_notification_start_failed">Startup failed</string>
     <string name="svc_gateway_start_failed">Gateway startup failed</string>
     <string name="svc_notification_executing">Executing: %1$s</string>
@@ -480,6 +481,11 @@
     <string name="background_job_finished">Background command: %1$s</string>
     <string name="background_job_exit_code">Exit code: %1$d</string>
     <string name="background_job_status">Status: %1$s</string>
+    <string name="chat_background_channel">Chat completions</string>
+    <string name="chat_background_channel_description">Notifications when a background chat response completes</string>
+    <string name="chat_background_completed">Response ready</string>
+    <string name="chat_background_failed">Response failed</string>
+    <string name="chat_background_response_empty">The response was empty.</string>
     <string name="svc_alarm_fired">Alarm fired</string>
     <string name="svc_connection_timeout">Connection timeout</string>
     <string name="svc_no_response">No response (timeout)</string>

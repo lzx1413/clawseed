@@ -9,17 +9,20 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import dev.clawseed.sdk.core.ClawSeedConfig
 import dev.clawseed.sdk.core.ClawSeedSession
 import dev.clawseed.sdk.core.ClawSeed
+import dev.clawseed.sdk.core.model.ChatEvent
 import dev.clawseed.sdk.core.model.ConnectionState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Collections
@@ -45,6 +48,10 @@ class SessionManager internal constructor(
     private val poolMutex = Mutex()
     private val accessCounter = AtomicLong()
     private val generatingSessions = ConcurrentHashMap.newKeySet<String>()
+    private val generationObservers = ConcurrentHashMap<String, Job>()
+    private val _generatingSessionCount = MutableStateFlow(0)
+    /** Number of pooled sessions with an active Agent turn. */
+    val generatingSessionCount: StateFlow<Int> = _generatingSessionCount.asStateFlow()
     private val _pooledSessions = MutableStateFlow<Map<String, ClawSeedSession>>(emptyMap())
     /** Snapshot used by UI caches to release state when a session leaves the pool. */
     val pooledSessions = _pooledSessions.asStateFlow()
@@ -87,10 +94,36 @@ class SessionManager internal constructor(
 
     /** Generating sessions can temporarily exceed the idle-cache limit. */
     fun setSessionGenerating(sessionId: String, generating: Boolean) {
-        if (generating) generatingSessions.add(sessionId)
-        else if (generatingSessions.remove(sessionId)) {
+        if (generating) {
+            // A late accumulator callback must not resurrect a session that was already
+            // removed from the pool and released by the manager.
+            if (!sessions.containsKey(sessionId)) return
+            generatingSessions.add(sessionId)
+        } else if (generatingSessions.remove(sessionId)) {
             scope.launch { poolMutex.withLock { evictIfNeeded() } }
         }
+        _generatingSessionCount.update { generatingSessions.size }
+    }
+
+    private fun observeGenerationEvents(sessionId: String, session: ClawSeedSession) {
+        if (generationObservers.containsKey(sessionId)) return
+        val observer = scope.launch {
+            session.events.collect { event ->
+                when (event) {
+                    is ChatEvent.TextChunk,
+                    is ChatEvent.ThinkingChunk,
+                    is ChatEvent.ToolCallStarted,
+                    is ChatEvent.ToolCallRequested,
+                    is ChatEvent.ContextCompactionStarted,
+                    is ChatEvent.ContextCompactionProgress -> setSessionGenerating(sessionId, true)
+                    is ChatEvent.Done,
+                    is ChatEvent.Error,
+                    is ChatEvent.Aborted -> setSessionGenerating(sessionId, false)
+                    else -> Unit
+                }
+            }
+        }
+        generationObservers[sessionId] = observer
     }
 
     /**
@@ -114,11 +147,13 @@ class SessionManager internal constructor(
             if (existing != null) {
                 val state = existing.connectionState.value
                 if (state == ConnectionState.CONNECTED) {
+                    observeGenerationEvents(sessionId, existing)
                     activate(sessionId)
                     return existing
                 }
                 if (state == ConnectionState.DISCONNECTED) {
                     existing.connect(sessionId, persona)
+                    observeGenerationEvents(sessionId, existing)
                     activate(sessionId)
                     return existing
                 }
@@ -130,6 +165,7 @@ class SessionManager internal constructor(
                     }
                 }
                 if (existing.connectionState.value == ConnectionState.CONNECTED) {
+                    observeGenerationEvents(sessionId, existing)
                     activate(sessionId)
                     return existing
                 }
@@ -145,6 +181,7 @@ class SessionManager internal constructor(
             val realSessionId = waitForSessionId(session, sessionId)
                 ?: error("Session did not receive an ID")
             sessions[realSessionId] = session
+            observeGenerationEvents(realSessionId, session)
             activate(realSessionId)
             _pooledSessions.value = sessions.toMap()
             runCatching { ClawSeedAndroid.externalToolBridge().attachToRegistry(session.tools) }
@@ -168,8 +205,10 @@ class SessionManager internal constructor(
 
     private suspend fun disconnectLocked(sessionId: String) {
         val session = sessions.remove(sessionId) ?: return
+        generationObservers.remove(sessionId)?.cancel()
         lastAccessTime.remove(sessionId)
         generatingSessions.remove(sessionId)
+        _generatingSessionCount.update { generatingSessions.size }
         _pooledSessions.value = sessions.toMap()
         if (_activeSessionId.value == sessionId) {
             _activeSessionId.value = null
@@ -246,6 +285,7 @@ class SessionManager internal constructor(
     /** Test-only: add a session to the pool directly. */
     internal fun addSessionToPoolForTest(sessionId: String, session: ClawSeedSession) {
         sessions[sessionId] = session
+        observeGenerationEvents(sessionId, session)
         _pooledSessions.value = sessions.toMap()
         touch(sessionId)
     }
