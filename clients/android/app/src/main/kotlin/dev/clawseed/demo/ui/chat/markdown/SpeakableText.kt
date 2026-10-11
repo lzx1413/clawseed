@@ -32,6 +32,7 @@ private fun BlockNode.collectSpeakableText(parts: MutableList<String>) {
         }
         // Code blocks and rules carry no value when read aloud.
         is CodeFence -> Unit
+        is Visualization -> Unit
         is HorizontalRule -> Unit
     }
 }

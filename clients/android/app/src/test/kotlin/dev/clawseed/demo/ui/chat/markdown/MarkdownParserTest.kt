@@ -6,6 +6,32 @@ import org.junit.Test
 class MarkdownParserTest {
 
     @Test
+    fun visualizeFenceParsesSupportedChartConfig() {
+        val document = parseMarkdown(
+            """
+            ```visualize
+            {"type":"line","title":"Visits","labels":["Mon","Tue"],"datasets":[{"label":"Visits","data":[12,18],"color":"#4ecca3"}]}
+            ```
+            """.trimIndent(),
+        )
+
+        val chart = document.blocks.single() as Visualization
+        assertEquals("line", chart.config?.type)
+        assertEquals(listOf("Mon", "Tue"), chart.config?.labels)
+        assertEquals(listOf(12.0, 18.0), chart.config?.datasets?.single()?.data)
+    }
+
+    @Test
+    fun invalidOrIncompleteVisualizeFenceRemainsSafe() {
+        val invalid = parseMarkdown("```visualize\n{\"type\":\"radar\"}\n```").blocks.single() as Visualization
+        assertEquals(null, invalid.config)
+
+        val incomplete = parseMarkdown("```visualize\n{\"type\":\"line\"").blocks.single() as Visualization
+        assertEquals(false, incomplete.closed)
+        assertEquals(null, incomplete.config)
+    }
+
+    @Test
     fun tableKeepsPipeInsideInlineCodeInOneCell() {
         val document = parseMarkdown(
             """

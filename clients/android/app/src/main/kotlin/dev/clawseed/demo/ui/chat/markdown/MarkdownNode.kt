@@ -21,6 +21,29 @@ data class CodeFence(
     val closed: Boolean,
 ) : BlockNode
 
+/** A validated chart payload emitted in a fenced ```visualize block. */
+@Immutable
+data class Visualization(
+    val config: VisualizationConfig?,
+    val raw: String,
+    val closed: Boolean,
+) : BlockNode
+
+@Immutable
+data class VisualizationConfig(
+    val type: String,
+    val title: String?,
+    val labels: List<String>,
+    val datasets: List<VisualizationDataset>,
+)
+
+@Immutable
+data class VisualizationDataset(
+    val label: String,
+    val data: List<Double>,
+    val color: String?,
+)
+
 @Immutable
 data class Blockquote(val children: List<BlockNode>) : BlockNode
 

@@ -1,5 +1,11 @@
 package dev.clawseed.demo.ui.chat.markdown
 
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.double
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
 /**
  * Line-based block splitter. Scans raw markdown text into a list of [BlockNode]s.
  *
@@ -146,7 +152,48 @@ internal object BlockScanner {
 
         val (body, closed, next) = readFenceBody(lines, start + 1, end, fenceChar, fenceLen, indent)
         val language = info.takeIf { it.isNotEmpty() }
+        if (language.equals("visualize", ignoreCase = true)) {
+            return Visualization(
+                config = if (closed) parseVisualizationConfig(body) else null,
+                raw = body,
+                closed = closed,
+            ) to next
+        }
         return CodeFence(language, body, closed) to next
+    }
+
+    private fun parseVisualizationConfig(raw: String): VisualizationConfig? {
+        return runCatching {
+            val root = kotlinx.serialization.json.Json.parseToJsonElement(raw).jsonObject
+            val type = root["type"]?.jsonPrimitive?.content?.lowercase()
+                ?.takeIf { it in setOf("line", "bar", "pie", "doughnut") }
+                ?: return null
+            val labels = root["labels"]?.jsonArray
+                ?.map { it.jsonPrimitive.content }
+                ?.takeIf { it.isNotEmpty() && it.size <= 64 }
+                ?: return null
+            val datasets = root["datasets"]?.jsonArray
+                ?.takeIf { it.isNotEmpty() && it.size <= 8 }
+                ?.map { item ->
+                    val obj = item.jsonObject
+                    val data = obj["data"]?.jsonArray
+                        ?.map { it.jsonPrimitive.double }
+                        ?.takeIf { it.size == labels.size && it.all { value -> value.isFinite() } }
+                        ?: return null
+                    VisualizationDataset(
+                        label = obj["label"]?.jsonPrimitive?.content.orEmpty().take(80),
+                        data = data,
+                        color = obj["color"]?.jsonPrimitive?.contentOrNull?.take(32),
+                    )
+                }
+                ?: return null
+            VisualizationConfig(
+                type = type,
+                title = root["title"]?.jsonPrimitive?.contentOrNull?.take(120),
+                labels = labels,
+                datasets = datasets,
+            )
+        }.getOrNull()
     }
 
     private data class FenceBody(val body: String, val closed: Boolean, val nextIndex: Int)

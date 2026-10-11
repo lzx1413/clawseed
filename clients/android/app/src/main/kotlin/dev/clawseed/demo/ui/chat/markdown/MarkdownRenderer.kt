@@ -71,6 +71,11 @@ private fun BlockRenderer(block: BlockNode) {
             }
         }
 
+        is Visualization -> VisualizationBlock(
+            visualization = block,
+            modifier = Modifier.padding(vertical = 4.dp),
+        )
+
         is Blockquote -> BlockquoteBlock(block)
 
         is BulletList -> BulletListBlock(block)
