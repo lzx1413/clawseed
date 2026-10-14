@@ -84,6 +84,32 @@ class SessionManagerTest {
     }
 
     @Test
+    fun connectReattachesExternalToolsWhenReusingConnectedSession() = runTest {
+        val session = FakeSession(
+            initialConnectionState = ConnectionState.CONNECTED,
+            initialSessionInfo = SessionInfo(
+                sessionId = "session-2",
+                name = "Session 2",
+                resumed = true,
+                messageCount = 2,
+            ),
+        )
+        val attachedRegistries = mutableListOf<ToolRegistry>()
+        val manager = SessionManager(
+            config = ClawSeedConfig("http://localhost:3000"),
+            sessionFactory = { error("sessionFactory should not be called") },
+            appContextProvider = { null },
+            processLifecycleProvider = { CountingLifecycle() },
+            externalToolAttacher = { attachedRegistries += it },
+        )
+
+        manager.addSessionToPoolForTest("session-2", session)
+        manager.connect("session-2")
+
+        assertEquals(listOf(session.tools), attachedRegistries)
+    }
+
+    @Test
     fun connectCreatesNewSessionWhenNotInPool() = runTest {
         var factoryCalled = false
         val newSession = FakeSession(

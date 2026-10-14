@@ -11,6 +11,7 @@ import dev.clawseed.sdk.core.ClawSeedSession
 import dev.clawseed.sdk.core.ClawSeed
 import dev.clawseed.sdk.core.model.ChatEvent
 import dev.clawseed.sdk.core.model.ConnectionState
+import dev.clawseed.sdk.core.tool.ToolRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -44,6 +45,9 @@ class SessionManager internal constructor(
     private val appContextProvider: () -> Context? = { runCatching { ClawSeedAndroid.context }.getOrNull() },
     private val processLifecycleProvider: () -> Lifecycle = { ProcessLifecycleOwner.get().lifecycle },
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+    private val externalToolAttacher: (ToolRegistry) -> Unit = { registry ->
+        runCatching { ClawSeedAndroid.externalToolBridge().attachToRegistry(registry) }
+    },
 ) {
     private val poolMutex = Mutex()
     private val accessCounter = AtomicLong()
@@ -149,12 +153,14 @@ class SessionManager internal constructor(
                 if (state == ConnectionState.CONNECTED) {
                     observeGenerationEvents(sessionId, existing)
                     activate(sessionId)
+                    attachExternalTools(existing)
                     return existing
                 }
                 if (state == ConnectionState.DISCONNECTED) {
                     existing.connect(sessionId, persona)
                     observeGenerationEvents(sessionId, existing)
                     activate(sessionId)
+                    attachExternalTools(existing)
                     return existing
                 }
                 // CONNECTING / RECONNECTING — await
@@ -167,6 +173,7 @@ class SessionManager internal constructor(
                 if (existing.connectionState.value == ConnectionState.CONNECTED) {
                     observeGenerationEvents(sessionId, existing)
                     activate(sessionId)
+                    attachExternalTools(existing)
                     return existing
                 }
                 // Failed to reconnect — remove stale entry and fall through to create
@@ -184,7 +191,7 @@ class SessionManager internal constructor(
             observeGenerationEvents(realSessionId, session)
             activate(realSessionId)
             _pooledSessions.value = sessions.toMap()
-            runCatching { ClawSeedAndroid.externalToolBridge().attachToRegistry(session.tools) }
+            attachExternalTools(session)
             evictIfNeeded()
             return session
         } catch (error: Throwable) {
@@ -196,6 +203,15 @@ class SessionManager internal constructor(
             }
             throw error
         }
+    }
+
+    /**
+     * CETP is attached to the currently active session's registry.  A pooled
+     * session can be selected again after another session took that registry,
+     * so every reuse path must reattach it before the caller sends a message.
+     */
+    private fun attachExternalTools(session: ClawSeedSession) {
+        runCatching { externalToolAttacher(session.tools) }
     }
 
     /** Disconnects a specific session and removes it from the pool. */
