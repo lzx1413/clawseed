@@ -5,6 +5,105 @@ use clawseed_config::schema::Config;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+fn is_deepseek_provider_name(value: &str) -> bool {
+    let normalized = value.trim().to_ascii_lowercase();
+    normalized == "deepseek"
+        || normalized == "deepseek-search"
+        || normalized == "deepseek_search"
+        || normalized
+            .strip_prefix("custom:")
+            .and_then(|url| reqwest::Url::parse(url).ok())
+            .and_then(|url| url.host_str().map(|host| host == "api.deepseek.com"))
+            .unwrap_or(false)
+}
+
+fn is_deepseek_base_url(value: &str) -> bool {
+    reqwest::Url::parse(value)
+        .ok()
+        .and_then(|url| url.host_str().map(|host| host == "api.deepseek.com"))
+        .unwrap_or(false)
+}
+
+fn is_deepseek_model_provider(
+    key: &str,
+    profile: &clawseed_config::schema::ModelProviderConfig,
+) -> bool {
+    is_deepseek_provider_name(key)
+        || profile
+            .name
+            .as_deref()
+            .is_some_and(is_deepseek_provider_name)
+        || profile
+            .base_url
+            .as_deref()
+            .is_some_and(is_deepseek_base_url)
+}
+
+fn resolve_deepseek_search_key(config: &Config) -> Option<String> {
+    if let Some(key) = config
+        .web_search
+        .deepseek_api_key
+        .as_deref()
+        .filter(|key| !key.trim().is_empty())
+    {
+        return Some(key.trim().to_owned());
+    }
+
+    if let Some(profile) = config.providers.fallback_provider()
+        && (config
+            .providers
+            .fallback
+            .as_deref()
+            .is_some_and(is_deepseek_provider_name)
+            || profile
+                .name
+                .as_deref()
+                .is_some_and(is_deepseek_provider_name)
+            || profile
+                .base_url
+                .as_deref()
+                .is_some_and(is_deepseek_base_url))
+        && let Some(key) = profile
+            .api_key
+            .as_deref()
+            .filter(|key| !key.trim().is_empty())
+    {
+        return Some(key.trim().to_owned());
+    }
+
+    // The Android settings UI stores the active LLM credential in a named
+    // provider table such as `[providers.models.deepseek]`. It may not also
+    // populate `providers.default_api_key`, so inspect all named providers.
+    if let Some(key) = config.providers.models.iter().find_map(|(name, profile)| {
+        is_deepseek_model_provider(name, profile)
+            .then_some(profile.api_key.as_deref())
+            .flatten()
+            .filter(|key| !key.trim().is_empty())
+            .map(|key| key.trim().to_owned())
+    }) {
+        return Some(key);
+    }
+
+    if config
+        .providers
+        .default
+        .as_deref()
+        .is_some_and(is_deepseek_provider_name)
+        && let Some(key) = config
+            .providers
+            .default_api_key
+            .as_deref()
+            .filter(|key| !key.trim().is_empty())
+    {
+        return Some(key.trim().to_owned());
+    }
+
+    std::env::var("DEEPSEEK_API_KEY")
+        .ok()
+        .filter(|key| !key.trim().is_empty())
+        .map(|key| key.trim().to_owned())
+}
+
 use crate::ask_user::{AskUserHandler, AskUserTool, CliAskUserHandler};
 use crate::background::{
     BackgroundCancelTool, BackgroundEventSink, BackgroundJobManager, BackgroundRunTool,
@@ -174,15 +273,65 @@ pub fn all_tools_with_runtime(
     // web_search: only include when enabled
     if config.web_search.enabled {
         let provider = config.web_search.provider.clone().unwrap_or_default();
-        tools.push(Box::new(WebSearchTool::new_with_config(
+        let search_tool = WebSearchTool::new_with_config(
             provider,
             config.web_search.brave_api_key.clone(),
             config.web_search.searxng_instance_url.clone(),
             config.web_search.tavily_api_key.clone(),
             5,  // max_results
             15, // timeout_secs
-        )));
+        )
+        .with_deepseek_api_key(resolve_deepseek_search_key(config));
+        tools.push(Box::new(search_tool));
     }
 
     tools
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deepseek_search_key_prefers_explicit_override() {
+        let mut config = Config::default();
+        config.web_search.deepseek_api_key = Some("search-key".into());
+        config.providers.default = Some("deepseek".into());
+        config.providers.default_api_key = Some("llm-key".into());
+
+        assert_eq!(
+            resolve_deepseek_search_key(&config).as_deref(),
+            Some("search-key")
+        );
+    }
+
+    #[test]
+    fn deepseek_search_key_reuses_default_provider_key() {
+        let mut config = Config::default();
+        config.providers.default = Some("deepseek".into());
+        config.providers.default_api_key = Some("llm-key".into());
+
+        assert_eq!(
+            resolve_deepseek_search_key(&config).as_deref(),
+            Some("llm-key")
+        );
+    }
+
+    #[test]
+    fn deepseek_search_key_reuses_named_provider_key() {
+        let mut config = Config::default();
+        config.providers.models.insert(
+            "deepseek".into(),
+            clawseed_config::schema::ModelProviderConfig {
+                api_key: Some("llm-key".into()),
+                base_url: Some("https://api.deepseek.com/v1".into()),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            resolve_deepseek_search_key(&config).as_deref(),
+            Some("llm-key")
+        );
+    }
 }

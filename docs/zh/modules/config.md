@@ -229,6 +229,7 @@ pub struct ReliabilityConfig {
 | `CLAWSEED_WEB_SEARCH_ENABLED` | 启用网页搜索 |
 | `CLAWSEED_WEB_SEARCH_PROVIDER` | 网页搜索提供商 |
 | `CLAWSEED_WEB_SEARCH_TAVILY_API_KEY` | Tavily API 密钥 |
+| `CLAWSEED_WEB_SEARCH_DEEPSEEK_API_KEY` | 可选的 DeepSeek 搜索密钥覆盖值；默认复用当前 DeepSeek LLM 密钥 |
 | `CLAWSEED_EMBEDDING_PROVIDER` | 记忆嵌入提供商 |
 | `CLAWSEED_EMBEDDING_MODEL` | 记忆嵌入模型 |
 | `CLAWSEED_EMBEDDING_API_KEY` | 第一条 embedding route 的 API 密钥 |

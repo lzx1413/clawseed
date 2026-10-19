@@ -67,7 +67,7 @@ pub enum VisionMode {
 }
 
 /// Per-model provider configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ModelProviderConfig {
     #[serde(default)]
     pub vision: VisionMode,

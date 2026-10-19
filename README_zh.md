@@ -262,7 +262,7 @@ impl Hook for AuditHook {
 ### 添加 Hook
 
 **文件操作** — 读取、写入、编辑、glob 搜索、内容搜索
-**网络** — HTTP 请求、网页抓取、网页搜索（DuckDuckGo）
+**网络** — HTTP 请求、网页抓取、网页搜索（DuckDuckGo、Brave、SearXNG、Tavily、Bing 或 DeepSeek Search）
 **记忆** — 存储、回忆、遗忘、清除、导出
 **自动化** — 定时任务增删查改执行
 **开发** — Shell、后台命令（启动/查询/取消）、Git 操作、PDF 读取

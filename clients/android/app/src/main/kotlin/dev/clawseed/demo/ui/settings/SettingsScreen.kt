@@ -394,6 +394,7 @@ fun SettingsScreen(
                     val searchSubtitle = when (uiState.searchEngine) {
                         "tavily" -> "Tavily"
                         "bing" -> "Bing"
+                        "deepseek" -> "DeepSeek Search"
                         else -> null
                     }
                     ExpandableSection(
@@ -1590,7 +1591,11 @@ private fun SearchEngineCard(
     var expanded by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
 
-    val searchEngines = listOf("bing" to "Bing", "tavily" to "Tavily")
+    val searchEngines = listOf(
+        "bing" to "Bing",
+        "tavily" to "Tavily",
+        "deepseek" to "DeepSeek Search",
+    )
     val selectedDisplayName = searchEngines.find { it.first == searchEngine }?.second ?: "Bing"
 
     val freeApiKeyPrefix = stringResource(R.string.settings_search_free_api_key)
@@ -1675,6 +1680,14 @@ private fun SearchEngineCard(
                         uriHandler.openUri("https://tavily.com")
                     }
                 }
+            }
+
+            if (searchEngine == "deepseek") {
+                Text(
+                    "Uses the API key from your configured DeepSeek LLM provider.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

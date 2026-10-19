@@ -22,7 +22,7 @@
 |------|------|-------------|
 | `HttpRequestTool` | `http_request` | Send HTTP requests (configurable domain allowlists) |
 | `WebFetchTool` | `web_fetch` | Extract article content or cleaned visible page text with pagination |
-| `WebSearchTool` | `web_search_tool` | Web search via DuckDuckGo, Brave, SearXNG, Tavily, or Bing |
+| `WebSearchTool` | `web_search_tool` | Web search via DuckDuckGo, Brave, SearXNG, Tavily, Bing, or DeepSeek Search |
 
 `web_fetch` accepts `mode` (`article` by default or `text`), `start_index` (default `0`), and `max_chars` (default `12000`, maximum `50000`). `article` selects the strongest semantic content container and falls back to `text` when no reliable article is found. The JSON result reports `content`, `title`, the mode actually used, `start_index`, `next_start_index`, and `has_more`. Indexes count Unicode characters, so passing `next_start_index` to the next call neither repeats nor splits multibyte text.
 

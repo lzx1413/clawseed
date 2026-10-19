@@ -261,7 +261,7 @@ Implement the `Provider` trait in `clawseed-providers`, add to the factory. Supp
 ### Add a hook
 
 **File operations** — read, write, edit, glob search, content search
-**Web** — HTTP request, web fetch, web search (DuckDuckGo)
+**Web** — HTTP request, web fetch, web search (DuckDuckGo, Brave, SearXNG, Tavily, Bing, or DeepSeek Search)
 **Memory** — store, recall, forget, purge, export
 **Automation** — cron add / list / remove / run / update
 **Development** — shell, background commands (run/status/cancel), git operations, PDF read

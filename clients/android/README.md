@@ -171,7 +171,7 @@ sdk/embedded/src/main/kotlin/dev/clawseed/sdk/embedded/
 - OLED mode (true black backgrounds)
 
 ### Search Engine Configuration
-- Search engine selector (Bing / Tavily)
+- Search engine selector (Bing / Tavily / DeepSeek Search)
 - Tavily API Key input with password visibility toggle
 - Link to get free Tavily API key (1,000 calls/month)
 - Provider and key written to `[web_search]` TOML section
@@ -217,6 +217,14 @@ To use Tavily instead of Bing, change the `[web_search]` section via Settings UI
 enabled = true
 provider = "tavily"
 tavily_api_key = "tvly-..."
+```
+
+To use DeepSeek Search, select it in Settings. It reuses the API key from the configured DeepSeek LLM provider:
+
+```toml
+[web_search]
+enabled = true
+provider = "deepseek"
 ```
 
 ## Communication Protocol

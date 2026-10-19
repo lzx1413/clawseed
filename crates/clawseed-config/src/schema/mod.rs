@@ -1032,6 +1032,9 @@ encrypt = true
         if let Ok(v) = std::env::var("CLAWSEED_WEB_SEARCH_TAVILY_API_KEY") {
             self.web_search.tavily_api_key = Some(v);
         }
+        if let Ok(v) = std::env::var("CLAWSEED_WEB_SEARCH_DEEPSEEK_API_KEY") {
+            self.web_search.deepseek_api_key = Some(v);
+        }
         if let Ok(v) = std::env::var("CLAWSEED_EMBEDDING_PROVIDER") {
             self.memory.embedding_provider = Some(v);
         }
@@ -1628,6 +1631,10 @@ pub struct WebSearchConfig {
     pub searxng_instance_url: Option<String>,
     #[serde(default)]
     pub tavily_api_key: Option<String>,
+    /// Optional DeepSeek Search API key override. When omitted, the active
+    /// DeepSeek provider credential or `DEEPSEEK_API_KEY` is reused.
+    #[serde(default)]
+    pub deepseek_api_key: Option<String>,
 }
 
 /// Agent entry configuration (for named agents in the config).

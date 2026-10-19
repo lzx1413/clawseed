@@ -229,6 +229,7 @@ Environment variables take precedence over the config file:
 | `CLAWSEED_WEB_SEARCH_ENABLED` | Enable web search |
 | `CLAWSEED_WEB_SEARCH_PROVIDER` | Web search provider |
 | `CLAWSEED_WEB_SEARCH_TAVILY_API_KEY` | Tavily API key |
+| `CLAWSEED_WEB_SEARCH_DEEPSEEK_API_KEY` | Optional DeepSeek Search key override; the active DeepSeek LLM key is reused by default |
 | `CLAWSEED_EMBEDDING_PROVIDER` | Memory embedding provider |
 | `CLAWSEED_EMBEDDING_MODEL` | Memory embedding model |
 | `CLAWSEED_EMBEDDING_API_KEY` | First embedding route API key |

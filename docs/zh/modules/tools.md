@@ -22,7 +22,7 @@
 |------|------|------|
 | `HttpRequestTool` | `http_request` | 发送 HTTP 请求（可配置域名白名单） |
 | `WebFetchTool` | `web_fetch` | 提取文章正文或清理后的页面可见文本，并支持分页 |
-| `WebSearchTool` | `web_search_tool` | 通过 DuckDuckGo、Brave、SearXNG、Tavily 或 Bing 搜索 |
+| `WebSearchTool` | `web_search_tool` | 通过 DuckDuckGo、Brave、SearXNG、Tavily、Bing 或 DeepSeek Search 搜索 |
 
 `web_fetch` 接受 `mode`（默认 `article`，也可选 `text`）、`start_index`（默认 `0`）和 `max_chars`（默认 `12000`，最大 `50000`）。`article` 会选择得分最高的语义正文容器；找不到可靠正文时降级为 `text`。JSON 结果包含 `content`、`title`、实际使用的模式、`start_index`、`next_start_index` 和 `has_more`。索引按 Unicode 字符计数，把 `next_start_index` 传给下一次调用不会重复内容，也不会切断多字节字符。
 

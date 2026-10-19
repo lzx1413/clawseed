@@ -5,6 +5,7 @@ pub enum WebSearchProviderRoute {
     SearXNG,
     Tavily,
     Bing,
+    DeepSeek,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,6 +20,7 @@ const BRAVE_PROVIDER: &str = "brave";
 const SEARXNG_PROVIDER: &str = "searxng";
 const TAVILY_PROVIDER: &str = "tavily";
 const BING_PROVIDER: &str = "bing";
+const DEEPSEEK_PROVIDER: &str = "deepseek";
 
 pub fn resolve_web_search_provider(raw_provider: &str) -> WebSearchProviderResolution {
     let normalized = raw_provider.trim().to_ascii_lowercase();
@@ -48,6 +50,11 @@ pub fn resolve_web_search_provider(raw_provider: &str) -> WebSearchProviderResol
         "bing" | "bing-search" | "bing_search" => WebSearchProviderResolution {
             route: WebSearchProviderRoute::Bing,
             canonical_provider: BING_PROVIDER,
+            used_fallback: false,
+        },
+        "deepseek" | "deepseek-search" | "deepseek_search" => WebSearchProviderResolution {
+            route: WebSearchProviderRoute::DeepSeek,
+            canonical_provider: DEEPSEEK_PROVIDER,
             used_fallback: false,
         },
         _ => WebSearchProviderResolution {
@@ -102,6 +109,16 @@ mod tests {
             let resolved = resolve_web_search_provider(alias);
             assert_eq!(resolved.route, WebSearchProviderRoute::Bing);
             assert_eq!(resolved.canonical_provider, BING_PROVIDER);
+            assert!(!resolved.used_fallback);
+        }
+    }
+
+    #[test]
+    fn resolve_aliases_to_deepseek() {
+        for alias in ["deepseek", "deepseek-search", "deepseek_search"] {
+            let resolved = resolve_web_search_provider(alias);
+            assert_eq!(resolved.route, WebSearchProviderRoute::DeepSeek);
+            assert_eq!(resolved.canonical_provider, DEEPSEEK_PROVIDER);
             assert!(!resolved.used_fallback);
         }
     }

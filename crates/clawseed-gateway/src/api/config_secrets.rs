@@ -182,6 +182,7 @@ pub(super) fn mask_sensitive_fields(
     mask_optional_secret(&mut masked.composio.api_key);
     mask_optional_secret(&mut masked.browser.computer_use.api_key);
     mask_optional_secret(&mut masked.web_search.brave_api_key);
+    mask_optional_secret(&mut masked.web_search.deepseek_api_key);
     mask_optional_secret(&mut masked.storage.provider.config.db_url);
     mask_optional_secret(&mut masked.memory.qdrant.api_key);
     if let Some(cloudflare) = masked.tunnel.cloudflare.as_mut() {
@@ -297,6 +298,10 @@ fn restore_masked_sensitive_fields(
     restore_optional_secret(
         &mut incoming.web_search.brave_api_key,
         &current.web_search.brave_api_key,
+    );
+    restore_optional_secret(
+        &mut incoming.web_search.deepseek_api_key,
+        &current.web_search.deepseek_api_key,
     );
     restore_optional_secret(
         &mut incoming.storage.provider.config.db_url,

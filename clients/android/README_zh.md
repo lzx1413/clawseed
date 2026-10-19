@@ -169,7 +169,7 @@ sdk/embedded/src/main/kotlin/dev/clawseed/sdk/embedded/
 - OLED 模式（纯黑背景）
 
 ### 搜索引擎配置
-- 搜索引擎选择器（Bing / Tavily）
+- 搜索引擎选择器（Bing / Tavily / DeepSeek Search）
 - Tavily API Key 输入框，带密码显示/隐藏切换
 - 免费获取 Tavily API Key 链接（每月 1,000 次调用）
 - 配置写入 `[web_search]` TOML 段
@@ -215,6 +215,14 @@ provider = "bing"
 enabled = true
 provider = "tavily"
 tavily_api_key = "tvly-..."
+```
+
+如需使用 DeepSeek Search，在设置页面选择该选项即可。它会复用当前 DeepSeek LLM 提供商的 API 密钥：
+
+```toml
+[web_search]
+enabled = true
+provider = "deepseek"
 ```
 
 ## 通信协议

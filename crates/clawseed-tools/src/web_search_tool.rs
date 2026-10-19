@@ -10,7 +10,7 @@ use std::time::Duration;
 
 /// Web search tool for searching the internet.
 /// Supports multiple providers: DuckDuckGo (free), Brave (requires API key),
-/// SearXNG (self-hosted, requires instance URL).
+/// SearXNG (self-hosted, requires instance URL), and DeepSeek Search.
 pub struct WebSearchTool {
     /// Provider selector as configured by user.
     provider: String,
@@ -20,6 +20,8 @@ pub struct WebSearchTool {
     searxng_instance_url: Option<String>,
     /// Tavily API key.
     tavily_api_key: Option<String>,
+    /// DeepSeek API key. This may reuse the configured DeepSeek LLM key.
+    deepseek_api_key: Option<String>,
     max_results: usize,
     timeout_secs: u64,
 }
@@ -105,6 +107,7 @@ impl WebSearchTool {
             brave_api_key,
             searxng_instance_url: None,
             tavily_api_key: None,
+            deepseek_api_key: None,
             max_results: max_results.clamp(1, 10),
             timeout_secs: timeout_secs.max(1),
         }
@@ -124,9 +127,16 @@ impl WebSearchTool {
             brave_api_key,
             searxng_instance_url,
             tavily_api_key,
+            deepseek_api_key: None,
             max_results: max_results.clamp(1, 10),
             timeout_secs: timeout_secs.max(1),
         }
+    }
+
+    /// Set the optional DeepSeek Search key override.
+    pub fn with_deepseek_api_key(mut self, api_key: Option<String>) -> Self {
+        self.deepseek_api_key = api_key;
+        self
     }
 
     /// Resolve the Brave API key from configuration.
@@ -148,6 +158,134 @@ impl WebSearchTool {
                     "Tavily API key not configured. Get a free key at https://tavily.com"
                 )
             })
+    }
+
+    fn resolve_deepseek_api_key(&self) -> anyhow::Result<String> {
+        self.deepseek_api_key
+            .as_ref()
+            .filter(|key| !key.trim().is_empty())
+            .cloned()
+            .or_else(|| {
+                std::env::var("DEEPSEEK_API_KEY")
+                    .ok()
+                    .filter(|key| !key.trim().is_empty())
+            })
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "DeepSeek API key not configured. Configure the active DeepSeek provider, set DEEPSEEK_API_KEY, or set web_search.deepseek_api_key."
+                )
+            })
+    }
+
+    async fn search_deepseek(&self, query: &str) -> anyhow::Result<SearchResponse> {
+        let query_len = query.chars().count();
+        anyhow::ensure!(
+            (1..=128).contains(&query_len),
+            "DeepSeek search query must contain between 1 and 128 characters"
+        );
+        let api_key = self.resolve_deepseek_api_key()?;
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(self.timeout_secs))
+            .build()?;
+        let body = json!({
+            "query": query,
+            "count": self.max_results,
+            "need_content": false,
+        });
+
+        for attempt in 0..3 {
+            let response = client
+                .post("https://api.deepseek.com/v1/tools/search")
+                .header("Authorization", format!("Bearer {api_key}"))
+                .header("Content-Type", "application/json")
+                .json(&body)
+                .send()
+                .await;
+
+            let response = match response {
+                Ok(response) => response,
+                Err(error) if attempt < 2 => {
+                    tokio::time::sleep(Duration::from_millis(150 * (attempt + 1))).await;
+                    tracing::warn!(%error, attempt = attempt + 1, "DeepSeek search request failed; retrying");
+                    continue;
+                }
+                Err(error) => return Err(error.into()),
+            };
+
+            if response.status().is_success() {
+                let json: serde_json::Value = response.json().await?;
+                return self.parse_deepseek_results(&json, query);
+            }
+
+            let status = response.status();
+            let error_body = response.text().await.unwrap_or_default();
+            if (status == reqwest::StatusCode::REQUEST_TIMEOUT
+                || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+                || status.is_server_error())
+                && attempt < 2
+            {
+                tokio::time::sleep(Duration::from_millis(150 * (attempt + 1))).await;
+                tracing::warn!(%status, attempt = attempt + 1, "DeepSeek search returned a transient error; retrying");
+                continue;
+            }
+            anyhow::bail!("DeepSeek search failed with status {status}: {error_body}");
+        }
+
+        unreachable!("DeepSeek search retry loop always returns")
+    }
+
+    fn parse_deepseek_results(
+        &self,
+        json: &serde_json::Value,
+        _query: &str,
+    ) -> anyhow::Result<SearchResponse> {
+        let results = json
+            .get("results")
+            .and_then(|results| results.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid DeepSeek Search API response"))?;
+        if results.is_empty() {
+            return Ok(SearchResponse::empty("DeepSeek"));
+        }
+
+        let items = results
+            .iter()
+            .take(self.max_results)
+            .enumerate()
+            .filter_map(|(index, result)| {
+                let url = result.get("url").and_then(|value| value.as_str())?;
+                if url.trim().is_empty() {
+                    return None;
+                }
+                let title = result
+                    .get("title")
+                    .and_then(|value| value.as_str())
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("No title");
+                let description = ["summary", "snippet", "content"]
+                    .iter()
+                    .find_map(|field| {
+                        result
+                            .get(*field)
+                            .and_then(|value| value.as_str())
+                            .filter(|value| !value.trim().is_empty())
+                    })
+                    .map(ToOwned::to_owned);
+                Some(SearchResultItem {
+                    id: Some(format!("deepseek-{}", index + 1)),
+                    title: title.to_owned(),
+                    url: url.to_owned(),
+                    description,
+                    source: Some("DeepSeek".into()),
+                    thumbnail: None,
+                })
+            })
+            .collect();
+
+        Ok(SearchResponse {
+            provider: "DeepSeek",
+            items,
+            media: Vec::new(),
+        })
     }
 
     async fn search_duckduckgo(&self, query: &str) -> anyhow::Result<SearchResponse> {
@@ -799,6 +937,7 @@ impl Tool for WebSearchTool {
             WebSearchProviderRoute::Brave => self.search_brave(query).await?,
             WebSearchProviderRoute::SearXNG => self.search_searxng(query).await?,
             WebSearchProviderRoute::Bing => self.search_bing(query).await?,
+            WebSearchProviderRoute::DeepSeek => self.search_deepseek(query).await?,
         };
 
         let output = result.render_text(query);
@@ -883,6 +1022,35 @@ mod tests {
         "#;
         let result = tool.parse_duckduckgo_results(html, "test").unwrap();
         assert_eq!(result.items[0].url, "https://example.com/path?a=1");
+    }
+
+    #[test]
+    fn test_parse_deepseek_results_maps_summary_and_metadata() {
+        let tool = WebSearchTool::new("deepseek".to_string(), None, 5, 15);
+        let json = serde_json::json!({
+            "results": [{
+                "title": "DeepSeek Search",
+                "url": "https://example.com/article",
+                "summary": "A model-readable summary",
+                "snippet": "A shorter snippet",
+                "authority": 4
+            }]
+        });
+        let result = tool.parse_deepseek_results(&json, "test").unwrap();
+        assert_eq!(result.provider, "DeepSeek");
+        assert_eq!(result.items.len(), 1);
+        assert_eq!(result.items[0].title, "DeepSeek Search");
+        assert_eq!(
+            result.items[0].description.as_deref(),
+            Some("A model-readable summary")
+        );
+    }
+
+    #[test]
+    fn test_deepseek_key_override_is_used() {
+        let tool = WebSearchTool::new("deepseek".to_string(), None, 5, 15)
+            .with_deepseek_api_key(Some("sk-search-test".to_string()));
+        assert_eq!(tool.resolve_deepseek_api_key().unwrap(), "sk-search-test");
     }
 
     #[test]
