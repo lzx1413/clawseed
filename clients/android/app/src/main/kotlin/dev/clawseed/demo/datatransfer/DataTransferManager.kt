@@ -127,6 +127,37 @@ class DataTransferManager(private val context: Context) {
         webDav.delete(url, remotePath, username, password)
     }
 
+    /** Keeps the newest generated backups and deletes older generated files only. */
+    suspend fun pruneWebDavBackups(
+        url: String,
+        remoteDirectory: String,
+        username: String?,
+        password: String?,
+        retainCount: Int,
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            require(retainCount in 1..100) { "Retain count must be between 1 and 100" }
+            val backups = webDav.listBackups(url, remoteDirectory, username, password).getOrThrow()
+            val stale = backups.drop(retainCount)
+            stale.forEach { backup ->
+                webDav.delete(url, backup.path, username, password).getOrThrow()
+            }
+            Result.success(stale.size)
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    /** Tests WebDAV URL, authentication, directory access, and write permission. */
+    suspend fun testWebDavConnection(
+        url: String,
+        remoteDirectory: String,
+        username: String?,
+        password: String?,
+    ): Result<WebDavConnectionTestResult> = withContext(Dispatchers.IO) {
+        webDav.testConnection(url, remoteDirectory, username, password)
+    }
+
     // --- Export ----------------------------------------------------------
 
     suspend fun exportData(

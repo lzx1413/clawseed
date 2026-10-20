@@ -12,6 +12,8 @@ import android.content.pm.PackageManager
 import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
@@ -30,6 +32,11 @@ import dev.clawseed.demo.R
 import dev.clawseed.demo.scheduled.ScheduledTaskStore
 import dev.clawseed.demo.scheduled.AlarmSchedule
 import dev.clawseed.demo.scheduled.TaskStatus
+import dev.clawseed.demo.datatransfer.DataCategory
+import dev.clawseed.demo.datatransfer.DataTransferManager
+import dev.clawseed.demo.datatransfer.WebDavAutoBackupStore
+import dev.clawseed.demo.datatransfer.WebDavSettingsStore
+import dev.clawseed.demo.datatransfer.webDavRemoteBackupPath
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.embedded.EmbeddedGateway
 import dev.clawseed.sdk.embedded.GatewayState
@@ -239,6 +246,11 @@ class ClawseedService : Service() {
         val task = store.tasksAsList().find { it.id == taskId }
         if (task == null || !task.enabled) return
 
+        if (task.isWebDavBackup) {
+            executeWebDavBackup(taskId, task)
+            return
+        }
+
         // Alarm-type tasks: show ringing notification, don't execute AI
         if (task.isAlarm) {
             showAlarmNotification(task)
@@ -373,6 +385,64 @@ class ClawseedService : Service() {
         }
 
         ScheduledTaskManager.onTaskFired(this, taskId)
+    }
+
+    private suspend fun executeWebDavBackup(taskId: String, task: ScheduledTask) {
+        val autoStore = WebDavAutoBackupStore(this)
+        val auto = autoStore.load().normalized()
+        val store = ScheduledTaskStore(this)
+        fun fail(message: String) {
+            autoStore.recordFailure(message)
+            showTaskErrorNotification(task, message)
+        }
+        try {
+            if (!auto.enabled) return
+            if (auto.wifiOnly && !isUnmeteredNetwork()) {
+                val message = getString(R.string.svc_webdav_wifi_required)
+                fail(message)
+                store.updateTaskById(taskId) { it.copy(lastRunAt = System.currentTimeMillis(), lastStatus = TaskStatus.FAILED, lastError = message) }
+                return
+            }
+            val settings = WebDavSettingsStore(this).load()
+            require(settings.url.isNotBlank()) { getString(R.string.svc_webdav_missing_settings) }
+            require(settings.encryptionPassword.length >= 8) { getString(R.string.svc_webdav_missing_encryption_password) }
+            val categories = DataCategory.entries.toSet()
+            val manager = DataTransferManager(this)
+            val remotePath = webDavRemoteBackupPath(settings.remoteDirectory, categories)
+            val result = manager.backupToWebDav(
+                categories = categories,
+                excludeSensitive = true,
+                url = settings.url,
+                remotePath = remotePath,
+                username = settings.username.takeIf(String::isNotBlank),
+                password = settings.password.takeIf(String::isNotBlank),
+                encryptionPassword = settings.encryptionPassword,
+            ).getOrThrow()
+            manager.pruneWebDavBackups(
+                settings.url,
+                settings.remoteDirectory,
+                settings.username.takeIf(String::isNotBlank),
+                settings.password.takeIf(String::isNotBlank),
+                auto.retainCount,
+            ).getOrThrow()
+            autoStore.recordSuccess()
+            store.updateTaskById(taskId) {
+                it.copy(lastRunAt = System.currentTimeMillis(), lastStatus = TaskStatus.SUCCESS, lastResult = getString(R.string.svc_webdav_backup_success, result.bytes), lastError = null)
+            }
+            showTaskResultNotification(task, getString(R.string.svc_webdav_backup_success, result.bytes), null)
+        } catch (error: Exception) {
+            val message = error.message ?: getString(R.string.svc_webdav_backup_failed)
+            fail(message)
+            store.updateTaskById(taskId) { it.copy(lastRunAt = System.currentTimeMillis(), lastStatus = TaskStatus.FAILED, lastError = message.take(200)) }
+        } finally {
+            ScheduledTaskManager.onTaskFired(this, taskId)
+        }
+    }
+
+    private fun isUnmeteredNetwork(): Boolean {
+        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = manager.activeNetwork ?: return false
+        return manager.getNetworkCapabilities(network)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == true
     }
 
     private fun registerServiceTools(session: dev.clawseed.sdk.core.ClawSeedSession) {

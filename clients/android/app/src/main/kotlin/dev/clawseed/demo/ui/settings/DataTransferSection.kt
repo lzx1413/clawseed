@@ -45,8 +45,14 @@ import dev.clawseed.demo.datatransfer.DataTransferManager
 import dev.clawseed.demo.datatransfer.ImportResult
 import dev.clawseed.demo.datatransfer.ImportStrategy
 import dev.clawseed.demo.datatransfer.WebDavSyncClient
+import dev.clawseed.demo.datatransfer.WebDavCheckStage
+import dev.clawseed.demo.datatransfer.WebDavConnectionTestResult
 import dev.clawseed.demo.datatransfer.WebDavSettings
 import dev.clawseed.demo.datatransfer.WebDavSettingsStore
+import dev.clawseed.demo.datatransfer.WebDavAutoBackupFrequency
+import dev.clawseed.demo.datatransfer.WebDavAutoBackupSettings
+import dev.clawseed.demo.datatransfer.WebDavAutoBackupScheduler
+import dev.clawseed.demo.datatransfer.WebDavAutoBackupStore
 import dev.clawseed.demo.i18n.desc
 import dev.clawseed.demo.i18n.label
 import dev.clawseed.demo.ui.chat.RichMediaCache
@@ -63,6 +69,7 @@ fun DataTransferSection() {
     val scope = rememberCoroutineScope()
     val manager = remember { DataTransferManager(context) }
     val webDavSettingsStore = remember { WebDavSettingsStore(context) }
+    val webDavAutoBackupStore = remember { WebDavAutoBackupStore(context) }
 
     // Export state
     var selectedExportCategories by remember { mutableStateOf(emptySet<DataCategory>()) }
@@ -79,6 +86,10 @@ fun DataTransferSection() {
     var webDavPassword by remember { mutableStateOf("") }
     var webDavEncryptionPassword by remember { mutableStateOf("") }
     var rememberWebDavPassword by remember { mutableStateOf(false) }
+    var webDavAutoBackupEnabled by remember { mutableStateOf(false) }
+    var webDavAutoBackupFrequency by remember { mutableStateOf(WebDavAutoBackupFrequency.DAILY) }
+    var webDavAutoBackupWifiOnly by remember { mutableStateOf(true) }
+    var webDavAutoBackupRetainCount by remember { mutableStateOf("5") }
     var webDavSettingsLoaded by remember { mutableStateOf(false) }
     var webDavBusy by remember { mutableStateOf(false) }
     var webDavStatus by remember { mutableStateOf<String?>(null) }
@@ -86,6 +97,9 @@ fun DataTransferSection() {
     var webDavBackupsLoading by remember { mutableStateOf(false) }
     var webDavListError by remember { mutableStateOf<String?>(null) }
     var webDavDeleteCandidate by remember { mutableStateOf<WebDavSyncClient.RemoteBackup?>(null) }
+    var webDavTesting by remember { mutableStateOf(false) }
+    var webDavTestResult by remember { mutableStateOf<WebDavConnectionTestResult?>(null) }
+    var webDavTestError by remember { mutableStateOf<String?>(null) }
     var exportDestination by remember { mutableStateOf(TransferEndpoint.LocalFile) }
     var importSource by remember { mutableStateOf(TransferEndpoint.LocalFile) }
     var webDavSelectedFile by remember { mutableStateOf("") }
@@ -98,7 +112,13 @@ fun DataTransferSection() {
         webDavSelectedFile = settings.lastRemoteFile
         webDavUsername = settings.username
         webDavPassword = settings.password
+        webDavEncryptionPassword = settings.encryptionPassword
         rememberWebDavPassword = settings.rememberPassword
+        val auto = withContext(Dispatchers.IO) { webDavAutoBackupStore.load() }
+        webDavAutoBackupEnabled = auto.enabled
+        webDavAutoBackupFrequency = auto.frequency
+        webDavAutoBackupWifiOnly = auto.wifiOnly
+        webDavAutoBackupRetainCount = auto.retainCount.toString()
         webDavSettingsLoaded = true
     }
 
@@ -114,6 +134,8 @@ fun DataTransferSection() {
                     username = webDavUsername,
                     password = webDavPassword,
                     rememberPassword = rememberWebDavPassword,
+                    encryptionPassword = webDavEncryptionPassword,
+                    rememberEncryptionPassword = webDavAutoBackupEnabled,
                 ),
             )
         }
@@ -176,6 +198,8 @@ fun DataTransferSection() {
     val webDavFailedFormat = stringResource(R.string.data_webdav_failed)
     val webDavSettingsSaved = stringResource(R.string.data_webdav_settings_saved)
     val webDavDeleteDone = stringResource(R.string.data_webdav_delete_done)
+    val webDavTestPassed = stringResource(R.string.data_webdav_test_passed)
+    val webDavTestFailed = stringResource(R.string.data_webdav_test_failed)
 
     // SAF launchers
     val exportLauncher = rememberLauncherForActivityResult(
@@ -473,16 +497,127 @@ fun DataTransferSection() {
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(stringResource(R.string.data_webdav_remember_password))
                 }
+                Text(stringResource(R.string.data_webdav_auto_title), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.data_webdav_auto_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Switch(checked = webDavAutoBackupEnabled, onCheckedChange = { webDavAutoBackupEnabled = it })
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.data_webdav_auto_enable))
+                }
+                if (webDavAutoBackupEnabled) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = webDavAutoBackupFrequency == WebDavAutoBackupFrequency.DAILY,
+                            onClick = { webDavAutoBackupFrequency = WebDavAutoBackupFrequency.DAILY },
+                            label = { Text(stringResource(R.string.data_webdav_auto_daily)) },
+                        )
+                        FilterChip(
+                            selected = webDavAutoBackupFrequency == WebDavAutoBackupFrequency.WEEKLY,
+                            onClick = { webDavAutoBackupFrequency = WebDavAutoBackupFrequency.WEEKLY },
+                            label = { Text(stringResource(R.string.data_webdav_auto_weekly)) },
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Switch(checked = webDavAutoBackupWifiOnly, onCheckedChange = { webDavAutoBackupWifiOnly = it })
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(R.string.data_webdav_auto_wifi_only))
+                    }
+                    TextField(
+                        value = webDavAutoBackupRetainCount,
+                        onValueChange = { webDavAutoBackupRetainCount = it.filter(Char::isDigit).take(3) },
+                        label = { Text(stringResource(R.string.data_webdav_auto_retain)) },
+                        supportingText = { Text(stringResource(R.string.data_webdav_auto_retain_hint)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(stringResource(R.string.data_webdav_auto_password_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 Button(
                     onClick = {
                         scope.launch {
+                            val retainCount = webDavAutoBackupRetainCount.toIntOrNull()
+                            if (webDavAutoBackupEnabled && webDavEncryptionPassword.length < 8) {
+                                webDavStatus = context.getString(R.string.data_webdav_auto_password_required)
+                                return@launch
+                            }
+                            if (webDavAutoBackupEnabled && (retainCount == null || retainCount !in 1..100)) {
+                                webDavStatus = context.getString(R.string.data_webdav_auto_retain_invalid)
+                                return@launch
+                            }
                             saveWebDavSettings()
+                            val auto = WebDavAutoBackupSettings(
+                                enabled = webDavAutoBackupEnabled,
+                                frequency = webDavAutoBackupFrequency,
+                                wifiOnly = webDavAutoBackupWifiOnly,
+                                retainCount = retainCount ?: 5,
+                            )
+                            withContext(Dispatchers.IO) { webDavAutoBackupStore.save(auto) }
+                            WebDavAutoBackupScheduler.apply(context, auto)
                             webDavStatus = webDavSettingsSaved
                         }
                     },
                     enabled = webDavSettingsLoaded && !webDavBusy,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.data_webdav_save_settings)) }
+                Button(
+                    onClick = {
+                        scope.launch {
+                            webDavTesting = true
+                            webDavTestResult = null
+                            webDavTestError = null
+                            val result = manager.testWebDavConnection(
+                                webDavUrl,
+                                WebDavSettingsStore.normalizeDirectory(webDavDirectory),
+                                webDavUsername.takeIf(String::isNotBlank),
+                                webDavPassword.takeIf(String::isNotBlank),
+                            )
+                            if (result.isSuccess) {
+                                webDavTestResult = result.getOrThrow()
+                            } else {
+                                webDavTestError = result.exceptionOrNull()?.message ?: ""
+                            }
+                            webDavTesting = false
+                        }
+                    },
+                    enabled = webDavSettingsLoaded && !webDavBusy && !webDavTesting,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (webDavTesting) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(
+                        if (webDavTesting) stringResource(R.string.data_webdav_testing_connection)
+                        else stringResource(R.string.data_webdav_test_connection),
+                    )
+                }
+                webDavTestResult?.let { testResult ->
+                    Text(
+                        if (testResult.passed) webDavTestPassed else webDavTestFailed,
+                        color = if (testResult.passed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    for (check in testResult.checks) {
+                        val stage = when (check.stage) {
+                            WebDavCheckStage.URL -> stringResource(R.string.data_webdav_check_url)
+                            WebDavCheckStage.AUTHENTICATION -> stringResource(R.string.data_webdav_check_authentication)
+                            WebDavCheckStage.DIRECTORY -> stringResource(R.string.data_webdav_check_directory)
+                            WebDavCheckStage.WRITE -> stringResource(R.string.data_webdav_check_write)
+                        }
+                        Text(
+                            stringResource(R.string.data_webdav_check_line, stage, check.detail),
+                            color = if (check.passed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+                webDavTestError?.let { error ->
+                    Text(
+                        stringResource(R.string.data_webdav_test_failed_with_error, error),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
                 Text(
                     stringResource(R.string.data_webdav_selection_hint),
                     style = MaterialTheme.typography.bodySmall,

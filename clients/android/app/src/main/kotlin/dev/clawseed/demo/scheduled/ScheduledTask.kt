@@ -20,6 +20,7 @@ data class ScheduledTask(
     val lastResult: String? = null,
     val lastError: String? = null,
     val isAlarm: Boolean = false,
+    val isWebDavBackup: Boolean = false,
     val repeatDays: List<Int> = emptyList(),
 )
 

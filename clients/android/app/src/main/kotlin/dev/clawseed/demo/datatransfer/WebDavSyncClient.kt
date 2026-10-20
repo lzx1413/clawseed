@@ -12,16 +12,22 @@ import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
+import java.io.EOFException
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.IOException
 import java.io.StringReader
+import java.net.SocketException
+import java.net.SocketTimeoutException
+import java.util.UUID
 import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.security.SecureRandom
 import java.security.spec.KeySpec
 import java.util.concurrent.TimeUnit
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.CipherInputStream
 import javax.crypto.CipherOutputStream
@@ -34,6 +40,15 @@ import org.xmlpull.v1.XmlPullParser
 
 internal const val WEB_DAV_MAX_ARCHIVE_BYTES = 256L * 1024L * 1024L
 
+private open class WebDavTransferException(
+    message: String,
+    cause: Throwable? = null,
+    val httpCode: Int? = null,
+) : IOException(message, cause)
+
+private class RetryableWebDavException(message: String, httpCode: Int) :
+    WebDavTransferException(message, httpCode = httpCode)
+
 data class WebDavTimeouts(
     val connectSeconds: Long = 15,
     val readSeconds: Long = 180,
@@ -44,6 +59,23 @@ data class WebDavTimeouts(
             "WebDAV timeouts must be positive"
         }
     }
+}
+
+enum class WebDavCheckStage {
+    URL,
+    AUTHENTICATION,
+    DIRECTORY,
+    WRITE,
+}
+
+data class WebDavCheck(
+    val stage: WebDavCheckStage,
+    val passed: Boolean,
+    val detail: String,
+)
+
+data class WebDavConnectionTestResult(val checks: List<WebDavCheck>) {
+    val passed: Boolean get() = checks.all(WebDavCheck::passed)
 }
 
 /** Uploads and downloads an encrypted data-transfer archive through WebDAV. */
@@ -103,7 +135,9 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
                 val upload = request(url, temporaryPath, username, password)
                     .put(encryptedFile.asRequestBody(BINARY_MEDIA_TYPE))
                     .build()
-                client.newCall(upload).executeChecked("upload WebDAV backup").close()
+                withRetry {
+                    client.newCall(upload).executeChecked("upload WebDAV backup").close()
+                }
                 val move = Request.Builder()
                     .url(resolve(url, temporaryPath))
                     .header("Destination", resolve(url, remotePath))
@@ -112,7 +146,7 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
                     .withAuth(username, password)
                     .build()
                 client.newCall(move).execute().use { response ->
-                    check(response.isSuccessful) { "commit WebDAV backup failed (HTTP ${response.code})" }
+                    checkResponse(response, "commit WebDAV backup")
                 }
                 UploadResult(encryptedFile.length().toInt(), sha256(encryptedFile))
             } finally {
@@ -154,29 +188,39 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
             val encryptedFile = File.createTempFile("clawseed-webdav-", ".enc", archiveFile.parentFile)
             try {
                 val request = request(url, remotePath, username, password).build()
-                client.newCall(request).execute().use { response ->
-                    check(response.isSuccessful) { "download WebDAV backup failed (HTTP ${response.code})" }
-                    val body = response.body ?: error("WebDAV backup is empty")
-                    check(body.contentLength() <= WEB_DAV_MAX_ARCHIVE_BYTES || body.contentLength() < 0) {
-                        "WebDAV backup exceeds 256 MiB"
-                    }
-                    body.byteStream().use { input ->
-                        BufferedOutputStream(FileOutputStream(encryptedFile)).use { output ->
-                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                            var total = 0L
-                            while (true) {
-                                val count = input.read(buffer)
-                                if (count < 0) break
-                                total += count
-                                check(total <= WEB_DAV_MAX_ARCHIVE_BYTES) {
-                                    "WebDAV backup exceeds 256 MiB"
+                withRetry {
+                    client.newCall(request).execute().use { response ->
+                        checkResponse(response, "download WebDAV backup")
+                        val body = response.body ?: error("WebDAV backup is empty")
+                        val contentLength = body.contentLength()
+                        check(contentLength <= WEB_DAV_MAX_ARCHIVE_BYTES || contentLength < 0) {
+                            "WebDAV backup exceeds 256 MiB"
+                        }
+                        body.byteStream().use { input ->
+                            BufferedOutputStream(FileOutputStream(encryptedFile)).use { output ->
+                                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                                var total = 0L
+                                while (true) {
+                                    val count = input.read(buffer)
+                                    if (count < 0) break
+                                    total += count
+                                    check(total <= WEB_DAV_MAX_ARCHIVE_BYTES) {
+                                        "WebDAV backup exceeds 256 MiB"
+                                    }
+                                    output.write(buffer, 0, count)
                                 }
-                                output.write(buffer, 0, count)
                             }
                         }
                     }
                 }
-                decryptFile(encryptedFile, archiveFile, encryptionPassword)
+                try {
+                    decryptFile(encryptedFile, archiveFile, encryptionPassword)
+                } catch (error: AEADBadTagException) {
+                    throw WebDavTransferException(
+                        "Backup password is incorrect or the backup is corrupt",
+                        error,
+                    )
+                }
                 DownloadFileResult(archiveFile.length(), sha256(encryptedFile))
             } finally {
                 encryptedFile.delete()
@@ -200,7 +244,7 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
                 .method("DELETE", null)
                 .build()
             client.newCall(request).execute().use { response ->
-                check(response.isSuccessful) { "delete WebDAV backup failed (HTTP ${response.code})" }
+                checkResponse(response, "delete WebDAV backup")
             }
         }
     }
@@ -219,13 +263,91 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
                 .method("PROPFIND", PROPFIND_BODY)
                 .build()
             client.newCall(request).execute().use { response ->
-                check(response.isSuccessful) { "list WebDAV backups failed (HTTP ${response.code})" }
+                checkResponse(response, "list WebDAV backups")
                 val body = response.body ?: error("WebDAV backup list is empty")
                 check(body.contentLength() <= MAX_LIST_BYTES) { "WebDAV backup list is too large" }
                 val xml = body.string()
                 check(xml.toByteArray(Charsets.UTF_8).size <= MAX_LIST_BYTES) { "WebDAV backup list is too large" }
                 parseBackups(xml, url, remoteDirectory)
             }
+        }
+    }
+
+    /** Verifies URL syntax, authentication, directory access, and write permission. */
+    suspend fun testConnection(
+        url: String,
+        remoteDirectory: String,
+        username: String?,
+        password: String?,
+    ): kotlin.Result<WebDavConnectionTestResult> = withContext(Dispatchers.IO) {
+        runCatching {
+            val checks = mutableListOf<WebDavCheck>()
+            try {
+                validatePath(url, remoteDirectory)
+                checks += WebDavCheck(WebDavCheckStage.URL, true, "URL is valid")
+            } catch (error: Exception) {
+                checks += WebDavCheck(WebDavCheckStage.URL, false, error.message ?: "Invalid WebDAV URL")
+                return@runCatching WebDavConnectionTestResult(checks)
+            }
+
+            val directoryRequest = request(url, remoteDirectory, username, password)
+                .header("Depth", "0")
+                .method("PROPFIND", PROPFIND_BODY)
+                .build()
+            val directoryError = runCatching {
+                client.newCall(directoryRequest).execute().use { response ->
+                    checkResponse(response, "check WebDAV directory")
+                }
+            }.exceptionOrNull()
+            if (directoryError != null) {
+                val authenticationFailed = (directoryError as? WebDavTransferException)?.httpCode in setOf(401, 403)
+                checks += WebDavCheck(
+                    WebDavCheckStage.AUTHENTICATION,
+                    !authenticationFailed,
+                    if (authenticationFailed) "Authentication failed" else "Authentication accepted or not required",
+                )
+                checks += WebDavCheck(
+                    WebDavCheckStage.DIRECTORY,
+                    false,
+                    directoryError.message ?: "Remote directory is unavailable",
+                )
+                return@runCatching WebDavConnectionTestResult(checks)
+            }
+            checks += WebDavCheck(WebDavCheckStage.AUTHENTICATION, true, "Authentication accepted")
+            checks += WebDavCheck(WebDavCheckStage.DIRECTORY, true, "Remote directory is accessible")
+
+            val probePath = "$remoteDirectory/.clawseed-connection-test-${UUID.randomUUID()}.tmp"
+            val writeError = runCatching {
+                val probe = request(url, probePath, username, password)
+                    .put(ByteArray(0).toRequestBody(BINARY_MEDIA_TYPE))
+                    .build()
+                client.newCall(probe).execute().use { response ->
+                    checkResponse(response, "check WebDAV write permission")
+                }
+            }.exceptionOrNull()
+            if (writeError != null) {
+                checks += WebDavCheck(
+                    WebDavCheckStage.WRITE,
+                    false,
+                    writeError.message ?: "Remote directory is not writable",
+                )
+            } else {
+                val cleanupError = runCatching {
+                    val delete = request(url, probePath, username, password)
+                        .method("DELETE", null)
+                        .build()
+                    client.newCall(delete).execute().use { response ->
+                        checkResponse(response, "clean up WebDAV connection test")
+                    }
+                }.exceptionOrNull()
+                checks += WebDavCheck(
+                    WebDavCheckStage.WRITE,
+                    true,
+                    if (cleanupError == null) "Remote directory is writable" else
+                        "Remote directory is writable; test file cleanup failed",
+                )
+            }
+            WebDavConnectionTestResult(checks)
         }
     }
 
@@ -236,9 +358,11 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
         parent.split('/').forEach { segment ->
             current = if (current.isEmpty()) segment else "$current/$segment"
             val request = request(url, current, username, password).method("MKCOL", null).build()
-            client.newCall(request).execute().use { response ->
-                check(response.isSuccessful || response.code == 405 || response.code == 409) {
-                    "create WebDAV collection failed (HTTP ${response.code})"
+            withRetry {
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful && response.code != 405 && response.code != 409) {
+                        throw responseFailure("create WebDAV collection", response.code)
+                    }
                 }
             }
         }
@@ -426,9 +550,51 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
 
     private fun okhttp3.Call.executeChecked(operation: String): okhttp3.Response {
         val response = execute()
-        check(response.isSuccessful) { "$operation failed (HTTP ${response.code})" }
+        checkResponse(response, operation)
         return response
     }
+
+    private fun checkResponse(response: okhttp3.Response, operation: String) {
+        if (!response.isSuccessful) throw responseFailure(operation, response.code)
+    }
+
+    private fun responseFailure(operation: String, code: Int): WebDavTransferException {
+        val detail = when (code) {
+            401, 403 -> "authentication failed"
+            404 -> "remote path was not found"
+            507 -> "remote storage is full"
+            408, 425, 429 -> "the server is temporarily unavailable"
+            in 500..599 -> "the server is temporarily unavailable"
+            else -> "request failed"
+        }
+        val message = "$operation: $detail (HTTP $code)"
+        return if (code == 408 || code == 425 || code == 429 || code in 500..599) {
+            RetryableWebDavException(message, code)
+        } else {
+            WebDavTransferException(message, httpCode = code)
+        }
+    }
+
+    private inline fun <T> withRetry(block: () -> T): T {
+        var retry = 0
+        while (true) {
+            try {
+                return block()
+            } catch (error: IOException) {
+                if (retry >= MAX_RETRIES || !isRetryable(error)) throw error
+                retry++
+                try {
+                    Thread.sleep(RETRY_DELAYS_MS[retry - 1])
+                } catch (interrupted: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw error
+                }
+            }
+        }
+    }
+
+    private fun isRetryable(error: IOException): Boolean =
+        error is RetryableWebDavException || error is SocketTimeoutException || error is SocketException || error is EOFException
 
     companion object {
         private val MAGIC = "CLAWSEED-WEBDAV-ANDROID-V1\n".toByteArray()
@@ -436,6 +602,8 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
         private const val IV_BYTES = 12
         private const val PBKDF2_ITERATIONS = 150_000
         private const val MAX_LIST_BYTES = 1L * 1024L * 1024L
+        private const val MAX_RETRIES = 2
+        private val RETRY_DELAYS_MS = longArrayOf(250, 1_000)
         private val BINARY_MEDIA_TYPE = "application/octet-stream".toMediaType()
         private val PROPFIND_BODY = """
             <?xml version="1.0" encoding="utf-8" ?>

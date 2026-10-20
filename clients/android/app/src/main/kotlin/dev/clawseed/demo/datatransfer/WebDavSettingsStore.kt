@@ -18,6 +18,8 @@ data class WebDavSettings(
     val username: String = "",
     val password: String = "",
     val rememberPassword: Boolean = false,
+    val encryptionPassword: String = "",
+    val rememberEncryptionPassword: Boolean = false,
 )
 
 /** Persists WebDAV connection settings and optionally encrypts its password with Keystore. */
@@ -26,6 +28,7 @@ class WebDavSettingsStore(context: Context) {
 
     fun load(): WebDavSettings {
         val rememberPassword = preferences.getBoolean(KEY_REMEMBER_PASSWORD, false)
+        val rememberEncryptionPassword = preferences.getBoolean(KEY_REMEMBER_ENCRYPTION_PASSWORD, false)
         val encryptedPassword = preferences.getString(KEY_PASSWORD, null)
         val hasDirectoryKey = preferences.contains(KEY_REMOTE_DIRECTORY)
         val storedPath = preferences.getString(
@@ -47,11 +50,17 @@ class WebDavSettingsStore(context: Context) {
             lastRemoteFile = preferences.getString(KEY_LAST_REMOTE_FILE, null) ?: legacyRemoteFile.orEmpty(),
             username = preferences.getString(KEY_USERNAME, "").orEmpty(),
             password = if (rememberPassword && encryptedPassword != null) {
-                runCatching { decrypt(encryptedPassword) }.getOrDefault("")
+                runCatching { decrypt(encryptedPassword, KEY_ALIAS) }.getOrDefault("")
             } else {
                 ""
             },
             rememberPassword = rememberPassword,
+            encryptionPassword = if (rememberEncryptionPassword) {
+                preferences.getString(KEY_ENCRYPTION_PASSWORD, null)?.let { encoded ->
+                    runCatching { decrypt(encoded, ENCRYPTION_KEY_ALIAS) }.getOrDefault("")
+                }.orEmpty()
+            } else "",
+            rememberEncryptionPassword = rememberEncryptionPassword,
         )
     }
 
@@ -65,20 +74,26 @@ class WebDavSettingsStore(context: Context) {
             .putString(KEY_LAST_REMOTE_FILE, settings.lastRemoteFile.trim())
             .putString(KEY_USERNAME, settings.username)
             .putBoolean(KEY_REMEMBER_PASSWORD, settings.rememberPassword)
+            .putBoolean(KEY_REMEMBER_ENCRYPTION_PASSWORD, settings.rememberEncryptionPassword)
             .remove(KEY_REMOTE_PATH)
             .apply {
                 if (settings.rememberPassword && settings.password.isNotEmpty()) {
-                    putString(KEY_PASSWORD, encrypt(settings.password))
+                    putString(KEY_PASSWORD, encrypt(settings.password, KEY_ALIAS))
                 } else {
                     remove(KEY_PASSWORD)
+                }
+                if (settings.rememberEncryptionPassword && settings.encryptionPassword.isNotEmpty()) {
+                    putString(KEY_ENCRYPTION_PASSWORD, encrypt(settings.encryptionPassword, ENCRYPTION_KEY_ALIAS))
+                } else {
+                    remove(KEY_ENCRYPTION_PASSWORD)
                 }
             }
             .apply()
     }
 
-    private fun encrypt(value: String): String {
+    private fun encrypt(value: String, alias: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, key())
+        cipher.init(Cipher.ENCRYPT_MODE, key(alias))
         val ciphertext = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
         val payload = ByteBuffer.allocate(cipher.iv.size + ciphertext.size)
             .put(cipher.iv)
@@ -87,23 +102,23 @@ class WebDavSettingsStore(context: Context) {
         return Base64.encodeToString(payload, Base64.NO_WRAP)
     }
 
-    private fun decrypt(value: String): String {
+    private fun decrypt(value: String, alias: String): String {
         val payload = Base64.decode(value, Base64.NO_WRAP)
         require(payload.size > GCM_IV_BYTES)
         val iv = payload.copyOfRange(0, GCM_IV_BYTES)
         val ciphertext = payload.copyOfRange(GCM_IV_BYTES, payload.size)
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(GCM_TAG_BITS, iv))
+        cipher.init(Cipher.DECRYPT_MODE, key(alias), GCMParameterSpec(GCM_TAG_BITS, iv))
         return cipher.doFinal(ciphertext).toString(Charsets.UTF_8)
     }
 
-    private fun key(): SecretKey {
+    private fun key(alias: String): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+        (keyStore.getKey(alias, null) as? SecretKey)?.let { return it }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
         generator.init(
             KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
+                alias,
                 KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
             )
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
@@ -117,6 +132,7 @@ class WebDavSettingsStore(context: Context) {
     companion object {
         private const val PREFERENCES_NAME = "webdav_settings"
         private const val KEY_ALIAS = "clawseed_webdav_password"
+        private const val ENCRYPTION_KEY_ALIAS = "clawseed_webdav_encryption_password"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_IV_BYTES = 12
@@ -128,6 +144,8 @@ class WebDavSettingsStore(context: Context) {
         private const val KEY_USERNAME = "username"
         private const val KEY_PASSWORD = "password"
         private const val KEY_REMEMBER_PASSWORD = "remember_password"
+        private const val KEY_ENCRYPTION_PASSWORD = "encryption_password"
+        private const val KEY_REMEMBER_ENCRYPTION_PASSWORD = "remember_encryption_password"
         private const val DEFAULT_REMOTE_DIRECTORY = "clawseed"
 
         fun normalizeDirectory(value: String): String {

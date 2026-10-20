@@ -80,6 +80,8 @@ class ScheduledTaskStore(private val context: Context) {
         val existingIds = existing.map { it.id }.toSet()
         val merged = existing.toMutableList()
         for (task in tasks) {
+            // Built-in WebDAV automation is managed by its settings, never by a data import.
+            if (task.isWebDavBackup) continue
             if (task.id in existingIds) {
                 // Generate a new ID to avoid collision
                 merged.add(task.copy(id = java.util.UUID.randomUUID().toString()))
