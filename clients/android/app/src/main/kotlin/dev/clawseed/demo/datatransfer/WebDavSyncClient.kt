@@ -6,8 +6,15 @@ import okhttp3.Credentials
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
+import java.io.DataInputStream
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.StringReader
 import java.net.URI
 import java.net.URLDecoder
@@ -16,6 +23,8 @@ import java.security.SecureRandom
 import java.security.spec.KeySpec
 import java.util.concurrent.TimeUnit
 import javax.crypto.Cipher
+import javax.crypto.CipherInputStream
+import javax.crypto.CipherOutputStream
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.PBEKeySpec
@@ -25,10 +34,25 @@ import org.xmlpull.v1.XmlPullParser
 
 internal const val WEB_DAV_MAX_ARCHIVE_BYTES = 256L * 1024L * 1024L
 
+data class WebDavTimeouts(
+    val connectSeconds: Long = 15,
+    val readSeconds: Long = 180,
+    val writeSeconds: Long = 180,
+) {
+    init {
+        require(connectSeconds > 0 && readSeconds > 0 && writeSeconds > 0) {
+            "WebDAV timeouts must be positive"
+        }
+    }
+}
+
 /** Uploads and downloads an encrypted data-transfer archive through WebDAV. */
 class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
+    constructor(timeouts: WebDavTimeouts) : this(defaultClient(timeouts))
+
     data class UploadResult(val bytes: Int, val checksum: String)
     data class DownloadResult(val bytes: ByteArray, val checksum: String)
+    data class DownloadFileResult(val bytes: Long, val checksum: String)
     data class RemoteBackup(
         val name: String,
         val path: String,
@@ -44,29 +68,56 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
         password: String?,
         encryptionPassword: String,
     ): kotlin.Result<UploadResult> = withContext(Dispatchers.IO) {
+        val archiveFile = File.createTempFile("clawseed-webdav-", ".zip")
+        try {
+            archiveFile.writeBytes(archive)
+            uploadFile(url, remotePath, archiveFile, username, password, encryptionPassword)
+        } finally {
+            archiveFile.delete()
+        }
+    }
+
+    /** Encrypts and uploads an archive from disk without buffering the archive in memory. */
+    suspend fun uploadFile(
+        url: String,
+        remotePath: String,
+        archiveFile: File,
+        username: String?,
+        password: String?,
+        encryptionPassword: String,
+    ): kotlin.Result<UploadResult> = withContext(Dispatchers.IO) {
         runCatching {
             validate(url, remotePath, encryptionPassword)
-            val encrypted = encrypt(archive, encryptionPassword)
-            require(encrypted.size.toLong() <= WEB_DAV_MAX_ARCHIVE_BYTES) {
+            require(archiveFile.isFile) { "Backup archive is missing" }
+            require(archiveFile.length() <= WEB_DAV_MAX_ARCHIVE_BYTES) {
                 "WebDAV backup exceeds 256 MiB"
             }
-            ensureCollections(url, remotePath, username, password)
-            val temporaryPath = "$remotePath.tmp-${System.currentTimeMillis()}"
-            val upload = request(url, temporaryPath, username, password)
-                .put(encrypted.toRequestBody(BINARY_MEDIA_TYPE))
-                .build()
-            client.newCall(upload).executeChecked("upload WebDAV backup").close()
-            val move = Request.Builder()
-                .url(resolve(url, temporaryPath))
-                .header("Destination", resolve(url, remotePath))
-                .header("Overwrite", "T")
-                .method("MOVE", null)
-                .withAuth(username, password)
-                .build()
-            client.newCall(move).execute().use { response ->
-                check(response.isSuccessful) { "commit WebDAV backup failed (HTTP ${response.code})" }
+            val encryptedFile = File.createTempFile("clawseed-webdav-", ".enc", archiveFile.parentFile)
+            try {
+                encryptFile(archiveFile, encryptedFile, encryptionPassword)
+                require(encryptedFile.length() <= WEB_DAV_MAX_ARCHIVE_BYTES) {
+                    "WebDAV backup exceeds 256 MiB"
+                }
+                ensureCollections(url, remotePath, username, password)
+                val temporaryPath = "$remotePath.tmp-${System.currentTimeMillis()}"
+                val upload = request(url, temporaryPath, username, password)
+                    .put(encryptedFile.asRequestBody(BINARY_MEDIA_TYPE))
+                    .build()
+                client.newCall(upload).executeChecked("upload WebDAV backup").close()
+                val move = Request.Builder()
+                    .url(resolve(url, temporaryPath))
+                    .header("Destination", resolve(url, remotePath))
+                    .header("Overwrite", "T")
+                    .method("MOVE", null)
+                    .withAuth(username, password)
+                    .build()
+                client.newCall(move).execute().use { response ->
+                    check(response.isSuccessful) { "commit WebDAV backup failed (HTTP ${response.code})" }
+                }
+                UploadResult(encryptedFile.length().toInt(), sha256(encryptedFile))
+            } finally {
+                encryptedFile.delete()
             }
-            UploadResult(encrypted.size, sha256(encrypted))
         }
     }
 
@@ -77,20 +128,58 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
         password: String?,
         encryptionPassword: String,
     ): kotlin.Result<DownloadResult> = withContext(Dispatchers.IO) {
+        val archiveFile = File.createTempFile("clawseed-webdav-", ".zip")
+        try {
+            val result = downloadFile(url, remotePath, archiveFile, username, password, encryptionPassword)
+                .getOrThrow()
+            Result.success(DownloadResult(archiveFile.readBytes(), result.checksum))
+        } catch (error: Exception) {
+            Result.failure(error)
+        } finally {
+            archiveFile.delete()
+        }
+    }
+
+    /** Downloads and decrypts a backup to disk without buffering the payload in memory. */
+    suspend fun downloadFile(
+        url: String,
+        remotePath: String,
+        archiveFile: File,
+        username: String?,
+        password: String?,
+        encryptionPassword: String,
+    ): kotlin.Result<DownloadFileResult> = withContext(Dispatchers.IO) {
         runCatching {
             validate(url, remotePath, encryptionPassword)
-            val request = request(url, remotePath, username, password).build()
-            client.newCall(request).execute().use { response ->
-                check(response.isSuccessful) { "download WebDAV backup failed (HTTP ${response.code})" }
-                val body = response.body ?: error("WebDAV backup is empty")
-                check(body.contentLength() <= WEB_DAV_MAX_ARCHIVE_BYTES) {
-                    "WebDAV backup exceeds 256 MiB"
+            val encryptedFile = File.createTempFile("clawseed-webdav-", ".enc", archiveFile.parentFile)
+            try {
+                val request = request(url, remotePath, username, password).build()
+                client.newCall(request).execute().use { response ->
+                    check(response.isSuccessful) { "download WebDAV backup failed (HTTP ${response.code})" }
+                    val body = response.body ?: error("WebDAV backup is empty")
+                    check(body.contentLength() <= WEB_DAV_MAX_ARCHIVE_BYTES || body.contentLength() < 0) {
+                        "WebDAV backup exceeds 256 MiB"
+                    }
+                    body.byteStream().use { input ->
+                        BufferedOutputStream(FileOutputStream(encryptedFile)).use { output ->
+                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                            var total = 0L
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                total += count
+                                check(total <= WEB_DAV_MAX_ARCHIVE_BYTES) {
+                                    "WebDAV backup exceeds 256 MiB"
+                                }
+                                output.write(buffer, 0, count)
+                            }
+                        }
+                    }
                 }
-                val payload = body.bytes()
-                check(payload.size.toLong() <= WEB_DAV_MAX_ARCHIVE_BYTES) {
-                    "WebDAV backup exceeds 256 MiB"
-                }
-                DownloadResult(decrypt(payload, encryptionPassword), sha256(payload))
+                decryptFile(encryptedFile, archiveFile, encryptionPassword)
+                DownloadFileResult(archiveFile.length(), sha256(encryptedFile))
+            } finally {
+                encryptedFile.delete()
             }
         }
     }
@@ -257,6 +346,25 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
         }.toByteArray()
     }
 
+    private fun encryptFile(inputFile: File, outputFile: File, password: String) {
+        val salt = ByteArray(SALT_BYTES)
+        val iv = ByteArray(IV_BYTES)
+        SecureRandom().nextBytes(salt)
+        SecureRandom().nextBytes(iv)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key(password, salt), GCMParameterSpec(128, iv))
+        BufferedOutputStream(FileOutputStream(outputFile)).use { rawOutput ->
+            rawOutput.write(MAGIC)
+            rawOutput.write(salt)
+            rawOutput.write(iv)
+            CipherOutputStream(rawOutput, cipher).use { encryptedOutput ->
+                BufferedInputStream(FileInputStream(inputFile)).use { input ->
+                    input.copyTo(encryptedOutput, DEFAULT_BUFFER_SIZE)
+                }
+            }
+        }
+    }
+
     private fun decrypt(payload: ByteArray, password: String): ByteArray {
         require(payload.size > MAGIC.size + SALT_BYTES + IV_BYTES) { "WebDAV backup is invalid" }
         require(payload.copyOfRange(0, MAGIC.size).contentEquals(MAGIC)) { "Unsupported WebDAV backup format" }
@@ -269,6 +377,30 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
         return cipher.doFinal(payload.copyOfRange(ivStart + IV_BYTES, payload.size))
     }
 
+    private fun decryptFile(inputFile: File, outputFile: File, password: String) {
+        require(inputFile.length() > MAGIC.size + SALT_BYTES + IV_BYTES) {
+            "WebDAV backup is invalid"
+        }
+        BufferedInputStream(FileInputStream(inputFile)).use { bufferedInput ->
+            DataInputStream(bufferedInput).use { rawInput ->
+                val magic = ByteArray(MAGIC.size)
+                rawInput.readFully(magic)
+                require(magic.contentEquals(MAGIC)) { "Unsupported WebDAV backup format" }
+                val salt = ByteArray(SALT_BYTES)
+                rawInput.readFully(salt)
+                val iv = ByteArray(IV_BYTES)
+                rawInput.readFully(iv)
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(Cipher.DECRYPT_MODE, key(password, salt), GCMParameterSpec(128, iv))
+                CipherInputStream(rawInput, cipher).use { encryptedInput ->
+                    BufferedOutputStream(FileOutputStream(outputFile)).use { output ->
+                        encryptedInput.copyTo(output, DEFAULT_BUFFER_SIZE)
+                    }
+                }
+            }
+        }
+    }
+
     private fun key(password: String, salt: ByteArray): SecretKeySpec {
         val spec: KeySpec = PBEKeySpec(password.toCharArray(), salt, PBKDF2_ITERATIONS, 256)
         val bytes = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
@@ -278,6 +410,19 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
     private fun sha256(bytes: ByteArray): String =
         java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
             .joinToString("") { "%02x".format(it) }
+
+    private fun sha256(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        BufferedInputStream(FileInputStream(file)).use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
 
     private fun okhttp3.Call.executeChecked(operation: String): okhttp3.Response {
         val response = execute()
@@ -303,10 +448,10 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
             </d:propfind>
         """.trimIndent().toRequestBody("application/xml".toMediaType())
 
-        private fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(180, TimeUnit.SECONDS)
-            .writeTimeout(180, TimeUnit.SECONDS)
+        private fun defaultClient(timeouts: WebDavTimeouts = WebDavTimeouts()): OkHttpClient = OkHttpClient.Builder()
+            .connectTimeout(timeouts.connectSeconds, TimeUnit.SECONDS)
+            .readTimeout(timeouts.readSeconds, TimeUnit.SECONDS)
+            .writeTimeout(timeouts.writeSeconds, TimeUnit.SECONDS)
             .build()
     }
 }

@@ -19,8 +19,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.BufferedInputStream
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -49,17 +47,27 @@ class DataTransferManager(private val context: Context) {
         password: String?,
         encryptionPassword: String,
     ): Result<WebDavSyncClient.UploadResult> = withContext(Dispatchers.IO) {
+        val tempDir = webDavTempDir()
+        var archiveFile: File? = null
         try {
+            archiveFile = File.createTempFile("clawseed-export-", ".zip", tempDir)
             require(categories.isNotEmpty()) { "Select at least one data category" }
-            val archive = ByteArrayOutputStream()
-            exportData(categories, excludeSensitive, archive).getOrThrow()
-            val bytes = archive.toByteArray()
-            require(bytes.size.toLong() <= WEB_DAV_MAX_ARCHIVE_BYTES) { "Backup exceeds 256 MiB" }
-            Result.success(
-                webDav.upload(url, remotePath, bytes, username, password, encryptionPassword).getOrThrow(),
-            )
+            FileOutputStream(archiveFile!!).use { output ->
+                exportData(categories, excludeSensitive, output).getOrThrow()
+            }
+            Result.success(webDav.uploadFile(
+                url,
+                remotePath,
+                archiveFile!!,
+                username,
+                password,
+                encryptionPassword,
+            ).getOrThrow())
         } catch (error: Exception) {
             Result.failure(error)
+        } finally {
+            archiveFile?.delete()
+            tempDir.delete()
         }
     }
 
@@ -73,12 +81,29 @@ class DataTransferManager(private val context: Context) {
         password: String?,
         encryptionPassword: String,
     ): Result<ImportResult> = withContext(Dispatchers.IO) {
+        val tempDir = webDavTempDir()
+        var archiveFile: File? = null
         try {
+            archiveFile = File.createTempFile("clawseed-restore-", ".zip", tempDir)
             require(categories.isNotEmpty()) { "Select at least one data category" }
-            val downloaded = webDav.download(url, remotePath, username, password, encryptionPassword).getOrThrow()
-            Result.success(importData(ByteArrayInputStream(downloaded.bytes), categories, strategies).getOrThrow())
+            webDav.downloadFile(
+                url,
+                remotePath,
+                archiveFile!!,
+                username,
+                password,
+                encryptionPassword,
+            ).getOrThrow()
+            Result.success(
+                FileInputStream(archiveFile!!).use { input ->
+                    importData(input, categories, strategies).getOrThrow()
+                },
+            )
         } catch (error: Exception) {
             Result.failure(error)
+        } finally {
+            archiveFile?.delete()
+            tempDir.delete()
         }
     }
 
@@ -787,6 +812,10 @@ class DataTransferManager(private val context: Context) {
 
     private fun removeTrailingJsonCommas(jsonStr: String): String =
         jsonStr.replace(Regex(",\\s*([}\\]])"), "$1")
+
+    private fun webDavTempDir(): File = File(context.cacheDir, "clawseed-webdav").apply {
+        mkdirs()
+    }
 
     companion object {
         private const val TAG = "DataTransferManager"
