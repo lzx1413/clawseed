@@ -556,7 +556,8 @@
     <string name="data_webdav_title">WebDAV 备份与恢复</string>
     <string name="data_webdav_desc">可将 WebDAV 作为导出目标或导入来源。数据在本机加密，服务器不会收到加密密码。</string>
     <string name="data_webdav_url">WebDAV 地址</string>
-    <string name="data_webdav_directory">远端目录</string>
+    <string name="data_webdav_directory">远端文件夹</string>
+    <string name="data_webdav_directory_hint">只需填写文件夹，备份文件名会自动生成。</string>
     <string name="data_webdav_path">远端路径</string>
     <string name="data_webdav_username">用户名（可选）</string>
     <string name="data_webdav_password">WebDAV 密码（可选）</string>

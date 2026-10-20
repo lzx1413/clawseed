@@ -93,11 +93,13 @@ fun DataTransferSection() {
     }
 
     suspend fun saveWebDavSettings(lastRemoteFile: String = webDavLastFile) {
+        val normalizedDirectory = WebDavSettingsStore.normalizeDirectory(webDavDirectory)
+        webDavDirectory = normalizedDirectory
         withContext(Dispatchers.IO) {
             webDavSettingsStore.save(
                 WebDavSettings(
                     url = webDavUrl,
-                    remoteDirectory = webDavDirectory,
+                    remoteDirectory = normalizedDirectory,
                     lastRemoteFile = lastRemoteFile,
                     username = webDavUsername,
                     password = webDavPassword,
@@ -388,6 +390,7 @@ fun DataTransferSection() {
                     value = webDavDirectory,
                     onValueChange = { webDavDirectory = it },
                     label = { Text(stringResource(R.string.data_webdav_directory)) },
+                    supportingText = { Text(stringResource(R.string.data_webdav_directory_hint)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -428,18 +431,7 @@ fun DataTransferSection() {
                 Button(
                     onClick = {
                         scope.launch {
-                            withContext(Dispatchers.IO) {
-                                webDavSettingsStore.save(
-                                    WebDavSettings(
-                                        url = webDavUrl,
-                                        remoteDirectory = webDavDirectory,
-                                        lastRemoteFile = webDavLastFile,
-                                        username = webDavUsername,
-                                        password = webDavPassword,
-                                        rememberPassword = rememberWebDavPassword,
-                                    ),
-                                )
-                            }
+                            saveWebDavSettings()
                             webDavStatus = webDavSettingsSaved
                         }
                     },
@@ -658,7 +650,7 @@ private fun exportFileName(categories: Set<DataCategory>): String {
 private fun remoteBackupPath(directory: String, fileName: String): String {
     // Keep the same generated filename as the local export. The WebDAV payload
     // is encrypted internally, so the extension is only used for identification.
-    return listOf(directory.trim('/'), fileName)
+    return listOf(WebDavSettingsStore.normalizeDirectory(directory), fileName)
         .filter(String::isNotEmpty)
         .joinToString("/")
 }

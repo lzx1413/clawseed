@@ -556,7 +556,8 @@
     <string name="data_webdav_title">WebDAV backup and restore</string>
     <string name="data_webdav_desc">Use WebDAV as an export destination or import source. Data is encrypted on this device; the server never receives the encryption password.</string>
     <string name="data_webdav_url">WebDAV URL</string>
-    <string name="data_webdav_directory">Remote directory</string>
+    <string name="data_webdav_directory">Remote folder</string>
+    <string name="data_webdav_directory_hint">Enter a folder only; the backup filename is generated automatically.</string>
     <string name="data_webdav_path">Remote path</string>
     <string name="data_webdav_username">Username (optional)</string>
     <string name="data_webdav_password">WebDAV password (optional)</string>

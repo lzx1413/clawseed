@@ -27,19 +27,24 @@ class WebDavSettingsStore(context: Context) {
     fun load(): WebDavSettings {
         val rememberPassword = preferences.getBoolean(KEY_REMEMBER_PASSWORD, false)
         val encryptedPassword = preferences.getString(KEY_PASSWORD, null)
-        val storedPath = preferences.getString(KEY_REMOTE_PATH, DEFAULT_REMOTE_DIRECTORY).orEmpty()
-        val legacyFile = storedPath.substringAfterLast('/').takeIf {
-            it.endsWith(".zip", ignoreCase = true) || it.endsWith(".enc", ignoreCase = true)
-        }
-        val directory = if (legacyFile != null) {
-            storedPath.substringBeforeLast('/', "")
+        val hasDirectoryKey = preferences.contains(KEY_REMOTE_DIRECTORY)
+        val storedPath = preferences.getString(
+            if (hasDirectoryKey) KEY_REMOTE_DIRECTORY else KEY_REMOTE_PATH,
+            DEFAULT_REMOTE_DIRECTORY,
+        ).orEmpty()
+        val legacyFile = if (hasDirectoryKey) {
+            null
         } else {
-            storedPath
+            storedPath.substringAfterLast('/').takeIf {
+                it.endsWith(".zip", ignoreCase = true) || it.endsWith(".enc", ignoreCase = true)
+            }
         }
+        val directory = if (legacyFile != null) storedPath.substringBeforeLast('/', "") else storedPath
+        val legacyRemoteFile = legacyFile?.let { storedPath.trim('/') }
         return WebDavSettings(
             url = preferences.getString(KEY_URL, "").orEmpty(),
-            remoteDirectory = directory.ifEmpty { DEFAULT_REMOTE_DIRECTORY },
-            lastRemoteFile = preferences.getString(KEY_LAST_REMOTE_FILE, null) ?: legacyFile.orEmpty(),
+            remoteDirectory = normalizeDirectory(directory),
+            lastRemoteFile = preferences.getString(KEY_LAST_REMOTE_FILE, null) ?: legacyRemoteFile.orEmpty(),
             username = preferences.getString(KEY_USERNAME, "").orEmpty(),
             password = if (rememberPassword && encryptedPassword != null) {
                 runCatching { decrypt(encryptedPassword) }.getOrDefault("")
@@ -54,12 +59,13 @@ class WebDavSettingsStore(context: Context) {
         preferences.edit()
             .putString(KEY_URL, settings.url.trim())
             .putString(
-                KEY_REMOTE_PATH,
-                settings.remoteDirectory.trim().trim('/').ifEmpty { DEFAULT_REMOTE_DIRECTORY },
+                KEY_REMOTE_DIRECTORY,
+                normalizeDirectory(settings.remoteDirectory),
             )
             .putString(KEY_LAST_REMOTE_FILE, settings.lastRemoteFile.trim())
             .putString(KEY_USERNAME, settings.username)
             .putBoolean(KEY_REMEMBER_PASSWORD, settings.rememberPassword)
+            .remove(KEY_REMOTE_PATH)
             .apply {
                 if (settings.rememberPassword && settings.password.isNotEmpty()) {
                     putString(KEY_PASSWORD, encrypt(settings.password))
@@ -117,10 +123,23 @@ class WebDavSettingsStore(context: Context) {
         private const val GCM_TAG_BITS = 128
         private const val KEY_URL = "url"
         private const val KEY_REMOTE_PATH = "remote_path"
+        private const val KEY_REMOTE_DIRECTORY = "remote_directory"
         private const val KEY_LAST_REMOTE_FILE = "last_remote_file"
         private const val KEY_USERNAME = "username"
         private const val KEY_PASSWORD = "password"
         private const val KEY_REMEMBER_PASSWORD = "remember_password"
         private const val DEFAULT_REMOTE_DIRECTORY = "clawseed"
+
+        fun normalizeDirectory(value: String): String {
+            val trimmed = value.trim().trim('/')
+            if (trimmed.isEmpty()) return DEFAULT_REMOTE_DIRECTORY
+            val lastSegment = trimmed.substringAfterLast('/')
+            if (lastSegment.endsWith(".zip", ignoreCase = true) ||
+                lastSegment.endsWith(".enc", ignoreCase = true)
+            ) {
+                return trimmed.substringBeforeLast('/', "").trim('/').ifEmpty { DEFAULT_REMOTE_DIRECTORY }
+            }
+            return trimmed
+        }
     }
 }
