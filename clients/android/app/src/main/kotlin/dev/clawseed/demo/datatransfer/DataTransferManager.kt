@@ -19,6 +19,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.BufferedInputStream
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -35,6 +37,50 @@ class DataTransferManager(private val context: Context) {
     private val localStore = LocalStore(context)
     private val taskStore = ScheduledTaskStore(context)
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    private val webDav = WebDavSyncClient()
+
+    /** Encrypts the selected export categories and atomically uploads them to WebDAV. */
+    suspend fun backupToWebDav(
+        categories: Set<DataCategory>,
+        excludeSensitive: Boolean,
+        url: String,
+        remotePath: String,
+        username: String?,
+        password: String?,
+        encryptionPassword: String,
+    ): Result<WebDavSyncClient.UploadResult> = withContext(Dispatchers.IO) {
+        try {
+            require(categories.isNotEmpty()) { "Select at least one data category" }
+            val archive = ByteArrayOutputStream()
+            exportData(categories, excludeSensitive, archive).getOrThrow()
+            val bytes = archive.toByteArray()
+            require(bytes.size.toLong() <= WEB_DAV_MAX_ARCHIVE_BYTES) { "Backup exceeds 256 MiB" }
+            Result.success(
+                webDav.upload(url, remotePath, bytes, username, password, encryptionPassword).getOrThrow(),
+            )
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    /** Downloads, decrypts, and imports a WebDAV archive using the selected strategies. */
+    suspend fun restoreFromWebDav(
+        categories: Set<DataCategory>,
+        strategies: Map<DataCategory, ImportStrategy>,
+        url: String,
+        remotePath: String,
+        username: String?,
+        password: String?,
+        encryptionPassword: String,
+    ): Result<ImportResult> = withContext(Dispatchers.IO) {
+        try {
+            require(categories.isNotEmpty()) { "Select at least one data category" }
+            val downloaded = webDav.download(url, remotePath, username, password, encryptionPassword).getOrThrow()
+            Result.success(importData(ByteArrayInputStream(downloaded.bytes), categories, strategies).getOrThrow())
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
 
     // --- Export ----------------------------------------------------------
 

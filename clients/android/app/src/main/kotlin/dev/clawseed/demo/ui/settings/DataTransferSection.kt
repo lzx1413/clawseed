@@ -22,7 +22,10 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,6 +41,8 @@ import dev.clawseed.demo.datatransfer.DataCategory
 import dev.clawseed.demo.datatransfer.DataTransferManager
 import dev.clawseed.demo.datatransfer.ImportResult
 import dev.clawseed.demo.datatransfer.ImportStrategy
+import dev.clawseed.demo.datatransfer.WebDavSettings
+import dev.clawseed.demo.datatransfer.WebDavSettingsStore
 import dev.clawseed.demo.i18n.desc
 import dev.clawseed.demo.i18n.label
 import dev.clawseed.demo.ui.chat.RichMediaCache
@@ -53,6 +58,7 @@ fun DataTransferSection() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val manager = remember { DataTransferManager(context) }
+    val webDavSettingsStore = remember { WebDavSettingsStore(context) }
 
     // Export state
     var selectedExportCategories by remember { mutableStateOf(emptySet<DataCategory>()) }
@@ -60,6 +66,46 @@ fun DataTransferSection() {
     var isExporting by remember { mutableStateOf(false) }
     var exportError by remember { mutableStateOf<String?>(null) }
     var exportSuccess by remember { mutableStateOf<String?>(null) }
+
+    // WebDAV sync state. The optional WebDAV password is persisted only through Keystore.
+    var webDavUrl by remember { mutableStateOf("") }
+    var webDavDirectory by remember { mutableStateOf("clawseed") }
+    var webDavLastFile by remember { mutableStateOf("") }
+    var webDavUsername by remember { mutableStateOf("") }
+    var webDavPassword by remember { mutableStateOf("") }
+    var webDavEncryptionPassword by remember { mutableStateOf("") }
+    var rememberWebDavPassword by remember { mutableStateOf(false) }
+    var webDavSettingsLoaded by remember { mutableStateOf(false) }
+    var webDavBusy by remember { mutableStateOf(false) }
+    var webDavStatus by remember { mutableStateOf<String?>(null) }
+    var exportDestination by remember { mutableStateOf(TransferEndpoint.LocalFile) }
+    var importSource by remember { mutableStateOf(TransferEndpoint.LocalFile) }
+
+    LaunchedEffect(Unit) {
+        val settings = withContext(Dispatchers.IO) { webDavSettingsStore.load() }
+        webDavUrl = settings.url
+        webDavDirectory = settings.remoteDirectory
+        webDavLastFile = settings.lastRemoteFile
+        webDavUsername = settings.username
+        webDavPassword = settings.password
+        rememberWebDavPassword = settings.rememberPassword
+        webDavSettingsLoaded = true
+    }
+
+    suspend fun saveWebDavSettings(lastRemoteFile: String = webDavLastFile) {
+        withContext(Dispatchers.IO) {
+            webDavSettingsStore.save(
+                WebDavSettings(
+                    url = webDavUrl,
+                    remoteDirectory = webDavDirectory,
+                    lastRemoteFile = lastRemoteFile,
+                    username = webDavUsername,
+                    password = webDavPassword,
+                    rememberPassword = rememberWebDavPassword,
+                ),
+            )
+        }
+    }
 
     // Import state
     var selectedImportCategories by remember { mutableStateOf(emptySet<DataCategory>()) }
@@ -80,6 +126,10 @@ fun DataTransferSection() {
     val cannotReadFile = stringResource(R.string.data_cannot_read_file)
     val mediaCacheCleared = stringResource(R.string.data_media_cache_cleared)
     val mediaCacheClearFailed = stringResource(R.string.data_media_cache_clear_failed)
+    val webDavBackupDoneFormat = stringResource(R.string.data_webdav_backup_done)
+    val webDavRestoreDone = stringResource(R.string.data_webdav_restore_done)
+    val webDavFailedFormat = stringResource(R.string.data_webdav_failed)
+    val webDavSettingsSaved = stringResource(R.string.data_webdav_settings_saved)
 
     // SAF launchers
     val exportLauncher = rememberLauncherForActivityResult(
@@ -228,22 +278,75 @@ fun DataTransferSection() {
                     }
                 }
 
+                Text(stringResource(R.string.data_transfer_destination), style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = exportDestination == TransferEndpoint.LocalFile,
+                        onClick = { exportDestination = TransferEndpoint.LocalFile },
+                        label = { Text(stringResource(R.string.data_transfer_local_file)) },
+                    )
+                    FilterChip(
+                        selected = exportDestination == TransferEndpoint.WebDav,
+                        onClick = { exportDestination = TransferEndpoint.WebDav },
+                        label = { Text(stringResource(R.string.data_transfer_webdav)) },
+                    )
+                }
+
                 // Export button
                 Button(
                     onClick = {
-                        val date = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
-                        val cats = selectedExportCategories.joinToString("-") { it.name.lowercase() }
-                        exportLauncher.launch("clawseed-${date}-${cats}.zip")
+                        val fileName = exportFileName(selectedExportCategories)
+                        if (exportDestination == TransferEndpoint.LocalFile) {
+                            exportLauncher.launch(fileName)
+                        } else {
+                            scope.launch {
+                                webDavBusy = true
+                                webDavStatus = null
+                                try {
+                                    val remoteFile = remoteBackupPath(webDavDirectory, fileName)
+                                    val result = manager.backupToWebDav(
+                                        selectedExportCategories,
+                                        excludeSensitive,
+                                        webDavUrl,
+                                        remoteFile,
+                                        webDavUsername.takeIf(String::isNotBlank),
+                                        webDavPassword.takeIf(String::isNotBlank),
+                                        webDavEncryptionPassword,
+                                    )
+                                    if (result.isSuccess) {
+                                        val upload = result.getOrThrow()
+                                        webDavLastFile = remoteFile
+                                        saveWebDavSettings(remoteFile)
+                                        selectedImportCategories = if (excludeSensitive) {
+                                            selectedExportCategories - setOf(
+                                                DataCategory.MEMORY,
+                                                DataCategory.USER_PROFILE,
+                                            )
+                                        } else {
+                                            selectedExportCategories
+                                        }
+                                        webDavStatus = webDavBackupDoneFormat.format(upload.bytes)
+                                    } else {
+                                        webDavStatus = webDavFailedFormat.format(
+                                            result.exceptionOrNull()?.message ?: "",
+                                        )
+                                    }
+                                } finally {
+                                    webDavBusy = false
+                                }
+                            }
+                        }
                     },
-                    enabled = selectedExportCategories.isNotEmpty() && !isExporting,
+                    enabled = selectedExportCategories.isNotEmpty() && !isExporting && !webDavBusy &&
+                        (exportDestination == TransferEndpoint.LocalFile || webDavSettingsLoaded),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    if (isExporting) {
+                    if (isExporting || webDavBusy) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.data_exporting))
+                        Text(if (exportDestination == TransferEndpoint.WebDav) stringResource(R.string.data_webdav_uploading) else stringResource(R.string.data_exporting))
                     } else {
-                        Text(stringResource(R.string.data_export_btn))
+                        Text(if (exportDestination == TransferEndpoint.WebDav) stringResource(R.string.data_webdav_backup) else stringResource(R.string.data_export_btn))
                     }
                 }
 
@@ -253,6 +356,108 @@ fun DataTransferSection() {
                 }
                 exportError?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                }
+                if (exportDestination == TransferEndpoint.WebDav) {
+                    webDavStatus?.let {
+                        Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
+
+        // WebDAV card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.data_webdav_title), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    stringResource(R.string.data_webdav_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextField(
+                    value = webDavUrl,
+                    onValueChange = { webDavUrl = it },
+                    label = { Text(stringResource(R.string.data_webdav_url)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextField(
+                    value = webDavDirectory,
+                    onValueChange = { webDavDirectory = it },
+                    label = { Text(stringResource(R.string.data_webdav_directory)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextField(
+                    value = webDavUsername,
+                    onValueChange = { webDavUsername = it },
+                    label = { Text(stringResource(R.string.data_webdav_username)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextField(
+                    value = webDavPassword,
+                    onValueChange = { webDavPassword = it },
+                    label = { Text(stringResource(R.string.data_webdav_password)) },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextField(
+                    value = webDavEncryptionPassword,
+                    onValueChange = { webDavEncryptionPassword = it },
+                    label = { Text(stringResource(R.string.data_webdav_encryption_password)) },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Switch(
+                        checked = rememberWebDavPassword,
+                        onCheckedChange = { rememberWebDavPassword = it },
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.data_webdav_remember_password))
+                }
+                Button(
+                    onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                webDavSettingsStore.save(
+                                    WebDavSettings(
+                                        url = webDavUrl,
+                                        remoteDirectory = webDavDirectory,
+                                        lastRemoteFile = webDavLastFile,
+                                        username = webDavUsername,
+                                        password = webDavPassword,
+                                        rememberPassword = rememberWebDavPassword,
+                                    ),
+                                )
+                            }
+                            webDavStatus = webDavSettingsSaved
+                        }
+                    },
+                    enabled = webDavSettingsLoaded && !webDavBusy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(stringResource(R.string.data_webdav_save_settings)) }
+                Text(
+                    stringResource(R.string.data_webdav_selection_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                webDavStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                if (webDavLastFile.isNotBlank()) {
+                    Text(
+                        stringResource(R.string.data_webdav_last_file, webDavLastFile),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -264,6 +469,20 @@ fun DataTransferSection() {
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.data_import), style = MaterialTheme.typography.titleMedium)
+
+                Text(stringResource(R.string.data_transfer_source), style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = importSource == TransferEndpoint.LocalFile,
+                        onClick = { importSource = TransferEndpoint.LocalFile },
+                        label = { Text(stringResource(R.string.data_transfer_local_file)) },
+                    )
+                    FilterChip(
+                        selected = importSource == TransferEndpoint.WebDav,
+                        onClick = { importSource = TransferEndpoint.WebDav },
+                        label = { Text(stringResource(R.string.data_transfer_webdav)) },
+                    )
+                }
 
                 // Category checkboxes
                 for (category in DataCategory.entries) {
@@ -323,17 +542,61 @@ fun DataTransferSection() {
                 // Import button
                 Button(
                     onClick = {
-                        importLauncher.launch(arrayOf("application/zip", "*/*"))
+                        if (importSource == TransferEndpoint.LocalFile) {
+                            importLauncher.launch(arrayOf("application/zip", "*/*"))
+                        } else {
+                            scope.launch {
+                                webDavBusy = true
+                                webDavStatus = null
+                                importError = null
+                                importResult = null
+                                try {
+                                    val result = manager.restoreFromWebDav(
+                                        selectedImportCategories,
+                                        importStrategies,
+                                        webDavUrl,
+                                        webDavLastFile,
+                                        webDavUsername.takeIf(String::isNotBlank),
+                                        webDavPassword.takeIf(String::isNotBlank),
+                                        webDavEncryptionPassword,
+                                    )
+                                    if (result.isSuccess) {
+                                        importResult = result.getOrThrow()
+                                        webDavStatus = webDavRestoreDone
+                                    } else {
+                                        webDavStatus = webDavFailedFormat.format(
+                                            result.exceptionOrNull()?.message ?: "",
+                                        )
+                                    }
+                                } finally {
+                                    webDavBusy = false
+                                }
+                            }
+                        }
                     },
-                    enabled = selectedImportCategories.isNotEmpty() && !isImporting,
+                    enabled = selectedImportCategories.isNotEmpty() && !isImporting && !webDavBusy &&
+                        (importSource == TransferEndpoint.LocalFile ||
+                            (webDavSettingsLoaded && webDavLastFile.isNotBlank())),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    if (isImporting) {
+                    if (isImporting || webDavBusy) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.data_importing))
+                        Text(
+                            if (importSource == TransferEndpoint.WebDav) {
+                                stringResource(R.string.data_webdav_downloading)
+                            } else {
+                                stringResource(R.string.data_importing)
+                            },
+                        )
                     } else {
-                        Text(stringResource(R.string.data_import_btn))
+                        Text(
+                            if (importSource == TransferEndpoint.WebDav) {
+                                stringResource(R.string.data_webdav_restore)
+                            } else {
+                                stringResource(R.string.data_import_btn)
+                            },
+                        )
                     }
                 }
 
@@ -379,6 +642,25 @@ fun DataTransferSection() {
             },
         )
     }
+}
+
+private enum class TransferEndpoint {
+    LocalFile,
+    WebDav,
+}
+
+private fun exportFileName(categories: Set<DataCategory>): String {
+    val date = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+    val names = categories.joinToString("-") { it.name.lowercase() }
+    return "clawseed-$date-$names.zip"
+}
+
+private fun remoteBackupPath(directory: String, fileName: String): String {
+    // Keep the same generated filename as the local export. The WebDAV payload
+    // is encrypted internally, so the extension is only used for identification.
+    return listOf(directory.trim('/'), fileName)
+        .filter(String::isNotEmpty)
+        .joinToString("/")
 }
 
 private fun formatByteSize(bytes: Long): String = when {
