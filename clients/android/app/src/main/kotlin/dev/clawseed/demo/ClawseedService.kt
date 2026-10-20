@@ -34,6 +34,7 @@ import dev.clawseed.demo.scheduled.AlarmSchedule
 import dev.clawseed.demo.scheduled.TaskStatus
 import dev.clawseed.demo.datatransfer.DataCategory
 import dev.clawseed.demo.datatransfer.DataTransferManager
+import dev.clawseed.demo.datatransfer.AutoBackupDestination
 import dev.clawseed.demo.datatransfer.WebDavAutoBackupStore
 import dev.clawseed.demo.datatransfer.WebDavSettingsStore
 import dev.clawseed.demo.datatransfer.webDavRemoteBackupPath
@@ -404,32 +405,44 @@ class ClawseedService : Service() {
                 return
             }
             val settings = WebDavSettingsStore(this).load()
-            require(settings.url.isNotBlank()) { getString(R.string.svc_webdav_missing_settings) }
-            require(settings.encryptionPassword.length >= 8) { getString(R.string.svc_webdav_missing_encryption_password) }
             val categories = DataCategory.entries.toSet()
             val manager = DataTransferManager(this)
-            val remotePath = webDavRemoteBackupPath(settings.remoteDirectory, categories)
-            val result = manager.backupToWebDav(
-                categories = categories,
-                excludeSensitive = true,
-                url = settings.url,
-                remotePath = remotePath,
-                username = settings.username.takeIf(String::isNotBlank),
-                password = settings.password.takeIf(String::isNotBlank),
-                encryptionPassword = settings.encryptionPassword,
-            ).getOrThrow()
-            manager.pruneWebDavBackups(
-                settings.url,
-                settings.remoteDirectory,
-                settings.username.takeIf(String::isNotBlank),
-                settings.password.takeIf(String::isNotBlank),
-                auto.retainCount,
-            ).getOrThrow()
+            val messages = mutableListOf<String>()
+            if (auto.destination != AutoBackupDestination.LOCAL) {
+                require(settings.url.isNotBlank()) { getString(R.string.svc_webdav_missing_settings) }
+                require(settings.encryptionPassword.length >= 8) { getString(R.string.svc_webdav_missing_encryption_password) }
+            }
+            if (auto.destination == AutoBackupDestination.LOCAL || auto.destination == AutoBackupDestination.LOCAL_AND_WEBDAV) {
+                val local = manager.backupToLocal(categories, excludeSensitive = true).getOrThrow()
+                manager.pruneLocalBackups(auto.retainCount).getOrThrow()
+                messages += getString(R.string.svc_local_backup_success, local.bytes)
+            }
+            if (auto.destination == AutoBackupDestination.WEBDAV || auto.destination == AutoBackupDestination.LOCAL_AND_WEBDAV) {
+                val remotePath = webDavRemoteBackupPath(settings.remoteDirectory, categories)
+                val remote = manager.backupToWebDav(
+                    categories = categories,
+                    excludeSensitive = true,
+                    url = settings.url,
+                    remotePath = remotePath,
+                    username = settings.username.takeIf(String::isNotBlank),
+                    password = settings.password.takeIf(String::isNotBlank),
+                    encryptionPassword = settings.encryptionPassword,
+                ).getOrThrow()
+                manager.pruneWebDavBackups(
+                    settings.url,
+                    settings.remoteDirectory,
+                    settings.username.takeIf(String::isNotBlank),
+                    settings.password.takeIf(String::isNotBlank),
+                    auto.retainCount,
+                ).getOrThrow()
+                messages += getString(R.string.svc_webdav_backup_success, remote.bytes)
+            }
+            val summary = messages.joinToString(" ")
             autoStore.recordSuccess()
             store.updateTaskById(taskId) {
-                it.copy(lastRunAt = System.currentTimeMillis(), lastStatus = TaskStatus.SUCCESS, lastResult = getString(R.string.svc_webdav_backup_success, result.bytes), lastError = null)
+                it.copy(lastRunAt = System.currentTimeMillis(), lastStatus = TaskStatus.SUCCESS, lastResult = summary, lastError = null)
             }
-            showTaskResultNotification(task, getString(R.string.svc_webdav_backup_success, result.bytes), null)
+            showTaskResultNotification(task, summary, null)
         } catch (error: Exception) {
             val message = error.message ?: getString(R.string.svc_webdav_backup_failed)
             fail(message)

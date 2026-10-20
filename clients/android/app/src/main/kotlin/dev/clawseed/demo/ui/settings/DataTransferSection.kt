@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -53,6 +55,8 @@ import dev.clawseed.demo.datatransfer.WebDavAutoBackupFrequency
 import dev.clawseed.demo.datatransfer.WebDavAutoBackupSettings
 import dev.clawseed.demo.datatransfer.WebDavAutoBackupScheduler
 import dev.clawseed.demo.datatransfer.WebDavAutoBackupStore
+import dev.clawseed.demo.datatransfer.AutoBackupDestination
+import dev.clawseed.demo.scheduled.ScheduledTaskStore
 import dev.clawseed.demo.i18n.desc
 import dev.clawseed.demo.i18n.label
 import dev.clawseed.demo.ui.chat.RichMediaCache
@@ -88,8 +92,16 @@ fun DataTransferSection() {
     var rememberWebDavPassword by remember { mutableStateOf(false) }
     var webDavAutoBackupEnabled by remember { mutableStateOf(false) }
     var webDavAutoBackupFrequency by remember { mutableStateOf(WebDavAutoBackupFrequency.DAILY) }
+    var webDavAutoBackupDestination by remember { mutableStateOf(AutoBackupDestination.WEBDAV) }
     var webDavAutoBackupWifiOnly by remember { mutableStateOf(true) }
     var webDavAutoBackupRetainCount by remember { mutableStateOf("5") }
+    var webDavAutoBackupHour by remember { mutableStateOf("03") }
+    var webDavAutoBackupMinute by remember { mutableStateOf("00") }
+    var webDavAutoBackupWeeklyDay by remember { mutableStateOf(1) }
+    var webDavAutoBackupLastSuccessAt by remember { mutableStateOf<Long?>(null) }
+    var webDavAutoBackupLastFailure by remember { mutableStateOf<String?>(null) }
+    var webDavAutoBackupRetryCount by remember { mutableStateOf(0) }
+    var webDavAutoBackupRunning by remember { mutableStateOf(false) }
     var webDavSettingsLoaded by remember { mutableStateOf(false) }
     var webDavBusy by remember { mutableStateOf(false) }
     var webDavStatus by remember { mutableStateOf<String?>(null) }
@@ -117,9 +129,43 @@ fun DataTransferSection() {
         val auto = withContext(Dispatchers.IO) { webDavAutoBackupStore.load() }
         webDavAutoBackupEnabled = auto.enabled
         webDavAutoBackupFrequency = auto.frequency
+        webDavAutoBackupDestination = auto.destination
         webDavAutoBackupWifiOnly = auto.wifiOnly
         webDavAutoBackupRetainCount = auto.retainCount.toString()
+        webDavAutoBackupHour = auto.hour.toString().padStart(2, '0')
+        webDavAutoBackupMinute = auto.minute.toString().padStart(2, '0')
+        webDavAutoBackupWeeklyDay = auto.weeklyDay
+        webDavAutoBackupLastSuccessAt = auto.lastSuccessAt
+        webDavAutoBackupLastFailure = auto.lastFailure
+        webDavAutoBackupRetryCount = auto.retryCount
         webDavSettingsLoaded = true
+    }
+
+    LaunchedEffect(webDavAutoBackupRunning) {
+        if (!webDavAutoBackupRunning) return@LaunchedEffect
+        val before = withContext(Dispatchers.IO) { webDavAutoBackupStore.load() }
+        var completed = false
+        for (attempt in 0 until 300) {
+            kotlinx.coroutines.delay(1_000)
+            val current = withContext(Dispatchers.IO) { webDavAutoBackupStore.load() }
+            if (current.lastSuccessAt != before.lastSuccessAt || current.retryCount > before.retryCount) {
+                webDavAutoBackupLastSuccessAt = current.lastSuccessAt
+                webDavAutoBackupLastFailure = current.lastFailure
+                webDavAutoBackupRetryCount = current.retryCount
+                webDavAutoBackupRunning = false
+                webDavStatus = if (current.lastSuccessAt != before.lastSuccessAt) {
+                    context.getString(R.string.data_webdav_auto_run_done)
+                } else {
+                    context.getString(R.string.data_webdav_auto_run_failed, current.lastFailure.orEmpty())
+                }
+                completed = true
+                break
+            }
+        }
+        if (!completed && webDavAutoBackupRunning) {
+            webDavAutoBackupRunning = false
+            webDavStatus = context.getString(R.string.data_webdav_auto_run_timeout)
+        }
     }
 
     suspend fun saveWebDavSettings(lastRemoteFile: String = webDavLastFile) {
@@ -135,7 +181,7 @@ fun DataTransferSection() {
                     password = webDavPassword,
                     rememberPassword = rememberWebDavPassword,
                     encryptionPassword = webDavEncryptionPassword,
-                    rememberEncryptionPassword = webDavAutoBackupEnabled,
+                    rememberEncryptionPassword = webDavAutoBackupEnabled && webDavAutoBackupDestination != AutoBackupDestination.LOCAL,
                 ),
             )
         }
@@ -505,6 +551,44 @@ fun DataTransferSection() {
                     Text(stringResource(R.string.data_webdav_auto_enable))
                 }
                 if (webDavAutoBackupEnabled) {
+                    Text(stringResource(R.string.data_webdav_auto_destination), style = MaterialTheme.typography.labelLarge)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    ) {
+                        FilterChip(
+                            selected = webDavAutoBackupDestination == AutoBackupDestination.LOCAL,
+                            onClick = { webDavAutoBackupDestination = AutoBackupDestination.LOCAL },
+                            label = { Text(stringResource(R.string.data_webdav_auto_destination_local)) },
+                        )
+                        FilterChip(
+                            selected = webDavAutoBackupDestination == AutoBackupDestination.WEBDAV,
+                            onClick = { webDavAutoBackupDestination = AutoBackupDestination.WEBDAV },
+                            label = { Text(stringResource(R.string.data_webdav_auto_destination_webdav)) },
+                        )
+                        FilterChip(
+                            selected = webDavAutoBackupDestination == AutoBackupDestination.LOCAL_AND_WEBDAV,
+                            onClick = { webDavAutoBackupDestination = AutoBackupDestination.LOCAL_AND_WEBDAV },
+                            label = { Text(stringResource(R.string.data_webdav_auto_destination_both)) },
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TextField(
+                            value = webDavAutoBackupHour,
+                            onValueChange = { webDavAutoBackupHour = it.filter(Char::isDigit).take(2) },
+                            label = { Text(stringResource(R.string.data_webdav_auto_hour)) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(":", style = MaterialTheme.typography.titleLarge)
+                        TextField(
+                            value = webDavAutoBackupMinute,
+                            onValueChange = { webDavAutoBackupMinute = it.filter(Char::isDigit).take(2) },
+                            label = { Text(stringResource(R.string.data_webdav_auto_minute)) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
                             selected = webDavAutoBackupFrequency == WebDavAutoBackupFrequency.DAILY,
@@ -516,6 +600,21 @@ fun DataTransferSection() {
                             onClick = { webDavAutoBackupFrequency = WebDavAutoBackupFrequency.WEEKLY },
                             label = { Text(stringResource(R.string.data_webdav_auto_weekly)) },
                         )
+                    }
+                    if (webDavAutoBackupFrequency == WebDavAutoBackupFrequency.WEEKLY) {
+                        Text(stringResource(R.string.data_webdav_auto_weekly_day), style = MaterialTheme.typography.labelLarge)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        ) {
+                            (1..7).forEach { day ->
+                                FilterChip(
+                                    selected = webDavAutoBackupWeeklyDay == day,
+                                    onClick = { webDavAutoBackupWeeklyDay = day },
+                                    label = { Text(stringResource(weekdayLabelRes(day))) },
+                                )
+                            }
+                        }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Switch(checked = webDavAutoBackupWifiOnly, onCheckedChange = { webDavAutoBackupWifiOnly = it })
@@ -530,13 +629,57 @@ fun DataTransferSection() {
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Text(stringResource(R.string.data_webdav_auto_password_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (webDavAutoBackupDestination != AutoBackupDestination.LOCAL) {
+                        Text(stringResource(R.string.data_webdav_auto_password_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (webDavAutoBackupDestination != AutoBackupDestination.WEBDAV) {
+                        Text(
+                            stringResource(R.string.data_webdav_auto_local_path, manager.localBackupDirectory().absolutePath),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    webDavAutoBackupLastSuccessAt?.let { timestamp ->
+                        Text(
+                            stringResource(R.string.data_webdav_auto_last_success, formatAutoBackupTime(timestamp)),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    webDavAutoBackupLastFailure?.let { failure ->
+                        Text(
+                            stringResource(R.string.data_webdav_auto_last_failure, failure, webDavAutoBackupRetryCount),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                val taskExists = withContext(Dispatchers.IO) {
+                                    ScheduledTaskStore(context).tasksAsList().any {
+                                        it.id == WebDavAutoBackupScheduler.TASK_ID && it.enabled && it.isWebDavBackup
+                                    }
+                                }
+                                if (!taskExists) {
+                                    webDavStatus = context.getString(R.string.data_webdav_auto_save_first)
+                                } else {
+                                    webDavStatus = context.getString(R.string.data_webdav_auto_running)
+                                    webDavAutoBackupRunning = true
+                                    WebDavAutoBackupScheduler.triggerNow(context)
+                                }
+                            }
+                        },
+                        enabled = !webDavBusy && !webDavAutoBackupRunning,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(if (webDavAutoBackupRunning) R.string.data_webdav_auto_running else R.string.data_webdav_auto_run_now)) }
                 }
                 Button(
                     onClick = {
                         scope.launch {
                             val retainCount = webDavAutoBackupRetainCount.toIntOrNull()
-                            if (webDavAutoBackupEnabled && webDavEncryptionPassword.length < 8) {
+                            val hour = webDavAutoBackupHour.toIntOrNull()
+                            val minute = webDavAutoBackupMinute.toIntOrNull()
+                            if (webDavAutoBackupEnabled && webDavAutoBackupDestination != AutoBackupDestination.LOCAL && webDavEncryptionPassword.length < 8) {
                                 webDavStatus = context.getString(R.string.data_webdav_auto_password_required)
                                 return@launch
                             }
@@ -544,12 +687,20 @@ fun DataTransferSection() {
                                 webDavStatus = context.getString(R.string.data_webdav_auto_retain_invalid)
                                 return@launch
                             }
+                            if (webDavAutoBackupEnabled && (hour == null || hour !in 0..23 || minute == null || minute !in 0..59)) {
+                                webDavStatus = context.getString(R.string.data_webdav_auto_time_invalid)
+                                return@launch
+                            }
                             saveWebDavSettings()
                             val auto = WebDavAutoBackupSettings(
                                 enabled = webDavAutoBackupEnabled,
                                 frequency = webDavAutoBackupFrequency,
+                                destination = webDavAutoBackupDestination,
                                 wifiOnly = webDavAutoBackupWifiOnly,
                                 retainCount = retainCount ?: 5,
+                                hour = hour ?: 3,
+                                minute = minute ?: 0,
+                                weeklyDay = webDavAutoBackupWeeklyDay,
                             )
                             withContext(Dispatchers.IO) { webDavAutoBackupStore.save(auto) }
                             WebDavAutoBackupScheduler.apply(context, auto)
@@ -960,6 +1111,19 @@ private fun formatByteSize(bytes: Long): String = when {
     bytes < 1024 -> "$bytes B"
     bytes < 1024 * 1024 -> "${bytes / 1024} KB"
     else -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+}
+
+private fun formatAutoBackupTime(timestamp: Long): String =
+    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(timestamp))
+
+private fun weekdayLabelRes(day: Int): Int = when (day) {
+    1 -> R.string.data_webdav_auto_monday
+    2 -> R.string.data_webdav_auto_tuesday
+    3 -> R.string.data_webdav_auto_wednesday
+    4 -> R.string.data_webdav_auto_thursday
+    5 -> R.string.data_webdav_auto_friday
+    6 -> R.string.data_webdav_auto_saturday
+    else -> R.string.data_webdav_auto_sunday
 }
 
 /** Categories that support choosing an import strategy (not just REPLACE). */

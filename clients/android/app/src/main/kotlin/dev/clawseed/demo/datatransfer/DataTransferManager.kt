@@ -37,6 +37,52 @@ class DataTransferManager(private val context: Context) {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
     private val webDav = WebDavSyncClient()
 
+    data class LocalBackupResult(val file: File, val bytes: Long)
+
+    /** Writes an unencrypted app-private ZIP backup using the same generated filename as WebDAV. */
+    suspend fun backupToLocal(
+        categories: Set<DataCategory>,
+        excludeSensitive: Boolean,
+    ): Result<LocalBackupResult> = withContext(Dispatchers.IO) {
+        val directory = localBackupDirectory()
+        var temporary: File? = null
+        try {
+            require(categories.isNotEmpty()) { "Select at least one data category" }
+            directory.mkdirs()
+            val target = File(directory, webDavBackupFileName(categories))
+            temporary = File.createTempFile("clawseed-local-", ".zip", directory)
+            FileOutputStream(temporary!!).use { output ->
+                exportData(categories, excludeSensitive, output).getOrThrow()
+            }
+            if (target.exists()) target.delete()
+            require(temporary!!.renameTo(target)) { "Could not finalize local backup" }
+            temporary = null
+            Result.success(LocalBackupResult(target, target.length()))
+        } catch (error: Exception) {
+            Result.failure(error)
+        } finally {
+            temporary?.delete()
+        }
+    }
+
+    /** Removes old generated local backups while leaving unrelated files untouched. */
+    suspend fun pruneLocalBackups(retainCount: Int): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            require(retainCount in 1..100) { "Retain count must be between 1 and 100" }
+            val stale = localBackupDirectory().listFiles()
+                .orEmpty()
+                .filter { it.isFile && it.name.startsWith("clawseed-") && it.name.endsWith(".zip") }
+                .sortedByDescending { it.lastModified() }
+                .drop(retainCount)
+            stale.forEach { require(it.delete()) { "Could not delete local backup ${it.name}" } }
+            Result.success(stale.size)
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    fun localBackupDirectory(): File = File(context.getExternalFilesDir(null) ?: context.filesDir, "backups")
+
     /** Encrypts the selected export categories and atomically uploads them to WebDAV. */
     suspend fun backupToWebDav(
         categories: Set<DataCategory>,
