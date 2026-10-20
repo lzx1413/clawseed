@@ -8,6 +8,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayOutputStream
+import java.io.StringReader
+import java.net.URI
+import java.net.URLDecoder
 import java.net.URLEncoder
 import java.security.SecureRandom
 import java.security.spec.KeySpec
@@ -17,6 +20,8 @@ import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
+import android.util.Xml
+import org.xmlpull.v1.XmlPullParser
 
 internal const val WEB_DAV_MAX_ARCHIVE_BYTES = 256L * 1024L * 1024L
 
@@ -24,6 +29,12 @@ internal const val WEB_DAV_MAX_ARCHIVE_BYTES = 256L * 1024L * 1024L
 class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
     data class UploadResult(val bytes: Int, val checksum: String)
     data class DownloadResult(val bytes: ByteArray, val checksum: String)
+    data class RemoteBackup(
+        val name: String,
+        val path: String,
+        val bytes: Long,
+        val lastModified: String?,
+    )
 
     suspend fun upload(
         url: String,
@@ -84,6 +95,51 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
         }
     }
 
+    /** Deletes a generated backup file from WebDAV. */
+    suspend fun delete(
+        url: String,
+        remotePath: String,
+        username: String?,
+        password: String?,
+    ): kotlin.Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            validatePath(url, remotePath)
+            require(isBackupName(remotePath.substringAfterLast('/'))) {
+                "Only generated WebDAV backups can be deleted"
+            }
+            val request = request(url, remotePath, username, password)
+                .method("DELETE", null)
+                .build()
+            client.newCall(request).execute().use { response ->
+                check(response.isSuccessful) { "delete WebDAV backup failed (HTTP ${response.code})" }
+            }
+        }
+    }
+
+    /** Lists generated backup files in a WebDAV folder. */
+    suspend fun listBackups(
+        url: String,
+        remoteDirectory: String,
+        username: String?,
+        password: String?,
+    ): kotlin.Result<List<RemoteBackup>> = withContext(Dispatchers.IO) {
+        runCatching {
+            validatePath(url, remoteDirectory)
+            val request = request(url, remoteDirectory, username, password)
+                .header("Depth", "1")
+                .method("PROPFIND", PROPFIND_BODY)
+                .build()
+            client.newCall(request).execute().use { response ->
+                check(response.isSuccessful) { "list WebDAV backups failed (HTTP ${response.code})" }
+                val body = response.body ?: error("WebDAV backup list is empty")
+                check(body.contentLength() <= MAX_LIST_BYTES) { "WebDAV backup list is too large" }
+                val xml = body.string()
+                check(xml.toByteArray(Charsets.UTF_8).size <= MAX_LIST_BYTES) { "WebDAV backup list is too large" }
+                parseBackups(xml, url, remoteDirectory)
+            }
+        }
+    }
+
     private fun ensureCollections(url: String, remotePath: String, username: String?, password: String?) {
         val parent = remotePath.substringBeforeLast('/', "")
         if (parent.isEmpty()) return
@@ -110,11 +166,74 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
     }
 
     private fun validate(url: String, remotePath: String, encryptionPassword: String) {
+        validatePath(url, remotePath)
+        require(encryptionPassword.length >= 8) { "Encryption password must contain at least 8 characters" }
+    }
+
+    private fun validatePath(url: String, remotePath: String) {
         require(url.startsWith("https://") || url.startsWith("http://")) { "WebDAV URL must use HTTP(S)" }
         require(remotePath.isNotBlank() && remotePath.split('/').none { it.isBlank() || it == "." || it == ".." }) {
             "Remote path must be a non-empty relative path"
         }
-        require(encryptionPassword.length >= 8) { "Encryption password must contain at least 8 characters" }
+    }
+
+    private fun parseBackups(xml: String, baseUrl: String, remoteDirectory: String): List<RemoteBackup> {
+        val parser = Xml.newPullParser().apply {
+            setInput(StringReader(xml))
+        }
+        val backups = mutableListOf<RemoteBackup>()
+        var current: MutableRemoteBackup? = null
+        var event = parser.eventType
+        while (event != XmlPullParser.END_DOCUMENT) {
+            when (event) {
+                XmlPullParser.START_TAG -> when (parser.name.substringAfter(':')) {
+                    "response" -> current = MutableRemoteBackup()
+                    "href" -> current?.path = parser.nextText()
+                    "getcontentlength" -> current?.bytes = parser.nextText().toLongOrNull() ?: 0L
+                    "getlastmodified" -> current?.lastModified = parser.nextText()
+                    "collection" -> current?.isCollection = true
+                }
+                XmlPullParser.END_TAG -> if (parser.name.substringAfter(':') == "response") {
+                    current?.let { item ->
+                        val path = item.path?.let { toRemotePath(it, baseUrl) }
+                        val name = path?.substringAfterLast('/')
+                        if (!item.isCollection && path != null && name != null && isBackupName(name)) {
+                            backups += RemoteBackup(name, path, item.bytes, item.lastModified)
+                        }
+                    }
+                    current = null
+                }
+            }
+            event = parser.next()
+        }
+        return backups.distinctBy { it.path }.sortedWith(
+            compareByDescending<RemoteBackup> { it.lastModified.orEmpty() }.thenByDescending { it.name },
+        )
+    }
+
+    private fun toRemotePath(href: String, baseUrl: String): String {
+        val hrefPath = runCatching { URI(href).rawPath ?: href }.getOrDefault(href)
+        val decodedPath = runCatching { URLDecoder.decode(hrefPath, Charsets.UTF_8.name()) }
+            .getOrDefault(hrefPath)
+            .trim('/')
+        val basePath = runCatching { URI(baseUrl).path.trim('/') }.getOrDefault("")
+        val relative = if (basePath.isNotEmpty() && decodedPath.startsWith("$basePath/")) {
+            decodedPath.removePrefix("$basePath/")
+        } else {
+            decodedPath
+        }
+        return relative.trim('/')
+    }
+
+    private fun isBackupName(name: String): Boolean =
+        name.startsWith("clawseed-") &&
+            (name.endsWith(".zip", ignoreCase = true) || name.endsWith(".enc", ignoreCase = true))
+
+    private class MutableRemoteBackup {
+        var path: String? = null
+        var bytes: Long = 0
+        var lastModified: String? = null
+        var isCollection: Boolean = false
     }
 
     private fun resolve(base: String, path: String): String =
@@ -171,7 +290,18 @@ class WebDavSyncClient(private val client: OkHttpClient = defaultClient()) {
         private const val SALT_BYTES = 16
         private const val IV_BYTES = 12
         private const val PBKDF2_ITERATIONS = 150_000
+        private const val MAX_LIST_BYTES = 1L * 1024L * 1024L
         private val BINARY_MEDIA_TYPE = "application/octet-stream".toMediaType()
+        private val PROPFIND_BODY = """
+            <?xml version="1.0" encoding="utf-8" ?>
+            <d:propfind xmlns:d="DAV:">
+              <d:prop>
+                <d:getcontentlength />
+                <d:getlastmodified />
+                <d:resourcetype />
+              </d:prop>
+            </d:propfind>
+        """.trimIndent().toRequestBody("application/xml".toMediaType())
 
         private fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)

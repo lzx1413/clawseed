@@ -82,6 +82,26 @@ class DataTransferManager(private val context: Context) {
         }
     }
 
+    /** Lists generated backup files stored in a WebDAV directory. */
+    suspend fun listWebDavBackups(
+        url: String,
+        remoteDirectory: String,
+        username: String?,
+        password: String?,
+    ): Result<List<WebDavSyncClient.RemoteBackup>> = withContext(Dispatchers.IO) {
+        webDav.listBackups(url, remoteDirectory, username, password)
+    }
+
+    /** Deletes one generated backup file stored in a WebDAV directory. */
+    suspend fun deleteWebDavBackup(
+        url: String,
+        remotePath: String,
+        username: String?,
+        password: String?,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        webDav.delete(url, remotePath, username, password)
+    }
+
     // --- Export ----------------------------------------------------------
 
     suspend fun exportData(

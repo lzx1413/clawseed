@@ -3,6 +3,7 @@ package dev.clawseed.demo.ui.settings
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,7 +20,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -41,6 +44,7 @@ import dev.clawseed.demo.datatransfer.DataCategory
 import dev.clawseed.demo.datatransfer.DataTransferManager
 import dev.clawseed.demo.datatransfer.ImportResult
 import dev.clawseed.demo.datatransfer.ImportStrategy
+import dev.clawseed.demo.datatransfer.WebDavSyncClient
 import dev.clawseed.demo.datatransfer.WebDavSettings
 import dev.clawseed.demo.datatransfer.WebDavSettingsStore
 import dev.clawseed.demo.i18n.desc
@@ -78,14 +82,20 @@ fun DataTransferSection() {
     var webDavSettingsLoaded by remember { mutableStateOf(false) }
     var webDavBusy by remember { mutableStateOf(false) }
     var webDavStatus by remember { mutableStateOf<String?>(null) }
+    var webDavBackups by remember { mutableStateOf(emptyList<WebDavSyncClient.RemoteBackup>()) }
+    var webDavBackupsLoading by remember { mutableStateOf(false) }
+    var webDavListError by remember { mutableStateOf<String?>(null) }
+    var webDavDeleteCandidate by remember { mutableStateOf<WebDavSyncClient.RemoteBackup?>(null) }
     var exportDestination by remember { mutableStateOf(TransferEndpoint.LocalFile) }
     var importSource by remember { mutableStateOf(TransferEndpoint.LocalFile) }
+    var webDavSelectedFile by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         val settings = withContext(Dispatchers.IO) { webDavSettingsStore.load() }
         webDavUrl = settings.url
         webDavDirectory = settings.remoteDirectory
         webDavLastFile = settings.lastRemoteFile
+        webDavSelectedFile = settings.lastRemoteFile
         webDavUsername = settings.username
         webDavPassword = settings.password
         rememberWebDavPassword = settings.rememberPassword
@@ -106,6 +116,39 @@ fun DataTransferSection() {
                     rememberPassword = rememberWebDavPassword,
                 ),
             )
+        }
+    }
+
+    suspend fun refreshWebDavBackups() {
+        if (webDavUrl.isBlank() || webDavDirectory.isBlank()) return
+        webDavBackupsLoading = true
+        webDavListError = null
+        try {
+            val result = manager.listWebDavBackups(
+                webDavUrl,
+                WebDavSettingsStore.normalizeDirectory(webDavDirectory),
+                webDavUsername.takeIf(String::isNotBlank),
+                webDavPassword.takeIf(String::isNotBlank),
+            )
+            if (result.isSuccess) {
+                val backups = result.getOrThrow()
+                webDavBackups = backups
+                webDavSelectedFile = webDavSelectedFile.takeIf { selected ->
+                    backups.any { it.path == selected }
+                } ?: webDavLastFile.takeIf { selected ->
+                    backups.any { it.path == selected }
+                } ?: backups.firstOrNull()?.path.orEmpty()
+            } else {
+                webDavListError = result.exceptionOrNull()?.message ?: ""
+            }
+        } finally {
+            webDavBackupsLoading = false
+        }
+    }
+
+    LaunchedEffect(importSource, webDavSettingsLoaded) {
+        if (importSource == TransferEndpoint.WebDav && webDavSettingsLoaded) {
+            refreshWebDavBackups()
         }
     }
 
@@ -132,6 +175,7 @@ fun DataTransferSection() {
     val webDavRestoreDone = stringResource(R.string.data_webdav_restore_done)
     val webDavFailedFormat = stringResource(R.string.data_webdav_failed)
     val webDavSettingsSaved = stringResource(R.string.data_webdav_settings_saved)
+    val webDavDeleteDone = stringResource(R.string.data_webdav_delete_done)
 
     // SAF launchers
     val exportLauncher = rememberLauncherForActivityResult(
@@ -318,6 +362,7 @@ fun DataTransferSection() {
                                     if (result.isSuccess) {
                                         val upload = result.getOrThrow()
                                         webDavLastFile = remoteFile
+                                        webDavSelectedFile = remoteFile
                                         saveWebDavSettings(remoteFile)
                                         selectedImportCategories = if (excludeSensitive) {
                                             selectedExportCategories - setOf(
@@ -476,6 +521,78 @@ fun DataTransferSection() {
                     )
                 }
 
+                if (importSource == TransferEndpoint.WebDav) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            stringResource(R.string.data_webdav_backups_title),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        Button(
+                            onClick = { scope.launch { refreshWebDavBackups() } },
+                            enabled = webDavSettingsLoaded && !webDavBackupsLoading && !webDavBusy,
+                        ) {
+                            if (webDavBackupsLoading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(6.dp))
+                            }
+                            Text(stringResource(R.string.data_webdav_refresh_backups))
+                        }
+                    }
+                    webDavListError?.let { error ->
+                        Text(
+                            stringResource(R.string.data_webdav_list_failed, error),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    if (!webDavBackupsLoading && webDavListError == null && webDavBackups.isEmpty()) {
+                        Text(
+                            stringResource(R.string.data_webdav_no_backups),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    for (backup in webDavBackups) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { webDavSelectedFile = backup.path },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = webDavSelectedFile == backup.path,
+                                onClick = { webDavSelectedFile = backup.path },
+                            )
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = 4.dp),
+                            ) {
+                                Text(backup.name, style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    stringResource(
+                                        R.string.data_webdav_backup_details,
+                                        formatByteSize(backup.bytes),
+                                        backup.lastModified ?: "—",
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            TextButton(
+                                onClick = { webDavDeleteCandidate = backup },
+                                enabled = !webDavBusy && !webDavBackupsLoading,
+                            ) {
+                                Text(stringResource(R.string.data_webdav_delete_backup))
+                            }
+                        }
+                    }
+                }
+
                 // Category checkboxes
                 for (category in DataCategory.entries) {
                     Row(
@@ -547,7 +664,7 @@ fun DataTransferSection() {
                                         selectedImportCategories,
                                         importStrategies,
                                         webDavUrl,
-                                        webDavLastFile,
+                                        webDavSelectedFile,
                                         webDavUsername.takeIf(String::isNotBlank),
                                         webDavPassword.takeIf(String::isNotBlank),
                                         webDavEncryptionPassword,
@@ -568,7 +685,7 @@ fun DataTransferSection() {
                     },
                     enabled = selectedImportCategories.isNotEmpty() && !isImporting && !webDavBusy &&
                         (importSource == TransferEndpoint.LocalFile ||
-                            (webDavSettingsLoaded && webDavLastFile.isNotBlank())),
+                            (webDavSettingsLoaded && webDavSelectedFile.isNotBlank())),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     if (isImporting || webDavBusy) {
@@ -631,6 +748,55 @@ fun DataTransferSection() {
             },
             confirmButton = {
                 Button(onClick = { importResult = null }) { Text(stringResource(R.string.common_confirm)) }
+            },
+        )
+    }
+
+    webDavDeleteCandidate?.let { backup ->
+        AlertDialog(
+            onDismissRequest = { if (!webDavBusy) webDavDeleteCandidate = null },
+            title = { Text(stringResource(R.string.data_webdav_delete_title)) },
+            text = { Text(stringResource(R.string.data_webdav_delete_message, backup.name)) },
+            dismissButton = {
+                TextButton(
+                    onClick = { webDavDeleteCandidate = null },
+                    enabled = !webDavBusy,
+                ) { Text(stringResource(R.string.common_cancel)) }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            webDavBusy = true
+                            webDavStatus = null
+                            try {
+                                val result = manager.deleteWebDavBackup(
+                                    webDavUrl,
+                                    backup.path,
+                                    webDavUsername.takeIf(String::isNotBlank),
+                                    webDavPassword.takeIf(String::isNotBlank),
+                                )
+                                if (result.isSuccess) {
+                                    if (webDavLastFile == backup.path) {
+                                        webDavLastFile = ""
+                                        webDavSelectedFile = ""
+                                        saveWebDavSettings("")
+                                    }
+                                    webDavDeleteCandidate = null
+                                    webDavStatus = webDavDeleteDone
+                                    refreshWebDavBackups()
+                                } else {
+                                    webDavStatus = webDavFailedFormat.format(
+                                        result.exceptionOrNull()?.message ?: "",
+                                    )
+                                }
+                            } finally {
+                                webDavBusy = false
+                            }
+                        }
+                    },
+                    enabled = !webDavBusy,
+                ) { Text(stringResource(R.string.data_webdav_delete_backup)) }
             },
         )
     }
