@@ -1,7 +1,9 @@
 package dev.clawseed.demo.datatransfer
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
+import androidx.documentfile.provider.DocumentFile
 import dev.clawseed.demo.BuildConfig
 import dev.clawseed.demo.R
 import dev.clawseed.demo.data.LocalStore
@@ -37,27 +39,32 @@ class DataTransferManager(private val context: Context) {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
     private val webDav = WebDavSyncClient()
 
-    data class LocalBackupResult(val file: File, val bytes: Long)
+    data class LocalBackupResult(val name: String, val bytes: Long)
+    data class LocalBackup(val name: String, val bytes: Long, val lastModified: Long, val uri: Uri)
 
-    /** Writes an unencrypted app-private ZIP backup using the same generated filename as WebDAV. */
+    /** Writes an unencrypted ZIP backup into the user-selected persistent SAF directory. */
     suspend fun backupToLocal(
         categories: Set<DataCategory>,
         excludeSensitive: Boolean,
+        directoryUri: Uri,
     ): Result<LocalBackupResult> = withContext(Dispatchers.IO) {
-        val directory = localBackupDirectory()
         var temporary: File? = null
         try {
             require(categories.isNotEmpty()) { "Select at least one data category" }
-            directory.mkdirs()
-            val target = File(directory, webDavBackupFileName(categories))
-            temporary = File.createTempFile("clawseed-local-", ".zip", directory)
+            val directory = requireLocalDirectory(directoryUri)
+            val name = webDavBackupFileName(categories)
+            temporary = File.createTempFile("clawseed-local-", ".zip", context.cacheDir)
             FileOutputStream(temporary!!).use { output ->
                 exportData(categories, excludeSensitive, output).getOrThrow()
             }
-            if (target.exists()) target.delete()
-            require(temporary!!.renameTo(target)) { "Could not finalize local backup" }
-            temporary = null
-            Result.success(LocalBackupResult(target, target.length()))
+            directory.findFile(name)?.delete()
+            val target = requireNotNull(directory.createFile("application/zip", name)) {
+                "Could not create local backup"
+            }
+            context.contentResolver.openOutputStream(target.uri)?.use { output ->
+                FileInputStream(temporary!!).use { input -> input.copyTo(output) }
+            } ?: error("Could not open local backup")
+            Result.success(LocalBackupResult(name, temporary!!.length()))
         } catch (error: Exception) {
             Result.failure(error)
         } finally {
@@ -66,12 +73,11 @@ class DataTransferManager(private val context: Context) {
     }
 
     /** Removes old generated local backups while leaving unrelated files untouched. */
-    suspend fun pruneLocalBackups(retainCount: Int): Result<Int> = withContext(Dispatchers.IO) {
+    suspend fun pruneLocalBackups(directoryUri: Uri, retainCount: Int): Result<Int> = withContext(Dispatchers.IO) {
         try {
             require(retainCount in 1..100) { "Retain count must be between 1 and 100" }
-            val stale = localBackupDirectory().listFiles()
-                .orEmpty()
-                .filter { it.isFile && it.name.startsWith("clawseed-") && it.name.endsWith(".zip") }
+            val stale = requireLocalDirectory(directoryUri).listFiles()
+                .filter { it.isFile && it.name?.startsWith("clawseed-") == true && it.name?.endsWith(".zip") == true }
                 .sortedByDescending { it.lastModified() }
                 .drop(retainCount)
             stale.forEach { require(it.delete()) { "Could not delete local backup ${it.name}" } }
@@ -81,7 +87,46 @@ class DataTransferManager(private val context: Context) {
         }
     }
 
-    fun localBackupDirectory(): File = File(context.getExternalFilesDir(null) ?: context.filesDir, "backups")
+    suspend fun listLocalBackups(directoryUri: Uri): Result<List<LocalBackup>> = withContext(Dispatchers.IO) {
+        try {
+            Result.success(
+                requireLocalDirectory(directoryUri).listFiles()
+                    .filter { it.isFile && it.name?.startsWith("clawseed-") == true && it.name?.endsWith(".zip") == true }
+                    .sortedByDescending { it.lastModified() }
+                    .map { file ->
+                        LocalBackup(
+                            name = file.name.orEmpty(),
+                            bytes = file.length(),
+                            lastModified = file.lastModified(),
+                            uri = file.uri,
+                        )
+                    },
+            )
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun restoreFromLocalBackup(
+        backup: LocalBackup,
+        categories: Set<DataCategory>,
+        strategies: Map<DataCategory, ImportStrategy>,
+    ): Result<ImportResult> = withContext(Dispatchers.IO) {
+        try {
+            require(categories.isNotEmpty()) { "Select at least one data category" }
+            Result.success(
+                context.contentResolver.openInputStream(backup.uri)?.use { input ->
+                    importData(input, categories, strategies).getOrThrow()
+                } ?: error("Could not open local backup"),
+            )
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    private fun requireLocalDirectory(uri: Uri): DocumentFile =
+        requireNotNull(DocumentFile.fromTreeUri(context, uri)) { "Local backup folder is unavailable" }
+            .also { require(it.isDirectory && it.canWrite()) { "Local backup folder is not writable" } }
 
     /** Encrypts the selected export categories and atomically uploads them to WebDAV. */
     suspend fun backupToWebDav(

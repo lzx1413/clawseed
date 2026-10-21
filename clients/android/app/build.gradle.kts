@@ -98,6 +98,7 @@ dependencies {
     // Apache-2.0; Java-only text extraction, no additional native ABI dependency.
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.documentfile:documentfile:1.0.1")
 
     val composeBom = platform("androidx.compose:compose-bom:2026.04.01")
     implementation(composeBom)

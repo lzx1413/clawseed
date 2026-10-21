@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
+import android.net.Uri
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Geocoder
@@ -413,8 +414,11 @@ class ClawseedService : Service() {
                 require(settings.encryptionPassword.length >= 8) { getString(R.string.svc_webdav_missing_encryption_password) }
             }
             if (auto.destination == AutoBackupDestination.LOCAL || auto.destination == AutoBackupDestination.LOCAL_AND_WEBDAV) {
-                val local = manager.backupToLocal(categories, excludeSensitive = true).getOrThrow()
-                manager.pruneLocalBackups(auto.retainCount).getOrThrow()
+                val localUri = requireNotNull(auto.localDirectoryUri?.takeIf(String::isNotBlank)?.let(Uri::parse)) {
+                    getString(R.string.svc_local_backup_directory_missing)
+                }
+                val local = manager.backupToLocal(categories, excludeSensitive = true, directoryUri = localUri).getOrThrow()
+                manager.pruneLocalBackups(localUri, auto.retainCount).getOrThrow()
                 messages += getString(R.string.svc_local_backup_success, local.bytes)
             }
             if (auto.destination == AutoBackupDestination.WEBDAV || auto.destination == AutoBackupDestination.LOCAL_AND_WEBDAV) {

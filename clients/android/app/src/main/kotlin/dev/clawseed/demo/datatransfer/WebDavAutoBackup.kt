@@ -17,6 +17,7 @@ data class WebDavAutoBackupSettings(
     val enabled: Boolean = false,
     val frequency: WebDavAutoBackupFrequency = WebDavAutoBackupFrequency.DAILY,
     val destination: AutoBackupDestination = AutoBackupDestination.WEBDAV,
+    val localDirectoryUri: String? = null,
     val wifiOnly: Boolean = true,
     val retainCount: Int = 5,
     val hour: Int = 3,
@@ -45,6 +46,7 @@ class WebDavAutoBackupStore(context: Context) {
         destination = runCatching {
             AutoBackupDestination.valueOf(preferences.getString(KEY_DESTINATION, AutoBackupDestination.WEBDAV.name) ?: AutoBackupDestination.WEBDAV.name)
         }.getOrDefault(AutoBackupDestination.WEBDAV),
+        localDirectoryUri = preferences.getString(KEY_LOCAL_DIRECTORY_URI, null),
         wifiOnly = preferences.getBoolean(KEY_WIFI_ONLY, true),
         retainCount = preferences.getInt(KEY_RETAIN_COUNT, 5).coerceIn(1, 100),
         hour = preferences.getInt(KEY_HOUR, 3).coerceIn(0, 23),
@@ -61,6 +63,7 @@ class WebDavAutoBackupStore(context: Context) {
             .putBoolean(KEY_ENABLED, value.enabled)
             .putString(KEY_FREQUENCY, value.frequency.name)
             .putString(KEY_DESTINATION, value.destination.name)
+            .putString(KEY_LOCAL_DIRECTORY_URI, value.localDirectoryUri)
             .putBoolean(KEY_WIFI_ONLY, value.wifiOnly)
             .putInt(KEY_RETAIN_COUNT, value.retainCount)
             .putInt(KEY_HOUR, value.hour)
@@ -85,6 +88,7 @@ class WebDavAutoBackupStore(context: Context) {
         private const val KEY_ENABLED = "enabled"
         private const val KEY_FREQUENCY = "frequency"
         private const val KEY_DESTINATION = "destination"
+        private const val KEY_LOCAL_DIRECTORY_URI = "local_directory_uri"
         private const val KEY_WIFI_ONLY = "wifi_only"
         private const val KEY_RETAIN_COUNT = "retain_count"
         private const val KEY_HOUR = "hour"

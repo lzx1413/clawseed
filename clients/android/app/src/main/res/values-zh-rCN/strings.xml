@@ -564,6 +564,7 @@
     <string name="data_webdav_encryption_password">备份加密密码</string>
     <string name="data_webdav_remember_password">记住 WebDAV 密码</string>
     <string name="data_webdav_save_settings">保存 WebDAV 设置</string>
+    <string name="data_webdav_save_connection">保存 WebDAV 连接</string>
     <string name="data_webdav_settings_saved">WebDAV 设置已保存</string>
     <string name="data_webdav_selection_hint">WebDAV 可在导出区域作为目标，也可在导入区域作为来源。</string>
     <string name="data_webdav_backup">备份</string>
@@ -575,6 +576,8 @@
     <string name="data_webdav_downloading">恢复中…</string>
     <string name="data_webdav_last_file">最近备份：%1$s</string>
     <string name="data_webdav_backups_title">远端备份</string>
+    <string name="data_local_backups_title">本地备份</string>
+    <string name="data_local_backups_empty">没有找到自动本地备份，下面仍可选择其他文件。</string>
     <string name="data_webdav_refresh_backups">刷新</string>
     <string name="data_webdav_no_backups">此文件夹中没有找到备份。</string>
     <string name="data_webdav_list_failed">无法列出 WebDAV 备份：%1$s</string>
@@ -593,8 +596,8 @@
     <string name="data_webdav_check_directory">目录访问</string>
     <string name="data_webdav_check_write">写入权限</string>
     <string name="data_webdav_check_line">%1$s：%2$s</string>
-    <string name="data_webdav_auto_title">自动 WebDAV 备份</string>
-    <string name="data_webdav_auto_task_name">WebDAV 自动备份</string>
+    <string name="data_webdav_auto_title">自动备份</string>
+    <string name="data_webdav_auto_task_name">自动备份</string>
     <string name="data_webdav_auto_desc">按设置的时间备份全部类别，敏感类别会排除。</string>
     <string name="data_webdav_auto_enable">启用自动备份</string>
     <string name="data_webdav_auto_destination">备份目标</string>
@@ -619,6 +622,8 @@
     <string name="data_webdav_auto_last_success">最近成功：%1$s</string>
     <string name="data_webdav_auto_last_failure">最近失败（重试 %2$d 次）：%1$s</string>
     <string name="data_webdav_auto_run_now">立即备份</string>
+    <string name="data_webdav_auto_save_settings">保存备份策略</string>
+    <string name="data_webdav_auto_settings_saved">备份策略已保存</string>
     <string name="data_webdav_auto_running">备份中…</string>
     <string name="data_webdav_auto_run_done">备份完成</string>
     <string name="data_webdav_auto_run_failed">备份失败：%1$s</string>
@@ -627,12 +632,17 @@
     <string name="data_webdav_auto_time_invalid">请输入有效时间（00:00–23:59）。</string>
     <string name="data_webdav_auto_password_hint">启用后会将此加密密码保存到 Android Keystore。</string>
     <string name="data_webdav_auto_local_path">本地备份目录：%1$s</string>
+    <string name="data_webdav_auto_local_directory_missing">尚未选择持久化的本地备份目录。</string>
+    <string name="data_webdav_auto_select_local_directory">选择本地备份目录</string>
+    <string name="data_webdav_auto_local_directory_selected">已选择持久化的本地备份目录。</string>
+    <string name="data_webdav_auto_local_directory_required">请先选择持久化的本地备份目录。</string>
     <string name="data_webdav_auto_password_required">启用自动备份需要至少 8 位加密密码。</string>
     <string name="data_webdav_auto_retain_invalid">保留数量必须在 1 到 100 之间。</string>
-    <string name="svc_webdav_wifi_required">自动 WebDAV 备份已跳过：需要非计费网络。</string>
+    <string name="svc_webdav_wifi_required">自动备份已跳过：需要非计费网络。</string>
     <string name="svc_webdav_missing_settings">WebDAV 设置不完整。</string>
     <string name="svc_webdav_missing_encryption_password">缺少自动备份加密密码。</string>
     <string name="svc_webdav_backup_success">自动备份已上传（%1$d 字节）。</string>
     <string name="svc_local_backup_success">本地备份已保存（%1$d 字节）。</string>
-    <string name="svc_webdav_backup_failed">自动 WebDAV 备份失败。</string>
+    <string name="svc_local_backup_directory_missing">自动本地备份需要先选择持久化目录。</string>
+    <string name="svc_webdav_backup_failed">自动备份失败。</string>
 </resources>

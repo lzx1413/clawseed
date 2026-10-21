@@ -564,6 +564,7 @@
     <string name="data_webdav_encryption_password">Backup encryption password</string>
     <string name="data_webdav_remember_password">Remember WebDAV password</string>
     <string name="data_webdav_save_settings">Save WebDAV settings</string>
+    <string name="data_webdav_save_connection">Save WebDAV connection</string>
     <string name="data_webdav_settings_saved">WebDAV settings saved</string>
     <string name="data_webdav_selection_hint">WebDAV is available as a destination in Export and a source in Import.</string>
     <string name="data_webdav_backup">Back up</string>
@@ -575,6 +576,8 @@
     <string name="data_webdav_downloading">Restoring…</string>
     <string name="data_webdav_last_file">Last backup: %1$s</string>
     <string name="data_webdav_backups_title">Remote backups</string>
+    <string name="data_local_backups_title">Local backups</string>
+    <string name="data_local_backups_empty">No automatic local backups found. You can choose another file below.</string>
     <string name="data_webdav_refresh_backups">Refresh</string>
     <string name="data_webdav_no_backups">No backups found in this folder.</string>
     <string name="data_webdav_list_failed">Could not list WebDAV backups: %1$s</string>
@@ -593,8 +596,8 @@
     <string name="data_webdav_check_directory">Directory</string>
     <string name="data_webdav_check_write">Write permission</string>
     <string name="data_webdav_check_line">%1$s: %2$s</string>
-    <string name="data_webdav_auto_title">Automatic WebDAV backup</string>
-    <string name="data_webdav_auto_task_name">WebDAV automatic backup</string>
+    <string name="data_webdav_auto_title">Automatic backup</string>
+    <string name="data_webdav_auto_task_name">Automatic backup</string>
     <string name="data_webdav_auto_desc">Back up all categories at the configured time. Sensitive categories are excluded.</string>
     <string name="data_webdav_auto_enable">Enable automatic backup</string>
     <string name="data_webdav_auto_destination">Backup destination</string>
@@ -619,6 +622,8 @@
     <string name="data_webdav_auto_last_success">Last success: %1$s</string>
     <string name="data_webdav_auto_last_failure">Last failure (%2$d retries): %1$s</string>
     <string name="data_webdav_auto_run_now">Run backup now</string>
+    <string name="data_webdav_auto_save_settings">Save backup policy</string>
+    <string name="data_webdav_auto_settings_saved">Backup policy saved</string>
     <string name="data_webdav_auto_running">Backing up…</string>
     <string name="data_webdav_auto_run_done">Backup completed</string>
     <string name="data_webdav_auto_run_failed">Backup failed: %1$s</string>
@@ -627,12 +632,17 @@
     <string name="data_webdav_auto_time_invalid">Enter a valid time (00:00–23:59).</string>
     <string name="data_webdav_auto_password_hint">Automatic backup stores this encryption password in Android Keystore.</string>
     <string name="data_webdav_auto_local_path">Local backup folder: %1$s</string>
+    <string name="data_webdav_auto_local_directory_missing">No persistent local backup folder selected.</string>
+    <string name="data_webdav_auto_select_local_directory">Choose local backup folder</string>
+    <string name="data_webdav_auto_local_directory_selected">Persistent local backup folder selected.</string>
+    <string name="data_webdav_auto_local_directory_required">Choose a persistent local backup folder first.</string>
     <string name="data_webdav_auto_password_required">Enter an encryption password of at least 8 characters to enable automatic backup.</string>
     <string name="data_webdav_auto_retain_invalid">Keep count must be between 1 and 100.</string>
-    <string name="svc_webdav_wifi_required">Automatic WebDAV backup skipped: an unmetered network is required.</string>
+    <string name="svc_webdav_wifi_required">Automatic backup skipped: an unmetered network is required.</string>
     <string name="svc_webdav_missing_settings">WebDAV settings are incomplete.</string>
     <string name="svc_webdav_missing_encryption_password">Automatic backup encryption password is missing.</string>
     <string name="svc_webdav_backup_success">Automatic backup uploaded (%1$d bytes).</string>
     <string name="svc_local_backup_success">Local backup saved (%1$d bytes).</string>
-    <string name="svc_webdav_backup_failed">Automatic WebDAV backup failed.</string>
+    <string name="svc_local_backup_directory_missing">Automatic local backup needs a selected persistent folder.</string>
+    <string name="svc_webdav_backup_failed">Automatic backup failed.</string>
 </resources>

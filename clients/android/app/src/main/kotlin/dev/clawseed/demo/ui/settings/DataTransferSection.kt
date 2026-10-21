@@ -1,5 +1,6 @@
 package dev.clawseed.demo.ui.settings
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -93,6 +94,7 @@ fun DataTransferSection() {
     var webDavAutoBackupEnabled by remember { mutableStateOf(false) }
     var webDavAutoBackupFrequency by remember { mutableStateOf(WebDavAutoBackupFrequency.DAILY) }
     var webDavAutoBackupDestination by remember { mutableStateOf(AutoBackupDestination.WEBDAV) }
+    var webDavAutoBackupLocalDirectoryUri by remember { mutableStateOf<String?>(null) }
     var webDavAutoBackupWifiOnly by remember { mutableStateOf(true) }
     var webDavAutoBackupRetainCount by remember { mutableStateOf("5") }
     var webDavAutoBackupHour by remember { mutableStateOf("03") }
@@ -105,6 +107,7 @@ fun DataTransferSection() {
     var webDavSettingsLoaded by remember { mutableStateOf(false) }
     var webDavBusy by remember { mutableStateOf(false) }
     var webDavStatus by remember { mutableStateOf<String?>(null) }
+    var autoBackupStatus by remember { mutableStateOf<String?>(null) }
     var webDavBackups by remember { mutableStateOf(emptyList<WebDavSyncClient.RemoteBackup>()) }
     var webDavBackupsLoading by remember { mutableStateOf(false) }
     var webDavListError by remember { mutableStateOf<String?>(null) }
@@ -112,6 +115,11 @@ fun DataTransferSection() {
     var webDavTesting by remember { mutableStateOf(false) }
     var webDavTestResult by remember { mutableStateOf<WebDavConnectionTestResult?>(null) }
     var webDavTestError by remember { mutableStateOf<String?>(null) }
+    var mediaCacheExpanded by remember { mutableStateOf(false) }
+    var exportExpanded by remember { mutableStateOf(false) }
+    var autoBackupExpanded by remember { mutableStateOf(false) }
+    var webDavExpanded by remember { mutableStateOf(false) }
+    var importExpanded by remember { mutableStateOf(false) }
     var exportDestination by remember { mutableStateOf(TransferEndpoint.LocalFile) }
     var importSource by remember { mutableStateOf(TransferEndpoint.LocalFile) }
     var webDavSelectedFile by remember { mutableStateOf("") }
@@ -130,6 +138,7 @@ fun DataTransferSection() {
         webDavAutoBackupEnabled = auto.enabled
         webDavAutoBackupFrequency = auto.frequency
         webDavAutoBackupDestination = auto.destination
+        webDavAutoBackupLocalDirectoryUri = auto.localDirectoryUri
         webDavAutoBackupWifiOnly = auto.wifiOnly
         webDavAutoBackupRetainCount = auto.retainCount.toString()
         webDavAutoBackupHour = auto.hour.toString().padStart(2, '0')
@@ -214,18 +223,29 @@ fun DataTransferSection() {
         }
     }
 
-    LaunchedEffect(importSource, webDavSettingsLoaded) {
-        if (importSource == TransferEndpoint.WebDav && webDavSettingsLoaded) {
-            refreshWebDavBackups()
-        }
-    }
-
     // Import state
     var selectedImportCategories by remember { mutableStateOf(emptySet<DataCategory>()) }
     var importStrategies by remember { mutableStateOf(mapOf<DataCategory, ImportStrategy>()) }
+    var localBackups by remember { mutableStateOf(emptyList<DataTransferManager.LocalBackup>()) }
+    var localBackupsLoading by remember { mutableStateOf(false) }
+    var localSelectedFile by remember { mutableStateOf<DataTransferManager.LocalBackup?>(null) }
     var isImporting by remember { mutableStateOf(false) }
     var importResult by remember { mutableStateOf<ImportResult?>(null) }
     var importError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(importSource, webDavSettingsLoaded, webDavAutoBackupLocalDirectoryUri) {
+        if (importSource == TransferEndpoint.WebDav && webDavSettingsLoaded) {
+            refreshWebDavBackups()
+        } else if (importSource == TransferEndpoint.LocalFile && webDavSettingsLoaded) {
+            localBackupsLoading = true
+            val result = webDavAutoBackupLocalDirectoryUri?.let { uri ->
+                withContext(Dispatchers.IO) { manager.listLocalBackups(Uri.parse(uri)) }
+            }
+            localBackups = result?.getOrElse { emptyList() } ?: emptyList()
+            localSelectedFile = localBackups.firstOrNull()
+            localBackupsLoading = false
+        }
+    }
 
     // Rich media is deliberately separated from exported conversation data.
     var mediaCacheBytes by remember { mutableStateOf(RichMediaCache.sizeBytes(context)) }
@@ -243,6 +263,7 @@ fun DataTransferSection() {
     val webDavRestoreDone = stringResource(R.string.data_webdav_restore_done)
     val webDavFailedFormat = stringResource(R.string.data_webdav_failed)
     val webDavSettingsSaved = stringResource(R.string.data_webdav_settings_saved)
+    val autoBackupSettingsSaved = stringResource(R.string.data_webdav_auto_settings_saved)
     val webDavDeleteDone = stringResource(R.string.data_webdav_delete_done)
     val webDavTestPassed = stringResource(R.string.data_webdav_test_passed)
     val webDavTestFailed = stringResource(R.string.data_webdav_test_failed)
@@ -297,7 +318,40 @@ fun DataTransferSection() {
         }
     }
 
+    val localDirectoryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        try {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+            webDavAutoBackupLocalDirectoryUri = uri.toString()
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) {
+                        webDavAutoBackupStore.save(
+                            webDavAutoBackupStore.load().copy(localDirectoryUri = uri.toString()),
+                        )
+                    }
+                    autoBackupStatus = context.getString(R.string.data_webdav_auto_local_directory_selected)
+                } catch (error: Exception) {
+                    autoBackupStatus = error.message ?: context.getString(R.string.data_webdav_auto_local_directory_missing)
+                }
+            }
+        } catch (error: Exception) {
+            autoBackupStatus = error.message ?: context.getString(R.string.data_webdav_auto_local_directory_missing)
+        }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        DataTransferSubsectionHeader(
+            title = stringResource(R.string.data_media_cache),
+            expanded = mediaCacheExpanded,
+            onToggle = { mediaCacheExpanded = !mediaCacheExpanded },
+        )
+        if (mediaCacheExpanded) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -338,6 +392,14 @@ fun DataTransferSection() {
             }
         }
 
+        }
+
+        DataTransferSubsectionHeader(
+            title = stringResource(R.string.data_export),
+            expanded = exportExpanded,
+            onToggle = { exportExpanded = !exportExpanded },
+        )
+        if (exportExpanded) {
         // Export card
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -482,67 +544,20 @@ fun DataTransferSection() {
             }
         }
 
-        // WebDAV card
+        }
+
+        DataTransferSubsectionHeader(
+            title = stringResource(R.string.data_webdav_auto_title),
+            expanded = autoBackupExpanded,
+            onToggle = { autoBackupExpanded = !autoBackupExpanded },
+        )
+        if (autoBackupExpanded) {
+        // Scheduled backup policy card
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.data_webdav_title), style = MaterialTheme.typography.titleMedium)
-                Text(
-                    stringResource(R.string.data_webdav_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                TextField(
-                    value = webDavUrl,
-                    onValueChange = { webDavUrl = it },
-                    label = { Text(stringResource(R.string.data_webdav_url)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                TextField(
-                    value = webDavDirectory,
-                    onValueChange = { webDavDirectory = it },
-                    label = { Text(stringResource(R.string.data_webdav_directory)) },
-                    supportingText = { Text(stringResource(R.string.data_webdav_directory_hint)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                TextField(
-                    value = webDavUsername,
-                    onValueChange = { webDavUsername = it },
-                    label = { Text(stringResource(R.string.data_webdav_username)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                TextField(
-                    value = webDavPassword,
-                    onValueChange = { webDavPassword = it },
-                    label = { Text(stringResource(R.string.data_webdav_password)) },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                TextField(
-                    value = webDavEncryptionPassword,
-                    onValueChange = { webDavEncryptionPassword = it },
-                    label = { Text(stringResource(R.string.data_webdav_encryption_password)) },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Switch(
-                        checked = rememberWebDavPassword,
-                        onCheckedChange = { rememberWebDavPassword = it },
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(stringResource(R.string.data_webdav_remember_password))
-                }
                 Text(stringResource(R.string.data_webdav_auto_title), style = MaterialTheme.typography.titleMedium)
                 Text(stringResource(R.string.data_webdav_auto_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -634,10 +649,24 @@ fun DataTransferSection() {
                     }
                     if (webDavAutoBackupDestination != AutoBackupDestination.WEBDAV) {
                         Text(
-                            stringResource(R.string.data_webdav_auto_local_path, manager.localBackupDirectory().absolutePath),
+                            stringResource(
+                                if (webDavAutoBackupLocalDirectoryUri == null) {
+                                    R.string.data_webdav_auto_local_directory_missing
+                                } else {
+                                    R.string.data_webdav_auto_local_path
+                                },
+                                webDavAutoBackupLocalDirectoryUri.orEmpty(),
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        Button(
+                            onClick = { localDirectoryLauncher.launch(null) },
+                            enabled = !webDavBusy,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(stringResource(R.string.data_webdav_auto_select_local_directory))
+                        }
                     }
                     webDavAutoBackupLastSuccessAt?.let { timestamp ->
                         Text(
@@ -661,9 +690,9 @@ fun DataTransferSection() {
                                     }
                                 }
                                 if (!taskExists) {
-                                    webDavStatus = context.getString(R.string.data_webdav_auto_save_first)
+                                    autoBackupStatus = context.getString(R.string.data_webdav_auto_save_first)
                                 } else {
-                                    webDavStatus = context.getString(R.string.data_webdav_auto_running)
+                                    autoBackupStatus = context.getString(R.string.data_webdav_auto_running)
                                     webDavAutoBackupRunning = true
                                     WebDavAutoBackupScheduler.triggerNow(context)
                                 }
@@ -680,15 +709,19 @@ fun DataTransferSection() {
                             val hour = webDavAutoBackupHour.toIntOrNull()
                             val minute = webDavAutoBackupMinute.toIntOrNull()
                             if (webDavAutoBackupEnabled && webDavAutoBackupDestination != AutoBackupDestination.LOCAL && webDavEncryptionPassword.length < 8) {
-                                webDavStatus = context.getString(R.string.data_webdav_auto_password_required)
+                                autoBackupStatus = context.getString(R.string.data_webdav_auto_password_required)
+                                return@launch
+                            }
+                            if (webDavAutoBackupEnabled && webDavAutoBackupDestination != AutoBackupDestination.WEBDAV && webDavAutoBackupLocalDirectoryUri.isNullOrBlank()) {
+                                autoBackupStatus = context.getString(R.string.data_webdav_auto_local_directory_required)
                                 return@launch
                             }
                             if (webDavAutoBackupEnabled && (retainCount == null || retainCount !in 1..100)) {
-                                webDavStatus = context.getString(R.string.data_webdav_auto_retain_invalid)
+                                autoBackupStatus = context.getString(R.string.data_webdav_auto_retain_invalid)
                                 return@launch
                             }
                             if (webDavAutoBackupEnabled && (hour == null || hour !in 0..23 || minute == null || minute !in 0..59)) {
-                                webDavStatus = context.getString(R.string.data_webdav_auto_time_invalid)
+                                autoBackupStatus = context.getString(R.string.data_webdav_auto_time_invalid)
                                 return@launch
                             }
                             saveWebDavSettings()
@@ -696,6 +729,7 @@ fun DataTransferSection() {
                                 enabled = webDavAutoBackupEnabled,
                                 frequency = webDavAutoBackupFrequency,
                                 destination = webDavAutoBackupDestination,
+                                localDirectoryUri = webDavAutoBackupLocalDirectoryUri,
                                 wifiOnly = webDavAutoBackupWifiOnly,
                                 retainCount = retainCount ?: 5,
                                 hour = hour ?: 3,
@@ -704,12 +738,101 @@ fun DataTransferSection() {
                             )
                             withContext(Dispatchers.IO) { webDavAutoBackupStore.save(auto) }
                             WebDavAutoBackupScheduler.apply(context, auto)
+                            autoBackupStatus = autoBackupSettingsSaved
+                        }
+                    },
+                    enabled = webDavSettingsLoaded && !webDavBusy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(stringResource(R.string.data_webdav_auto_save_settings)) }
+                autoBackupStatus?.let { status ->
+                    Text(
+                        status,
+                        color = if (status == autoBackupSettingsSaved) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+        }
+
+        }
+
+        DataTransferSubsectionHeader(
+            title = stringResource(R.string.data_webdav_title),
+            expanded = webDavExpanded,
+            onToggle = { webDavExpanded = !webDavExpanded },
+        )
+        if (webDavExpanded) {
+        // WebDAV card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.data_webdav_title), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    stringResource(R.string.data_webdav_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextField(
+                    value = webDavUrl,
+                    onValueChange = { webDavUrl = it },
+                    label = { Text(stringResource(R.string.data_webdav_url)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextField(
+                    value = webDavDirectory,
+                    onValueChange = { webDavDirectory = it },
+                    label = { Text(stringResource(R.string.data_webdav_directory)) },
+                    supportingText = { Text(stringResource(R.string.data_webdav_directory_hint)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextField(
+                    value = webDavUsername,
+                    onValueChange = { webDavUsername = it },
+                    label = { Text(stringResource(R.string.data_webdav_username)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextField(
+                    value = webDavPassword,
+                    onValueChange = { webDavPassword = it },
+                    label = { Text(stringResource(R.string.data_webdav_password)) },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextField(
+                    value = webDavEncryptionPassword,
+                    onValueChange = { webDavEncryptionPassword = it },
+                    label = { Text(stringResource(R.string.data_webdav_encryption_password)) },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Switch(
+                        checked = rememberWebDavPassword,
+                        onCheckedChange = { rememberWebDavPassword = it },
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.data_webdav_remember_password))
+                }
+                Button(
+                    onClick = {
+                        scope.launch {
+                            saveWebDavSettings()
                             webDavStatus = webDavSettingsSaved
                         }
                     },
                     enabled = webDavSettingsLoaded && !webDavBusy,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text(stringResource(R.string.data_webdav_save_settings)) }
+                ) { Text(stringResource(R.string.data_webdav_save_connection)) }
                 Button(
                     onClick = {
                         scope.launch {
@@ -785,6 +908,14 @@ fun DataTransferSection() {
             }
         }
 
+        }
+
+        DataTransferSubsectionHeader(
+            title = stringResource(R.string.data_import),
+            expanded = importExpanded,
+            onToggle = { importExpanded = !importExpanded },
+        )
+        if (importExpanded) {
         // Import card
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -805,6 +936,64 @@ fun DataTransferSection() {
                         onClick = { importSource = TransferEndpoint.WebDav },
                         label = { Text(stringResource(R.string.data_transfer_webdav)) },
                     )
+                }
+
+                if (importSource == TransferEndpoint.LocalFile) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(stringResource(R.string.data_local_backups_title), style = MaterialTheme.typography.labelLarge)
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    localBackupsLoading = true
+                                    val result = webDavAutoBackupLocalDirectoryUri?.let { uri ->
+                                        withContext(Dispatchers.IO) { manager.listLocalBackups(Uri.parse(uri)) }
+                                    }
+                                    localBackups = result?.getOrElse { emptyList() } ?: emptyList()
+                                    localSelectedFile = localSelectedFile?.takeIf { it in localBackups } ?: localBackups.firstOrNull()
+                                    localBackupsLoading = false
+                                }
+                            },
+                            enabled = !localBackupsLoading && !webDavBusy,
+                        ) {
+                            if (localBackupsLoading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(6.dp))
+                            }
+                            Text(stringResource(R.string.data_webdav_refresh_backups))
+                        }
+                    }
+                    if (!localBackupsLoading && localBackups.isEmpty()) {
+                        Text(
+                            stringResource(R.string.data_local_backups_empty),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    for (backup in localBackups) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { localSelectedFile = backup },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = localSelectedFile == backup,
+                                onClick = { localSelectedFile = backup },
+                            )
+                            Column(modifier = Modifier.weight(1f).padding(start = 4.dp)) {
+                                Text(backup.name, style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    stringResource(R.string.data_webdav_backup_details, formatByteSize(backup.bytes), formatAutoBackupTime(backup.lastModified)),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
                 }
 
                 if (importSource == TransferEndpoint.WebDav) {
@@ -937,8 +1126,25 @@ fun DataTransferSection() {
                 // Import button
                 Button(
                     onClick = {
-                        if (importSource == TransferEndpoint.LocalFile) {
+                        if (importSource == TransferEndpoint.LocalFile && localSelectedFile == null) {
                             importLauncher.launch(arrayOf("application/zip", "*/*"))
+                        } else if (importSource == TransferEndpoint.LocalFile) {
+                            scope.launch {
+                                isImporting = true
+                                importError = null
+                                importResult = null
+                                try {
+                                    val result = withContext(Dispatchers.IO) {
+                                        manager.restoreFromLocalBackup(localSelectedFile!!, selectedImportCategories, importStrategies)
+                                            .getOrElse { throw it }
+                                    }
+                                    importResult = result
+                                } catch (e: Exception) {
+                                    importError = importFailedFormat.format(e.message ?: "")
+                                } finally {
+                                    isImporting = false
+                                }
+                            }
                         } else {
                             scope.launch {
                                 webDavBusy = true
@@ -1001,6 +1207,7 @@ fun DataTransferSection() {
                 }
             }
         }
+    }
     }
 
     // Import result dialog
@@ -1085,6 +1292,27 @@ fun DataTransferSection() {
                 ) { Text(stringResource(R.string.data_webdav_delete_backup)) }
             },
         )
+    }
+}
+
+@Composable
+private fun DataTransferSubsectionHeader(
+    title: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(if (expanded) "▾" else "▸", style = MaterialTheme.typography.titleMedium)
+        }
     }
 }
 
