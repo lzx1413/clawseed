@@ -11,6 +11,8 @@ exclude_docs: |
   council-mode-plan.md
   memory-upgrade-plan.md
   user-profile-memory-development-plan.md
+  android-background-long-running-tasks-plan.md
+  android-webdav-backup-plan.md
 
 theme:
   name: material
@@ -131,6 +133,7 @@ nav:
       - Build and Test: build-and-test.md
       - Skill System: skills.md
       - Android Demo: android-demo.md
+      - File Attachments: android-file-attachments.md
   - Modules:
       - modules/index.md
       - API: modules/api.md
@@ -156,6 +159,7 @@ nav:
       - Jiucaihua: integrations/jiucaihua.md
   - Optimization:
       - Prompt Cache: prompt-cache-optimization.md
+      - Response Metrics: response-metrics.md
 
 extra:
   social:

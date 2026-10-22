@@ -39,8 +39,8 @@ android {
         applicationId = "dev.clawseed.demo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 19
-        versionName = "2.0.0"
+        versionCode = 20
+        versionName = "2.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
         buildConfigField("String", "SDK_VERSION", "\"0.5.0\"")
