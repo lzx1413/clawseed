@@ -68,7 +68,7 @@ export AR="${AR}"
 export CXX="${CXX}"
 export ANDROID_NDK_ROOT="${NDK_ROOT}"
 export LIBCLANG_PATH="${LIBCLANG_PATH:-${NDK_LIB}}"
-export BINDGEN_EXTRA_CLANG_ARGS="${BINDGEN_EXTRA_CLANG_ARGS:---sysroot=${NDK_SYSROOT} -I${CLANG_RESOURCE_DIR}/include}"
+export BINDGEN_EXTRA_CLANG_ARGS="${BINDGEN_EXTRA_CLANG_ARGS:---sysroot=${NDK_SYSROOT} -include ${NDK_SYSROOT}/usr/include/stdint.h -I${CLANG_RESOURCE_DIR}/include}"
 
 CARGO_ARGS=(
     "${ACTION}"
