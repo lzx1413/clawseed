@@ -2,7 +2,7 @@ package dev.clawseed.demo.ui.chat
 
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
+import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
@@ -10,6 +10,20 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
+
+data class TtsEngineInfo(
+    val packageName: String,
+    val displayName: String,
+    val isSystemDefault: Boolean,
+)
+
+enum class TtsTestStatus { IDLE, TESTING, SUCCESS, FAILURE }
+
+data class TtsTestState(
+    val packageName: String? = null,
+    val status: TtsTestStatus = TtsTestStatus.IDLE,
+    val errorMessage: String? = null,
+)
 
 /**
  * Thin wrapper around Android's [TextToSpeech] for speaking assistant replies aloud.
@@ -37,6 +51,9 @@ class TtsController(context: Context) {
     private val _speakingMessageId = MutableStateFlow<String?>(null)
     val speakingMessageId: StateFlow<String?> = _speakingMessageId.asStateFlow()
 
+    private val _activeEnginePackage = MutableStateFlow<String?>(null)
+    val activeEnginePackage: StateFlow<String?> = _activeEnginePackage.asStateFlow()
+
     /** True once an engine reported SUCCESS in the init callback. */
     @Volatile private var engineReady = false
 
@@ -58,22 +75,7 @@ class TtsController(context: Context) {
 
     /** Returns installed TTS engine packages, common high-quality engines ordered first. */
     private fun queryEngines(): List<String> {
-        val pm = appContext.packageManager
-        val intent = Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE)
-        @Suppress("DEPRECATION")
-        val resolved = pm.queryIntentServices(intent, 0)
-        val packages = resolved.mapNotNull { it.serviceInfo?.packageName }.distinct()
-
-        // Prefer well-known engines first so we bind to a full TTS voice rather than a stub.
-        val preferred = listOf(
-            "com.google.android.tts",          // Google
-            "com.xiaomi.mibrain.speech",       // Xiaomi
-            "com.iflytek.speechcloud",         // iFlytek
-            "com.baidu.duersdk.actionsdk",      // Baidu
-            "com.samsung.SMT",                 // Samsung
-            "com.huawei.himovie.tts",          // Huawei
-        )
-        return (preferred.filter { it in packages } + packages).distinct()
+        return orderedEnginePackages(appContext)
     }
 
     private fun startInit(enginePackage: String?) {
@@ -123,6 +125,7 @@ class TtsController(context: Context) {
     private fun configureEngine(engine: TextToSpeech, enginePackage: String?) {
         Log.i(TAG, "init SUCCESS engine=$enginePackage defaultEngine=${engine.defaultEngine}")
         engineReady = true
+        _activeEnginePackage.value = enginePackage ?: engine.defaultEngine
 
         // Try the system locale; if its voice data is missing, fall back to English so we still
         // produce *some* audio rather than going silent. We keep engineReady=true regardless so
@@ -206,9 +209,132 @@ class TtsController(context: Context) {
         engineReady = false
         _isSpeaking.value = false
         _speakingMessageId.value = null
+        _activeEnginePackage.value = null
     }
 
-    private companion object {
+    companion object {
+        /** Lists installed TTS engines in the same preference order used by runtime playback. */
+        fun installedEngines(context: Context): List<TtsEngineInfo> {
+            val packages = orderedEnginePackages(context.applicationContext)
+            val defaultPackage = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.TTS_DEFAULT_SYNTH,
+            )
+            val pm = context.packageManager
+            return packages.map { packageName ->
+                val displayName = runCatching {
+                    pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
+                }.getOrDefault(packageName)
+                TtsEngineInfo(
+                    packageName = packageName,
+                    displayName = displayName,
+                    isSystemDefault = packageName == defaultPackage,
+                )
+            }
+        }
+
+        private fun orderedEnginePackages(context: Context): List<String> {
+            val pm = context.packageManager
+            val intent = Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE)
+            @Suppress("DEPRECATION")
+            val resolved = pm.queryIntentServices(intent, 0)
+            val packages = resolved.mapNotNull { it.serviceInfo?.packageName }.distinct()
+            return (PREFERRED_ENGINES.filter { it in packages } + packages).distinct()
+        }
+
+        private val PREFERRED_ENGINES = listOf(
+            "com.google.android.tts",
+            "com.xiaomi.mibrain.speech",
+            "com.iflytek.speechcloud",
+            "com.baidu.duersdk.actionsdk",
+            "com.samsung.SMT",
+            "com.huawei.himovie.tts",
+        )
         private const val TAG = "ClawSeedTts"
     }
+}
+
+/** Plays a short sample through one explicitly selected engine without changing chat playback. */
+class TtsEngineTester(context: Context) {
+    private val appContext = context.applicationContext
+    private val _state = MutableStateFlow(TtsTestState())
+    val state: StateFlow<TtsTestState> = _state.asStateFlow()
+
+    private var tts: TextToSpeech? = null
+    private var pendingInitStatus: Int? = null
+
+    fun test(engine: TtsEngineInfo, text: String) {
+        stop()
+        _state.value = TtsTestState(engine.packageName, TtsTestStatus.TESTING)
+        val utteranceId = "tts-test-${System.nanoTime()}"
+        val listener = TextToSpeech.OnInitListener { status ->
+            val instance = tts
+            if (instance == null) {
+                pendingInitStatus = status
+            } else {
+                handleInit(instance, status, engine.packageName, utteranceId, text)
+            }
+        }
+        val instance = runCatching { TextToSpeech(appContext, listener, engine.packageName) }
+            .getOrElse {
+                _state.value = TtsTestState(engine.packageName, TtsTestStatus.FAILURE, it.message)
+                return
+            }
+        tts = instance
+        pendingInitStatus?.let { status ->
+            pendingInitStatus = null
+            handleInit(instance, status, engine.packageName, utteranceId, text)
+        }
+    }
+
+    private fun handleInit(
+        engine: TextToSpeech,
+        status: Int,
+        packageName: String,
+        utteranceId: String,
+        text: String,
+    ) {
+        if (status != TextToSpeech.SUCCESS) {
+            engine.shutdown()
+            if (tts === engine) tts = null
+            _state.value = TtsTestState(packageName, TtsTestStatus.FAILURE, "初始化失败")
+            return
+        }
+        val language = engine.setLanguage(Locale.getDefault())
+        if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
+            engine.setLanguage(Locale.ENGLISH)
+        }
+        engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) = Unit
+
+            override fun onDone(utteranceId: String?) {
+                _state.value = TtsTestState(packageName, TtsTestStatus.SUCCESS)
+            }
+
+            @Deprecated("Required override")
+            override fun onError(utteranceId: String?) {
+                _state.value = TtsTestState(packageName, TtsTestStatus.FAILURE, "播放失败")
+            }
+
+            override fun onError(utteranceId: String?, errorCode: Int) {
+                _state.value = TtsTestState(packageName, TtsTestStatus.FAILURE, "播放失败 ($errorCode)")
+            }
+        })
+        val result = engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+        if (result == TextToSpeech.ERROR) {
+            _state.value = TtsTestState(packageName, TtsTestStatus.FAILURE, "引擎拒绝播放")
+        }
+    }
+
+    fun stop() {
+        tts?.stop()
+        tts?.shutdown()
+        tts = null
+        pendingInitStatus = null
+        if (_state.value.status == TtsTestStatus.TESTING) {
+            _state.value = TtsTestState()
+        }
+    }
+
+    fun shutdown() = stop()
 }

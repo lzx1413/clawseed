@@ -669,16 +669,9 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
     private fun speakAssistantMessage(msg: dev.clawseed.sdk.android.AccumulatedMessage.Assistant) {
         ttsLastSpokenMsgId = msg.id
         if (!_uiState.value.speechOutputEnabled) return
-        val chunk = cleanForSpeech(msg.content)
+        val chunk = msg.content.toSpeakableText()
         if (chunk.isNotEmpty()) tts.speak(chunk, msg.id)
     }
-
-    /** Light markdown cleanup so symbols like `**`, `#`, backticks aren't read aloud. */
-    private fun cleanForSpeech(s: String): String =
-        s.replace(Regex("[*_#>~]"), "")
-            .replace("`", "")
-            .replace(Regex("\\[([^]]+)]\\([^)]+\\)"), "$1")  // links -> label
-            .trim()
 
     fun toggleSpeechOutput() {
         viewModelScope.launch {

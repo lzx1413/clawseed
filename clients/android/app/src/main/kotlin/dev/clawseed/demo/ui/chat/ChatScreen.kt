@@ -351,20 +351,23 @@ fun ChatScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        if (uiState.speechOutputEnabled && uiState.isSpeaking) {
-                            viewModel.stopSpeech()
-                        } else {
-                            viewModel.toggleSpeechOutput()
+                    if (uiState.isSpeaking) {
+                        IconButton(onClick = viewModel::stopSpeech) {
+                            Icon(
+                                imageVector = SpeakerStopIcon,
+                                contentDescription = stringResource(R.string.chat_stop_speaking),
+                            )
                         }
+                    }
+                    IconButton(onClick = {
+                        viewModel.toggleSpeechOutput()
                     }) {
                         Icon(
-                            imageVector = when {
-                                uiState.speechOutputEnabled && uiState.isSpeaking -> SpeakerStopIcon
-                                uiState.speechOutputEnabled -> SpeakerPlayIcon
-                                else -> SpeakerOffIcon
-                            },
-                            contentDescription = stringResource(R.string.chat_speech_output),
+                            imageVector = if (uiState.speechOutputEnabled) SpeakerPlayIcon else SpeakerOffIcon,
+                            contentDescription = stringResource(
+                                if (uiState.speechOutputEnabled) R.string.chat_disable_auto_speech
+                                else R.string.chat_enable_auto_speech,
+                            ),
                         )
                     }
                     IconButton(onClick = {

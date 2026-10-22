@@ -56,6 +56,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -86,6 +87,11 @@ import dev.clawseed.demo.BuildConfig
 import dev.clawseed.demo.R
 import dev.clawseed.demo.ui.theme.success
 import dev.clawseed.demo.data.LocalStore
+import dev.clawseed.demo.ui.chat.TtsController
+import dev.clawseed.demo.ui.chat.TtsEngineInfo
+import dev.clawseed.demo.ui.chat.TtsEngineTester
+import dev.clawseed.demo.ui.chat.TtsTestState
+import dev.clawseed.demo.ui.chat.TtsTestStatus
 import kotlinx.coroutines.launch
 
 @Composable
@@ -153,6 +159,7 @@ fun SettingsScreen(
     var searchEngineExpanded by remember { mutableStateOf(false) }
     var developerExpanded by remember { mutableStateOf(false) }
     var appearanceExpanded by remember { mutableStateOf(false) }
+    var voiceExpanded by remember { mutableStateOf(false) }
     var sessionExpanded by remember { mutableStateOf(false) }
     var compactionExpanded by remember { mutableStateOf(false) }
     var dataTransferExpanded by remember { mutableStateOf(false) }
@@ -268,6 +275,20 @@ fun SettingsScreen(
                 item { StatusCard(uiState.status, uiState.downloadProgress) }
 
                 if (localStore != null) {
+                    item {
+                        val speechOutput by localStore.speechOutputEnabled.collectAsState(initial = false)
+                        ExpandableSection(
+                            title = stringResource(R.string.settings_voice),
+                            expanded = voiceExpanded,
+                            onToggle = { voiceExpanded = !voiceExpanded },
+                            subtitle = stringResource(
+                                R.string.settings_voice_enabled_summary,
+                                stringResource(if (speechOutput) R.string.settings_voice_on else R.string.settings_voice_off),
+                            ).takeIf { !voiceExpanded },
+                        ) {
+                            VoiceSettingsCard(localStore)
+                        }
+                    }
                     item {
                         val themeMode by localStore.themeMode.collectAsState(initial = "system")
                         ExpandableSection(
@@ -592,11 +613,144 @@ private fun UserModelCard(
 }
 
 @Composable
+private fun VoiceSettingsCard(localStore: LocalStore) {
+    val context = LocalContext.current
+    val speechOutput by localStore.speechOutputEnabled.collectAsState(initial = false)
+    val engines = remember(context) { TtsController.installedEngines(context) }
+    val tester = remember(context) { TtsEngineTester(context) }
+    val testState by tester.state.collectAsState()
+    val testSample = stringResource(R.string.settings_voice_test_sample)
+    val scope = rememberCoroutineScope()
+
+    DisposableEffect(tester) {
+        onDispose { tester.shutdown() }
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.settings_voice_enabled),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        stringResource(R.string.settings_voice_enabled_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = speechOutput,
+                    onCheckedChange = { enabled ->
+                        scope.launch {
+                            localStore.setSpeechOutputEnabled(enabled)
+                        }
+                    },
+                )
+            }
+
+            Text(
+                stringResource(R.string.settings_voice_engines),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            if (engines.isEmpty()) {
+                Text(
+                    stringResource(R.string.settings_voice_no_engines),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                engines.forEach { engine ->
+                    VoiceEngineRow(
+                        engine = engine,
+                        testState = testState,
+                        onTest = { tester.test(engine, testSample) },
+                        onStop = tester::stop,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoiceEngineRow(
+    engine: TtsEngineInfo,
+    testState: TtsTestState,
+    onTest: () -> Unit,
+    onStop: () -> Unit,
+) {
+    val isTesting = testState.packageName == engine.packageName && testState.status == TtsTestStatus.TESTING
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(engine.displayName, style = MaterialTheme.typography.bodyMedium)
+                    if (engine.isSystemDefault) {
+                        Text(
+                            stringResource(R.string.settings_voice_default),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+                Text(
+                    engine.packageName,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            OutlinedButton(onClick = if (isTesting) onStop else onTest) {
+                Text(stringResource(if (isTesting) R.string.chat_stop_speaking else R.string.settings_voice_test))
+            }
+        }
+        if (testState.packageName == engine.packageName) {
+            when (testState.status) {
+                TtsTestStatus.TESTING -> Text(
+                    stringResource(R.string.settings_voice_testing),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TtsTestStatus.SUCCESS -> Text(
+                    stringResource(R.string.settings_voice_test_success),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                TtsTestStatus.FAILURE -> Text(
+                    stringResource(R.string.settings_voice_test_failed, testState.errorMessage ?: "unknown"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                TtsTestStatus.IDLE -> Unit
+            }
+        }
+    }
+}
+
+@Composable
 private fun AppearanceCard(localStore: LocalStore) {
     val themeMode by localStore.themeMode.collectAsState(initial = "system")
     val oledMode by localStore.oledMode.collectAsState(initial = false)
     val languageMode by localStore.languageMode.collectAsState(initial = "system")
-    val speechOutput by localStore.speechOutputEnabled.collectAsState(initial = false)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val useDarkTheme = when (themeMode) {
@@ -646,25 +800,6 @@ private fun AppearanceCard(localStore: LocalStore) {
                     selected = languageMode == "zh",
                     onClick = { scope.launch { localStore.setLanguageMode("zh"); (context as? android.app.Activity)?.recreate() } },
                     label = { Text(stringResource(R.string.settings_language_chinese)) },
-                )
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.settings_speech_output), style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        stringResource(R.string.settings_speech_output_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(
-                    checked = speechOutput,
-                    onCheckedChange = { scope.launch { localStore.setSpeechOutputEnabled(it) } },
                 )
             }
             if (useDarkTheme) {

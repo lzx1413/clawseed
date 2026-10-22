@@ -86,6 +86,9 @@
     <string name="chat_menu">Menu</string>
     <string name="chat_new_session">New Session</string>
     <string name="chat_speech_output">Toggle speech output</string>
+    <string name="chat_enable_auto_speech">Enable automatic reply reading</string>
+    <string name="chat_disable_auto_speech">Disable automatic reply reading</string>
+    <string name="chat_stop_speaking">Stop speaking</string>
     <string name="persona_picker_title">Choose a persona</string>
     <string name="persona_new_chat_title">New chat</string>
     <string name="persona_default">Default</string>
@@ -205,8 +208,20 @@
     <!-- ========== Settings ========== -->
     <string name="settings_title">Settings</string>
     <string name="settings_appearance">Appearance</string>
-    <string name="settings_speech_output">Read Replies Aloud</string>
-    <string name="settings_speech_output_desc">Automatically speak AI replies aloud when streaming finishes</string>
+    <string name="settings_voice">Voice</string>
+    <string name="settings_voice_enabled">Automatic reply reading</string>
+    <string name="settings_voice_enabled_desc">Speak each new AI reply when streaming finishes</string>
+    <string name="settings_voice_enabled_summary">Automatic reading: %1$s</string>
+    <string name="settings_voice_on">On</string>
+    <string name="settings_voice_off">Off</string>
+    <string name="settings_voice_engines">Available speech engines</string>
+    <string name="settings_voice_no_engines">No speech engines are available on this device</string>
+    <string name="settings_voice_default">System default</string>
+    <string name="settings_voice_test">Test</string>
+    <string name="settings_voice_test_sample">This is a speech engine test.</string>
+    <string name="settings_voice_testing">Testing…</string>
+    <string name="settings_voice_test_success">Test finished</string>
+    <string name="settings_voice_test_failed">Test failed: %1$s</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_theme_system">Follow System</string>

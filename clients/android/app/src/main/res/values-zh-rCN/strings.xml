@@ -86,6 +86,9 @@
     <string name="chat_menu">菜单</string>
     <string name="chat_new_session">新建对话</string>
     <string name="chat_speech_output">语音朗读</string>
+    <string name="chat_enable_auto_speech">开启自动朗读回复</string>
+    <string name="chat_disable_auto_speech">关闭自动朗读回复</string>
+    <string name="chat_stop_speaking">停止朗读</string>
     <string name="persona_picker_title">选择分身</string>
     <string name="persona_new_chat_title">新建对话</string>
     <string name="persona_default">默认</string>
@@ -205,8 +208,20 @@
     <!-- ========== Settings ========== -->
     <string name="settings_title">设置</string>
     <string name="settings_appearance">外观</string>
-    <string name="settings_speech_output">朗读 AI 回复</string>
-    <string name="settings_speech_output_desc">AI 回复流式结束后自动朗读</string>
+    <string name="settings_voice">语音</string>
+    <string name="settings_voice_enabled">自动朗读新回复</string>
+    <string name="settings_voice_enabled_desc">AI 回复流式结束后自动朗读</string>
+    <string name="settings_voice_enabled_summary">自动朗读：%1$s</string>
+    <string name="settings_voice_on">开启</string>
+    <string name="settings_voice_off">关闭</string>
+    <string name="settings_voice_engines">可用语音引擎</string>
+    <string name="settings_voice_no_engines">设备上没有可用的语音引擎</string>
+    <string name="settings_voice_default">系统默认</string>
+    <string name="settings_voice_test">测试</string>
+    <string name="settings_voice_test_sample">这是一段语音引擎测试。</string>
+    <string name="settings_voice_testing">测试中…</string>
+    <string name="settings_voice_test_success">测试完成</string>
+    <string name="settings_voice_test_failed">测试失败：%1$s</string>
     <string name="settings_theme_light">浅色</string>
     <string name="settings_theme_dark">深色</string>
     <string name="settings_theme_system">跟随系统</string>
