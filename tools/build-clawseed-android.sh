@@ -46,6 +46,12 @@ CXX="${CC}++"
 CLANG_RESOURCE_DIR="$("${CC}" -print-resource-dir)"
 NDK_SYSROOT="${NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
 
+# Some NDK clang wrapper versions return a resource directory relative to the
+# LLVM prebuilt root. Bindgen needs an absolute include path when cross-compiling.
+if [[ "${CLANG_RESOURCE_DIR}" != /* ]]; then
+    CLANG_RESOURCE_DIR="${NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/${CLANG_RESOURCE_DIR}"
+fi
+
 echo "==> Building clawseed for ${TARGET} (${ABI}), action=${ACTION}"
 echo "    NDK: ${NDK_ROOT}"
 echo "    Features: ${FEATURES}"
