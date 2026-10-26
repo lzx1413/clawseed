@@ -85,6 +85,7 @@ async fn registry_all_tools_instantiated() {
         "background_status",
         "calculator",
         "content_search",
+        "csv_process",
         "cron_add",
         "cron_list",
         "cron_remove",
@@ -270,6 +271,58 @@ async fn file_write_read_roundtrip() {
         result.output.contains("Hello from test"),
         "content mismatch: {}",
         result.output
+    );
+}
+
+#[tokio::test]
+async fn csv_process_queries_and_writes_csv() {
+    let dir = tempfile::TempDir::new().unwrap();
+    std::fs::write(
+        dir.path().join("people.csv"),
+        "name,city,score\nAlice,Shanghai,10\nBob,Beijing,25\nCarol,Shanghai,30\n",
+    )
+    .unwrap();
+    let tools = all_tools(dir.path().to_path_buf());
+    let csv = tools
+        .iter()
+        .find(|tool| tool.name() == "csv_process")
+        .unwrap();
+    let c = ctx(dir.path().to_path_buf());
+
+    let result = csv
+        .execute(
+            serde_json::json!({
+                "operation": "query",
+                "path": "people.csv",
+                "filters": [{"column": "city", "op": "eq", "value": "Shanghai"}],
+                "sort_by": "score",
+                "sort_order": "desc"
+            }),
+            &c,
+        )
+        .await
+        .unwrap();
+    assert!(result.success, "csv query failed: {:?}", result.error);
+    let output: serde_json::Value = serde_json::from_str(&result.output).unwrap();
+    assert_eq!(output["total_matching_rows"], 2);
+    assert_eq!(output["rows"][0]["name"], "Carol");
+
+    let result = csv
+        .execute(
+            serde_json::json!({
+                "operation": "write",
+                "path": "out.csv",
+                "headers": ["name", "note"],
+                "rows": [{"name": "A", "note": "quoted, value"}]
+            }),
+            &c,
+        )
+        .await
+        .unwrap();
+    assert!(result.success, "csv write failed: {:?}", result.error);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("out.csv")).unwrap(),
+        "name,note\nA,\"quoted, value\"\n"
     );
 }
 

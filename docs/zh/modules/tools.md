@@ -15,6 +15,7 @@
 | `FileEditTool` | `file_edit` | 精确字符串替换编辑 |
 | `GlobSearchTool` | `glob_search` | 文件名模式搜索 |
 | `ContentSearchTool` | `content_search` | 文件内容搜索 |
+| `CsvProcessTool` | `csv_process` | 检查、分页读取、过滤排序和写入 CSV |
 
 ### Web
 
@@ -76,6 +77,8 @@ HTML 提取会移除脚本、样式、导航、页脚、侧栏、表单和隐藏
 `ask_user` 支持 `confirm`、`single_select`、`multi_select` 和 `text` 四类问题。Gateway 请求绑定会话、回合和工具调用 ID，只接受第一次有效回答。待回答问题五分钟后过期，并随 Agent 回合取消。工具拒绝索取密码、API Key、访问令牌和支付信息。交互式 CLI 使用终端输入，非交互入口返回 `interaction_unavailable`。
 | `ModelRoutingConfigTool` | `model_routing_config` | 模型路由配置 |
 | `BackupTool` | `backup` | 备份管理 |
+
+`csv_process` 的 `operation` 支持 `inspect`、`read`、`query` 和 `write`。读取与查询支持工作区相对路径、UTF-8（可带 BOM）、引号字段、字段内换行、自定义单字符分隔符和分页；`query` 还支持选择列、多个条件过滤以及按列排序。`write` 接受 `headers` 和数组或对象形式的 `rows`，只允许写入工作区，单文件和返回结果都有大小上限。
 
 ## 注册机制
 

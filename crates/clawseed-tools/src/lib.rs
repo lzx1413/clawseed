@@ -23,6 +23,7 @@ pub mod cron_run;
 pub mod cron_runs;
 #[cfg(not(feature = "android"))]
 pub mod cron_update;
+pub mod csv_process;
 pub mod file_edit;
 pub mod file_read;
 pub mod file_write;

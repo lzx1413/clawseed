@@ -15,6 +15,7 @@
 | `FileEditTool` | `file_edit` | Precise string replacement editing |
 | `GlobSearchTool` | `glob_search` | Filename pattern search |
 | `ContentSearchTool` | `content_search` | File content search |
+| `CsvProcessTool` | `csv_process` | Inspect, page, filter, sort, and write CSV files |
 
 ### Web
 
@@ -76,6 +77,8 @@ Background commands use a process-local queue with at most two running and 16 qu
 `ask_user` supports `confirm`, `single_select`, `multi_select`, and `text` questions. Gateway requests are bound to the session, turn, and tool-call IDs; only the first valid response is accepted. Pending questions expire after five minutes and are cancelled with their agent turn. The tool rejects prompts for passwords, API keys, access tokens, and payment information. Interactive CLI chat uses terminal input, while non-interactive callers receive `interaction_unavailable`.
 | `ModelRoutingConfigTool` | `model_routing_config` | Model routing configuration |
 | `BackupTool` | `backup` | Backup management |
+
+`csv_process` supports `inspect`, `read`, `query`, and `write` operations. Reads and queries use workspace-relative paths, UTF-8 (optionally with a BOM), quoted fields, embedded newlines, configurable single-character delimiters, and pagination. `query` also supports column selection, multiple filters, and sorting. `write` accepts `headers` and array or object `rows`; writes remain inside the workspace and are subject to file and response size limits.
 
 ## Registration Mechanism
 

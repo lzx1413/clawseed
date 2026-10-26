@@ -125,6 +125,7 @@ use crate::cron_run::CronRunTool;
 use crate::cron_runs::CronRunsTool;
 #[cfg(not(feature = "android"))]
 use crate::cron_update::CronUpdateTool;
+use crate::csv_process::CsvProcessTool;
 use crate::file_edit::FileEditTool;
 use crate::file_read::FileReadTool;
 use crate::file_write::FileWriteTool;
@@ -199,6 +200,7 @@ pub fn all_tools_with_runtime(
         Box::new(BackgroundStatusTool::new(background_manager)),
         Box::new(CalculatorTool::new()),
         Box::new(ContentSearchTool::new()),
+        Box::new(CsvProcessTool::new()),
         Box::new(FileEditTool::new()),
         Box::new(FileReadTool::new()),
         Box::new(FileWriteTool::new()),
