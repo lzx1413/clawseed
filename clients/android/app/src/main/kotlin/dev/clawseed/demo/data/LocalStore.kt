@@ -185,6 +185,35 @@ class LocalStore(private val context: Context) {
         store.edit { prefs -> prefs[KEY_SPEECH_OUTPUT] = enabled }
     }
 
+    // --- Speech backend (system / mimo) ---
+    private val KEY_SPEECH_BACKEND = stringPreferencesKey("speech_backend")
+
+    val speechBackend: Flow<String> = store.data.map { it[KEY_SPEECH_BACKEND] ?: "system" }
+
+    suspend fun setSpeechBackend(backend: String) {
+        store.edit { prefs -> prefs[KEY_SPEECH_BACKEND] = backend }
+    }
+
+    private val KEY_SPEECH_MODEL = stringPreferencesKey("speech_model")
+    private val KEY_SPEECH_VOICE = stringPreferencesKey("speech_voice")
+    private val KEY_SPEECH_INSTRUCTIONS = stringPreferencesKey("speech_instructions")
+
+    val speechModel: Flow<String> = store.data.map { it[KEY_SPEECH_MODEL] ?: "mimo-v2.5-tts" }
+    val speechVoice: Flow<String> = store.data.map { it[KEY_SPEECH_VOICE] ?: "Chloe" }
+    val speechInstructions: Flow<String> = store.data.map { it[KEY_SPEECH_INSTRUCTIONS] ?: "" }
+
+    suspend fun setSpeechModel(model: String) {
+        store.edit { prefs -> prefs[KEY_SPEECH_MODEL] = model }
+    }
+
+    suspend fun setSpeechVoice(voice: String) {
+        store.edit { prefs -> prefs[KEY_SPEECH_VOICE] = voice }
+    }
+
+    suspend fun setSpeechInstructions(instructions: String) {
+        store.edit { prefs -> prefs[KEY_SPEECH_INSTRUCTIONS] = instructions }
+    }
+
     // --- Export/import all preferences (for data transfer) ---
     // Keys that contain sensitive data (API keys, tokens).
     private val SENSITIVE_KEYS = setOf("bearer_token", "provider_api_keys")

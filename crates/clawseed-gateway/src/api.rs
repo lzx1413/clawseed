@@ -21,10 +21,11 @@ mod sessions;
 mod skills;
 mod status;
 mod system;
+mod tts;
 
 pub use self::{
     attachments::*, config::*, cron::*, hooks::*, identity::*, integrations::*, memory::*,
-    providers::*, sessions::*, skills::*, status::*, system::*,
+    providers::*, sessions::*, skills::*, status::*, system::*, tts::*,
 };
 use config_secrets::{hydrate_config_for_save, mask_sensitive_fields};
 

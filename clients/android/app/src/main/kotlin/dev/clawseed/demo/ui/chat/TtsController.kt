@@ -2,14 +2,30 @@ package dev.clawseed.demo.ui.chat
 
 import android.content.Context
 import android.content.Intent
+import android.media.MediaPlayer
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import dev.clawseed.sdk.android.ClawSeedAndroid
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+
+enum class SpeechBackend { SYSTEM, MIMO }
 
 data class TtsEngineInfo(
     val packageName: String,
@@ -18,6 +34,32 @@ data class TtsEngineInfo(
 )
 
 enum class TtsTestStatus { IDLE, TESTING, SUCCESS, FAILURE }
+
+data class MiMoVoiceOption(
+    val id: String,
+    val displayName: String,
+    val description: String,
+)
+
+enum class MiMoTtsTestStatus { IDLE, TESTING, SUCCESS, FAILURE }
+
+data class MiMoTtsTestState(
+    val voiceId: String? = null,
+    val status: MiMoTtsTestStatus = MiMoTtsTestStatus.IDLE,
+    val errorMessage: String? = null,
+)
+
+/** Preset voices supported by the MiMo V2.5 TTS model. */
+val MIMO_VOICE_OPTIONS = listOf(
+    MiMoVoiceOption("冰糖", "冰糖", "中文 · 活泼少女"),
+    MiMoVoiceOption("茉莉", "茉莉", "中文 · 知性女声"),
+    MiMoVoiceOption("苏打", "苏打", "中文 · 阳光少年"),
+    MiMoVoiceOption("白桦", "白桦", "中文 · 成熟男声"),
+    MiMoVoiceOption("Mia", "Mia", "English · Lively girl"),
+    MiMoVoiceOption("Chloe", "Chloe", "English · Sweet dreamy"),
+    MiMoVoiceOption("Milo", "Milo", "English · Sunny boy"),
+    MiMoVoiceOption("Dean", "Dean", "English · Steady gentle"),
+)
 
 data class TtsTestState(
     val packageName: String? = null,
@@ -44,6 +86,21 @@ data class TtsTestState(
 class TtsController(context: Context) {
 
     private val appContext = context.applicationContext
+    private val cloudPlayer = MiMoTtsPlayer(appContext,
+        onStart = { id ->
+            _speakingMessageId.value = id
+            _isSpeaking.value = true
+        },
+        onDone = {
+            _isSpeaking.value = false
+            _speakingMessageId.value = null
+        },
+    )
+
+    @Volatile private var backend = SpeechBackend.SYSTEM
+    @Volatile private var mimoModel = "mimo-v2.5-tts"
+    @Volatile private var mimoVoice = "Chloe"
+    @Volatile private var mimoInstructions = ""
 
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: StateFlow<Boolean> = _isSpeaking.asStateFlow()
@@ -71,6 +128,18 @@ class TtsController(context: Context) {
 
     init {
         startInit(enginePackage = null)
+    }
+
+    fun setBackend(value: SpeechBackend) {
+        if (backend == value) return
+        backend = value
+        if (value == SpeechBackend.SYSTEM) cloudPlayer.stop()
+    }
+
+    fun setMiMoSettings(model: String, voice: String, instructions: String) {
+        mimoModel = model.ifBlank { "mimo-v2.5-tts" }
+        mimoVoice = voice.ifBlank { "Chloe" }
+        mimoInstructions = instructions
     }
 
     /** Returns installed TTS engine packages, common high-quality engines ordered first. */
@@ -182,6 +251,16 @@ class TtsController(context: Context) {
      * the UI can tie playback state back to a specific chat entry.
      */
     fun speak(text: String, messageId: String) {
+        if (backend == SpeechBackend.MIMO) {
+            cloudPlayer.speak(text, messageId, mimoModel, mimoVoice, mimoInstructions) { fallbackText, fallbackId ->
+                speakWithSystem(fallbackText, fallbackId)
+            }
+            return
+        }
+        speakWithSystem(text, messageId)
+    }
+
+    private fun speakWithSystem(text: String, messageId: String) {
         val engine = tts
         if (text.isBlank()) return
         if (!engineReady || engine == null) {
@@ -195,6 +274,7 @@ class TtsController(context: Context) {
 
     /** Stop any in-progress speech and clear playback state. */
     fun stop() {
+        cloudPlayer.stop()
         tts?.stop()
         _isSpeaking.value = false
         _speakingMessageId.value = null
@@ -202,6 +282,7 @@ class TtsController(context: Context) {
 
     /** Release the engine. Call from [androidx.lifecycle.ViewModel.onCleared]. */
     fun shutdown() {
+        cloudPlayer.shutdown()
         tts?.let {
             it.stop()
             it.shutdown()
@@ -252,6 +333,141 @@ class TtsController(context: Context) {
         )
         private const val TAG = "ClawSeedTts"
     }
+}
+
+/** MiMo cloud player. It requests short sentence-sized WAV segments and plays them in order. */
+private class MiMoTtsPlayer(
+    private val context: Context,
+    private val onStart: (String) -> Unit,
+    private val onDone: () -> Unit,
+) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var job: Job? = null
+    private var player: MediaPlayer? = null
+    private var currentFile: java.io.File? = null
+
+    fun speak(
+        text: String,
+        messageId: String,
+        model: String,
+        voice: String,
+        instructions: String,
+        fallback: (String, String) -> Unit,
+    ) {
+        stop()
+        if (text.isBlank()) return
+        job = scope.launch {
+            var started = false
+            try {
+                if (!ClawSeedAndroid.isInitialized) throw IllegalStateException("Gateway is not ready")
+                val chunks = speechChunks(text)
+                for (chunk in chunks) {
+                    ensureActive()
+                    val bytes = ClawSeedAndroid.gatewayClient().synthesizeTts(
+                        text = chunk,
+                        model = model,
+                        voice = voice,
+                        instructions = instructions,
+                    ).getOrElse { error ->
+                        if (!started) fallback(text, messageId)
+                        else Log.w(TAG, "MiMo TTS segment failed after playback started", error)
+                        return@launch
+                    }
+                    if (!started) {
+                        started = true
+                        onStart(messageId)
+                    }
+                    playWav(bytes)
+                }
+                if (started) onDone()
+            } catch (_: CancellationException) {
+                // stop() owns playback state for cancelled requests.
+            } catch (error: Exception) {
+                Log.w(TAG, "MiMo TTS playback failed", error)
+                if (!started) fallback(text, messageId) else onDone()
+            }
+        }
+    }
+
+    private suspend fun playWav(bytes: ByteArray) {
+        val file = withContext(Dispatchers.IO) {
+            java.io.File.createTempFile("clawseed-tts-", ".wav", context.cacheDir).also {
+                it.writeBytes(bytes)
+            }
+        }
+        currentFile = file
+        suspendCancellableCoroutine<Unit> { continuation ->
+            val media = MediaPlayer()
+            player = media
+            var released = false
+            fun release() {
+                if (released) return
+                released = true
+                runCatching { media.stop() }
+                media.release()
+                if (player === media) player = null
+                file.delete()
+                if (currentFile === file) currentFile = null
+            }
+            media.setOnPreparedListener { it.start() }
+            media.setOnCompletionListener {
+                release()
+                if (continuation.isActive) continuation.resume(Unit)
+            }
+            media.setOnErrorListener { _, what, extra ->
+                release()
+                if (continuation.isActive) continuation.resumeWithException(
+                    IllegalStateException("MediaPlayer error $what/$extra"),
+                )
+                true
+            }
+            continuation.invokeOnCancellation { release() }
+            try {
+                media.setDataSource(file.absolutePath)
+                media.prepareAsync()
+            } catch (error: Exception) {
+                release()
+                if (continuation.isActive) continuation.resumeWithException(error)
+            }
+        }
+    }
+
+    fun stop() {
+        job?.cancel()
+        job = null
+        player?.let { media ->
+            runCatching { media.stop() }
+            media.release()
+        }
+        player = null
+        currentFile?.delete()
+        currentFile = null
+        onDone()
+    }
+
+    fun shutdown() {
+        stop()
+        scope.coroutineContext.cancel()
+    }
+
+    private fun speechChunks(text: String): List<String> {
+        val normalized = text.replace(Regex("\\s+"), " ").trim()
+        if (normalized.length <= 180) return listOf(normalized)
+        val chunks = mutableListOf<String>()
+        var current = StringBuilder()
+        for (sentence in normalized.split(Regex("(?<=[。！？；.!?;])\\s*"))) {
+            if (sentence.isBlank()) continue
+            if (current.length + sentence.length > 180 && current.isNotEmpty()) {
+                chunks += current.toString().trim()
+                current = StringBuilder()
+            }
+            current.append(sentence)
+        }
+        if (current.isNotEmpty()) chunks += current.toString().trim()
+        return chunks.ifEmpty { listOf(normalized.take(8_000)) }
+    }
+
+    companion object { private const val TAG = "ClawSeedMiMoTts" }
 }
 
 /** Plays a short sample through one explicitly selected engine without changing chat playback. */
@@ -337,4 +553,110 @@ class TtsEngineTester(context: Context) {
     }
 
     fun shutdown() = stop()
+}
+
+/** Cloud test player for a selected MiMo preset voice. */
+class MiMoTtsTester(context: Context) {
+    private val appContext = context.applicationContext
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val _state = MutableStateFlow(MiMoTtsTestState())
+    val state: StateFlow<MiMoTtsTestState> = _state.asStateFlow()
+
+    private var job: Job? = null
+    private var player: MediaPlayer? = null
+    private var currentFile: java.io.File? = null
+
+    fun test(voiceId: String, model: String, instructions: String, text: String) {
+        stop()
+        _state.value = MiMoTtsTestState(voiceId, MiMoTtsTestStatus.TESTING)
+        job = scope.launch {
+            try {
+                if (!ClawSeedAndroid.isInitialized) {
+                    ClawSeedAndroid.awaitInit()
+                }
+                val bytes = ClawSeedAndroid.gatewayClient().synthesizeTts(
+                    text = text,
+                    model = model.ifBlank { "mimo-v2.5-tts" },
+                    voice = voiceId,
+                    instructions = instructions,
+                ).getOrThrow()
+                playWav(bytes)
+                _state.value = MiMoTtsTestState(voiceId, MiMoTtsTestStatus.SUCCESS)
+            } catch (_: CancellationException) {
+                // stop() owns the state for a cancelled test.
+            } catch (error: Exception) {
+                Log.w(TAG, "MiMo voice test failed", error)
+                _state.value = MiMoTtsTestState(
+                    voiceId = voiceId,
+                    status = MiMoTtsTestStatus.FAILURE,
+                    errorMessage = error.message ?: "unknown error",
+                )
+            }
+        }
+    }
+
+    private suspend fun playWav(bytes: ByteArray) {
+        val file = withContext(Dispatchers.IO) {
+            java.io.File.createTempFile("clawseed-mimo-test-", ".wav", appContext.cacheDir).also {
+                it.writeBytes(bytes)
+            }
+        }
+        currentFile = file
+        suspendCancellableCoroutine<Unit> { continuation ->
+            val media = MediaPlayer()
+            player = media
+            var released = false
+            fun release() {
+                if (released) return
+                released = true
+                runCatching { media.stop() }
+                media.release()
+                if (player === media) player = null
+                file.delete()
+                if (currentFile === file) currentFile = null
+            }
+            media.setOnPreparedListener { it.start() }
+            media.setOnCompletionListener {
+                release()
+                if (continuation.isActive) continuation.resume(Unit)
+            }
+            media.setOnErrorListener { _, what, extra ->
+                release()
+                if (continuation.isActive) continuation.resumeWithException(
+                    IllegalStateException("MediaPlayer error $what/$extra"),
+                )
+                true
+            }
+            continuation.invokeOnCancellation { release() }
+            try {
+                media.setDataSource(file.absolutePath)
+                media.prepareAsync()
+            } catch (error: Exception) {
+                release()
+                if (continuation.isActive) continuation.resumeWithException(error)
+            }
+        }
+    }
+
+    fun stop() {
+        job?.cancel()
+        job = null
+        player?.let { media ->
+            runCatching { media.stop() }
+            media.release()
+        }
+        player = null
+        currentFile?.delete()
+        currentFile = null
+        if (_state.value.status == MiMoTtsTestStatus.TESTING) {
+            _state.value = MiMoTtsTestState()
+        }
+    }
+
+    fun shutdown() {
+        stop()
+        scope.coroutineContext.cancel()
+    }
+
+    companion object { private const val TAG = "ClawSeedMiMoTest" }
 }

@@ -212,6 +212,16 @@
     <string name="settings_voice_enabled">Automatic reply reading</string>
     <string name="settings_voice_enabled_desc">Speak each new AI reply when streaming finishes</string>
     <string name="settings_voice_enabled_summary">Automatic reading: %1$s</string>
+    <string name="settings_voice_backend">Speech backend</string>
+    <string name="settings_voice_backend_system">System TTS</string>
+    <string name="settings_voice_backend_mimo">MiMo cloud</string>
+    <string name="settings_voice_backend_mimo_desc">Uses the API key saved for the mimo provider, synthesizes sentence-sized segments, and falls back to system TTS on failure.</string>
+    <string name="settings_voice_model">MiMo TTS model</string>
+    <string name="settings_voice_name">Voice name</string>
+    <string name="settings_voice_instructions">Speech instructions (optional)</string>
+    <string name="settings_voice_mimo_voices">MiMo voice presets</string>
+    <string name="settings_voice_mimo_voices_desc">Select a voice to generate a test clip directly through MiMo cloud TTS.</string>
+    <string name="settings_voice_mimo_test">Cloud test</string>
     <string name="settings_voice_on">On</string>
     <string name="settings_voice_off">Off</string>
     <string name="settings_voice_engines">Available speech engines</string>

@@ -42,6 +42,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -620,6 +621,18 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                 }
                 _uiState.value = _uiState.value.copy(speechOutputEnabled = enabled)
             }
+        }
+        viewModelScope.launch {
+            localStore.speechBackend.collect { backend ->
+                tts.setBackend(if (backend == "mimo") SpeechBackend.MIMO else SpeechBackend.SYSTEM)
+            }
+        }
+        viewModelScope.launch {
+            combine(localStore.speechModel, localStore.speechVoice, localStore.speechInstructions) {
+                    model, voice, instructions -> Triple(model, voice, instructions)
+                }.collect { (model, voice, instructions) ->
+                    tts.setMiMoSettings(model, voice, instructions)
+                }
         }
         viewModelScope.launch {
             tts.isSpeaking.collect { speaking ->

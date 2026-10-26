@@ -212,6 +212,16 @@
     <string name="settings_voice_enabled">自动朗读新回复</string>
     <string name="settings_voice_enabled_desc">AI 回复流式结束后自动朗读</string>
     <string name="settings_voice_enabled_summary">自动朗读：%1$s</string>
+    <string name="settings_voice_backend">语音后端</string>
+    <string name="settings_voice_backend_system">系统 TTS</string>
+    <string name="settings_voice_backend_mimo">MiMo 云端</string>
+    <string name="settings_voice_backend_mimo_desc">使用当前 mimo Provider 的 API Key，按句生成语音；失败时自动回退到系统 TTS。</string>
+    <string name="settings_voice_model">MiMo TTS 模型</string>
+    <string name="settings_voice_name">音色名称</string>
+    <string name="settings_voice_instructions">语气指令（可选）</string>
+    <string name="settings_voice_mimo_voices">MiMo 可用音色</string>
+    <string name="settings_voice_mimo_voices_desc">选择音色后可直接调用 MiMo 云端生成测试语音。</string>
+    <string name="settings_voice_mimo_test">云端测试</string>
     <string name="settings_voice_on">开启</string>
     <string name="settings_voice_off">关闭</string>
     <string name="settings_voice_engines">可用语音引擎</string>

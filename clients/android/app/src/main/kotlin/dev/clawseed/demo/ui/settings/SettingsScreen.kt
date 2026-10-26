@@ -92,6 +92,9 @@ import dev.clawseed.demo.ui.chat.TtsEngineInfo
 import dev.clawseed.demo.ui.chat.TtsEngineTester
 import dev.clawseed.demo.ui.chat.TtsTestState
 import dev.clawseed.demo.ui.chat.TtsTestStatus
+import dev.clawseed.demo.ui.chat.MiMoTtsTester
+import dev.clawseed.demo.ui.chat.MiMoTtsTestStatus
+import dev.clawseed.demo.ui.chat.MIMO_VOICE_OPTIONS
 import kotlinx.coroutines.launch
 
 @Composable
@@ -616,14 +619,23 @@ private fun UserModelCard(
 private fun VoiceSettingsCard(localStore: LocalStore) {
     val context = LocalContext.current
     val speechOutput by localStore.speechOutputEnabled.collectAsState(initial = false)
+    val speechBackend by localStore.speechBackend.collectAsState(initial = "system")
+    val speechModel by localStore.speechModel.collectAsState(initial = "mimo-v2.5-tts")
+    val speechVoice by localStore.speechVoice.collectAsState(initial = "Chloe")
+    val speechInstructions by localStore.speechInstructions.collectAsState(initial = "")
     val engines = remember(context) { TtsController.installedEngines(context) }
     val tester = remember(context) { TtsEngineTester(context) }
+    val mimoTester = remember(context) { MiMoTtsTester(context) }
     val testState by tester.state.collectAsState()
+    val mimoTestState by mimoTester.state.collectAsState()
     val testSample = stringResource(R.string.settings_voice_test_sample)
     val scope = rememberCoroutineScope()
 
     DisposableEffect(tester) {
-        onDispose { tester.shutdown() }
+        onDispose {
+            tester.shutdown()
+            mimoTester.shutdown()
+        }
     }
 
     Card(
@@ -663,25 +675,158 @@ private fun VoiceSettingsCard(localStore: LocalStore) {
             }
 
             Text(
-                stringResource(R.string.settings_voice_engines),
+                stringResource(R.string.settings_voice_backend),
                 style = MaterialTheme.typography.titleSmall,
             )
-            if (engines.isEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = speechBackend == "system",
+                    onClick = { scope.launch { localStore.setSpeechBackend("system") } },
+                    label = { Text(stringResource(R.string.settings_voice_backend_system)) },
+                )
+                FilterChip(
+                    selected = speechBackend == "mimo",
+                    onClick = { scope.launch { localStore.setSpeechBackend("mimo") } },
+                    label = { Text(stringResource(R.string.settings_voice_backend_mimo)) },
+                )
+            }
+            if (speechBackend == "mimo") {
                 Text(
-                    stringResource(R.string.settings_voice_no_engines),
+                    stringResource(R.string.settings_voice_backend_mimo_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            } else {
-                engines.forEach { engine ->
-                    VoiceEngineRow(
-                        engine = engine,
-                        testState = testState,
-                        onTest = { tester.test(engine, testSample) },
-                        onStop = tester::stop,
+                OutlinedTextField(
+                    value = speechModel,
+                    onValueChange = { value -> scope.launch { localStore.setSpeechModel(value) } },
+                    label = { Text(stringResource(R.string.settings_voice_model)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = speechVoice,
+                    onValueChange = { value -> scope.launch { localStore.setSpeechVoice(value) } },
+                    label = { Text(stringResource(R.string.settings_voice_name)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = speechInstructions,
+                    onValueChange = { value -> scope.launch { localStore.setSpeechInstructions(value) } },
+                    label = { Text(stringResource(R.string.settings_voice_instructions)) },
+                    minLines = 2,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Text(
+                    stringResource(R.string.settings_voice_mimo_voices),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    stringResource(R.string.settings_voice_mimo_voices_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                MIMO_VOICE_OPTIONS.forEach { voice ->
+                    MiMoVoiceRow(
+                        voiceId = voice.id,
+                        displayName = voice.displayName,
+                        description = voice.description,
+                        selected = speechVoice == voice.id,
+                        isTesting = mimoTestState.voiceId == voice.id &&
+                            mimoTestState.status == MiMoTtsTestStatus.TESTING,
+                        onSelect = {
+                            scope.launch { localStore.setSpeechVoice(voice.id) }
+                        },
+                        onTest = {
+                            mimoTester.test(voice.id, speechModel, speechInstructions, testSample)
+                        },
+                        onStop = mimoTester::stop,
                     )
+                    if (mimoTestState.voiceId == voice.id) {
+                        when (mimoTestState.status) {
+                            MiMoTtsTestStatus.TESTING -> Text(
+                                stringResource(R.string.settings_voice_testing),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            MiMoTtsTestStatus.SUCCESS -> Text(
+                                stringResource(R.string.settings_voice_test_success),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            MiMoTtsTestStatus.FAILURE -> Text(
+                                stringResource(
+                                    R.string.settings_voice_test_failed,
+                                    mimoTestState.errorMessage ?: "unknown",
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            MiMoTtsTestStatus.IDLE -> Unit
+                        }
+                    }
                 }
             }
+
+            if (speechBackend == "system") {
+                Text(
+                    stringResource(R.string.settings_voice_engines),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                if (engines.isEmpty()) {
+                    Text(
+                        stringResource(R.string.settings_voice_no_engines),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    engines.forEach { engine ->
+                        VoiceEngineRow(
+                            engine = engine,
+                            testState = testState,
+                            onTest = { tester.test(engine, testSample) },
+                            onStop = tester::stop,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiMoVoiceRow(
+    voiceId: String,
+    displayName: String,
+    description: String,
+    selected: Boolean,
+    isTesting: Boolean,
+    onSelect: () -> Unit,
+    onTest: () -> Unit,
+    onStop: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilterChip(
+            selected = selected,
+            onClick = onSelect,
+            label = { Text(displayName) },
+            modifier = Modifier.weight(1f),
+        )
+        Column(modifier = Modifier.weight(1.6f)) {
+            Text(description, style = MaterialTheme.typography.bodySmall)
+            Text(
+                voiceId,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        OutlinedButton(onClick = if (isTesting) onStop else onTest) {
+            Text(stringResource(if (isTesting) R.string.chat_stop_speaking else R.string.settings_voice_mimo_test))
         }
     }
 }

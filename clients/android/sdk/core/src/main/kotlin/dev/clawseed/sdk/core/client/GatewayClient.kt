@@ -545,6 +545,48 @@ class GatewayClient(
         }
     }
 
+    /** Synthesizes one MiMo TTS segment through the authenticated gateway. */
+    suspend fun synthesizeTts(
+        text: String,
+        model: String = "mimo-v2.5-tts",
+        voice: String = "Chloe",
+        instructions: String? = null,
+        format: String = "wav",
+    ): Result<ByteArray> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(text.isNotBlank()) { "TTS text must not be blank" }
+            val payload = kotlinx.serialization.json.buildJsonObject {
+                put("text", kotlinx.serialization.json.JsonPrimitive(text))
+                put("model", kotlinx.serialization.json.JsonPrimitive(model))
+                put("voice", kotlinx.serialization.json.JsonPrimitive(voice))
+                put("format", kotlinx.serialization.json.JsonPrimitive(format))
+                instructions?.takeIf { it.isNotBlank() }?.let {
+                    put("instructions", kotlinx.serialization.json.JsonPrimitive(it))
+                }
+            }
+            val request = Request.Builder()
+                .url("$baseUrl/api/tts")
+                .addAuth()
+                .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            val longClient = client.newBuilder()
+                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            longClient.newCall(request).execute().use { response ->
+                val body = response.body ?: throw Exception("TTS response is empty")
+                val bytes = body.bytes()
+                if (!response.isSuccessful) {
+                    val detail = bytes.toString(Charsets.UTF_8).take(300)
+                    throw Exception("HTTP ${response.code}: $detail")
+                }
+                require(bytes.isNotEmpty()) { "TTS response is empty" }
+                require(bytes.size <= 16 * 1024 * 1024) { "TTS response is too large" }
+                bytes
+            }
+        }
+    }
+
     /** Sends a message to the `/webhook` synchronous execution endpoint. */
     suspend fun webhook(
         message: String,

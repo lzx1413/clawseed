@@ -678,6 +678,7 @@ pub async fn run_gateway(
             "/api/provider/balance",
             post(api::handle_api_provider_balance),
         )
+        .route("/api/tts", post(api::handle_api_tts))
         .route("/api/personality", get(api::handle_api_personality_get))
         .route("/api/cron", get(api::handle_api_cron_list))
         .route("/api/cron", post(api::handle_api_cron_add))
