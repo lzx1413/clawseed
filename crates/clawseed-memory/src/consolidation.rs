@@ -14,7 +14,7 @@ use super::traits::{Memory, MemoryCategory};
 use clawseed_api::memory_traits::ConflictMode;
 use clawseed_api::provider::Provider;
 
-/// Importance score threshold above which a turn is promoted to Core memory.
+/// Importance score threshold at or above which a turn is promoted to Core memory.
 const CORE_PROMOTION_THRESHOLD: f64 = 0.8;
 
 /// Maximum character length for history entries and Core summaries.
@@ -184,7 +184,7 @@ mod tests {
         );
         assert!(
             score >= CORE_PROMOTION_THRESHOLD,
-            "High-signal content should exceed promotion threshold, got {score}"
+            "High-signal content should meet or exceed promotion threshold, got {score}"
         );
     }
 
