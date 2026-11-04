@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.PaddingValues
@@ -16,28 +17,33 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -69,13 +75,10 @@ import dev.clawseed.sdk.core.model.ConnectionState
 import dev.clawseed.demo.data.ChatEntry
 import dev.clawseed.demo.ui.chat.components.ChatBottomBar
 import dev.clawseed.demo.ui.chat.components.AskUserPrompt
+import dev.clawseed.demo.ui.chat.components.EmptyChatState
 import dev.clawseed.demo.ui.chat.components.MessageBubble
-import dev.clawseed.demo.ui.chat.components.SpeakerOffIcon
-import dev.clawseed.demo.ui.chat.components.SpeakerStopIcon
-import dev.clawseed.demo.ui.chat.components.SpeakerPlayIcon
 import dev.clawseed.demo.ui.persona.PersonaDot
-import dev.clawseed.demo.ui.persona.personaContainerColor
-import dev.clawseed.demo.ui.persona.personaContentColor
+import dev.clawseed.demo.ui.persona.personaAccentColor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -310,74 +313,131 @@ fun ChatScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (!uiState.currentPersona.isNullOrEmpty()) {
-                            val personaName = uiState.currentPersona!!
-                            val personaVisual = uiState.personaVisuals[personaName]
-                            AssistChip(
-                                onClick = { onOpenPersona(personaName) },
-                                label = { Text(personaName) },
-                                leadingIcon = {
-                                    PersonaDot(
-                                        personaName,
-                                        Modifier.size(20.dp),
-                                        showInitial = true,
-                                        avatar = personaVisual?.avatar,
-                                        color = personaVisual?.color,
-                                    )
-                                },
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = personaContainerColor(personaName, personaVisual?.color),
-                                    labelColor = personaContentColor(personaName, personaVisual?.color),
-                                ),
-                                modifier = Modifier.padding(end = 8.dp),
-                            )
-                        }
+            Box(
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                val floatingBorder = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
+                )
+                val hasPersona = !uiState.currentPersona.isNullOrEmpty()
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .height(56.dp)
+                        .padding(start = 60.dp)
+                        .widthIn(max = if (hasPersona) 180.dp else 240.dp),
+                    shape = RoundedCornerShape(percent = 50),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    tonalElevation = 2.dp,
+                    shadowElevation = 4.dp,
+                    border = floatingBorder,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .height(56.dp)
+                            .padding(horizontal = 18.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
                         Text(
                             text = uiState.sessionName ?: stringResource(R.string.chat_new_conversation),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        dismissInput()
-                        onToggleDrawer()
-                    }) {
+                }
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .size(52.dp)
+                        .clip(CircleShape),
+                    // Opaque button surface prevents the shared backdrop from
+                    // tinting the circle into a second inner shape.
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    tonalElevation = 2.dp,
+                    shadowElevation = 4.dp,
+                    border = floatingBorder,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable {
+                                dismissInput()
+                                onToggleDrawer()
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
                         Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.chat_menu))
                     }
-                },
-                actions = {
-                    if (uiState.isSpeaking) {
-                        IconButton(onClick = viewModel::stopSpeech) {
-                            Icon(
-                                imageVector = SpeakerStopIcon,
-                                contentDescription = stringResource(R.string.chat_stop_speaking),
+                }
+                if (!uiState.currentPersona.isNullOrEmpty()) {
+                    val personaName = uiState.currentPersona!!
+                    val personaVisual = uiState.personaVisuals[personaName]
+                    val personaColor = personaAccentColor(personaName, personaVisual?.color)
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 60.dp)
+                            .size(52.dp)
+                            .clip(CircleShape),
+                        shape = CircleShape,
+                        color = personaColor.copy(alpha = 0.98f),
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        tonalElevation = 2.dp,
+                        shadowElevation = 4.dp,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            personaColor.copy(alpha = 0.62f),
+                        ),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable { onOpenPersona(personaName) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            PersonaDot(
+                                personaName,
+                                Modifier.size(46.dp),
+                                showInitial = true,
+                                avatar = personaVisual?.avatar,
+                                color = personaVisual?.color,
                             )
                         }
                     }
-                    IconButton(onClick = {
-                        viewModel.toggleSpeechOutput()
-                    }) {
-                        Icon(
-                            imageVector = if (uiState.speechOutputEnabled) SpeakerPlayIcon else SpeakerOffIcon,
-                            contentDescription = stringResource(
-                                if (uiState.speechOutputEnabled) R.string.chat_disable_auto_speech
-                                else R.string.chat_enable_auto_speech,
-                            ),
-                        )
-                    }
-                    IconButton(onClick = {
-                        dismissInput()
-                        showPersonaSheet = true
-                    }) {
+                }
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .size(52.dp)
+                        .clip(CircleShape),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    tonalElevation = 2.dp,
+                    shadowElevation = 4.dp,
+                    border = floatingBorder,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable {
+                                dismissInput()
+                                showPersonaSheet = true
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
                         Icon(Icons.Default.Add, contentDescription = stringResource(R.string.chat_new_session))
                     }
-                },
-            )
+                }
+            }
         },
     ) { innerPadding ->
         Column(
@@ -397,6 +457,21 @@ fun ChatScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (
+                    sessionSwitchReady &&
+                    uiState.messages.isEmpty() &&
+                    uiState.thinkingContent.isEmpty() &&
+                    uiState.streamingContent.isEmpty()
+                ) {
+                    item(key = "__empty_chat_state__", contentType = "empty_chat_state") {
+                        EmptyChatState(
+                            modifier = Modifier.heightIn(min = 360.dp),
+                            onSuggestion = { prompt ->
+                                viewModel.sendMessage(prompt, uiState.currentSessionId)
+                            },
+                        )
+                    }
+                }
                 items(
                     items = uiState.messages,
                     key = { it.id },

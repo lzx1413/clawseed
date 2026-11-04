@@ -18,11 +18,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -38,10 +37,15 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import dev.clawseed.demo.R
+import dev.clawseed.demo.ui.components.GlassLevel
+import dev.clawseed.demo.ui.components.GlassSurface
+import androidx.compose.ui.platform.testTag
 
 @Composable
 fun ChatBottomBar(
@@ -63,6 +67,7 @@ fun ChatBottomBar(
     imageDrafts: @Composable () -> Unit = {},
 ) {
     var showAttachmentPicker by remember { mutableStateOf(false) }
+    var inputFocused by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
     val colorScheme = MaterialTheme.colorScheme
 
@@ -74,28 +79,23 @@ fun ChatBottomBar(
 
     Column(modifier = modifier) {
         imageDrafts()
-        OutlinedTextField(
-            value = input,
-            onValueChange = onInputChange,
+        GlassSurface(
             modifier = Modifier
-                .padding(16.dp)
-                .heightIn(max = 120.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
                 .fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = colorScheme.primary,
-                unfocusedBorderColor = colorScheme.outline,
-                focusedContainerColor = colorScheme.surfaceContainerLow,
-                unfocusedContainerColor = colorScheme.surfaceContainerLow,
-                cursorColor = colorScheme.primary,
-            ),
-            placeholder = {
-                Text(
-                    stringResource(R.string.chat_input_placeholder),
-                    color = colorScheme.onSurfaceVariant,
-                )
-            },
-            leadingIcon = if (onPickImages != null || onPickFiles != null) {
-                {
+            level = GlassLevel.Elevated,
+            shape = RoundedCornerShape(percent = 50),
+            interactive = inputFocused,
+            shadowElevation = 4.dp,
+        ) {
+            Row(
+                modifier = Modifier
+                    .heightIn(min = 56.dp, max = 136.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (onPickImages != null || onPickFiles != null) {
                     IconButton(
                         onClick = {
                             keyboardController?.hide()
@@ -110,11 +110,45 @@ fun ChatBottomBar(
                         )
                     }
                 }
-            } else null,
-            trailingIcon = {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp, max = 128.dp)
+                        .padding(horizontal = 4.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    BasicTextField(
+                        value = input,
+                        onValueChange = onInputChange,
+                        modifier = Modifier
+                            .testTag("chat_input")
+                            .fillMaxWidth()
+                            .onFocusChanged { inputFocused = it.isFocused },
+                        textStyle = MaterialTheme.typography.bodyLarge.merge(
+                            TextStyle(color = colorScheme.onSurface),
+                        ),
+                        cursorBrush = SolidColor(colorScheme.primary),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                        maxLines = 4,
+                        decorationBox = { innerTextField ->
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                if (input.isEmpty()) {
+                                    Text(
+                                        stringResource(R.string.chat_input_placeholder),
+                                        color = colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        },
+                    )
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(end = 7.dp),
                     horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
                 ) {
                     if (isLoading) {
@@ -123,20 +157,19 @@ fun ChatBottomBar(
                             onClick = onStop,
                             contentDescription = stringResource(R.string.chat_stop_generating),
                             isPulsing = true,
+                            testTag = "chat_stop",
                         )
                     } else if ((input.isNotBlank() || hasImages) && canSend) {
                         ComposerCircleButton(
                             icon = SendIcon,
                             onClick = { submitQuestion() },
                             contentDescription = stringResource(R.string.chat_send),
+                            testTag = "chat_send",
                         )
                     }
                 }
-            },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
-            maxLines = 4,
-            shape = RoundedCornerShape(28.dp),
-        )
+            }
+        }
 
     }
     if (showAttachmentPicker) {
@@ -161,6 +194,7 @@ private fun ComposerCircleButton(
     contentDescription: String,
     modifier: Modifier = Modifier,
     isPulsing: Boolean = false,
+    testTag: String? = null,
 ) {
     val pulseModifier = if (isPulsing) {
         val infiniteTransition = rememberInfiniteTransition()
@@ -191,9 +225,10 @@ private fun ComposerCircleButton(
 
     Box(
         modifier = modifier
-            .size(42.dp)
+            .size(48.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primary, shape = CircleShape)
+            .then(testTag?.let { Modifier.testTag(it) } ?: Modifier)
             .clickable { onClick() },
         contentAlignment = Alignment.Center,
     ) {
