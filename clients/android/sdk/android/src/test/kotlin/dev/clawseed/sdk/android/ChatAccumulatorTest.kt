@@ -171,6 +171,43 @@ class ChatAccumulatorTest {
     }
 
     @Test
+    fun thinkingAndToolEventsKeepTheirArrivalOrder() = runTest {
+        val session = FakeSession()
+        val accumulator = ChatAccumulator(session)
+        accumulator.startIn(backgroundScope)
+        runCurrent()
+
+        session.emit(ChatEvent.ThinkingChunk("before tool"))
+        session.emit(
+            ChatEvent.ToolCallStarted(
+                id = "call-1",
+                name = "lookup",
+                args = kotlinx.serialization.json.buildJsonObject {},
+            ),
+        )
+        session.emit(ChatEvent.ToolCallCompleted("call-1", "lookup", "result"))
+        session.emit(ChatEvent.ThinkingChunk("after tool"))
+        session.emit(ChatEvent.Done("answer"))
+        runCurrent()
+
+        val entries = accumulator.messages.value
+        assertEquals(
+            listOf(
+                AccumulatedMessage.Thinking::class,
+                AccumulatedMessage.ToolCall::class,
+                AccumulatedMessage.ToolResult::class,
+                AccumulatedMessage.Thinking::class,
+                AccumulatedMessage.Assistant::class,
+            ),
+            entries.map { it::class },
+        )
+        assertEquals(
+            listOf("before tool", "after tool"),
+            entries.filterIsInstance<AccumulatedMessage.Thinking>().map { it.content },
+        )
+    }
+
+    @Test
     fun stoppingCollectionCancelsPendingPublicationsAndReleasesSubscriber() = runTest {
         val session = FakeSession()
         val accumulator = ChatAccumulator(session)

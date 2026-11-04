@@ -33,6 +33,7 @@ import dev.clawseed.sdk.core.model.ConnectionState
 import dev.clawseed.sdk.core.model.ChatEvent
 import dev.clawseed.sdk.core.model.PersonaInfo
 import dev.clawseed.sdk.core.model.SessionInfo
+import dev.clawseed.sdk.core.model.SessionMessage
 import dev.clawseed.sdk.core.model.ToolPresentation
 import dev.clawseed.sdk.core.model.parseToolPresentation
 import dev.clawseed.sdk.core.tool.ToolResult
@@ -55,6 +56,11 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.contentOrNull
 import java.util.Locale
 
 /**
@@ -256,7 +262,7 @@ internal data class SessionSlot(
         }
 
         // Group consecutive ToolCallInfo items into ChatEntry.ToolInvocations
-        val entries = groupToolCalls(intermediate)
+        val entries = collapseCompletedTurnActivities(groupToolCalls(intermediate))
         return Pair(entries, errors)
     }
 
@@ -295,6 +301,56 @@ internal data class SessionSlot(
         return result
     }
 
+    /**
+     * Keeps completed-turn activity compact while preserving the original
+     * thinking/tool ordering for expansion. An active turn has no final
+     * assistant entry yet, so its nodes remain individually visible.
+     */
+    private fun collapseCompletedTurnActivities(entries: List<ChatEntry>): List<ChatEntry> {
+        val result = mutableListOf<ChatEntry>()
+        val activities = mutableListOf<ChatEntry>()
+
+        fun flushActivities() {
+            if (activities.isEmpty()) return
+            result += activities
+            activities.clear()
+        }
+
+        fun collapseActivitiesBefore(assistant: ChatEntry.AssistantMessage) {
+            if (activities.isEmpty()) return
+            val toolCount = activities
+                .filterIsInstance<ChatEntry.ToolInvocations>()
+                .sumOf { it.invocations.size }
+            result += ChatEntry.TurnActivity(
+                id = "turn-activity-${assistant.id}",
+                timestamp = activities.first().timestamp,
+                activities = activities.toList(),
+                toolCount = toolCount,
+            )
+            activities.clear()
+        }
+
+        for (entry in entries) {
+            when (entry) {
+                is ChatEntry.UserMessage -> {
+                    flushActivities()
+                    result += entry
+                }
+                is ChatEntry.Thinking, is ChatEntry.ToolInvocations -> activities += entry
+                is ChatEntry.AssistantMessage -> {
+                    if (!entry.isStreaming) collapseActivitiesBefore(entry) else flushActivities()
+                    result += entry
+                }
+                else -> {
+                    flushActivities()
+                    result += entry
+                }
+            }
+        }
+        flushActivities()
+        return result
+    }
+
 private fun toolGroupId(startIndex: Int, tools: List<ToolCallInfo>): String {
     val suffix = tools
         .mapIndexed { index, tool ->
@@ -304,6 +360,208 @@ private fun toolGroupId(startIndex: Int, tools: List<ToolCallInfo>): String {
         }
         .joinToString("-") { it.hashCode().toUInt().toString(16) }
     return "tools-${startIndex.coerceAtLeast(0)}-$suffix"
+}
+
+private fun jsonText(value: JsonElement?): String? = when (value) {
+    is JsonPrimitive -> value.contentOrNull
+    null -> null
+    else -> value.toString()
+}
+
+private fun jsonObjectOrNull(content: String?): JsonObject? {
+    val trimmed = content?.trim().orEmpty()
+    if (trimmed.isEmpty() || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) return null
+    return runCatching { Json.parseToJsonElement(trimmed).jsonObject }.getOrNull()
+}
+
+private fun toolCallInfoFromJson(value: JsonElement): ToolCallInfo? {
+    val obj = value as? JsonObject ?: return null
+    val function = obj["function"] as? JsonObject
+    val name = jsonText(obj["name"] ?: function?.get("name")).orEmpty()
+    if (name.isBlank()) return null
+    val args = jsonText(
+        obj["arguments"] ?: obj["args"] ?: function?.get("arguments") ?: function?.get("args"),
+    ).orEmpty()
+    return ToolCallInfo(
+        toolCallId = jsonText(obj["id"] ?: obj["tool_call_id"]).orEmpty(),
+        toolName = name,
+        toolArgs = args,
+    )
+}
+
+private fun toolResultInfoFromJson(value: JsonElement): ToolCallInfo? {
+    val obj = value as? JsonObject ?: return null
+    val output = jsonText(obj["content"] ?: obj["output"] ?: obj["result"]).orEmpty()
+    return ToolCallInfo(
+        toolCallId = jsonText(obj["tool_call_id"] ?: obj["id"]).orEmpty(),
+        toolName = jsonText(obj["name"] ?: obj["tool_name"]).orEmpty(),
+        toolArgs = "",
+        toolResult = output,
+        toolSuccess = obj["success"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: true,
+    )
+}
+
+private fun appendStructuredAssistantPayload(
+    intermediate: MutableList<Any>,
+    payload: JsonObject,
+    idPrefix: String,
+    timestamp: Long,
+) {
+    val reasoning = jsonText(payload["reasoning_content"] ?: payload["reasoning"])
+    if (!reasoning.isNullOrEmpty()) {
+        intermediate += ChatEntry.Thinking("$idPrefix-think", timestamp, reasoning)
+    }
+    (payload["tool_calls"] as? JsonArray)?.forEach { call ->
+        toolCallInfoFromJson(call)?.let { intermediate += it }
+    }
+    val text = jsonText(payload["text"] ?: payload["content"]).orEmpty()
+    if (text.isNotEmpty()) {
+        intermediate += ChatEntry.AssistantMessage("$idPrefix-assistant", timestamp, text)
+    }
+}
+
+private fun appendPersistedTimeline(
+    intermediate: MutableList<Any>,
+    timeline: JsonElement,
+    idPrefix: String,
+    timestamp: Long,
+) {
+    val events = when (timeline) {
+        is JsonArray -> timeline
+        is JsonObject -> timeline["events"] as? JsonArray
+        else -> null
+    } ?: return
+    events.forEachIndexed { index, event ->
+        val obj = event as? JsonObject ?: return@forEachIndexed
+        when (jsonText(obj["kind"])) {
+            "thinking" -> jsonText(obj["content"])?.takeIf { it.isNotEmpty() }?.let {
+                intermediate += ChatEntry.Thinking("$idPrefix-think-$index", timestamp, it)
+            }
+            "tool_call" -> {
+                val name = jsonText(obj["name"]).orEmpty()
+                if (name.isNotEmpty()) {
+                    intermediate += ToolCallInfo(
+                        toolCallId = jsonText(obj["id"]).orEmpty(),
+                        toolName = name,
+                        toolArgs = jsonText(obj["args"] ?: obj["arguments"]).orEmpty(),
+                    )
+                }
+            }
+            "tool_result" -> intermediate += ToolCallInfo(
+                toolCallId = jsonText(obj["id"] ?: obj["tool_call_id"]).orEmpty(),
+                toolName = jsonText(obj["name"]).orEmpty(),
+                toolArgs = "",
+                toolResult = jsonText(obj["output"] ?: obj["content"]).orEmpty(),
+                toolSuccess = true,
+            )
+        }
+    }
+}
+
+private fun mergePersistedToolResults(items: List<Any>): List<Any> {
+    val resultById = items
+        .filterIsInstance<ToolCallInfo>()
+        .filter { it.toolResult != null }
+        .associateBy { it.toolCallId }
+    if (resultById.isEmpty()) return items
+
+    val firstCallIndex = items
+        .mapIndexedNotNull { index, item ->
+            (item as? ToolCallInfo)?.takeIf { it.toolResult == null }?.toolCallId?.let { it to index }
+        }
+        .toMap()
+    val callIds = firstCallIndex.keys
+    return items.mapIndexedNotNull { index, item ->
+        if (item is ToolCallInfo && item.toolResult != null && item.toolCallId in callIds && firstCallIndex[item.toolCallId] != index) {
+            null
+        } else if (item !is ToolCallInfo || item.toolResult != null || item.toolCallId !in callIds) {
+            item
+        } else {
+            resultById[item.toolCallId]?.let { result ->
+                item.copy(toolResult = result.toolResult, toolSuccess = result.toolSuccess)
+            } ?: item
+        }
+    }
+}
+
+/** Converts both structured history records and legacy role/content records into the chat timeline. */
+internal fun mapPersistedSessionMessages(messages: List<SessionMessage>): List<ChatEntry> {
+    val intermediate = mutableListOf<Any>()
+    for ((idx, msg) in messages.withIndex()) {
+        val timestamp = System.currentTimeMillis()
+        when (msg.type) {
+            "chat" -> when (msg.role) {
+                "user" -> intermediate += ChatEntry.UserMessage(
+                    id = "hist-$idx",
+                    timestamp = timestamp,
+                    content = stripEnrichmentPrefixes(msg.content.orEmpty()),
+                    attachments = msg.attachments,
+                    files = msg.files,
+                )
+                "assistant" -> {
+                    val persistedTimeline = msg.timeline
+                    if (persistedTimeline != null) {
+                        appendPersistedTimeline(intermediate, persistedTimeline, "hist-$idx", timestamp)
+                        intermediate += ChatEntry.AssistantMessage(
+                            id = "hist-$idx",
+                            timestamp = timestamp,
+                            content = msg.content.orEmpty(),
+                            presentation = parseToolPresentation(msg.presentation),
+                            metrics = msg.metrics,
+                        )
+                        continue
+                    }
+                    val payload = jsonObjectOrNull(msg.content)
+                    val hasStructuredActivity = payload != null &&
+                        (payload.containsKey("tool_calls") || payload.containsKey("reasoning_content") || payload.containsKey("reasoning"))
+                    val legacyToolName = msg.toolName
+                    if (!hasStructuredActivity && legacyToolName != null) {
+                        intermediate += ToolCallInfo(
+                            toolCallId = "legacy-$idx",
+                            toolName = legacyToolName,
+                            toolArgs = msg.toolArgs.orEmpty(),
+                            toolResult = msg.toolResult,
+                            toolSuccess = msg.toolResult?.let { msg.success ?: true },
+                        )
+                    }
+                    if (hasStructuredActivity) {
+                        appendStructuredAssistantPayload(intermediate, checkNotNull(payload), "hist-$idx", timestamp)
+                    } else {
+                        intermediate += ChatEntry.AssistantMessage(
+                            id = "hist-$idx",
+                            timestamp = timestamp,
+                            content = msg.content.orEmpty(),
+                            presentation = parseToolPresentation(msg.presentation),
+                            metrics = msg.metrics,
+                        )
+                    }
+                }
+                "tool" -> {
+                    jsonObjectOrNull(msg.content)?.let { payload ->
+                        toolResultInfoFromJson(payload)?.let { intermediate += it }
+                    }
+                }
+            }
+            "assistant_tool_calls" -> {
+                val payload = (msg.data as? JsonObject) ?: jsonObjectOrNull(msg.content)
+                if (payload != null) appendStructuredAssistantPayload(intermediate, payload, "hist-$idx", timestamp)
+            }
+            "tool_results" -> {
+                val values = (msg.data as? kotlinx.serialization.json.JsonArray)
+                    ?: runCatching { Json.parseToJsonElement(msg.content.orEmpty()).jsonArray }.getOrNull()
+                values?.forEach { value -> toolResultInfoFromJson(value)?.let { intermediate += it } }
+            }
+            else -> {
+                // Older gateways omitted the type or used an unknown type while
+                // retaining the role/content payload.
+                when (msg.role) {
+                    "user" -> intermediate += ChatEntry.UserMessage("hist-$idx", timestamp, stripEnrichmentPrefixes(msg.content.orEmpty()), msg.attachments, msg.files)
+                    "assistant" -> intermediate += ChatEntry.AssistantMessage("hist-$idx", timestamp, msg.content.orEmpty(), presentation = parseToolPresentation(msg.presentation), metrics = msg.metrics)
+                }
+            }
+        }
+    }
+    return collapseCompletedTurnActivities(groupToolCalls(mergePersistedToolResults(intermediate)))
 }
 
 class ChatViewModel(application: Application, private val savedStateHandle: SavedStateHandle) : AndroidViewModel(application) {
@@ -1048,107 +1306,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                 fileStore.load()
                 fileStore.reconcile(ChatImageDrafts.key(session.gateway, sessionId), msgs.flatMap { it.files }.map { it.id }.toSet())
 
-                // Pass 1: Collect reasoning_content per turn (indexed by user message position)
-                val turnThinkingMap = mutableMapOf<Int, String>()
-                var currentTurnReasoning = mutableListOf<String>()
-                var currentTurnStart = -1
-
-                for ((idx, msg) in msgs.withIndex()) {
-                    if (msg.role == "user" && msg.type == "chat") {
-                        // Save previous turn's accumulated reasoning
-                        if (currentTurnReasoning.isNotEmpty() && currentTurnStart >= 0) {
-                            turnThinkingMap[currentTurnStart] = currentTurnReasoning.joinToString("\n\n")
-                        }
-                        currentTurnStart = idx
-                        currentTurnReasoning = mutableListOf()
-                    }
-                    if (msg.type == "assistant_tool_calls") {
-                        val reasoning = msg.data?.jsonObject
-                            ?.get("reasoning_content")?.jsonPrimitive?.content
-                        if (!reasoning.isNullOrEmpty()) {
-                            currentTurnReasoning.add(reasoning)
-                        }
-                    }
-                }
-                // Flush last turn's reasoning
-                if (currentTurnReasoning.isNotEmpty() && currentTurnStart >= 0) {
-                    turnThinkingMap[currentTurnStart] = currentTurnReasoning.joinToString("\n\n")
-                }
-
-                // Pass 2: Build intermediate list, inserting Thinking right after UserMessage
-                val intermediate = mutableListOf<Any>()
-
-                for ((idx, msg) in msgs.withIndex()) {
-                    when (msg.type) {
-                        "chat" -> when (msg.role) {
-                            "user" -> {
-                                intermediate.add(ChatEntry.UserMessage(
-                                    id = "hist-$idx",
-                                    timestamp = System.currentTimeMillis(),
-                                    content = stripEnrichmentPrefixes(msg.content ?: ""),
-                                    attachments = msg.attachments,
-                        files = msg.files,
-                                ))
-                                // Insert consolidated Thinking right after UserMessage
-                                turnThinkingMap[idx]?.let { reasoning ->
-                                    intermediate.add(ChatEntry.Thinking(
-                                        id = "hist-think-$idx",
-                                        timestamp = System.currentTimeMillis(),
-                                        content = reasoning,
-                                    ))
-                                }
-                            }
-                            "assistant" -> intermediate.add(ChatEntry.AssistantMessage(
-                                id = "hist-$idx",
-                                timestamp = System.currentTimeMillis(),
-                                content = msg.content ?: "",
-                                presentation = parseToolPresentation(msg.presentation),
-                                metrics = msg.metrics,
-                            ))
-                            else -> {}
-                        }
-                        "assistant_tool_calls" -> {
-                            val data = msg.data?.jsonObject
-                            val toolCalls = data?.get("tool_calls")?.jsonArray
-                            if (toolCalls != null) {
-                                for (tc in toolCalls) {
-                                    val tcObj = tc.jsonObject
-                                    intermediate.add(ToolCallInfo(
-                                        toolCallId = tcObj["id"]?.jsonPrimitive?.content ?: "",
-                                        toolName = tcObj["name"]?.jsonPrimitive?.content ?: "",
-                                        toolArgs = tcObj["arguments"]?.jsonPrimitive?.content ?: "",
-                                    ))
-                                }
-                            }
-                            val text = data?.get("text")?.jsonPrimitive?.content ?: msg.content ?: ""
-                            if (text.isNotEmpty()) {
-                                intermediate.add(ChatEntry.AssistantMessage(
-                                    id = "hist-assist-$idx",
-                                    timestamp = System.currentTimeMillis(),
-                                    content = text,
-                                ))
-                            }
-                        }
-                        "tool_results" -> {
-                            val results = msg.data?.jsonArray
-                            if (results != null) {
-                                for (result in results) {
-                                    val resultObj = result.jsonObject
-                                    intermediate.add(ToolCallInfo(
-                                        toolCallId = resultObj["tool_call_id"]?.jsonPrimitive?.content ?: "",
-                                        toolName = resultObj["name"]?.jsonPrimitive?.content ?: "",
-                                        toolArgs = "",
-                                        toolResult = resultObj["content"]?.jsonPrimitive?.content ?: "",
-                                        toolSuccess = true,
-                                    ))
-                                }
-                            }
-                        }
-                        else -> {}
-                    }
-                }
-
-                groupToolCalls(intermediate)
+                mapPersistedSessionMessages(msgs)
             }.getOrThrow()
         }
     }

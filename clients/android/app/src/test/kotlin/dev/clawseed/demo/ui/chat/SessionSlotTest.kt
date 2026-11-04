@@ -8,11 +8,13 @@ import dev.clawseed.sdk.core.client.GatewayClient
 import dev.clawseed.sdk.core.model.ChatEvent
 import dev.clawseed.sdk.core.model.ConnectionState
 import dev.clawseed.sdk.core.model.SessionInfo
+import dev.clawseed.sdk.core.model.SessionMessage
 import dev.clawseed.sdk.core.tool.ToolRegistry
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -38,6 +40,43 @@ class SessionSlotTest {
         assertEquals(5, restored.size)
     }
 
+    @Test fun interleavedThinkingAndToolsRemainInTimelineOrder() = runTest {
+        val session = FakeSession()
+        val acc = ChatAccumulator(session).also { it.startIn(backgroundScope) }
+        runCurrent()
+        val slot = SessionSlot(session, acc)
+
+        slot.sendMessage("question")
+        session.events.emit(ChatEvent.ThinkingChunk("before tool"))
+        session.events.emit(
+            ChatEvent.ToolCallStarted(
+                id = "call-1",
+                name = "lookup",
+                args = kotlinx.serialization.json.buildJsonObject {},
+            ),
+        )
+        session.events.emit(ChatEvent.ToolCallCompleted("call-1", "lookup", "result"))
+        session.events.emit(ChatEvent.ThinkingChunk("after tool"))
+        session.events.emit(ChatEvent.Done("answer"))
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                ChatEntry.UserMessage::class,
+                ChatEntry.TurnActivity::class,
+                ChatEntry.AssistantMessage::class,
+            ),
+            slot.messages().map { it::class },
+        )
+        val activity = slot.messages()[1] as ChatEntry.TurnActivity
+        assertEquals(1, activity.toolCount)
+        assertEquals(
+            listOf(ChatEntry.Thinking::class, ChatEntry.ToolInvocations::class, ChatEntry.Thinking::class),
+            activity.activities.map { it::class },
+        )
+        assertEquals("result", (activity.activities[1] as ChatEntry.ToolInvocations).invocations.single().toolResult)
+    }
+
     @Test fun regeneratingLoadedHistoryReplacesOnlyTheLastReply() = runTest {
         val session = FakeSession()
         val acc = ChatAccumulator(session).also { it.startIn(backgroundScope) }
@@ -49,6 +88,66 @@ class SessionSlotTest {
         runCurrent()
         assertEquals(2, slot.messages().size)
         assertEquals("replacement", (slot.messages().last() as ChatEntry.AssistantMessage).content)
+    }
+
+    @Test fun completedThinkingWithoutToolsStillCollapsesWithZeroToolCount() = runTest {
+        val session = FakeSession()
+        val acc = ChatAccumulator(session).also { it.startIn(backgroundScope) }
+        runCurrent()
+        val slot = SessionSlot(session, acc)
+
+        slot.sendMessage("question")
+        session.events.emit(ChatEvent.ThinkingChunk("thinking"))
+        session.events.emit(ChatEvent.Done("answer"))
+        runCurrent()
+
+        val activity = slot.messages().filterIsInstance<ChatEntry.TurnActivity>().single()
+        assertEquals(0, activity.toolCount)
+        assertEquals("thinking", (activity.activities.single() as ChatEntry.Thinking).content)
+    }
+
+    @Test fun legacyStructuredAssistantContentRestoresThinkingAndTools() {
+        val messages = listOf(
+            SessionMessage(role = "user", content = "question"),
+            SessionMessage(
+                role = "assistant",
+                content = """{"tool_calls":[{"id":"call-1","name":"lookup","arguments":"{\"q\":\"x\"}"}],"reasoning_content":"thinking"}""",
+            ),
+            SessionMessage(
+                role = "tool",
+                content = """{"tool_call_id":"call-1","name":"lookup","content":"result"}""",
+            ),
+            SessionMessage(role = "assistant", content = "answer"),
+        )
+
+        val entries = mapPersistedSessionMessages(messages)
+        assertEquals(listOf(ChatEntry.UserMessage::class, ChatEntry.TurnActivity::class, ChatEntry.AssistantMessage::class), entries.map { it::class })
+        val activity = entries[1] as ChatEntry.TurnActivity
+        assertEquals(1, activity.toolCount)
+        assertEquals(ChatEntry.Thinking::class, activity.activities.first()::class)
+        val invocation = activity.activities.filterIsInstance<ChatEntry.ToolInvocations>().single().invocations.single()
+        assertEquals("lookup", invocation.toolName)
+        assertEquals("{\"q\":\"x\"}", invocation.toolArgs)
+        assertEquals("result", invocation.toolResult)
+    }
+
+    @Test fun persistedTimelineRestoresActivitiesBeforeAssistant() {
+        val entries = mapPersistedSessionMessages(
+            listOf(
+                SessionMessage(role = "user", content = "question"),
+                SessionMessage(
+                    role = "assistant",
+                    content = "answer",
+                    timeline = Json.parseToJsonElement(
+                        """{"version":1,"events":[{"kind":"thinking","content":"think"},{"kind":"tool_call","id":"call-1","name":"lookup","args":"{}"},{"kind":"tool_result","id":"call-1","name":"lookup","output":"result"}]}""",
+                    ),
+                ),
+            ),
+        )
+        val activity = entries[1] as ChatEntry.TurnActivity
+        assertEquals(1, activity.toolCount)
+        assertEquals("think", (activity.activities.first() as ChatEntry.Thinking).content)
+        assertEquals("result", (activity.activities[1] as ChatEntry.ToolInvocations).invocations.single().toolResult)
     }
 
     @Test fun automaticSendRejectsThePreviousSessionAndWaitsForAnIdleTurn() {

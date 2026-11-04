@@ -16,6 +16,8 @@ pub struct PersistedMessage {
     pub files: Vec<clawseed_api::file_attachment::FileAttachment>,
     pub presentation: Option<ToolPresentation>,
     pub metrics: Option<clawseed_api::provider::ResponseMetrics>,
+    /// UI-only thinking/tool timeline for the completed assistant turn.
+    pub timeline: Option<serde_json::Value>,
 }
 
 /// Metadata for a persisted session.
@@ -112,6 +114,7 @@ pub trait SessionBackend: Send + Sync + 'static {
                 files: message.files,
                 presentation: None,
                 metrics: None,
+                timeline: None,
             })
             .collect()
     }
@@ -142,6 +145,15 @@ pub trait SessionBackend: Send + Sync + 'static {
         &self,
         _session_key: &str,
         _metrics: &clawseed_api::provider::ResponseMetrics,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    /// Store the UI-only thinking/tool timeline for the last assistant message.
+    fn set_last_assistant_timeline(
+        &self,
+        _session_key: &str,
+        _timeline: &serde_json::Value,
     ) -> anyhow::Result<()> {
         Ok(())
     }

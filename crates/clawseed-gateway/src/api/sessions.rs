@@ -89,6 +89,7 @@ pub async fn handle_api_session_messages(
                 "metrics": m.metrics,
                 "attachments": m.attachments,
                 "files": m.files,
+                "timeline": m.timeline,
             })
         })
         .collect();

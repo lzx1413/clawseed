@@ -96,6 +96,11 @@ impl SqliteSessionBackend {
                 presentation_json TEXT NOT NULL,
                 FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS message_timelines (
+                message_id      INTEGER PRIMARY KEY,
+                timeline_json   TEXT NOT NULL,
+                FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+            );
 
             -- Request-only compacted context. The original messages remain in
             -- `messages` so the UI and exports retain the complete transcript.
@@ -323,10 +328,11 @@ impl SessionBackend for SqliteSessionBackend {
     fn load_with_presentations(&self, session_key: &str) -> Vec<PersistedMessage> {
         let conn = self.conn.lock();
         let mut stmt = match conn.prepare(
-            "SELECT m.role, m.content, p.presentation_json, m.attachments_json, stats.metrics_json, m.files_json
+            "SELECT m.role, m.content, p.presentation_json, m.attachments_json, stats.metrics_json, m.files_json, tl.timeline_json
              FROM messages m
              LEFT JOIN message_presentations p ON p.message_id = m.id
              LEFT JOIN message_metrics stats ON stats.message_id = m.id
+             LEFT JOIN message_timelines tl ON tl.message_id = m.id
              WHERE m.session_key = ?1
              ORDER BY m.id",
         ) {
@@ -341,13 +347,14 @@ impl SessionBackend for SqliteSessionBackend {
                 decode_attachments(row.get(3)?, 3)?,
                 row.get::<_, Option<String>>(4)?,
                 decode_files(row.get(5)?, 5)?,
+                row.get::<_, Option<String>>(6)?,
             ))
         }) else {
             return Vec::new();
         };
 
         rows.filter_map(|row| {
-            let (role, content, presentation_json, attachments, metrics_json, files) = row.ok()?;
+            let (role, content, presentation_json, attachments, metrics_json, files, timeline_json) = row.ok()?;
             let presentation = presentation_json
                 .as_deref()
                 .and_then(|json| serde_json::from_str::<ToolPresentation>(json).ok());
@@ -358,6 +365,9 @@ impl SessionBackend for SqliteSessionBackend {
                 files,
                 presentation,
                 metrics: metrics_json
+                    .as_deref()
+                    .and_then(|json| serde_json::from_str(json).ok()),
+                timeline: timeline_json
                     .as_deref()
                     .and_then(|json| serde_json::from_str(json).ok()),
             })
@@ -444,6 +454,28 @@ impl SessionBackend for SqliteSessionBackend {
                  schema_version = excluded.schema_version,
                  presentation_json = excluded.presentation_json",
             params![message_id, presentation.version, json],
+        )?;
+        Ok(())
+    }
+
+    fn set_last_assistant_timeline(
+        &self,
+        session_key: &str,
+        timeline: &serde_json::Value,
+    ) -> anyhow::Result<()> {
+        let conn = self.conn.lock();
+        let message_id: i64 = conn.query_row(
+            "SELECT id FROM messages
+             WHERE session_key = ?1 AND role = 'assistant'
+             ORDER BY id DESC LIMIT 1",
+            params![session_key],
+            |row| row.get(0),
+        )?;
+        conn.execute(
+            "INSERT INTO message_timelines (message_id, timeline_json)
+             VALUES (?1, ?2)
+             ON CONFLICT(message_id) DO UPDATE SET timeline_json = excluded.timeline_json",
+            params![message_id, serde_json::to_string(timeline)?],
         )?;
         Ok(())
     }

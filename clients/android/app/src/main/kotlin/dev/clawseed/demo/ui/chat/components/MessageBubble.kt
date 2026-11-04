@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -117,9 +118,47 @@ fun MessageBubble(
         )
         is ChatEntry.ToolInvocations -> ToolInvocationsCard(entry, modifier)
         is ChatEntry.Thinking -> ThinkingCard(entry.content, modifier)
+        is ChatEntry.TurnActivity -> TurnActivityCard(entry, modifier)
         is ChatEntry.SystemMessage -> SystemBubble(entry.content, modifier)
         is ChatEntry.DebugInfo -> DebugInfoCard(entry, modifier)
         is ChatEntry.ContextCompactionStatus -> ContextCompactionBubble(entry, modifier)
+    }
+}
+
+@Composable
+private fun TurnActivityCard(entry: ChatEntry.TurnActivity, modifier: Modifier = Modifier) {
+    var expanded by remember(entry.id) { mutableStateOf(false) }
+    val fg = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("turn_activity_${entry.id}")
+            .clickable { expanded = !expanded }
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = if (expanded) "▼" else "▶",
+                style = MaterialTheme.typography.labelSmall,
+                color = fg,
+            )
+            Text(
+                text = stringResource(R.string.msg_turn_tool_summary, entry.toolCount),
+                style = MaterialTheme.typography.labelLarge,
+                color = fg,
+            )
+        }
+        AnimatedVisibility(visible = expanded) {
+            Column(modifier = Modifier.padding(top = 8.dp)) {
+                entry.activities.forEach { activity ->
+                    MessageBubble(entry = activity)
+                }
+            }
+        }
     }
 }
 

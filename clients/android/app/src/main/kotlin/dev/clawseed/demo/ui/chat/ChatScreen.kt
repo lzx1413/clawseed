@@ -191,7 +191,6 @@ fun ChatScreen(
 
     val listState = rememberLazyListState()
     val displayedItemCount = uiState.messages.size +
-        (if (uiState.thinkingContent.isNotEmpty()) 1 else 0) +
         (if (uiState.streamingContent.isNotEmpty()) 1 else 0)
     val bottomAnchorIndex = displayedItemCount
     val isLoading = uiState.isGenerating
@@ -497,17 +496,6 @@ fun ChatScreen(
                         }) else null,
                         isSpeakingThis = canSpeak && uiState.speakingMessageId == entry.id,
                     )
-                }
-                if (uiState.thinkingContent.isNotEmpty()) {
-                    item(key = "__thinking__", contentType = ChatEntry.Thinking::class.java) {
-                        MessageBubble(
-                            entry = ChatEntry.Thinking(
-                                id = "__thinking__",
-                                timestamp = System.currentTimeMillis(),
-                                content = uiState.thinkingContent,
-                            )
-                        )
-                    }
                 }
                 if (uiState.streamingContent.isNotEmpty()) {
                     item(key = "__streaming__", contentType = ChatEntry.AssistantMessage::class.java) {

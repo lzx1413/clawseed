@@ -45,10 +45,45 @@ class ChatAccumulator(private val session: ClawSeedSession) {
     private val textBuffer = StringBuilder()
     private val thinkingBuffer = StringBuilder()
     private var publishedFirstChunk = false
+    /** The currently streaming reasoning block, if any. */
+    private var activeThinkingId: String? = null
+    private var activeThinkingTimestamp: Long = 0L
 
     private fun publishBuffers() {
         _streamingContent.value = textBuffer.toString()
         _thinkingContent.value = thinkingBuffer.toString()
+        publishThinkingBlock()
+    }
+
+    /**
+     * Publishes the current reasoning buffer into the ordered message stream.
+     * The entry is updated in place so a streaming block keeps one stable key.
+     */
+    private fun publishThinkingBlock() {
+        val id = activeThinkingId ?: return
+        val content = thinkingBuffer.toString()
+        val message = AccumulatedMessage.Thinking(
+            id = id,
+            timestamp = activeThinkingTimestamp,
+            content = content,
+        )
+        val index = _messages.value.indexOfFirst { it.id == id }
+        if (index < 0) {
+            append(message)
+        } else if (_messages.value[index] != message) {
+            _messages.value = _messages.value.toMutableList().apply { set(index, message) }
+        }
+    }
+
+    /** Ends the current reasoning block without removing it from the timeline. */
+    private fun closeThinkingBlock() {
+        if (activeThinkingId != null) {
+            publishThinkingBlock()
+            activeThinkingId = null
+            activeThinkingTimestamp = 0L
+        }
+        thinkingBuffer.setLength(0)
+        _thinkingContent.value = ""
     }
 
     private fun schedulePublication() {
@@ -67,6 +102,9 @@ class ChatAccumulator(private val session: ClawSeedSession) {
     private fun clearBuffers() {
         publicationJob?.cancel()
         publicationJob = null
+        // Keep the latest reasoning text in the ordered history even when a
+        // turn ends through abort/error instead of Done.
+        closeThinkingBlock()
         textBuffer.setLength(0)
         thinkingBuffer.setLength(0)
         _streamingContent.value = ""
@@ -185,12 +223,17 @@ class ChatAccumulator(private val session: ClawSeedSession) {
             is ChatEvent.TextChunk -> {
                 _isGenerating.value = true
                 currentTurnFlushed = false
+                closeThinkingBlock()
                 textBuffer.append(event.content)
                 schedulePublication()
             }
             is ChatEvent.ThinkingChunk -> {
                 _isGenerating.value = true
                 currentTurnFlushed = false
+                if (activeThinkingId == null) {
+                    activeThinkingId = nextId()
+                    activeThinkingTimestamp = System.currentTimeMillis()
+                }
                 thinkingBuffer.append(event.content)
                 schedulePublication()
             }
@@ -248,6 +291,8 @@ class ChatAccumulator(private val session: ClawSeedSession) {
             }
             is ChatEvent.ToolCallStarted -> {
                 _isGenerating.value = true
+                // A subsequent reasoning chunk belongs after this tool call.
+                closeThinkingBlock()
                 append(AccumulatedMessage.ToolCall(
                     id = nextId(),
                     timestamp = System.currentTimeMillis(),
@@ -373,15 +418,10 @@ class ChatAccumulator(private val session: ClawSeedSession) {
     }
 
     private fun flushBuffers(fullResponseFallback: String? = null) {
-        val thinking = thinkingBuffer.toString()
-        if (thinking.isNotEmpty()) {
-            append(AccumulatedMessage.Thinking(
-                id = nextId(),
-                timestamp = System.currentTimeMillis(),
-                content = thinking,
-            ))
-            _thinkingContent.value = ""
-        }
+        // Reasoning blocks are appended as they stream, which preserves their
+        // position relative to tool calls. Done only closes the active block
+        // before appending the final assistant response.
+        closeThinkingBlock()
         val completedContent = fullResponseFallback
             ?.takeIf { it.isNotEmpty() }
             ?: textBuffer.toString()

@@ -45,6 +45,14 @@ sealed class ChatEntry {
         val content: String,
     ) : ChatEntry()
 
+    /** Completed-turn activity summary containing the original thinking/tool order. */
+    data class TurnActivity(
+        override val id: String,
+        override val timestamp: Long,
+        val activities: List<ChatEntry>,
+        val toolCount: Int,
+    ) : ChatEntry()
+
     data class SystemMessage(
         override val id: String,
         override val timestamp: Long,

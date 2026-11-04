@@ -1187,6 +1187,10 @@ async fn process_chat_message(
     // update_last periodically (every 500ms) so partial content survives.
     // The final response overwrites this via update_last on completion.
     let mut accumulated_text = String::new();
+    // UI-only event timeline. This is persisted separately from the model
+    // transcript so resuming a session can restore thinking/tool activity
+    // without sending it back to the provider as chat content.
+    let mut turn_timeline: Vec<serde_json::Value> = Vec::new();
     // Presentations are emitted live with each tool result, then consolidated
     // onto the final assistant message for durable history restoration.
     let mut turn_presentations = Vec::new();
@@ -1229,12 +1233,36 @@ async fn process_chat_message(
                             serde_json::json!({ "type": "chunk", "content": delta })
                         }
                         TurnEvent::Thinking { delta } => {
+                            if let Some(last) = turn_timeline.last_mut()
+                                && last["kind"] == serde_json::json!("thinking")
+                            {
+                                if let Some(content) = last["content"].as_str() {
+                                    last["content"] = serde_json::json!(format!("{content}{delta}"));
+                                }
+                            } else {
+                                turn_timeline.push(serde_json::json!({
+                                    "kind": "thinking",
+                                    "content": delta.clone(),
+                                }));
+                            }
                             serde_json::json!({ "type": "thinking", "content": delta })
                         }
                         TurnEvent::ToolCall { id, name, args } => {
+                            turn_timeline.push(serde_json::json!({
+                                "kind": "tool_call",
+                                "id": id.clone(),
+                                "name": name.clone(),
+                                "args": args.clone(),
+                            }));
                             serde_json::json!({ "type": "tool_call", "id": id, "name": name, "args": args })
                         }
                         TurnEvent::ToolResult { id, name, output, presentation } => {
+                            turn_timeline.push(serde_json::json!({
+                                "kind": "tool_result",
+                                "id": id.clone(),
+                                "name": name.clone(),
+                                "output": output.clone(),
+                            }));
                             if let Some(ref presentation) = presentation {
                                 turn_presentations.push(presentation.clone());
                             }
@@ -1448,6 +1476,16 @@ async fn process_chat_message(
                         backend.set_last_assistant_presentation(session_key, &presentation)
                     {
                         tracing::warn!(%error, "failed to persist assistant rich-content presentation");
+                    }
+                }
+                if !turn_timeline.is_empty() {
+                    let timeline = serde_json::json!({
+                        "version": 1,
+                        "events": turn_timeline,
+                    });
+                    if let Err(error) = backend.set_last_assistant_timeline(session_key, &timeline)
+                    {
+                        tracing::warn!(%error, "failed to persist assistant thinking/tool timeline");
                     }
                 }
 

@@ -117,6 +117,7 @@
     <string name="msg_stop_speaking">Stop speaking</string>
     <string name="msg_tool_calling">Tool calling…</string>
     <string name="msg_tool_calls">Tool calls (%1$d)</string>
+    <string name="msg_turn_tool_summary">This turn called %1$d tools</string>
     <string name="msg_calling">Calling…</string>
     <string name="msg_parameters">Parameters</string>
     <string name="msg_result">Result</string>
