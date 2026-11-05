@@ -13,7 +13,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.clawseed.demo.ui.theme.ClawSeedShapes
 
-enum class GlassLevel { Surface, Elevated }
+enum class GlassLevel { Chrome, Sheet, Surface, Pill, Elevated }
+
+internal fun glassFill(colors: androidx.compose.material3.ColorScheme, level: GlassLevel) = when (level) {
+    GlassLevel.Surface -> colors.surface
+    GlassLevel.Chrome -> colors.surfaceContainerLowest
+    GlassLevel.Elevated -> colors.surface.copy(alpha = 0.88f)
+    GlassLevel.Sheet -> colors.surfaceContainerLow
+    GlassLevel.Pill -> colors.surface
+}
 
 /**
  * Local glass surface with a solid fallback. Blur is intentionally not applied
@@ -22,21 +30,19 @@ enum class GlassLevel { Surface, Elevated }
  * callers.
  */
 @Composable
-fun GlassSurface(
+fun GlassContainer(
     modifier: Modifier = Modifier,
     level: GlassLevel = GlassLevel.Surface,
     shape: Shape = ClawSeedShapes.Medium,
     interactive: Boolean = false,
     shadowElevation: Dp = 0.dp,
-    content: @Composable ColumnScope.() -> Unit,
+    content: @Composable () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    val fill = when (level) {
-        GlassLevel.Surface -> colors.surfaceContainerLow.copy(alpha = 0.94f)
-        GlassLevel.Elevated -> colors.surface.copy(alpha = 0.88f)
-    }
+    val fill = glassFill(colors, level)
     val border = when {
-        interactive -> colors.primary.copy(alpha = 0.52f)
+        interactive -> colors.primary
+        level == GlassLevel.Chrome -> colors.outlineVariant
         level == GlassLevel.Elevated -> colors.outline.copy(alpha = 0.46f)
         else -> colors.outlineVariant.copy(alpha = 0.56f)
     }
@@ -50,6 +56,18 @@ fun GlassSurface(
         shadowElevation = shadowElevation,
         border = androidx.compose.foundation.BorderStroke(1.dp, border),
     ) {
-        Column(modifier = Modifier.fillMaxWidth(), content = content)
+        content()
+    }
+}
+
+/** Compatibility column wrapper; compact surfaces use GlassContainer directly. */
+@Composable
+fun GlassSurface(
+    modifier: Modifier = Modifier, level: GlassLevel = GlassLevel.Surface,
+    shape: Shape = ClawSeedShapes.Medium, interactive: Boolean = false,
+    shadowElevation: Dp = 0.dp, content: @Composable ColumnScope.() -> Unit,
+) {
+    GlassContainer(modifier, level, shape, interactive, shadowElevation) {
+        Column(Modifier.fillMaxWidth(), content = content)
     }
 }

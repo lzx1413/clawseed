@@ -677,4 +677,18 @@
     <string name="svc_local_backup_success">本地备份已保存（%1$d 字节）。</string>
     <string name="svc_local_backup_directory_missing">自动本地备份需要先选择持久化目录。</string>
     <string name="svc_webdav_backup_failed">自动备份失败。</string>
+
+    <!-- Chat sheets and conversation forms -->
+    <string name="drawer_conversation_name">对话名称</string>
+    <string name="chat_attachments_title">添加附件</string>
+    <string name="chat_recent_image">最近图片 %1$d</string>
+    <string name="chat_photos_permission">允许访问照片，显示最近图片</string>
+    <string name="chat_photos_empty">暂无可访问的图片，可从相册选择</string>
+    <string name="chat_add_selected_images">添加 %1$d 张图片</string>
+    <string name="chat_manage_photos">管理可访问的照片</string>
+    <string name="chat_files_unavailable">当前连接不支持文件附件或暂不可添加</string>
+    <string name="chat_image_limit">每条消息最多添加 4 张图片</string>
+    <string name="chat_take_photo">拍照</string>
+    <string name="chat_choose_photo">相册</string>
+    <string name="chat_choose_file">文件</string>
 </resources>

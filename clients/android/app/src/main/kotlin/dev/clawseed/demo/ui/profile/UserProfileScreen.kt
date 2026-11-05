@@ -1,5 +1,13 @@
 package dev.clawseed.demo.ui.profile
 
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import dev.clawseed.demo.ui.components.ClawSeedButton
+import dev.clawseed.demo.ui.components.ClawSeedTextButton
+import dev.clawseed.demo.ui.components.ClawSeedTextField
+import dev.clawseed.demo.ui.components.ClawSeedChoiceChip
+import dev.clawseed.demo.ui.components.ClawSeedIconButton
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,34 +30,27 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import dev.clawseed.demo.ui.components.ClawSeedTopAppBar
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -92,10 +93,10 @@ fun UserProfileScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            ClawSeedTopAppBar(
                 title = { Text(stringResource(R.string.knowledge_title)) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    ClawSeedIconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.common_back),
@@ -103,7 +104,7 @@ fun UserProfileScreen(
                     }
                 },
                 actions = {
-                    IconButton(
+                    ClawSeedIconButton(
                         onClick = {
                             if (uiState.tab == KnowledgeTab.MEMORY) viewModel.loadMemories() else viewModel.load()
                         },
@@ -112,7 +113,7 @@ fun UserProfileScreen(
                         Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.common_refresh))
                     }
                     if (uiState.tab == KnowledgeTab.ABOUT_ME && uiState.items.isNotEmpty()) {
-                        IconButton(onClick = viewModel::clear, enabled = !uiState.isSaving) {
+                        ClawSeedIconButton(onClick = viewModel::clear, enabled = !uiState.isSaving) {
                             Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.profile_clear))
                         }
                     }
@@ -145,20 +146,21 @@ fun UserProfileScreen(
                     text = { Text(stringResource(R.string.knowledge_memory)) },
                 )
             }
-            if (uiState.tab == KnowledgeTab.ABOUT_ME) {
+            val profileHeader: @Composable () -> Unit = {
                 ProfileFilters(uiState, viewModel)
                 if (uiState.selectedIds.isNotEmpty()) {
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Button(onClick = viewModel::deleteSelected) {
+                        ClawSeedButton(onClick = viewModel::deleteSelected, dangerous = true) {
                             Text(stringResource(R.string.profile_delete_selected, uiState.selectedIds.size))
                         }
-                        TextButton(onClick = viewModel::rejectSelected) {
+                        ClawSeedTextButton(onClick = viewModel::rejectSelected) {
                             Text(stringResource(R.string.profile_reject_selected))
                         }
-                        IconButton(onClick = viewModel::clearSelection) {
+                        ClawSeedIconButton(onClick = viewModel::clearSelection) {
                             Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_cancel))
                         }
                     }
@@ -182,13 +184,10 @@ fun UserProfileScreen(
                     modifier = Modifier.weight(1f),
                 )
 
-                filteredItems.isEmpty() -> EmptyProfileState(
-                    onAdd = viewModel::create,
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                )
-
                 else -> UserProfileList(
                     items = filteredItems,
+                    header = profileHeader,
+                    onAdd = viewModel::create,
                     selectedIds = uiState.selectedIds,
                     enabled = !uiState.isSaving,
                     modifier = Modifier.weight(1f),
@@ -215,19 +214,19 @@ private fun ProfileFilters(uiState: UserProfileUiState, viewModel: UserProfileVi
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        FilterChip(
+        ClawSeedChoiceChip(
             selected = uiState.categoryFilter == null,
             onClick = { viewModel.setCategoryFilter(null) },
             label = { Text(stringResource(R.string.profile_filter_all)) },
         )
         ProfileCategory.entries.forEach { category ->
-            FilterChip(
+            ClawSeedChoiceChip(
                 selected = uiState.categoryFilter == category,
                 onClick = { viewModel.setCategoryFilter(category) },
                 label = { Text(category.label()) },
             )
         }
-        FilterChip(
+        ClawSeedChoiceChip(
             selected = uiState.sourceFilter == ProfileSource.INFERRED,
             onClick = {
                 viewModel.setSourceFilter(
@@ -236,7 +235,7 @@ private fun ProfileFilters(uiState: UserProfileUiState, viewModel: UserProfileVi
             },
             label = { Text(stringResource(R.string.profile_source_inferred)) },
         )
-        FilterChip(
+        ClawSeedChoiceChip(
             selected = uiState.statusFilter == ProfileStatus.REJECTED,
             onClick = {
                 viewModel.setStatusFilter(
@@ -246,7 +245,7 @@ private fun ProfileFilters(uiState: UserProfileUiState, viewModel: UserProfileVi
             label = { Text(stringResource(R.string.profile_status_rejected)) },
         )
         if (uiState.items.any { it.source == ProfileSource.INFERRED }) {
-            TextButton(onClick = viewModel::deleteAllInferred) {
+            ClawSeedTextButton(onClick = viewModel::deleteAllInferred, dangerous = true) {
                 Text(stringResource(R.string.profile_delete_inferred))
             }
         }
@@ -256,6 +255,8 @@ private fun ProfileFilters(uiState: UserProfileUiState, viewModel: UserProfileVi
 @Composable
 private fun UserProfileList(
     items: List<UserProfileItem>,
+    header: @Composable () -> Unit,
+    onAdd: () -> Unit,
     selectedIds: Set<String>,
     enabled: Boolean,
     modifier: Modifier = Modifier,
@@ -267,9 +268,13 @@ private fun UserProfileList(
     val grouped = items.groupBy { it.category }
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        item(key = "filters") { header() }
+        if (items.isEmpty()) {
+            item(key = "empty") { EmptyProfileState(onAdd, Modifier.fillMaxWidth()) }
+        }
         ProfileCategory.entries.forEach { category ->
             val categoryItems = grouped[category].orEmpty()
             if (categoryItems.isNotEmpty()) {
@@ -306,26 +311,18 @@ private fun UserProfileItemCard(
     onReject: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (item.status == ProfileStatus.REJECTED) {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            },
-        ),
+    dev.clawseed.demo.ui.components.ClawSeedCard(
+        modifier = Modifier.fillMaxWidth(), selected = selected,
+        muted = item.status == ProfileStatus.REJECTED,
     ) {
         Column(
             modifier = Modifier.padding(start = 14.dp, top = 12.dp, end = 6.dp, bottom = 10.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = selected,
-                    onCheckedChange = { onToggleSelection() },
-                    enabled = enabled,
-                )
+            Row(modifier = Modifier.fillMaxWidth().toggleable(value = selected, enabled = enabled,
+                role = Role.Checkbox, onValueChange = { onToggleSelection() }),
+                verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = selected, onCheckedChange = null, enabled = enabled)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.key,
@@ -341,15 +338,18 @@ private fun UserProfileItemCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                IconButton(onClick = onEdit, enabled = enabled) {
+
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                ClawSeedIconButton(onClick = onEdit, enabled = enabled) {
                     Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.profile_edit))
                 }
                 if (item.source == ProfileSource.INFERRED && item.status == ProfileStatus.ACTIVE) {
-                    IconButton(onClick = onReject, enabled = enabled) {
+                    ClawSeedIconButton(onClick = onReject, enabled = enabled) {
                         Icon(Icons.Default.Close, contentDescription = stringResource(R.string.profile_reject))
                     }
                 }
-                IconButton(onClick = onDelete, enabled = enabled) {
+                ClawSeedIconButton(onClick = onDelete, enabled = enabled, dangerous = true) {
                     Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.common_delete))
                 }
             }
@@ -380,11 +380,11 @@ private fun MemoryList(memories: List<dev.clawseed.sdk.core.model.MemoryEntry>, 
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(memories, key = { it.id }) { memory ->
-            Card(modifier = Modifier.fillMaxWidth()) {
+            dev.clawseed.demo.ui.components.ClawSeedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(memory.key, style = MaterialTheme.typography.labelLarge, fontFamily = FontFamily.Monospace)
                     Text(memory.content, style = MaterialTheme.typography.bodyMedium, maxLines = 5, overflow = TextOverflow.Ellipsis)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         ProfileBadge(memory.category)
                         ProfileBadge(memory.namespace)
                         ProfileBadge(memory.timestamp.take(10))
@@ -413,7 +413,7 @@ private fun ProfileBadge(text: String) {
 @Composable
 private fun EmptyProfileState(onAdd: () -> Unit, modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier.padding(32.dp),
+        modifier = modifier.padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -423,7 +423,7 @@ private fun EmptyProfileState(onAdd: () -> Unit, modifier: Modifier = Modifier) 
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Button(onClick = onAdd) {
+        ClawSeedButton(onClick = onAdd) {
             Icon(Icons.Default.Add, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.profile_add))
@@ -440,7 +440,7 @@ private fun UserProfileEditorDialog(
     onSave: () -> Unit,
 ) {
     val keyValid = isUserProfileKeyValid(draft.key.trim())
-    AlertDialog(
+    dev.clawseed.demo.ui.components.ClawSeedFormDialog(
         onDismissRequest = { if (!isSaving) onDismiss() },
         title = {
             Text(
@@ -451,7 +451,7 @@ private fun UserProfileEditorDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = draft.key,
                     onValueChange = { value -> onChange { it.copy(key = value) } },
                     label = { Text(stringResource(R.string.profile_key)) },
@@ -466,7 +466,7 @@ private fun UserProfileEditorDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = draft.value,
                     onValueChange = { value -> onChange { it.copy(value = value) } },
                     label = { Text(stringResource(R.string.profile_value)) },
@@ -477,11 +477,12 @@ private fun UserProfileEditorDialog(
                 )
                 Text(stringResource(R.string.profile_category), style = MaterialTheme.typography.labelLarge)
                 FlowRow(
+                    modifier = Modifier.selectableGroup(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     ProfileCategory.entries.forEach { category ->
-                        FilterChip(
+                        ClawSeedChoiceChip(
                             selected = draft.category == category,
                             onClick = { onChange { it.copy(category = category) } },
                             label = { Text(category.label()) },
@@ -492,15 +493,16 @@ private fun UserProfileEditorDialog(
             }
         },
         confirmButton = {
-            TextButton(
+            ClawSeedButton(
                 onClick = onSave,
+                loading = isSaving,
                 enabled = keyValid && !isSaving,
             ) {
-                Text(stringResource(if (isSaving) R.string.common_saving else R.string.common_confirm))
+                Text(stringResource(R.string.common_confirm))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isSaving) {
+            ClawSeedTextButton(onClick = onDismiss, enabled = !isSaving) {
                 Text(stringResource(R.string.common_cancel))
             }
         },

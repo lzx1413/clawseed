@@ -4,7 +4,7 @@
         <!-- Test APK only: a separate-UID sender supplying generated fixtures. -->
         <provider
             android:name="dev.clawseed.demo.sharing.ShareFixtureProvider"
-            android:authorities="dev.clawseed.demo.test.share-fixtures"
+            android:authorities="${applicationId}.share-fixtures"
             android:exported="true"
             android:grantUriPermissions="true" />
     </application>

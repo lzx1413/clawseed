@@ -1,8 +1,19 @@
 package dev.clawseed.demo.ui.persona
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import dev.clawseed.demo.ui.components.SettingsGroup
+import dev.clawseed.demo.ui.components.ClawSeedButton
+import dev.clawseed.demo.ui.components.ClawSeedOutlinedButton
+import dev.clawseed.demo.ui.components.ClawSeedTextButton
+import dev.clawseed.demo.ui.components.ClawSeedTextField
+import dev.clawseed.demo.ui.components.ClawSeedChoiceChip
+import dev.clawseed.demo.ui.components.ClawSeedIconButton
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,43 +34,28 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import dev.clawseed.demo.ui.components.ClawSeedFormDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import dev.clawseed.demo.ui.components.ClawSeedTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -95,7 +91,7 @@ fun PersonaManagerScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            ClawSeedTopAppBar(
                 title = {
                     Text(
                         when {
@@ -106,7 +102,7 @@ fun PersonaManagerScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = {
+                    ClawSeedIconButton(onClick = {
                         when {
                             uiState.editing != null -> viewModel.closeEditor()
                             uiState.viewing != null && !initialPersona.isNullOrBlank() -> onBack()
@@ -176,12 +172,12 @@ fun PersonaManagerScreen(
             }
 
             uiState.error?.let { error ->
-                Card(
+                dev.clawseed.demo.ui.components.ClawSeedCard(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(16.dp)
                         .fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
                 ) {
                     Text(
                         text = error,
@@ -206,74 +202,67 @@ private fun PersonaList(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(personas, key = { it.name }) { persona ->
             var confirmDelete by remember { mutableStateOf(false) }
             if (confirmDelete) {
-                AlertDialog(
+                ClawSeedFormDialog(
                     onDismissRequest = { confirmDelete = false },
                     title = { Text(stringResource(R.string.persona_delete_title)) },
                     text = { Text(stringResource(R.string.persona_delete_desc)) },
                     confirmButton = {
-                        TextButton(onClick = { confirmDelete = false; onDelete(persona.name) }) {
+                        ClawSeedTextButton(onClick = { confirmDelete = false; onDelete(persona.name) }) {
                             Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error)
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = { confirmDelete = false }) {
+                        ClawSeedTextButton(onClick = { confirmDelete = false }) {
                             Text(stringResource(R.string.common_cancel))
                         }
                     },
                 )
             }
 
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onView(persona.name) },
-                colors = CardDefaults.cardColors(containerColor = personaCardColor(persona.name, persona.color)),
+            dev.clawseed.demo.ui.components.ClawSeedCard(
+                modifier = Modifier.fillMaxWidth(),
+                containerColor = personaCardColor(persona.name, persona.color),
+                onClick = { onView(persona.name) },
             ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    PersonaDot(
-                        persona.name,
-                        Modifier.size(34.dp),
-                        showInitial = true,
-                        avatar = persona.avatar,
-                        color = persona.color,
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            personaDisplayName(persona.name),
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            personaSummary(persona),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        PersonaDot(persona.name, Modifier.size(40.dp), showInitial = true,
+                            avatar = persona.avatar, color = persona.color)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(personaDisplayName(persona.name), style = MaterialTheme.typography.titleMedium)
+                            Text(personaSummary(persona), style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3,
+                                overflow = TextOverflow.Ellipsis)
+                        }
                     }
-                    IconButton(onClick = { onStart(persona.name) }) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = stringResource(R.string.persona_start))
-                    }
-                    IconButton(onClick = { onEdit(persona.name) }) {
-                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.persona_edit))
-                    }
-                    IconButton(onClick = { onDuplicate(persona) }) {
-                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.persona_duplicate))
-                    }
-                    if (persona.name != "default") {
-                        IconButton(onClick = { confirmDelete = true }) {
-                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.error)
+                    androidx.compose.foundation.layout.FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        ClawSeedOutlinedButton(onClick = { onStart(persona.name) }) {
+                            Icon(Icons.Default.PlayArrow, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.persona_start))
+                        }
+                        ClawSeedIconButton(onClick = { onEdit(persona.name) }, tooltip = stringResource(R.string.persona_edit)) {
+                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.persona_edit))
+                        }
+                        ClawSeedIconButton(onClick = { onDuplicate(persona) }, tooltip = stringResource(R.string.persona_duplicate)) {
+                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.persona_duplicate))
+                        }
+                        if (persona.name != "default") {
+                            ClawSeedIconButton(onClick = { confirmDelete = true }, dangerous = true,
+                                tooltip = stringResource(R.string.common_delete)) {
+                                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.common_delete))
+                            }
                         }
                     }
                 }
@@ -301,15 +290,15 @@ private fun PersonaDetailView(
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Button(onClick = { onStart(detail.name) }, modifier = Modifier.weight(1f)) {
+                ClawSeedButton(onClick = { onStart(detail.name) }, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.persona_start))
                 }
-                IconButton(onClick = onEdit) {
+                ClawSeedIconButton(onClick = onEdit) {
                     Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.persona_edit))
                 }
-                IconButton(onClick = onDuplicate) {
+                ClawSeedIconButton(onClick = onDuplicate) {
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.persona_duplicate))
                 }
             }
@@ -380,31 +369,26 @@ private fun PersonaDetailView(
 @Composable
 private fun ToolPermissionGroup(title: String, names: List<String>, tools: List<ToolInfo>) {
     var expanded by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.tools_group_count, title, names.size), modifier = Modifier.weight(1f))
-            Icon(
-                if (expanded) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = stringResource(if (expanded) R.string.common_collapse else R.string.common_expand),
-            )
-        }
-        if (expanded) names.forEach { name ->
-            Column(Modifier.padding(vertical = 6.dp)) {
-                Text(name, style = MaterialTheme.typography.bodyMedium)
-                tools.find { it.name == name }?.description?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    dev.clawseed.demo.ui.components.ClawSeedExpandableSection(
+        title = stringResource(R.string.tools_group_count, title, names.size),
+        expanded = expanded, onToggle = { expanded = !expanded },
+    ) {
+        SettingsGroup {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                names.forEach { name ->
+                    dev.clawseed.demo.ui.components.SettingsRow(title = name,
+                        subtitle = tools.find { it.name == name }?.description?.takeIf { it.isNotBlank() })
                 }
             }
         }
-        HorizontalDivider()
     }
 }
 
 @Composable
 private fun PersonaIdentityHeader(detail: PersonaDetail) {
-    Card(
+    dev.clawseed.demo.ui.components.ClawSeedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = personaCardColor(detail.name, detail.color)),
+        containerColor = personaCardColor(detail.name, detail.color),
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -422,30 +406,26 @@ private fun PersonaIdentityHeader(detail: PersonaDetail) {
                 Text(
                     text = personaDisplayName(detail.name),
                     style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
-                FlowRow(
+            }
+        }
+        FlowRow(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     personaFeatureTags(detail).forEach { tag ->
-                        FilterChip(
+                        ClawSeedChoiceChip(
                             selected = false,
                             onClick = {},
+                            choiceType = dev.clawseed.demo.ui.components.ChoiceType.Information,
                             label = {
                                 Text(
                                     text = tag,
                                     style = MaterialTheme.typography.labelSmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
                                 )
                             },
-                            modifier = Modifier.height(26.dp),
                         )
                     }
-                }
-            }
         }
     }
 }
@@ -526,7 +506,7 @@ private fun SettingLine(label: String, value: String) {
 private fun EmptyPersonaState(onCreate: () -> Unit) {
     Column(
         modifier = Modifier
-            .fillMaxSize()
+            .fillMaxSize().verticalScroll(rememberScrollState())
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -542,7 +522,7 @@ private fun EmptyPersonaState(onCreate: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(16.dp))
-        Button(onClick = onCreate) {
+        ClawSeedButton(onClick = onCreate) {
             Icon(Icons.Default.Add, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.persona_create))
@@ -589,12 +569,12 @@ private fun PersonaAppearanceSection(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            OutlinedButton(onClick = { avatarPicker.launch(arrayOf("image/*")) }) {
+        }
+        ClawSeedOutlinedButton(onClick = { avatarPicker.launch(arrayOf("image/*")) }) {
                 Text(stringResource(R.string.persona_avatar_choose))
-            }
         }
         if (draft.avatar.isNotBlank()) {
-            OutlinedButton(onClick = { onDraftChange(draft.copy(avatar = "", color = "")) }) {
+            ClawSeedOutlinedButton(onClick = { onDraftChange(draft.copy(avatar = "", color = "")) }) {
                 Text(stringResource(R.string.persona_avatar_clear))
             }
         }
@@ -612,12 +592,12 @@ private fun ThinkingModeSelector(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            FilterChip(
+            ClawSeedChoiceChip(
                 selected = value,
                 onClick = { onChange(true) },
                 label = { Text(stringResource(R.string.persona_thinking_on)) },
             )
-            FilterChip(
+            ClawSeedChoiceChip(
                 selected = !value,
                 onClick = { onChange(false) },
                 label = { Text(stringResource(R.string.persona_thinking_off)) },
@@ -649,12 +629,12 @@ private fun PersonaEditor(
     var skillsExpanded by remember { mutableStateOf(false) }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().imePadding(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            OutlinedTextField(
+            ClawSeedTextField(
                 value = if (draft.originalName == "default") {
                     stringResource(R.string.persona_default_desc)
                 } else {
@@ -684,7 +664,7 @@ private fun PersonaEditor(
                 expanded = soulExpanded,
                 onToggle = { soulExpanded = !soulExpanded },
             ) {
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = draft.systemPrompt,
                     onValueChange = { onDraftChange(draft.copy(systemPrompt = it)) },
                     modifier = Modifier
@@ -702,7 +682,7 @@ private fun PersonaEditor(
                     expanded = providerExpanded,
                     onExpandedChange = { providerExpanded = it },
                 ) {
-                    OutlinedTextField(
+                    ClawSeedTextField(
                         value = availableProviders.firstOrNull { it.id == draft.provider }?.name
                             ?.ifBlank { draft.provider } ?: draft.provider,
                         onValueChange = {},
@@ -739,7 +719,7 @@ private fun PersonaEditor(
                         onExpandedChange = { modelExpanded = it },
                         modifier = Modifier.weight(1f),
                     ) {
-                        OutlinedTextField(
+                        ClawSeedTextField(
                             value = draft.model,
                             onValueChange = { onDraftChange(draft.copy(model = it, vision = "auto")) },
                             modifier = Modifier
@@ -770,7 +750,7 @@ private fun PersonaEditor(
                             }
                         }
                     }
-                    IconButton(onClick = onFetchModels, enabled = draft.provider.isNotBlank() && !isFetchingModels) {
+                    ClawSeedIconButton(onClick = onFetchModels, enabled = draft.provider.isNotBlank() && !isFetchingModels) {
                         if (isFetchingModels) {
                             CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                         } else {
@@ -790,26 +770,12 @@ private fun PersonaEditor(
         }
         item {
             PersonaSection(title = stringResource(R.string.persona_memory_section)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.persona_isolated_memory))
-                        Text(
-                            stringResource(R.string.persona_isolated_memory_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(
-                        checked = draft.memoryMode == "isolated",
-                        onCheckedChange = {
-                            onDraftChange(draft.copy(memoryMode = if (it) "isolated" else "shared"))
-                        },
-                    )
-                }
+                dev.clawseed.demo.ui.components.SettingsSwitchRow(
+                    title = stringResource(R.string.persona_isolated_memory),
+                    subtitle = stringResource(R.string.persona_isolated_memory_desc),
+                    checked = draft.memoryMode == "isolated",
+                    onCheckedChange = { onDraftChange(draft.copy(memoryMode = if (it) "isolated" else "shared")) },
+                )
             }
         }
         item {
@@ -860,19 +826,18 @@ private fun PersonaEditor(
             }
         }
         item {
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedButton(onClick = onCancel, enabled = !isSaving) {
+                ClawSeedOutlinedButton(onClick = onCancel, enabled = !isSaving) {
                     Text(stringResource(R.string.common_cancel))
                 }
-                Spacer(Modifier.width(8.dp))
-                OutlinedButton(onClick = onSave, enabled = !isSaving) {
-                    Text(if (isSaving) stringResource(R.string.common_saving) else stringResource(R.string.common_confirm))
+                ClawSeedOutlinedButton(onClick = onSave, enabled = !isSaving, loading = isSaving) {
+                    Text(stringResource(R.string.common_confirm))
                 }
-                Spacer(Modifier.width(8.dp))
-                Button(onClick = onSaveAndStart, enabled = !isSaving) {
+                ClawSeedButton(onClick = onSaveAndStart, enabled = !isSaving) {
                     Text(stringResource(R.string.persona_save_start))
                 }
             }
@@ -892,48 +857,16 @@ private fun CollapsiblePersonaSection(
     onToggle: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onToggle),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Icon(
-                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = null,
-                )
-            }
-            if (expanded) {
-                content()
-            }
+    dev.clawseed.demo.ui.components.ClawSeedExpandableSection(title, expanded, onToggle, subtitle) {
+        SettingsGroup(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
         }
     }
 }
 
 @Composable
 private fun PersonaSection(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -967,13 +900,13 @@ private fun ToolSelector(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            OutlinedButton(onClick = onSelectAll) {
+            ClawSeedOutlinedButton(onClick = onSelectAll) {
                 Text(stringResource(R.string.persona_tools_select_all))
             }
-            OutlinedButton(onClick = onSelectNone) {
+            ClawSeedOutlinedButton(onClick = onSelectNone) {
                 Text(stringResource(R.string.persona_tools_select_none))
             }
-            OutlinedButton(onClick = onRestoreDefault) {
+            ClawSeedOutlinedButton(onClick = onRestoreDefault) {
                 Text(stringResource(R.string.persona_tools_restore_default))
             }
         }
@@ -993,54 +926,20 @@ private fun PersonaToolCard(
     enabled: Boolean,
     onToggle: (Boolean) -> Unit,
 ) {
-    Card(
+    dev.clawseed.demo.ui.components.ClawSeedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = when (tool.sourceType) {
+        containerColor = when (tool.sourceType) {
                 "remote" -> MaterialTheme.colorScheme.tertiaryContainer
                 "mcp" -> MaterialTheme.colorScheme.secondaryContainer
                 else -> MaterialTheme.colorScheme.surfaceVariant
             },
-        ),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = tool.name,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f, fill = false),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip(
-                        selected = false,
-                        onClick = {},
-                        label = {
-                            Text(
-                                text = when (tool.sourceType) {
-                                    "remote" -> "Remote"
-                                    "mcp" -> "MCP"
-                                    else -> "Built-in"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        },
-                        modifier = Modifier.height(24.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Switch(
-                        checked = enabled,
-                        onCheckedChange = onToggle,
-                        modifier = Modifier.height(24.dp),
-                    )
-                }
-            }
+            dev.clawseed.demo.ui.components.SettingsSwitchRow(
+                title = tool.name,
+                subtitle = when (tool.sourceType) { "remote" -> "Remote"; "mcp" -> "MCP"; else -> "Built-in" },
+                checked = enabled, onCheckedChange = onToggle,
+            )
             if (tool.description.isNotBlank()) {
                 Text(
                     text = tool.description,
@@ -1085,32 +984,12 @@ private fun PersonaSkillCard(
     enabled: Boolean,
     onToggle: (Boolean) -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = if (skill.version.isNotBlank()) "${skill.name}  v${skill.version}" else skill.name,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f, fill = false),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Switch(
-                    checked = enabled,
-                    onCheckedChange = onToggle,
-                    modifier = Modifier.height(24.dp),
-                )
-            }
+            dev.clawseed.demo.ui.components.SettingsSwitchRow(
+                title = if (skill.version.isNotBlank()) "${skill.name}  v${skill.version}" else skill.name,
+                checked = enabled, onCheckedChange = onToggle,
+            )
             if (skill.description.isNotBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -1128,16 +1007,17 @@ private fun PersonaSkillCard(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     skill.triggers.forEach { trigger ->
-                        FilterChip(
+                        ClawSeedChoiceChip(
                             selected = false,
                             onClick = {},
+                            choiceType = dev.clawseed.demo.ui.components.ChoiceType.Information,
                             label = {
                                 Text(
                                     text = trigger,
                                     style = MaterialTheme.typography.labelSmall,
                                 )
                             },
-                            modifier = Modifier.height(24.dp),
+                            modifier = Modifier,
                         )
                     }
                 }
@@ -1149,16 +1029,17 @@ private fun PersonaSkillCard(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     skill.permissions.forEach { perm ->
-                        FilterChip(
+                        ClawSeedChoiceChip(
                             selected = false,
                             onClick = {},
+                            choiceType = dev.clawseed.demo.ui.components.ChoiceType.Information,
                             label = {
                                 Text(
                                     text = perm,
                                     style = MaterialTheme.typography.labelSmall,
                                 )
                             },
-                            modifier = Modifier.height(24.dp),
+                            modifier = Modifier,
                         )
                     }
                 }

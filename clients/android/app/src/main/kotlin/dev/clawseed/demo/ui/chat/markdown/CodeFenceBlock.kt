@@ -1,5 +1,6 @@
 package dev.clawseed.demo.ui.chat.markdown
 
+import dev.clawseed.demo.ui.components.ClawSeedIconButton
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,7 +13,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -60,9 +60,9 @@ internal fun CodeFenceBlock(
                     text = language?.takeIf { it.isNotBlank() } ?: "",
                     style = MaterialTheme.typography.labelSmall,
                 )
-                IconButton(
+                ClawSeedIconButton(
                     onClick = { clipboard.setText(AnnotatedString(code)) },
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(48.dp),
                 ) {
                     Icon(
                         imageVector = CopyIcon,

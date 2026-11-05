@@ -1,9 +1,16 @@
 package dev.clawseed.demo.ui.settings
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import dev.clawseed.demo.ui.components.SettingsSwitchRow
+import dev.clawseed.demo.ui.components.ClawSeedSegmentedPill
+import dev.clawseed.demo.ui.components.SettingsGroup
+import dev.clawseed.demo.ui.components.ClawSeedButton
+import dev.clawseed.demo.ui.components.ClawSeedOutlinedButton
+import dev.clawseed.demo.ui.components.ClawSeedTextField
+import dev.clawseed.demo.ui.components.ClawSeedChoiceChip
+import dev.clawseed.demo.ui.components.ClawSeedIconButton
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -22,48 +29,35 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import dev.clawseed.demo.ui.components.ClawSeedTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,7 +77,6 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import dev.clawseed.demo.BuildConfig
 import dev.clawseed.demo.R
 import dev.clawseed.demo.ui.theme.success
 import dev.clawseed.demo.data.LocalStore
@@ -105,44 +98,7 @@ private fun ExpandableSection(
     subtitle: String? = null,
     content: @Composable () -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp)
-                .clickable(onClick = onToggle),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                if (subtitle != null) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            Icon(
-                if (expanded) Icons.Default.KeyboardArrowDown
-                else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = if (expanded) stringResource(R.string.common_collapse) else stringResource(R.string.common_expand),
-            )
-        }
-        AnimatedVisibility(
-            visible = expanded,
-            enter = expandVertically(),
-            exit = shrinkVertically(),
-        ) {
-            content()
-        }
-    }
+    dev.clawseed.demo.ui.components.ClawSeedExpandableSection(title, expanded, onToggle, subtitle, content)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -195,10 +151,10 @@ fun SettingsScreen(
         }
         Scaffold(
             topBar = {
-                TopAppBar(
+                ClawSeedTopAppBar(
                     title = { Text(stringResource(R.string.settings_llm_config)) },
                     navigationIcon = {
-                        IconButton(onClick = { llmExpanded = false }) {
+                        ClawSeedIconButton(onClick = { llmExpanded = false }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                         }
                     },
@@ -207,15 +163,15 @@ fun SettingsScreen(
             bottomBar = {
                 Column(Modifier.navigationBarsPadding().imePadding()) {
                     HorizontalDivider()
-                    Button(
+                    ClawSeedButton(
                         onClick = viewModel::saveConfig,
+                        loading = uiState.isSaving,
                         enabled = !uiState.isSaving && !uiState.isLoading && uiState.selectedModel.isNotBlank(),
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     ) {
-                        if (uiState.isSaving) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        else Icon(Icons.Default.Check, contentDescription = null)
+                        Icon(Icons.Default.Check, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text(stringResource(if (uiState.isSaving) R.string.common_saving else R.string.settings_save_config))
+                        Text(stringResource(R.string.settings_save_config))
                     }
                 }
             },
@@ -241,15 +197,15 @@ fun SettingsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            ClawSeedTopAppBar(
                 title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    ClawSeedIconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.loadAll() }) {
+                    ClawSeedIconButton(onClick = { viewModel.loadAll() }) {
                         Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.common_refresh))
                     }
                 },
@@ -335,7 +291,7 @@ fun SettingsScreen(
                                 onRemoveReviewer = viewModel::removeCouncilReviewer,
                                 onUpdateReviewer = viewModel::updateCouncilReviewer,
                             )
-                            Button(
+                            ClawSeedButton(
                                 onClick = { viewModel.saveConfig() },
                                 enabled = !uiState.isSaving,
                                 modifier = Modifier.fillMaxWidth(),
@@ -380,7 +336,7 @@ fun SettingsScreen(
                                 onKeepRecentTurnsChange = viewModel::updateContextCompactionKeepRecentTurns,
                                 onThresholdChange = viewModel::updateContextCompactionThresholdPercent,
                             )
-                            Button(
+                            ClawSeedButton(
                                 onClick = { viewModel.saveConfig() },
                                 enabled = !uiState.isSaving,
                                 modifier = Modifier.fillMaxWidth(),
@@ -436,7 +392,7 @@ fun SettingsScreen(
                                 onTavilyApiKeyChange = viewModel::updateTavilyApiKey,
                                 onToggleTavilyApiKeyVisibility = viewModel::toggleTavilyApiKeyVisibility,
                             )
-                            Button(
+                            ClawSeedButton(
                                 onClick = { viewModel.saveConfig() },
                                 enabled = !uiState.isSaving,
                                 modifier = Modifier.fillMaxWidth(),
@@ -471,7 +427,7 @@ fun SettingsScreen(
                                 controlsEnabled = !uiState.isSaving && uiState.configToml.isNotBlank(),
                                 onToggle = viewModel::toggleUserModelAutoInfer,
                             )
-                            OutlinedButton(
+                            ClawSeedOutlinedButton(
                                 onClick = onManageUserProfile,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
@@ -482,7 +438,7 @@ fun SettingsScreen(
                                     contentDescription = null,
                                 )
                             }
-                            Button(
+                            ClawSeedButton(
                                 onClick = viewModel::saveUserModelConfig,
                                 enabled = !uiState.isSaving && uiState.configToml.isNotBlank(),
                                 modifier = Modifier.fillMaxWidth(),
@@ -516,12 +472,7 @@ fun SettingsScreen(
                         ) {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 DeveloperOptionsCard(localStore)
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                    ),
-                                ) {
+                                SettingsGroup(modifier = Modifier.fillMaxWidth()) {
                                     Column(
                                         modifier = Modifier.padding(16.dp),
                                         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -539,7 +490,7 @@ fun SettingsScreen(
                                             toml = uiState.configToml,
                                             onTomlChange = { viewModel.updateConfigToml(it) },
                                         )
-                                        Button(
+                                        ClawSeedButton(
                                             onClick = { viewModel.saveConfigToml() },
                                             enabled = !uiState.isSaving,
                                             modifier = Modifier.fillMaxWidth(),
@@ -576,42 +527,14 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun UserModelCard(
-    enabled: Boolean,
-    controlsEnabled: Boolean,
-    onToggle: (Boolean) -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.settings_user_model_auto_infer),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    text = stringResource(R.string.settings_user_model_auto_infer_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Switch(
-                checked = enabled,
-                onCheckedChange = onToggle,
-                enabled = controlsEnabled,
-            )
-        }
+private fun UserModelCard(enabled: Boolean, controlsEnabled: Boolean, onToggle: (Boolean) -> Unit) {
+    SettingsGroup(Modifier.fillMaxWidth()) {
+        SettingsSwitchRow(
+            title = stringResource(R.string.settings_user_model_auto_infer),
+            subtitle = stringResource(R.string.settings_user_model_auto_infer_desc),
+            checked = enabled, onCheckedChange = onToggle, enabled = controlsEnabled,
+            modifier = Modifier.padding(16.dp),
+        )
     }
 }
 
@@ -638,79 +561,46 @@ private fun VoiceSettingsCard(localStore: LocalStore) {
         }
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.settings_voice_enabled),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
-                        stringResource(R.string.settings_voice_enabled_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(
-                    checked = speechOutput,
-                    onCheckedChange = { enabled ->
-                        scope.launch {
-                            localStore.setSpeechOutputEnabled(enabled)
-                        }
-                    },
-                )
-            }
+            SettingsSwitchRow(title = stringResource(R.string.settings_voice_enabled),
+                subtitle = stringResource(R.string.settings_voice_enabled_desc), checked = speechOutput,
+                onCheckedChange = { value -> scope.launch { localStore.setSpeechOutputEnabled(value) } })
 
             Text(
                 stringResource(R.string.settings_voice_backend),
                 style = MaterialTheme.typography.titleSmall,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = speechBackend == "system",
-                    onClick = { scope.launch { localStore.setSpeechBackend("system") } },
-                    label = { Text(stringResource(R.string.settings_voice_backend_system)) },
-                )
-                FilterChip(
-                    selected = speechBackend == "mimo",
-                    onClick = { scope.launch { localStore.setSpeechBackend("mimo") } },
-                    label = { Text(stringResource(R.string.settings_voice_backend_mimo)) },
-                )
-            }
+            ClawSeedSegmentedPill(
+                options = listOf(stringResource(R.string.settings_voice_backend_system), stringResource(R.string.settings_voice_backend_mimo)),
+                selectedIndex = if (speechBackend == "mimo") 1 else 0,
+                onSelect = { index -> scope.launch { localStore.setSpeechBackend(if (index == 1) "mimo" else "system") } },
+                modifier = Modifier.fillMaxWidth(),
+            )
             if (speechBackend == "mimo") {
                 Text(
                     stringResource(R.string.settings_voice_backend_mimo_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = speechModel,
                     onValueChange = { value -> scope.launch { localStore.setSpeechModel(value) } },
                     label = { Text(stringResource(R.string.settings_voice_model)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = speechVoice,
                     onValueChange = { value -> scope.launch { localStore.setSpeechVoice(value) } },
                     label = { Text(stringResource(R.string.settings_voice_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = speechInstructions,
                     onValueChange = { value -> scope.launch { localStore.setSpeechInstructions(value) } },
                     label = { Text(stringResource(R.string.settings_voice_instructions)) },
@@ -806,18 +696,17 @@ private fun MiMoVoiceRow(
     onTest: () -> Unit,
     onStop: () -> Unit,
 ) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        FilterChip(
+        ClawSeedChoiceChip(
             selected = selected,
             onClick = onSelect,
             label = { Text(displayName) },
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.fillMaxWidth(),
         )
-        Column(modifier = Modifier.weight(1.6f)) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Text(description, style = MaterialTheme.typography.bodySmall)
             Text(
                 voiceId,
@@ -825,7 +714,7 @@ private fun MiMoVoiceRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        OutlinedButton(onClick = if (isTesting) onStop else onTest) {
+        ClawSeedOutlinedButton(onClick = if (isTesting) onStop else onTest) {
             Text(stringResource(if (isTesting) R.string.chat_stop_speaking else R.string.settings_voice_mimo_test))
         }
     }
@@ -840,13 +729,12 @@ private fun VoiceEngineRow(
 ) {
     val isTesting = testState.packageName == engine.packageName && testState.status == TtsTestStatus.TESTING
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(engine.displayName, style = MaterialTheme.typography.bodyMedium)
                     if (engine.isSystemDefault) {
                         Text(
@@ -864,7 +752,7 @@ private fun VoiceEngineRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            OutlinedButton(onClick = if (isTesting) onStop else onTest) {
+            ClawSeedOutlinedButton(onClick = if (isTesting) onStop else onTest) {
                 Text(stringResource(if (isTesting) R.string.chat_stop_speaking else R.string.settings_voice_test))
             }
         }
@@ -904,44 +792,28 @@ private fun AppearanceCard(localStore: LocalStore) {
         else -> isSystemInDarkTheme()
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = themeMode == "light",
-                    onClick = { scope.launch { localStore.setThemeMode("light") } },
-                    label = { Text(stringResource(R.string.settings_theme_light)) },
-                )
-                FilterChip(
-                    selected = themeMode == "dark",
-                    onClick = { scope.launch { localStore.setThemeMode("dark") } },
-                    label = { Text(stringResource(R.string.settings_theme_dark)) },
-                )
-                FilterChip(
-                    selected = themeMode == "system",
-                    onClick = { scope.launch { localStore.setThemeMode("system") } },
-                    label = { Text(stringResource(R.string.settings_theme_system)) },
-                )
-            }
+            ClawSeedSegmentedPill(
+                options = listOf(stringResource(R.string.settings_theme_light), stringResource(R.string.settings_theme_dark), stringResource(R.string.settings_theme_system)),
+                selectedIndex = listOf("light", "dark", "system").indexOf(themeMode),
+                onSelect = { index -> scope.launch { localStore.setThemeMode(listOf("light", "dark", "system")[index]) } },
+                modifier = Modifier.fillMaxWidth(),
+            )
             Spacer(modifier = Modifier.height(12.dp))
             Text(stringResource(R.string.settings_language), style = MaterialTheme.typography.bodyMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ClawSeedChoiceChip(
                     selected = languageMode == "system",
                     onClick = { scope.launch { localStore.setLanguageMode("system"); (context as? android.app.Activity)?.recreate() } },
                     label = { Text(stringResource(R.string.settings_language_system)) },
                 )
-                FilterChip(
+                ClawSeedChoiceChip(
                     selected = languageMode == "en",
                     onClick = { scope.launch { localStore.setLanguageMode("en"); (context as? android.app.Activity)?.recreate() } },
                     label = { Text(stringResource(R.string.settings_language_english)) },
                 )
-                FilterChip(
+                ClawSeedChoiceChip(
                     selected = languageMode == "zh",
                     onClick = { scope.launch { localStore.setLanguageMode("zh"); (context as? android.app.Activity)?.recreate() } },
                     label = { Text(stringResource(R.string.settings_language_chinese)) },
@@ -949,24 +821,9 @@ private fun AppearanceCard(localStore: LocalStore) {
             }
             if (useDarkTheme) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.settings_oled_mode), style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            stringResource(R.string.settings_oled_mode_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(
-                        checked = oledMode,
-                        onCheckedChange = { scope.launch { localStore.setOledMode(it) } },
-                    )
-                }
+                SettingsSwitchRow(title = stringResource(R.string.settings_oled_mode),
+                subtitle = stringResource(R.string.settings_oled_mode_desc), checked = oledMode,
+                onCheckedChange = { scope.launch { localStore.setOledMode(it) } })
             }
         }
     }
@@ -977,34 +834,14 @@ private fun DeveloperOptionsCard(localStore: LocalStore) {
     val debugEnabled by localStore.showDebugInfo.collectAsState(initial = false)
     val scope = rememberCoroutineScope()
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.settings_debug_query),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Switch(
-                    checked = debugEnabled,
-                    onCheckedChange = { scope.launch { localStore.setShowDebugInfo(it) } },
-                )
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = stringResource(R.string.settings_debug_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
+        SettingsSwitchRow(
+            title = stringResource(R.string.settings_debug_query),
+            subtitle = stringResource(R.string.settings_debug_desc),
+            checked = debugEnabled,
+            onCheckedChange = { scope.launch { localStore.setShowDebugInfo(it) } },
+            modifier = Modifier.padding(16.dp),
+        )
     }
 }
 
@@ -1015,17 +852,12 @@ private fun SoulEditor(
     isSaving: Boolean,
     onSave: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            OutlinedTextField(
+            ClawSeedTextField(
                 value = content,
                 onValueChange = onContentChange,
                 modifier = Modifier
@@ -1040,7 +872,7 @@ private fun SoulEditor(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
             ) {
-                OutlinedButton(
+                ClawSeedOutlinedButton(
                     onClick = onSave,
                     enabled = !isSaving,
                 ) {
@@ -1112,24 +944,7 @@ private fun StatusCard(
 
 @Composable
 private fun StatusRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false).padding(start = 12.dp),
-        )
-    }
+    dev.clawseed.demo.ui.components.SettingsRow(title = label, value = value)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1151,12 +966,7 @@ private fun ProviderFormEditor(
     var contextWindowExpanded by remember { mutableStateOf(false) }
     var showApiKey by remember { mutableStateOf(false) }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -1166,7 +976,7 @@ private fun ProviderFormEditor(
                 expanded = providerExpanded,
                 onExpandedChange = { providerExpanded = it },
             ) {
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = stringResource(PROVIDER_PRESETS[state.selectedPresetIndex].displayNameRes),
                     onValueChange = {},
                     readOnly = true,
@@ -1191,7 +1001,7 @@ private fun ProviderFormEditor(
             }
 
             // Base URL
-            OutlinedTextField(
+            ClawSeedTextField(
                 value = state.baseUrl,
                 onValueChange = onBaseUrlChange,
                 label = { Text("Base URL") },
@@ -1202,7 +1012,7 @@ private fun ProviderFormEditor(
 
             // API Key
             val isPlaceholderKey = state.apiKey == SettingsViewModel.MASKED_KEY_PLACEHOLDER
-            OutlinedTextField(
+            ClawSeedTextField(
                 value = state.apiKey,
                 onValueChange = { newValue ->
                     if (isPlaceholderKey && newValue != state.apiKey) {
@@ -1218,7 +1028,7 @@ private fun ProviderFormEditor(
                     PasswordVisualTransformation() else VisualTransformation.None,
                 trailingIcon = if (state.apiKey.isNotEmpty() && !isPlaceholderKey) {
                     {
-                        IconButton(onClick = { showApiKey = !showApiKey }) {
+                        ClawSeedIconButton(onClick = { showApiKey = !showApiKey }) {
                             Text(
                                 if (showApiKey) stringResource(R.string.common_hide) else stringResource(R.string.common_show),
                                 style = MaterialTheme.typography.labelSmall,
@@ -1251,11 +1061,11 @@ private fun ProviderFormEditor(
             )
 
             // Fetch models button + status
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            androidx.compose.foundation.layout.FlowRow(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedButton(
+                ClawSeedOutlinedButton(
                     onClick = onFetchModels,
                     enabled = !state.isFetchingModels && state.baseUrl.isNotBlank(),
                 ) {
@@ -1303,7 +1113,7 @@ private fun ProviderFormEditor(
                     expanded = modelExpanded,
                     onExpandedChange = { modelExpanded = it },
                 ) {
-                    OutlinedTextField(
+                    ClawSeedTextField(
                         value = state.selectedModel,
                         onValueChange = { onSelectModel(it) },
                         label = { Text("Model") },
@@ -1327,7 +1137,7 @@ private fun ProviderFormEditor(
                     }
                 }
             } else {
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = state.selectedModel,
                     onValueChange = { onSelectModel(it) },
                     label = { Text("Model") },
@@ -1360,26 +1170,9 @@ private fun ProviderFormEditor(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.settings_thinking_mode), style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        stringResource(R.string.settings_thinking_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(
-                    checked = state.thinkingEnabled,
-                    onCheckedChange = onToggleThinking,
-                )
-            }
+            SettingsSwitchRow(title = stringResource(R.string.settings_thinking_mode), subtitle = stringResource(R.string.settings_thinking_desc), checked = state.thinkingEnabled, onCheckedChange = onToggleThinking)
 
-            OutlinedTextField(
+            ClawSeedTextField(
                 value = state.maxTokens,
                 onValueChange = { newValue ->
                     if (newValue.all { it.isDigit() }) {
@@ -1411,7 +1204,7 @@ private fun ProviderFormEditor(
                 expanded = contextWindowExpanded,
                 onExpandedChange = { contextWindowExpanded = it },
             ) {
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = currentContextWindowLabel,
                     onValueChange = {},
                     readOnly = true,
@@ -1450,7 +1243,7 @@ private fun ProviderFormEditor(
 
 @Composable
 private fun TomlEditor(toml: String, onTomlChange: (String) -> Unit) {
-    OutlinedTextField(
+    ClawSeedTextField(
         value = toml,
         onValueChange = onTomlChange,
         modifier = Modifier
@@ -1466,52 +1259,20 @@ private fun ToolCard(
     tool: dev.clawseed.sdk.core.model.ToolInfo,
     onToggle: (Boolean) -> Unit,
 ) {
-    Card(
+    dev.clawseed.demo.ui.components.ClawSeedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = when (tool.sourceType) {
+        containerColor = when (tool.sourceType) {
                 "remote" -> MaterialTheme.colorScheme.tertiaryContainer
                 "mcp" -> MaterialTheme.colorScheme.secondaryContainer
                 else -> MaterialTheme.colorScheme.surfaceVariant
             },
-        ),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = tool.name,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip(
-                        selected = false,
-                        onClick = {},
-                        label = {
-                            Text(
-                                text = when (tool.sourceType) {
-                                    "remote" -> "Remote"
-                                    "mcp" -> "MCP"
-                                    else -> "Built-in"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        },
-                        modifier = Modifier.height(24.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Switch(
-                        checked = tool.enabled,
-                        onCheckedChange = onToggle,
-                        modifier = Modifier.height(24.dp),
-                    )
-                }
-            }
+            SettingsSwitchRow(
+                title = tool.name,
+                subtitle = when (tool.sourceType) { "remote" -> "Remote"; "mcp" -> "MCP"; else -> "Built-in" },
+                checked = tool.enabled, onCheckedChange = onToggle,
+            )
             Text(
                 text = tool.description,
                 style = MaterialTheme.typography.bodySmall,
@@ -1529,30 +1290,15 @@ private fun SkillCard(
     onToggle: (Boolean) -> Unit,
     onClick: () -> Unit = {},
 ) {
-    Card(
+    dev.clawseed.demo.ui.components.ClawSeedCard(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = if (skill.version.isNotBlank()) "${skill.name}  v${skill.version}" else skill.name,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                Switch(
-                    checked = skill.enabled,
-                    onCheckedChange = onToggle,
-                    modifier = Modifier.height(24.dp),
-                )
-            }
+            SettingsSwitchRow(
+                title = if (skill.version.isNotBlank()) "${skill.name}  v${skill.version}" else skill.name,
+                checked = skill.enabled, onCheckedChange = onToggle,
+            )
             if (skill.description.isNotBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -1565,36 +1311,38 @@ private fun SkillCard(
             }
             if (skill.triggers.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     skill.triggers.forEach { trigger ->
-                        FilterChip(
+                        ClawSeedChoiceChip(
                             selected = false,
                             onClick = {},
+                        choiceType = dev.clawseed.demo.ui.components.ChoiceType.Information,
                             label = {
                                 Text(
                                     text = trigger,
                                     style = MaterialTheme.typography.labelSmall,
                                 )
                             },
-                            modifier = Modifier.height(24.dp),
+                            modifier = Modifier,
                         )
                     }
                 }
             }
             if (skill.permissions.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     skill.permissions.forEach { perm ->
-                        FilterChip(
+                        ClawSeedChoiceChip(
                             selected = false,
                             onClick = {},
+                        choiceType = dev.clawseed.demo.ui.components.ChoiceType.Information,
                             label = {
                                 Text(
                                     text = perm,
                                     style = MaterialTheme.typography.labelSmall,
                                 )
                             },
-                            modifier = Modifier.height(24.dp),
+                            modifier = Modifier,
                         )
                     }
                 }
@@ -1613,12 +1361,7 @@ private fun SkillEditor(
     onSave: () -> Unit,
     onClose: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -1632,7 +1375,7 @@ private fun SkillEditor(
                     text = skillName,
                     style = MaterialTheme.typography.titleSmall,
                 )
-                IconButton(onClick = onClose) {
+                ClawSeedIconButton(onClick = onClose) {
                     Icon(
                         Icons.Default.Close,
                         contentDescription = stringResource(R.string.settings_close_skill_editor),
@@ -1649,7 +1392,7 @@ private fun SkillEditor(
                     CircularProgressIndicator(modifier = Modifier.size(24.dp))
                 }
             } else if (content != null) {
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = content,
                     onValueChange = onContentChange,
                     modifier = Modifier
@@ -1663,7 +1406,7 @@ private fun SkillEditor(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                 ) {
-                    OutlinedButton(
+                    ClawSeedOutlinedButton(
                         onClick = onSave,
                         enabled = !isSaving,
                     ) {
@@ -1687,12 +1430,7 @@ private fun SkillEditor(
 
 @Composable
 private fun DownloadProgressIndicator(progress: dev.clawseed.sdk.core.model.EmbeddingDownloadProgress) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1758,35 +1496,30 @@ private fun EmbeddingCard(
     onApiKeyChange: (String) -> Unit,
     onToggleApiKeyVisibility: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(stringResource(R.string.settings_memory_embedding), style = MaterialTheme.typography.titleSmall)
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ClawSeedChoiceChip(
                     selected = embeddingProvider.isBlank(),
                     onClick = { onProviderChange("") },
                     label = { Text(stringResource(R.string.settings_memory_off)) },
                 )
-                FilterChip(
+                ClawSeedChoiceChip(
                     selected = embeddingProvider == "local",
                     onClick = { onProviderChange("local") },
                     label = { Text(stringResource(R.string.settings_memory_local_model)) },
                 )
-                FilterChip(
+                ClawSeedChoiceChip(
                     selected = embeddingProvider == "openai",
                     onClick = { onProviderChange("openai") },
                     label = { Text(stringResource(R.string.settings_memory_openai)) },
                 )
-                FilterChip(
+                ClawSeedChoiceChip(
                     selected = embeddingProvider == "openrouter",
                     onClick = { onProviderChange("openrouter") },
                     label = { Text(stringResource(R.string.settings_memory_openrouter)) },
@@ -1797,7 +1530,7 @@ private fun EmbeddingCard(
                 val isLocal = embeddingProvider == "local"
 
                 if (!isLocal) {
-                    OutlinedTextField(
+                    ClawSeedTextField(
                         value = if (embeddingProvider.startsWith("custom:")) embeddingProvider.removePrefix("custom:") else "",
                         onValueChange = { onProviderChange("custom:$it") },
                         label = { Text("Base URL") },
@@ -1808,7 +1541,7 @@ private fun EmbeddingCard(
                     )
                 }
 
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = embeddingModel,
                     onValueChange = onModelChange,
                     label = { Text("Model") },
@@ -1817,7 +1550,7 @@ private fun EmbeddingCard(
                     placeholder = { Text(if (isLocal) "gte-multilingual-base" else "text-embedding-3-small") },
                 )
 
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = embeddingDims,
                     onValueChange = { if (it.all { c -> c.isDigit() }) onDimsChange(it) },
                     label = { Text("Dimensions") },
@@ -1833,7 +1566,7 @@ private fun EmbeddingCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
-                    OutlinedTextField(
+                    ClawSeedTextField(
                         value = embeddingApiKey,
                         onValueChange = onApiKeyChange,
                         label = { Text("API Key") },
@@ -1843,7 +1576,7 @@ private fun EmbeddingCard(
                             PasswordVisualTransformation() else VisualTransformation.None,
                         trailingIcon = if (embeddingApiKey.isNotEmpty()) {
                             {
-                                IconButton(onClick = onToggleApiKeyVisibility) {
+                                ClawSeedIconButton(onClick = onToggleApiKeyVisibility) {
                                     Text(
                                         if (embeddingApiKeyVisible) stringResource(R.string.common_hide) else stringResource(R.string.common_show),
                                         style = MaterialTheme.typography.labelSmall,
@@ -1880,12 +1613,7 @@ private fun SearchEngineCard(
 
     val freeApiKeyPrefix = stringResource(R.string.settings_search_free_api_key)
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -1896,7 +1624,7 @@ private fun SearchEngineCard(
                 expanded = expanded,
                 onExpandedChange = { expanded = it },
             ) {
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = selectedDisplayName,
                     onValueChange = {},
                     readOnly = true,
@@ -1921,7 +1649,7 @@ private fun SearchEngineCard(
             }
 
             if (searchEngine == "tavily") {
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = tavilyApiKey,
                     onValueChange = onTavilyApiKeyChange,
                     label = { Text("Tavily API Key") },
@@ -1931,7 +1659,7 @@ private fun SearchEngineCard(
                         PasswordVisualTransformation() else VisualTransformation.None,
                     trailingIcon = if (tavilyApiKey.isNotEmpty()) {
                         {
-                            IconButton(onClick = onToggleTavilyApiKeyVisibility) {
+                            ClawSeedIconButton(onClick = onToggleTavilyApiKeyVisibility) {
                                 Text(
                                     if (tavilyApiKeyVisible) stringResource(R.string.common_hide) else stringResource(R.string.common_show),
                                     style = MaterialTheme.typography.labelSmall,
@@ -2000,12 +1728,7 @@ private fun SessionSettingsCard(
         mutableStateOf(ttlHoursToDays(ttlHours))
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = stringResource(R.string.settings_session_auto_cleanup),
@@ -2018,7 +1741,7 @@ private fun SessionSettingsCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(
+            ClawSeedTextField(
                 value = daysValue,
                 onValueChange = { v ->
                     val filtered = v.filter { it.isDigit() }
@@ -2049,40 +1772,18 @@ private fun ContextCompactionCard(
     var keepExpanded by remember { mutableStateOf(false) }
     var thresholdExpanded by remember { mutableStateOf(false) }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.settings_context_compaction_enabled),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Text(
-                        stringResource(R.string.settings_context_compaction_enabled_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(checked = enabled, onCheckedChange = onToggleEnabled)
-            }
+            SettingsSwitchRow(title = stringResource(R.string.settings_context_compaction_enabled), subtitle = stringResource(R.string.settings_context_compaction_enabled_desc), checked = enabled, onCheckedChange = onToggleEnabled)
 
             ExposedDropdownMenuBox(
                 expanded = keepExpanded,
                 onExpandedChange = { keepExpanded = it },
             ) {
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = stringResource(R.string.settings_context_compaction_keep_turns_value, keepRecentTurns),
                     onValueChange = {},
                     readOnly = true,
@@ -2114,7 +1815,7 @@ private fun ContextCompactionCard(
                 expanded = thresholdExpanded,
                 onExpandedChange = { thresholdExpanded = it },
             ) {
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = "$thresholdPercent%",
                     onValueChange = {},
                     readOnly = true,
@@ -2155,14 +1856,7 @@ fun CouncilCard(
     onUpdateReviewer: (Int, CouncilReviewerDraft) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(stringResource(R.string.settings_council_enable), style = MaterialTheme.typography.bodyLarge)
-            Switch(checked = enabled, onCheckedChange = onToggleEnabled)
-        }
+        SettingsSwitchRow(title = stringResource(R.string.settings_council_enable), checked = enabled, onCheckedChange = onToggleEnabled)
         if (enabled) {
             Text(
                 stringResource(R.string.settings_council_desc),
@@ -2177,7 +1871,7 @@ fun CouncilCard(
                     onRemove = { onRemoveReviewer(index) },
                 )
             }
-            OutlinedButton(onClick = onAddReviewer, modifier = Modifier.fillMaxWidth()) {
+            ClawSeedOutlinedButton(onClick = onAddReviewer, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.settings_add_reviewer))
             }
         }
@@ -2191,22 +1885,19 @@ fun ReviewerEditor(
     onUpdate: (CouncilReviewerDraft) -> Unit,
     onRemove: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(stringResource(R.string.settings_reviewer_label, index + 1), style = MaterialTheme.typography.labelLarge)
-                IconButton(onClick = onRemove, modifier = Modifier.size(24.dp)) {
+                Text(stringResource(R.string.settings_reviewer_label, index + 1), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                ClawSeedIconButton(onClick = onRemove, dangerous = true) {
                     Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_delete), modifier = Modifier.size(16.dp))
                 }
             }
-            OutlinedTextField(
+            ClawSeedTextField(
                 value = draft.role,
                 onValueChange = { onUpdate(draft.copy(role = it)) },
                 label = { Text(stringResource(R.string.settings_reviewer_role)) },
@@ -2214,7 +1905,7 @@ fun ReviewerEditor(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
-            OutlinedTextField(
+            ClawSeedTextField(
                 value = draft.focusPrompt,
                 onValueChange = { onUpdate(draft.copy(focusPrompt = it)) },
                 label = { Text(stringResource(R.string.settings_reviewer_focus)) },
@@ -2223,7 +1914,7 @@ fun ReviewerEditor(
                 minLines = 2,
                 maxLines = 4,
             )
-            OutlinedTextField(
+            ClawSeedTextField(
                 value = draft.model,
                 onValueChange = { onUpdate(draft.copy(model = it)) },
                 label = { Text(stringResource(R.string.settings_reviewer_model)) },

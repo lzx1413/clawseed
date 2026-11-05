@@ -1,5 +1,6 @@
 package dev.clawseed.demo.ui.chat.components
 
+import dev.clawseed.demo.ui.components.ClawSeedTextButton
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -28,9 +29,9 @@ internal fun DraftImageStrip(images: List<ChatImageDraft>, file: (String) -> Fil
                     else if (image.uploading) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("上传中") }
                     else if (image.error != null || image.attachment == null) {
                         image.error?.let { Text(it, maxLines = 2, style = MaterialTheme.typography.labelSmall) }
-                        TextButton(onClick = { onRetry(image.id) }) { Text("重试") }
+                        ClawSeedTextButton(onClick = { onRetry(image.id) }) { Text("重试") }
                     }
-                    TextButton(onClick = { onRemove(image.id) }) { Text("移除图片") }
+                    ClawSeedTextButton(onClick = { onRemove(image.id) }) { Text("移除图片") }
                 }
             }
         }
@@ -49,7 +50,7 @@ internal fun MessageImageStrip(images: List<ImageAttachment>, read: (suspend (St
                     val bytes = result?.getOrNull()
                     if (bytes != null) ZoomableChatImage(bytes)
                     else if (result == null) CircularProgressIndicator(Modifier.size(28.dp))
-                    else TextButton(onClick = { result = null; retry++ }) { Text("图片不可用，重试") }
+                    else ClawSeedTextButton(onClick = { result = null; retry++ }) { Text("图片不可用，重试") }
                 }
             }
         }
@@ -67,7 +68,7 @@ private fun ZoomableChatImage(data: Any) {
             Column {
                 AsyncImage(model = data, contentDescription = "图片附件", modifier = Modifier.fillMaxWidth().height(480.dp)
                     .graphicsLayer(scaleX = scale, scaleY = scale).transformable(gesture))
-                TextButton(onClick = { expanded = false }) { Text("关闭") }
+                ClawSeedTextButton(onClick = { expanded = false }) { Text("关闭") }
             }
         }
     }

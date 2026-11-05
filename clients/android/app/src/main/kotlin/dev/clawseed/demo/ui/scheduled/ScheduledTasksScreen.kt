@@ -1,5 +1,14 @@
 package dev.clawseed.demo.ui.scheduled
 
+import androidx.compose.foundation.selection.selectableGroup
+import dev.clawseed.demo.ui.components.ClawSeedButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import dev.clawseed.demo.ui.components.ClawSeedOutlinedButton
+import dev.clawseed.demo.ui.components.ClawSeedTextButton
+import dev.clawseed.demo.ui.components.ClawSeedTextField
+import dev.clawseed.demo.ui.components.ClawSeedChoiceChip
+import dev.clawseed.demo.ui.components.ClawSeedIconButton
 import android.Manifest
 import android.app.TimePickerDialog
 import android.content.Intent
@@ -12,8 +21,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,31 +42,22 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import dev.clawseed.demo.ui.components.ClawSeedFormDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import dev.clawseed.demo.ui.components.ClawSeedTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -151,10 +149,10 @@ fun ScheduledTasksScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            ClawSeedTopAppBar(
                 title = { Text(stringResource(R.string.task_title)) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    ClawSeedIconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
@@ -172,17 +170,15 @@ fun ScheduledTasksScreen(
                 .padding(padding),
         ) {
             if (!canScheduleExactAlarms && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                Card(
+                dev.clawseed.demo.ui.components.ClawSeedCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                    ),
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Icon(
                             Icons.Default.Warning,
@@ -195,9 +191,8 @@ fun ScheduledTasksScreen(
                             stringResource(R.string.task_alarm_warning),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.weight(1f),
                         )
-                        TextButton(onClick = {
+                        ClawSeedTextButton(onClick = {
                             val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
                                 putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
                             }
@@ -253,17 +248,12 @@ private fun TaskCard(
     onDetails: () -> Unit,
     nowMillis: Long,
 ) {
-    Card(
+    dev.clawseed.demo.ui.components.ClawSeedCard(
         onClick = onDetails,
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (task.enabled)
-                MaterialTheme.colorScheme.surfaceVariant
-            else
-                MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
-        ),
+        muted = !task.enabled,
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -272,8 +262,6 @@ private fun TaskCard(
                     Text(
                         task.name,
                         style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         String.format("%02d:%02d", task.hour, task.minute),
@@ -284,20 +272,7 @@ private fun TaskCard(
                     checked = task.enabled,
                     onCheckedChange = onToggle,
                 )
-                IconButton(onClick = onEdit) {
-                    Icon(
-                        Icons.Default.Edit,
-                        contentDescription = stringResource(R.string.task_edit),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = stringResource(R.string.common_delete),
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                }
+
             }
 
             Text(
@@ -323,9 +298,10 @@ private fun TaskCard(
             Spacer(modifier = Modifier.height(6.dp))
 
             // "Run Now" button (or "正在执行..." text when alarm-triggered RUNNING)
-            Row(
+            androidx.compose.foundation.layout.FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 if (task.lastStatus == TaskStatus.RUNNING) {
                     Text(
@@ -334,7 +310,7 @@ private fun TaskCard(
                         color = MaterialTheme.colorScheme.primary,
                     )
                 } else {
-                    OutlinedButton(
+                    ClawSeedOutlinedButton(
                         onClick = onRunNow,
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     ) {
@@ -347,23 +323,36 @@ private fun TaskCard(
                         Text(stringResource(R.string.task_run_now), style = MaterialTheme.typography.labelSmall)
                     }
                 }
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = onDetails) {
+                ClawSeedIconButton(onClick = onEdit) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = stringResource(R.string.task_edit),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                ClawSeedIconButton(onClick = onDelete, dangerous = true) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = stringResource(R.string.common_delete),
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                }
+                ClawSeedIconButton(onClick = onDetails) {
                     Icon(Icons.Default.Info, contentDescription = stringResource(R.string.task_details))
                 }
             }
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 val repeatLabel = if (task.repeat == TaskRepeat.CUSTOM) {
                     task.repeatDays.sorted().joinToString(" ") { weekdayLabel(it) }
                 } else task.repeat.label()
-                Text(repeatLabel, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                Text(repeatLabel, style = MaterialTheme.typography.labelSmall)
 
                 if (task.lastRunAt != null && task.lastStatus != TaskStatus.RUNNING) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -428,12 +417,12 @@ private fun TaskDetailsDialog(
     onSettings: () -> Unit,
     onOpenSession: (String) -> Unit,
 ) {
-    AlertDialog(
+    ClawSeedFormDialog(
         onDismissRequest = onDismiss,
         title = { Text(task.name) },
         text = {
             SelectionContainer {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(stringResource(R.string.task_message_label), style = MaterialTheme.typography.labelMedium)
                     Text(task.message)
                     Text(stringResource(when (task.lastStatus) {
@@ -441,7 +430,12 @@ private fun TaskDetailsDialog(
                         TaskStatus.SUCCESS -> R.string.task_succeeded
                         TaskStatus.FAILED -> R.string.task_failed
                         null -> R.string.task_not_run
-                    }), style = MaterialTheme.typography.titleSmall)
+                    }), style = MaterialTheme.typography.titleSmall,
+                        color = when (task.lastStatus) {
+                            TaskStatus.FAILED -> MaterialTheme.colorScheme.error
+                            TaskStatus.SUCCESS -> MaterialTheme.colorScheme.success
+                            else -> MaterialTheme.colorScheme.primary
+                        })
                     task.lastRunAt?.let { Text(stringResource(R.string.task_last_run, formatTaskTime(it))) }
                     if (task.lastStatus == TaskStatus.FAILED) {
                         task.lastError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -453,7 +447,7 @@ private fun TaskDetailsDialog(
                         }
                     }
                     task.sessionId?.takeIf { it.isNotBlank() }?.let { sessionId ->
-                        TextButton(onClick = { onOpenSession(sessionId) }) {
+                        ClawSeedTextButton(onClick = { onOpenSession(sessionId) }) {
                             Text(stringResource(R.string.task_open_session))
                         }
                     }
@@ -464,11 +458,11 @@ private fun TaskDetailsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) }
+            ClawSeedButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) }
         },
         dismissButton = {
             if (task.lastStatus == TaskStatus.FAILED) {
-                TextButton(onClick = onSettings) { Text(stringResource(R.string.drawer_settings)) }
+                ClawSeedTextButton(onClick = onSettings) { Text(stringResource(R.string.drawer_settings)) }
             }
         },
     )
@@ -502,22 +496,22 @@ private fun TaskDialog(
         }
     }
 
-    AlertDialog(
+    dev.clawseed.demo.ui.components.ClawSeedFormDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initialTask != null) stringResource(R.string.task_edit_dialog_title) else stringResource(R.string.task_add_dialog_title)) },
         text = {
             Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text(stringResource(R.string.task_name_label)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(
+                ClawSeedTextField(
                     value = message,
                     onValueChange = { message = it },
                     label = { Text(stringResource(R.string.task_message_label)) },
@@ -527,16 +521,16 @@ private fun TaskDialog(
                 )
 
                 Text(stringResource(R.string.task_time_label), style = MaterialTheme.typography.labelMedium)
-                OutlinedButton(onClick = { showTimePicker = true }, modifier = Modifier.fillMaxWidth()) {
+                ClawSeedOutlinedButton(onClick = { showTimePicker = true }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.Edit, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.task_clock_time, hour, minute))
                 }
 
                 Text(stringResource(R.string.task_repeat_label), style = MaterialTheme.typography.labelMedium)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     TaskRepeat.entries.forEach { mode ->
-                        FilterChip(
+                        ClawSeedChoiceChip(
                             selected = repeat == mode,
                             onClick = { repeat = mode },
                             label = { Text(mode.label()) },
@@ -544,10 +538,11 @@ private fun TaskDialog(
                     }
                 }
                 if (repeat == TaskRepeat.CUSTOM) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         (1..7).forEach { day ->
-                            FilterChip(
+                            ClawSeedChoiceChip(
                                 selected = day in repeatDays,
+                                choiceType = dev.clawseed.demo.ui.components.ChoiceType.Multiple,
                                 onClick = { repeatDays = if (day in repeatDays) repeatDays - day else repeatDays + day },
                                 label = { Text(weekdayLabel(day)) },
                             )
@@ -557,7 +552,7 @@ private fun TaskDialog(
             }
         },
         confirmButton = {
-            TextButton(
+            ClawSeedButton(
                 onClick = {
                     if (name.isNotBlank() && message.isNotBlank()) {
                         onConfirm(
@@ -578,7 +573,7 @@ private fun TaskDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+            ClawSeedTextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }

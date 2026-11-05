@@ -1,27 +1,31 @@
 package dev.clawseed.demo.ui.chat.components
 
-import androidx.compose.foundation.clickable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import dev.clawseed.demo.ui.components.ClawSeedButton
+import dev.clawseed.demo.ui.components.ClawSeedTextButton
+import dev.clawseed.demo.ui.components.ClawSeedTextField
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -47,8 +51,8 @@ fun AskUserPrompt(
 
     Surface(
         modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(8.dp),
-        tonalElevation = 2.dp,
+        shape = dev.clawseed.demo.ui.theme.ClawSeedShapes.Card,
+        tonalElevation = 0.dp,
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Column(
@@ -57,7 +61,7 @@ fun AskUserPrompt(
         ) {
             Text(request.question, style = MaterialTheme.typography.titleSmall)
             when (request.kind) {
-                "single_select" -> request.options.forEach { option ->
+                "single_select" -> Column(Modifier.selectableGroup()) { request.options.forEach { option ->
                     OptionRow(
                         option = option,
                         selected = selected == option.id,
@@ -65,6 +69,7 @@ fun AskUserPrompt(
                         enabled = controlsEnabled,
                         onClick = { selected = option.id },
                     )
+                }
                 }
                 "multi_select" -> request.options.forEach { option ->
                     OptionRow(
@@ -78,7 +83,7 @@ fun AskUserPrompt(
                         },
                     )
                 }
-                "text" -> OutlinedTextField(
+                "text" -> ClawSeedTextField(
                     value = text,
                     onValueChange = { if (it.length <= 1000) text = it },
                     enabled = controlsEnabled,
@@ -88,10 +93,10 @@ fun AskUserPrompt(
                     maxLines = 4,
                 )
             }
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (submitting) {
                     CircularProgressIndicator(
@@ -99,13 +104,13 @@ fun AskUserPrompt(
                         strokeWidth = 2.dp,
                     )
                 }
-                TextButton(
+                ClawSeedTextButton(
                     onClick = { onAnswer(if (request.kind == "confirm") "declined" else "cancelled", null) },
                     enabled = controlsEnabled,
                 ) {
                     Text(stringResource(if (request.kind == "confirm") R.string.ask_user_decline else R.string.common_cancel))
                 }
-                Button(
+                ClawSeedButton(
                     onClick = {
                         val answer = when (request.kind) {
                             "confirm" -> JsonPrimitive(true)
@@ -137,12 +142,14 @@ private fun OptionRow(
     onClick: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).then(
+            if (multiple) Modifier.toggleable(selected, enabled = enabled, role = Role.Checkbox, onValueChange = { onClick() })
+            else Modifier.selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (multiple) Checkbox(selected, onCheckedChange = null, enabled = enabled)
         else RadioButton(selected, onClick = null, enabled = enabled)
-        Column(modifier = Modifier.padding(start = 6.dp)) {
+        Column(modifier = Modifier.weight(1f).padding(start = 6.dp)) {
             Text(option.label, style = MaterialTheme.typography.bodyMedium)
             option.description?.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -1,5 +1,16 @@
 package dev.clawseed.demo.ui.chat.components
 
+import dev.clawseed.demo.R
+import dev.clawseed.demo.ui.components.ClawSeedButton
+import dev.clawseed.demo.ui.components.ClawSeedSheetHeader
+import dev.clawseed.demo.ui.theme.ClawSeedShapes
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import dev.clawseed.demo.ui.components.ClawSeedBottomSheet
+import dev.clawseed.demo.ui.components.ClawSeedTextButton
 import android.Manifest
 import android.content.ContentUris
 import android.content.pm.PackageManager
@@ -103,11 +114,14 @@ internal fun ChatAttachmentSheet(
         action?.invoke()
     }
 
-    ModalBottomSheet(
+    ClawSeedBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
-        Column(Modifier.fillMaxWidth().padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            ClawSeedSheetHeader(stringResource(R.string.chat_attachments_title), onDismiss,
+                Modifier.padding(horizontal = 20.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             if (recent.isNotEmpty()) {
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     itemsIndexed(recent, key = { _, uri -> uri.toString() }) { index, uri ->
@@ -121,7 +135,7 @@ internal fun ChatAttachmentSheet(
                                     onValueChange = { selected = if (checked) selected - uri else selected + uri },
                                 ),
                         ) {
-                            AsyncImage(model = uri, contentDescription = "最近图片 ${index + 1}", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            AsyncImage(model = uri, contentDescription = stringResource(R.string.chat_recent_image, index + 1), contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                             Surface(
                                 modifier = Modifier.align(Alignment.TopEnd).padding(7.dp).size(24.dp),
                                 shape = CircleShape,
@@ -136,41 +150,74 @@ internal fun ChatAttachmentSheet(
                     }
                 }
             } else {
-                Box(Modifier.fillMaxWidth().height(88.dp).padding(horizontal = 20.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxWidth().heightIn(min = 88.dp).padding(horizontal = 20.dp), contentAlignment = Alignment.Center) {
                     if (loading) CircularProgressIndicator(Modifier.size(24.dp))
-                    else if (!canRead) TextButton(onClick = { permissionLauncher.launch(permissions) }, enabled = canPickImages) {
-                        Text("允许访问照片，显示最近图片")
-                    } else Text("暂无可访问的图片，可从相册选择", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else if (!canRead) ClawSeedTextButton(onClick = { permissionLauncher.launch(permissions) }, enabled = canPickImages) {
+                        Text(stringResource(R.string.chat_photos_permission))
+                    } else Text(stringResource(R.string.chat_photos_empty), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             if (selected.isNotEmpty()) {
-                FilledTonalButton(
+                ClawSeedButton(
                     onClick = { onDismiss(); onSelectRecent?.invoke(selected) },
                     enabled = canPickImages && selected.size <= imageSlots && onSelectRecent != null,
                     modifier = Modifier.align(Alignment.End).padding(horizontal = 20.dp),
-                ) { Text("添加 ${selected.size} 张图片") }
+                ) { Text(stringResource(R.string.chat_add_selected_images, selected.size)) }
             } else if (canRead && !fullAccess) {
-                TextButton(onClick = { permissionLauncher.launch(permissions) }, modifier = Modifier.align(Alignment.End).padding(horizontal = 12.dp)) {
-                    Text("管理可访问的照片")
+                ClawSeedTextButton(onClick = { permissionLauncher.launch(permissions) }, modifier = Modifier.align(Alignment.End).padding(horizontal = 12.dp)) {
+                    Text(stringResource(R.string.chat_manage_photos))
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                AttachmentAction("拍照", CameraIcon, canPickImages && imageSlots > 0 && onTakePhoto != null, { launch(onTakePhoto) }, Modifier.weight(1f))
-                AttachmentAction("相册", GalleryIcon, canPickImages && imageSlots > 0 && onPickImages != null, { launch(onPickImages) }, Modifier.weight(1f))
-                AttachmentAction("文件", AttachmentIcon, canPickFiles && onPickFiles != null, { launch(onPickFiles) }, Modifier.weight(1f))
+            BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                val stacked = maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.3f
+                val actions: @Composable (Modifier) -> Unit = { actionModifier ->
+                    AttachmentAction(stringResource(R.string.chat_take_photo), CameraIcon,
+                        canPickImages && imageSlots > 0 && onTakePhoto != null,
+                        { launch(onTakePhoto) }, actionModifier, stacked)
+                    AttachmentAction(stringResource(R.string.chat_choose_photo), GalleryIcon,
+                        canPickImages && imageSlots > 0 && onPickImages != null,
+                        { launch(onPickImages) }, actionModifier, stacked)
+                    AttachmentAction(stringResource(R.string.chat_choose_file), AttachmentIcon,
+                        canPickFiles && onPickFiles != null,
+                        { launch(onPickFiles) }, actionModifier, stacked)
+                }
+                if (stacked) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { actions(Modifier.fillMaxWidth()) }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { actions(Modifier.weight(1f)) }
+                }
             }
-            if (!canPickFiles) Text("当前连接不支持文件附件或暂不可添加", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall)
-            if (imageSlots <= 0) Text("每条消息最多添加 4 张图片", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall)
+            if (!canPickFiles) Text(stringResource(R.string.chat_files_unavailable), Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall)
+            if (imageSlots <= 0) Text(stringResource(R.string.chat_image_limit), Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
 
 @Composable
-private fun AttachmentAction(label: String, icon: ImageVector, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
-    Surface(onClick = onClick, enabled = enabled, modifier = modifier.height(92.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
-            Text(label, style = MaterialTheme.typography.titleMedium)
+private fun AttachmentAction(
+    label: String, icon: ImageVector, enabled: Boolean, onClick: () -> Unit,
+    modifier: Modifier, stacked: Boolean,
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick, enabled = enabled,
+        modifier = modifier.heightIn(min = if (stacked) 64.dp else 92.dp),
+        shape = ClawSeedShapes.Card, color = colors.surface,
+        contentColor = colors.onSurface.copy(alpha = if (enabled) 1f else 0.38f),
+        border = BorderStroke(1.dp, colors.outlineVariant),
+    ) {
+        if (stacked) {
+            Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
+                Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            }
+        } else {
+            Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
+                Text(label, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+            }
         }
     }
 }

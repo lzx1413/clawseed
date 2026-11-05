@@ -677,4 +677,18 @@
     <string name="svc_local_backup_success">Local backup saved (%1$d bytes).</string>
     <string name="svc_local_backup_directory_missing">Automatic local backup needs a selected persistent folder.</string>
     <string name="svc_webdav_backup_failed">Automatic backup failed.</string>
+
+    <!-- Chat sheets and conversation forms -->
+    <string name="drawer_conversation_name">Conversation name</string>
+    <string name="chat_attachments_title">Attachments</string>
+    <string name="chat_recent_image">Recent image %1$d</string>
+    <string name="chat_photos_permission">Allow photo access to show recent images</string>
+    <string name="chat_photos_empty">No accessible images. Choose from your gallery.</string>
+    <string name="chat_add_selected_images">Add images (%1$d)</string>
+    <string name="chat_manage_photos">Manage photo access</string>
+    <string name="chat_files_unavailable">File attachments are unavailable for this connection or at this time.</string>
+    <string name="chat_image_limit">Add up to 4 images per message</string>
+    <string name="chat_take_photo">Take photo</string>
+    <string name="chat_choose_photo">Gallery</string>
+    <string name="chat_choose_file">File</string>
 </resources>

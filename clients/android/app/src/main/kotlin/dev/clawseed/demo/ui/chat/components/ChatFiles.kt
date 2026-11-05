@@ -1,5 +1,6 @@
 package dev.clawseed.demo.ui.chat.components
 
+import dev.clawseed.demo.ui.components.ClawSeedTextButton
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -7,7 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -26,8 +26,8 @@ internal fun DraftFileList(files: List<ChatFileDraft>, remove: (String) -> Unit,
                 else -> file.error ?: "解析失败"
             }, style = MaterialTheme.typography.bodySmall)
             Row {
-                if (file.status == "failed") TextButton(onClick = { retry(file.id) }) { Text("重试") }
-                TextButton(onClick = { remove(file.id) }, enabled = file.status !in setOf("importing", "parsing")) { Text("移除") }
+                if (file.status == "failed") ClawSeedTextButton(onClick = { retry(file.id) }) { Text("重试") }
+                ClawSeedTextButton(onClick = { remove(file.id) }, enabled = file.status !in setOf("importing", "parsing")) { Text("移除") }
             }
         }
     }

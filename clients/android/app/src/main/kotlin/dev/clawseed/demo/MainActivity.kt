@@ -13,7 +13,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.ViewModelProvider
@@ -23,7 +22,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
-import dev.clawseed.demo.ui.theme.appColorScheme
+import dev.clawseed.demo.ui.theme.ClawSeedTheme
 import androidx.core.content.ContextCompat
 import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.demo.i18n.LocaleHelper
@@ -111,25 +110,24 @@ class MainActivity : ComponentActivity() {
                 "dark" -> true
                 else -> isSystemInDarkTheme()
             }
-            val colorScheme = appColorScheme(useDarkTheme, oledMode)
-            MaterialTheme(colorScheme = colorScheme) {
+            ClawSeedTheme(dark = useDarkTheme, oled = oledMode) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     ClawseedApp(
                         localStore = localStore,
                         notificationSessionId = pendingSessionId,
                     )
                 }
-                if (shareState.receiving) androidx.compose.material3.AlertDialog(
+                if (shareState.receiving) dev.clawseed.demo.ui.components.ClawSeedFormDialog(
                     onDismissRequest = {},
                     title = { androidx.compose.material3.Text("正在接收分享") },
                     text = { androidx.compose.material3.Text("正在保存图片和文件，即将打开新会话…") },
                     confirmButton = {},
                 )
-                shareState.error?.let { error -> androidx.compose.material3.AlertDialog(
+                shareState.error?.let { error -> dev.clawseed.demo.ui.components.ClawSeedFormDialog(
                     onDismissRequest = { shareReceiver.dismissError() },
                     title = { androidx.compose.material3.Text("无法接收分享") },
                     text = { androidx.compose.material3.Text(error) },
-                    confirmButton = { androidx.compose.material3.TextButton(onClick = { shareReceiver.dismissError() }) { androidx.compose.material3.Text("知道了") } },
+                    confirmButton = { dev.clawseed.demo.ui.components.ClawSeedTextButton(onClick = { shareReceiver.dismissError() }) { androidx.compose.material3.Text("知道了") } },
                 ) }
             }
         }

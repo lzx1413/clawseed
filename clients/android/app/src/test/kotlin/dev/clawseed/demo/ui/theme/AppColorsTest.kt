@@ -72,6 +72,20 @@ class AppColorsTest {
         }
     }
 
+    @Test fun compositedMaterialsAndInputStatesRemainReadable() {
+        schemes.forEach { scheme ->
+            dev.clawseed.demo.ui.components.GlassLevel.entries.forEach { level ->
+                val surface = dev.clawseed.demo.ui.components.glassFill(scheme, level).compositeOver(scheme.background)
+                assertTrue("Body on $level", contrast(scheme.onSurface, surface) >= 4.5f)
+                assertTrue("Secondary on $level", contrast(scheme.onSurfaceVariant, surface) >= 4.5f)
+            }
+            listOf(scheme.outline, scheme.primary, scheme.error).forEach { boundary ->
+                assertTrue("Input state border", contrast(boundary, scheme.surfaceContainerLow) >= 3f)
+            }
+            assertTrue(contrast(scheme.error, scheme.surfaceContainerLow) >= 4.5f)
+        }
+    }
+
     @Test fun personaLabelsAdaptEvenForBlackWhiteAndSaturatedCustomColors() {
         val accents = listOf(Color.Black, Color.White, Color.Red, Color.Blue, Color.Green,
             Color.Yellow, Color(0xFF7C3AED), Color(0xFFDB2777), Color(0xFFCA8A04))

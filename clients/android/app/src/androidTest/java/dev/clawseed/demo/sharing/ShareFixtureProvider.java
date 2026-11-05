@@ -23,8 +23,10 @@ public class ShareFixtureProvider extends ContentProvider {
 
     @Override public Bundle call(String method, String arg, Bundle extras) {
         if ("grant".equals(method)) {
-            getContext().grantUriPermission("dev.clawseed.demo",
-                Uri.parse("content://dev.clawseed.demo.test.share-fixtures/"),
+            String testPackage = getContext().getPackageName();
+            String targetPackage = testPackage.substring(0, testPackage.length() - ".test".length());
+            getContext().grantUriPermission(targetPackage,
+                Uri.parse("content://" + testPackage + ".share-fixtures/"),
                 Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
         }
         return new Bundle();

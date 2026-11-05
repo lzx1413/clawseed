@@ -27,12 +27,10 @@ import dev.clawseed.demo.scheduled.TaskRepeat
 import dev.clawseed.demo.scheduled.AlarmSchedule
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.android.ChatAccumulator
-import dev.clawseed.sdk.android.cetp.AuthRequiredEvent
 import dev.clawseed.sdk.core.ClawSeedSession
 import dev.clawseed.sdk.core.model.ConnectionState
 import dev.clawseed.sdk.core.model.ChatEvent
 import dev.clawseed.sdk.core.model.PersonaInfo
-import dev.clawseed.sdk.core.model.SessionInfo
 import dev.clawseed.sdk.core.model.SessionMessage
 import dev.clawseed.sdk.core.model.ToolPresentation
 import dev.clawseed.sdk.core.model.parseToolPresentation

@@ -90,6 +90,6 @@ internal fun appColorScheme(dark: Boolean, oled: Boolean = false): ColorScheme =
     else -> DarkColors
 }
 
-// Success is separate from selection (gold) and informational accents (blue-gray).
+// Success is separate from neutral selection containers and blue-gray actions.
 internal val ColorScheme.success: Color
     get() = if (surface.luminance() < 0.5f) Color(0xFF8ACBA7) else Color(0xFF246B47)

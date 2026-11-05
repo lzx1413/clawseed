@@ -1,13 +1,8 @@
 package dev.clawseed.demo.ui.chat.components
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import dev.clawseed.demo.ui.components.ClawSeedIconButton
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,25 +10,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -83,10 +72,10 @@ fun ChatBottomBar(
             modifier = Modifier
                 .padding(horizontal = 12.dp, vertical = 8.dp)
                 .fillMaxWidth(),
-            level = GlassLevel.Elevated,
-            shape = RoundedCornerShape(percent = 50),
+            level = GlassLevel.Chrome,
+            shape = RoundedCornerShape(28.dp),
             interactive = inputFocused,
-            shadowElevation = 4.dp,
+            shadowElevation = 2.dp,
         ) {
             Row(
                 modifier = Modifier
@@ -96,7 +85,7 @@ fun ChatBottomBar(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (onPickImages != null || onPickFiles != null) {
-                    IconButton(
+                    ClawSeedIconButton(
                         onClick = {
                             keyboardController?.hide()
                             showAttachmentPicker = true
@@ -156,7 +145,6 @@ fun ChatBottomBar(
                             icon = StopIcon,
                             onClick = onStop,
                             contentDescription = stringResource(R.string.chat_stop_generating),
-                            isPulsing = true,
                             testTag = "chat_stop",
                         )
                     } else if ((input.isNotBlank() || hasImages) && canSend) {
@@ -193,51 +181,15 @@ private fun ComposerCircleButton(
     onClick: () -> Unit,
     contentDescription: String,
     modifier: Modifier = Modifier,
-    isPulsing: Boolean = false,
     testTag: String? = null,
 ) {
-    val pulseModifier = if (isPulsing) {
-        val infiniteTransition = rememberInfiniteTransition()
-        val pulseScale by infiniteTransition.animateFloat(
-            initialValue = 0.92f,
-            targetValue = 1.0f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 800, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse,
-            ),
-        )
-        val pulseAlpha by infiniteTransition.animateFloat(
-            initialValue = 0.7f,
-            targetValue = 1.0f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 800, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse,
-            ),
-        )
-        Modifier.graphicsLayer {
-            scaleX = pulseScale
-            scaleY = pulseScale
-            alpha = pulseAlpha
-        }
-    } else {
-        Modifier
-    }
-
-    Box(
-        modifier = modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primary, shape = CircleShape)
-            .then(testTag?.let { Modifier.testTag(it) } ?: Modifier)
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center,
+    ClawSeedIconButton(
+        onClick = onClick,
+        modifier = modifier.then(testTag?.let { Modifier.testTag(it) } ?: Modifier),
+        contentDescription = contentDescription,
+        filled = true,
     ) {
-        androidx.compose.material3.Icon(
-            imageVector = icon,
-            modifier = Modifier.size(32.dp).then(pulseModifier),
-            contentDescription = contentDescription,
-            tint = MaterialTheme.colorScheme.onPrimary,
-        )
+        Icon(icon, contentDescription = null, modifier = Modifier.size(32.dp))
     }
 }
 

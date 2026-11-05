@@ -1,42 +1,44 @@
 package dev.clawseed.demo.ui.settings
 
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.Role
+import dev.clawseed.demo.ui.components.ClawSeedTextField
+import dev.clawseed.demo.ui.components.ClawSeedSectionHeader
+import dev.clawseed.demo.ui.components.SettingsCheckboxRow
+import dev.clawseed.demo.ui.components.SettingsSwitchRow
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import dev.clawseed.demo.ui.components.SettingsGroup
+import dev.clawseed.demo.ui.components.ClawSeedButton
+import dev.clawseed.demo.ui.components.ClawSeedTextButton
+import dev.clawseed.demo.ui.components.ClawSeedChoiceChip
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
+import dev.clawseed.demo.ui.components.ClawSeedFormDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -352,10 +354,7 @@ fun DataTransferSection() {
             onToggle = { mediaCacheExpanded = !mediaCacheExpanded },
         )
         if (mediaCacheExpanded) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        ) {
+        SettingsGroup(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.data_media_cache), style = MaterialTheme.typography.titleMedium)
                 Text(
@@ -367,7 +366,7 @@ fun DataTransferSection() {
                     stringResource(R.string.data_media_cache_size, formatByteSize(mediaCacheBytes)),
                     style = MaterialTheme.typography.labelMedium,
                 )
-                Button(
+                ClawSeedButton(
                     onClick = {
                         scope.launch {
                             isClearingMediaCache = true
@@ -401,69 +400,42 @@ fun DataTransferSection() {
         )
         if (exportExpanded) {
         // Export card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        ) {
+        SettingsGroup(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.data_export), style = MaterialTheme.typography.titleMedium)
 
                 // Category checkboxes
                 for (category in DataCategory.entries) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Checkbox(
-                            checked = category in selectedExportCategories,
-                            onCheckedChange = { checked ->
-                                selectedExportCategories = if (checked) {
-                                    selectedExportCategories + category
-                                } else {
-                                    selectedExportCategories - category
-                                }
-                            },
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Column {
-                            Text(category.label(), style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                category.desc(),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                    SettingsCheckboxRow(
+                        title = category.label(),
+                        subtitle = category.desc(),
+                        checked = category in selectedExportCategories,
+                        onCheckedChange = { checked ->
+                            selectedExportCategories = if (checked) {
+                                selectedExportCategories + category
+                            } else {
+                                selectedExportCategories - category
+                            }
+                        },
+                    )
                 }
 
                 // Exclude sensitive switch
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Switch(
-                        checked = excludeSensitive,
-                        onCheckedChange = { excludeSensitive = it },
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Column {
-                        Text(stringResource(R.string.data_exclude_sensitive), style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            stringResource(R.string.data_exclude_sensitive_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+                SettingsSwitchRow(
+                    title = stringResource(R.string.data_exclude_sensitive),
+                    subtitle = stringResource(R.string.data_exclude_sensitive_desc),
+                    checked = excludeSensitive,
+                    onCheckedChange = { excludeSensitive = it },
+                )
 
                 Text(stringResource(R.string.data_transfer_destination), style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
+                FlowRow(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ClawSeedChoiceChip(
                         selected = exportDestination == TransferEndpoint.LocalFile,
                         onClick = { exportDestination = TransferEndpoint.LocalFile },
                         label = { Text(stringResource(R.string.data_transfer_local_file)) },
                     )
-                    FilterChip(
+                    ClawSeedChoiceChip(
                         selected = exportDestination == TransferEndpoint.WebDav,
                         onClick = { exportDestination = TransferEndpoint.WebDav },
                         label = { Text(stringResource(R.string.data_transfer_webdav)) },
@@ -471,7 +443,7 @@ fun DataTransferSection() {
                 }
 
                 // Export button
-                Button(
+                ClawSeedButton(
                     onClick = {
                         val fileName = exportFileName(selectedExportCategories)
                         if (exportDestination == TransferEndpoint.LocalFile) {
@@ -553,42 +525,40 @@ fun DataTransferSection() {
         )
         if (autoBackupExpanded) {
         // Scheduled backup policy card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        ) {
+        SettingsGroup(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.data_webdav_auto_title), style = MaterialTheme.typography.titleMedium)
                 Text(stringResource(R.string.data_webdav_auto_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Switch(checked = webDavAutoBackupEnabled, onCheckedChange = { webDavAutoBackupEnabled = it })
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(stringResource(R.string.data_webdav_auto_enable))
-                }
+                SettingsSwitchRow(
+                    title = stringResource(R.string.data_webdav_auto_enable),
+                    checked = webDavAutoBackupEnabled,
+                    onCheckedChange = { webDavAutoBackupEnabled = it },
+                )
                 if (webDavAutoBackupEnabled) {
                     Text(stringResource(R.string.data_webdav_auto_destination), style = MaterialTheme.typography.labelLarge)
-                    Row(
+                    FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth().selectableGroup(),
                     ) {
-                        FilterChip(
+                        ClawSeedChoiceChip(
                             selected = webDavAutoBackupDestination == AutoBackupDestination.LOCAL,
                             onClick = { webDavAutoBackupDestination = AutoBackupDestination.LOCAL },
                             label = { Text(stringResource(R.string.data_webdav_auto_destination_local)) },
                         )
-                        FilterChip(
+                        ClawSeedChoiceChip(
                             selected = webDavAutoBackupDestination == AutoBackupDestination.WEBDAV,
                             onClick = { webDavAutoBackupDestination = AutoBackupDestination.WEBDAV },
                             label = { Text(stringResource(R.string.data_webdav_auto_destination_webdav)) },
                         )
-                        FilterChip(
+                        ClawSeedChoiceChip(
                             selected = webDavAutoBackupDestination == AutoBackupDestination.LOCAL_AND_WEBDAV,
                             onClick = { webDavAutoBackupDestination = AutoBackupDestination.LOCAL_AND_WEBDAV },
                             label = { Text(stringResource(R.string.data_webdav_auto_destination_both)) },
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        TextField(
+                        ClawSeedTextField(
                             value = webDavAutoBackupHour,
                             onValueChange = { webDavAutoBackupHour = it.filter(Char::isDigit).take(2) },
                             label = { Text(stringResource(R.string.data_webdav_auto_hour)) },
@@ -596,7 +566,7 @@ fun DataTransferSection() {
                             modifier = Modifier.weight(1f),
                         )
                         Text(":", style = MaterialTheme.typography.titleLarge)
-                        TextField(
+                        ClawSeedTextField(
                             value = webDavAutoBackupMinute,
                             onValueChange = { webDavAutoBackupMinute = it.filter(Char::isDigit).take(2) },
                             label = { Text(stringResource(R.string.data_webdav_auto_minute)) },
@@ -604,13 +574,13 @@ fun DataTransferSection() {
                             modifier = Modifier.weight(1f),
                         )
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
+                    FlowRow(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ClawSeedChoiceChip(
                             selected = webDavAutoBackupFrequency == WebDavAutoBackupFrequency.DAILY,
                             onClick = { webDavAutoBackupFrequency = WebDavAutoBackupFrequency.DAILY },
                             label = { Text(stringResource(R.string.data_webdav_auto_daily)) },
                         )
-                        FilterChip(
+                        ClawSeedChoiceChip(
                             selected = webDavAutoBackupFrequency == WebDavAutoBackupFrequency.WEEKLY,
                             onClick = { webDavAutoBackupFrequency = WebDavAutoBackupFrequency.WEEKLY },
                             label = { Text(stringResource(R.string.data_webdav_auto_weekly)) },
@@ -618,12 +588,13 @@ fun DataTransferSection() {
                     }
                     if (webDavAutoBackupFrequency == WebDavAutoBackupFrequency.WEEKLY) {
                         Text(stringResource(R.string.data_webdav_auto_weekly_day), style = MaterialTheme.typography.labelLarge)
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth().selectableGroup(),
                         ) {
                             (1..7).forEach { day ->
-                                FilterChip(
+                                ClawSeedChoiceChip(
                                     selected = webDavAutoBackupWeeklyDay == day,
                                     onClick = { webDavAutoBackupWeeklyDay = day },
                                     label = { Text(stringResource(weekdayLabelRes(day))) },
@@ -631,12 +602,12 @@ fun DataTransferSection() {
                             }
                         }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Switch(checked = webDavAutoBackupWifiOnly, onCheckedChange = { webDavAutoBackupWifiOnly = it })
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(R.string.data_webdav_auto_wifi_only))
-                    }
-                    TextField(
+                    SettingsSwitchRow(
+                        title = stringResource(R.string.data_webdav_auto_wifi_only),
+                        checked = webDavAutoBackupWifiOnly,
+                        onCheckedChange = { webDavAutoBackupWifiOnly = it },
+                    )
+                    ClawSeedTextField(
                         value = webDavAutoBackupRetainCount,
                         onValueChange = { webDavAutoBackupRetainCount = it.filter(Char::isDigit).take(3) },
                         label = { Text(stringResource(R.string.data_webdav_auto_retain)) },
@@ -660,7 +631,7 @@ fun DataTransferSection() {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Button(
+                        ClawSeedButton(
                             onClick = { localDirectoryLauncher.launch(null) },
                             enabled = !webDavBusy,
                             modifier = Modifier.fillMaxWidth(),
@@ -681,7 +652,7 @@ fun DataTransferSection() {
                             color = MaterialTheme.colorScheme.error,
                         )
                     }
-                    Button(
+                    ClawSeedButton(
                         onClick = {
                             scope.launch {
                                 val taskExists = withContext(Dispatchers.IO) {
@@ -702,7 +673,7 @@ fun DataTransferSection() {
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(stringResource(if (webDavAutoBackupRunning) R.string.data_webdav_auto_running else R.string.data_webdav_auto_run_now)) }
                 }
-                Button(
+                ClawSeedButton(
                     onClick = {
                         scope.launch {
                             val retainCount = webDavAutoBackupRetainCount.toIntOrNull()
@@ -763,10 +734,7 @@ fun DataTransferSection() {
         )
         if (webDavExpanded) {
         // WebDAV card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        ) {
+        SettingsGroup(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.data_webdav_title), style = MaterialTheme.typography.titleMedium)
                 Text(
@@ -774,14 +742,14 @@ fun DataTransferSection() {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                TextField(
+                ClawSeedTextField(
                     value = webDavUrl,
                     onValueChange = { webDavUrl = it },
                     label = { Text(stringResource(R.string.data_webdav_url)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                TextField(
+                ClawSeedTextField(
                     value = webDavDirectory,
                     onValueChange = { webDavDirectory = it },
                     label = { Text(stringResource(R.string.data_webdav_directory)) },
@@ -789,14 +757,14 @@ fun DataTransferSection() {
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                TextField(
+                ClawSeedTextField(
                     value = webDavUsername,
                     onValueChange = { webDavUsername = it },
                     label = { Text(stringResource(R.string.data_webdav_username)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                TextField(
+                ClawSeedTextField(
                     value = webDavPassword,
                     onValueChange = { webDavPassword = it },
                     label = { Text(stringResource(R.string.data_webdav_password)) },
@@ -804,7 +772,7 @@ fun DataTransferSection() {
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                TextField(
+                ClawSeedTextField(
                     value = webDavEncryptionPassword,
                     onValueChange = { webDavEncryptionPassword = it },
                     label = { Text(stringResource(R.string.data_webdav_encryption_password)) },
@@ -812,18 +780,12 @@ fun DataTransferSection() {
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Switch(
-                        checked = rememberWebDavPassword,
-                        onCheckedChange = { rememberWebDavPassword = it },
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(stringResource(R.string.data_webdav_remember_password))
-                }
-                Button(
+                SettingsSwitchRow(
+                    title = stringResource(R.string.data_webdav_remember_password),
+                    checked = rememberWebDavPassword,
+                    onCheckedChange = { rememberWebDavPassword = it },
+                )
+                ClawSeedButton(
                     onClick = {
                         scope.launch {
                             saveWebDavSettings()
@@ -833,7 +795,7 @@ fun DataTransferSection() {
                     enabled = webDavSettingsLoaded && !webDavBusy,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.data_webdav_save_connection)) }
-                Button(
+                ClawSeedButton(
                     onClick = {
                         scope.launch {
                             webDavTesting = true
@@ -917,21 +879,18 @@ fun DataTransferSection() {
         )
         if (importExpanded) {
         // Import card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        ) {
+        SettingsGroup(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.data_import), style = MaterialTheme.typography.titleMedium)
 
                 Text(stringResource(R.string.data_transfer_source), style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
+                FlowRow(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ClawSeedChoiceChip(
                         selected = importSource == TransferEndpoint.LocalFile,
                         onClick = { importSource = TransferEndpoint.LocalFile },
                         label = { Text(stringResource(R.string.data_transfer_local_file)) },
                     )
-                    FilterChip(
+                    ClawSeedChoiceChip(
                         selected = importSource == TransferEndpoint.WebDav,
                         onClick = { importSource = TransferEndpoint.WebDav },
                         label = { Text(stringResource(R.string.data_transfer_webdav)) },
@@ -939,13 +898,13 @@ fun DataTransferSection() {
                 }
 
                 if (importSource == TransferEndpoint.LocalFile) {
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(stringResource(R.string.data_local_backups_title), style = MaterialTheme.typography.labelLarge)
-                        Button(
+                        ClawSeedButton(
                             onClick = {
                                 scope.launch {
                                     localBackupsLoading = true
@@ -973,40 +932,43 @@ fun DataTransferSection() {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    for (backup in localBackups) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { localSelectedFile = backup },
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(
-                                selected = localSelectedFile == backup,
-                                onClick = { localSelectedFile = backup },
-                            )
-                            Column(modifier = Modifier.weight(1f).padding(start = 4.dp)) {
-                                Text(backup.name, style = MaterialTheme.typography.bodyMedium)
-                                Text(
-                                    stringResource(R.string.data_webdav_backup_details, formatByteSize(backup.bytes), formatAutoBackupTime(backup.lastModified)),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    Column(Modifier.selectableGroup()) {
+                        for (backup in localBackups) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .selectable(selected = localSelectedFile == backup, role = Role.RadioButton) { localSelectedFile = backup },
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(
+                                    selected = localSelectedFile == backup,
+                                    onClick = null,
                                 )
+                                Column(modifier = Modifier.weight(1f).padding(start = 4.dp)) {
+                                    Text(backup.name, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        stringResource(R.string.data_webdav_backup_details, formatByteSize(backup.bytes), formatAutoBackupTime(backup.lastModified)),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
                 if (importSource == TransferEndpoint.WebDav) {
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(
                             stringResource(R.string.data_webdav_backups_title),
                             style = MaterialTheme.typography.labelLarge,
                         )
-                        Button(
+                        ClawSeedButton(
                             onClick = { scope.launch { refreshWebDavBackups() } },
                             enabled = webDavSettingsLoaded && !webDavBackupsLoading && !webDavBusy,
                         ) {
@@ -1031,38 +993,41 @@ fun DataTransferSection() {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    for (backup in webDavBackups) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { webDavSelectedFile = backup.path },
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(
-                                selected = webDavSelectedFile == backup.path,
-                                onClick = { webDavSelectedFile = backup.path },
-                            )
-                            Column(
+                    Column(Modifier.selectableGroup()) {
+                        for (backup in webDavBackups) {
+                            Row(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .padding(start = 4.dp),
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .selectable(selected = webDavSelectedFile == backup.path, role = Role.RadioButton) { webDavSelectedFile = backup.path },
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text(backup.name, style = MaterialTheme.typography.bodyMedium)
-                                Text(
-                                    stringResource(
-                                        R.string.data_webdav_backup_details,
-                                        formatByteSize(backup.bytes),
-                                        backup.lastModified ?: "—",
-                                    ),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                RadioButton(
+                                    selected = webDavSelectedFile == backup.path,
+                                    onClick = null,
                                 )
-                            }
-                            TextButton(
-                                onClick = { webDavDeleteCandidate = backup },
-                                enabled = !webDavBusy && !webDavBackupsLoading,
-                            ) {
-                                Text(stringResource(R.string.data_webdav_delete_backup))
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(start = 4.dp),
+                                ) {
+                                    Text(backup.name, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        stringResource(
+                                            R.string.data_webdav_backup_details,
+                                            formatByteSize(backup.bytes),
+                                            backup.lastModified ?: "—",
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                ClawSeedTextButton(
+                                    onClick = { webDavDeleteCandidate = backup },
+                                    enabled = !webDavBusy && !webDavBackupsLoading,
+                                ) {
+                                    Text(stringResource(R.string.data_webdav_delete_backup))
+                                }
                             }
                         }
                     }
@@ -1070,39 +1035,28 @@ fun DataTransferSection() {
 
                 // Category checkboxes
                 for (category in DataCategory.entries) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Checkbox(
-                            checked = category in selectedImportCategories,
-                            onCheckedChange = { checked ->
-                                selectedImportCategories = if (checked) {
-                                    selectedImportCategories + category
-                                } else {
-                                    selectedImportCategories - category
-                                }
-                            },
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Column {
-                            Text(category.label(), style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                category.desc(),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                    SettingsCheckboxRow(
+                        title = category.label(),
+                        subtitle = category.desc(),
+                        checked = category in selectedImportCategories,
+                        onCheckedChange = { checked ->
+                            selectedImportCategories = if (checked) {
+                                selectedImportCategories + category
+                            } else {
+                                selectedImportCategories - category
+                            }
+                        },
+                    )
                     // Strategy selector for categories that support multiple strategies
                     if (category in selectedImportCategories && category in STRATEGY_CATEGORIES) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(start = 48.dp),
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth().selectableGroup(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             for (strategy in category.defaultStrategies) {
                                 val currentStrategy = importStrategies[category] ?: category.defaultStrategy
-                                FilterChip(
+                                ClawSeedChoiceChip(
                                     selected = currentStrategy == strategy,
                                     onClick = {
                                         importStrategies = importStrategies.toMutableMap().apply {
@@ -1124,7 +1078,7 @@ fun DataTransferSection() {
                 )
 
                 // Import button
-                Button(
+                ClawSeedButton(
                     onClick = {
                         if (importSource == TransferEndpoint.LocalFile && localSelectedFile == null) {
                             importLauncher.launch(arrayOf("application/zip", "*/*"))
@@ -1212,7 +1166,7 @@ fun DataTransferSection() {
 
     // Import result dialog
     importResult?.let { result ->
-        AlertDialog(
+        ClawSeedFormDialog(
             onDismissRequest = { importResult = null },
             title = {
                 Text(
@@ -1240,24 +1194,24 @@ fun DataTransferSection() {
                 }
             },
             confirmButton = {
-                Button(onClick = { importResult = null }) { Text(stringResource(R.string.common_confirm)) }
+                ClawSeedButton(onClick = { importResult = null }) { Text(stringResource(R.string.common_confirm)) }
             },
         )
     }
 
     webDavDeleteCandidate?.let { backup ->
-        AlertDialog(
+        ClawSeedFormDialog(
             onDismissRequest = { if (!webDavBusy) webDavDeleteCandidate = null },
             title = { Text(stringResource(R.string.data_webdav_delete_title)) },
             text = { Text(stringResource(R.string.data_webdav_delete_message, backup.name)) },
             dismissButton = {
-                TextButton(
+                ClawSeedTextButton(
                     onClick = { webDavDeleteCandidate = null },
                     enabled = !webDavBusy,
                 ) { Text(stringResource(R.string.common_cancel)) }
             },
             confirmButton = {
-                Button(
+                ClawSeedButton(
                     onClick = {
                         scope.launch {
                             webDavBusy = true
@@ -1301,19 +1255,7 @@ private fun DataTransferSubsectionHeader(
     expanded: Boolean,
     onToggle: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(if (expanded) "▾" else "▸", style = MaterialTheme.typography.titleMedium)
-        }
-    }
+    ClawSeedSectionHeader(title = title, expanded = expanded, onToggle = onToggle)
 }
 
 private enum class TransferEndpoint {

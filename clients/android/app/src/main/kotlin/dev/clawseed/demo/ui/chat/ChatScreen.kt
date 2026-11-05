@@ -1,5 +1,8 @@
 package dev.clawseed.demo.ui.chat
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import dev.clawseed.demo.ui.components.ClawSeedTextButton
 import android.Manifest
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.core.content.FileProvider
@@ -8,11 +11,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,35 +25,26 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.clickable
-import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material3.AlertDialog
+import dev.clawseed.demo.ui.components.ClawSeedFormDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.interaction.DragInteraction
 import kotlinx.coroutines.launch
@@ -78,7 +70,6 @@ import dev.clawseed.demo.ui.chat.components.AskUserPrompt
 import dev.clawseed.demo.ui.chat.components.EmptyChatState
 import dev.clawseed.demo.ui.chat.components.MessageBubble
 import dev.clawseed.demo.ui.persona.PersonaDot
-import dev.clawseed.demo.ui.persona.personaAccentColor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -312,129 +303,40 @@ fun ChatScreen(
 
     Scaffold(
         topBar = {
-            Box(
-                modifier = Modifier
-                    .statusBarsPadding()
-                    .fillMaxWidth()
-                    .padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 8.dp),
-                contentAlignment = Alignment.Center,
+            dev.clawseed.demo.ui.components.GlassContainer(
+                modifier = Modifier.statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp).fillMaxWidth(),
+                level = dev.clawseed.demo.ui.components.GlassLevel.Chrome,
+                shape = dev.clawseed.demo.ui.theme.ClawSeedShapes.Card,
             ) {
-                val floatingBorder = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
-                )
-                val hasPersona = !uiState.currentPersona.isNullOrEmpty()
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .height(56.dp)
-                        .padding(start = 60.dp)
-                        .widthIn(max = if (hasPersona) 180.dp else 240.dp),
-                    shape = RoundedCornerShape(percent = 50),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    tonalElevation = 2.dp,
-                    shadowElevation = 4.dp,
-                    border = floatingBorder,
+                androidx.compose.foundation.layout.Row(
+                    Modifier.fillMaxWidth().padding(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .height(56.dp)
-                            .padding(horizontal = 18.dp),
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        Text(
-                            text = uiState.sessionName ?: stringResource(R.string.chat_new_conversation),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .size(52.dp)
-                        .clip(CircleShape),
-                    // Opaque button surface prevents the shared backdrop from
-                    // tinting the circle into a second inner shape.
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    tonalElevation = 2.dp,
-                    shadowElevation = 4.dp,
-                    border = floatingBorder,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable {
-                                dismissInput()
-                                onToggleDrawer()
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.chat_menu))
-                    }
-                }
-                if (!uiState.currentPersona.isNullOrEmpty()) {
-                    val personaName = uiState.currentPersona!!
-                    val personaVisual = uiState.personaVisuals[personaName]
-                    val personaColor = personaAccentColor(personaName, personaVisual?.color)
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .padding(end = 60.dp)
-                            .size(52.dp)
-                            .clip(CircleShape),
-                        shape = CircleShape,
-                        color = personaColor.copy(alpha = 0.98f),
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                        tonalElevation = 2.dp,
-                        shadowElevation = 4.dp,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            personaColor.copy(alpha = 0.62f),
-                        ),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clickable { onOpenPersona(personaName) },
-                            contentAlignment = Alignment.Center,
+                    dev.clawseed.demo.ui.components.ClawSeedIconButton(
+                        onClick = { dismissInput(); onToggleDrawer() },
+                        contentDescription = stringResource(R.string.chat_menu),
+                    ) { Icon(Icons.Default.Menu, null) }
+                    Text(
+                        uiState.sessionName ?: stringResource(R.string.chat_new_conversation),
+                        modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    uiState.currentPersona?.takeIf { it.isNotEmpty() }?.let { personaName ->
+                        val visual = uiState.personaVisuals[personaName]
+                        dev.clawseed.demo.ui.components.ClawSeedIconButton(
+                            onClick = { onOpenPersona(personaName) },
+                            contentDescription = personaName,
                         ) {
-                            PersonaDot(
-                                personaName,
-                                Modifier.size(46.dp),
-                                showInitial = true,
-                                avatar = personaVisual?.avatar,
-                                color = personaVisual?.color,
-                            )
+                            PersonaDot(personaName, Modifier.size(32.dp), showInitial = true,
+                                avatar = visual?.avatar, color = visual?.color)
                         }
                     }
-                }
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .size(52.dp)
-                        .clip(CircleShape),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    tonalElevation = 2.dp,
-                    shadowElevation = 4.dp,
-                    border = floatingBorder,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable {
-                                dismissInput()
-                                showPersonaSheet = true
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.chat_new_session))
-                    }
+                    dev.clawseed.demo.ui.components.ClawSeedIconButton(
+                        onClick = { dismissInput(); showPersonaSheet = true },
+                        contentDescription = stringResource(R.string.chat_new_session), filled = true,
+                    ) { Icon(Icons.Default.Add, null) }
                 }
             }
         },
@@ -528,12 +430,12 @@ fun ChatScreen(
                 Snackbar(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     action = {
-                        TextButton(onClick = { viewModel.retryLastRequest() }) {
+                        ClawSeedTextButton(onClick = { viewModel.retryLastRequest() }) {
                             Text(stringResource(R.string.common_retry))
                         }
                     },
                     dismissAction = {
-                        TextButton(onClick = { viewModel.clearError() }) {
+                        ClawSeedTextButton(onClick = { viewModel.clearError() }) {
                             Text(stringResource(R.string.common_close))
                         }
                     },
@@ -605,12 +507,12 @@ fun ChatScreen(
     }
 
     uiState.authPrompt?.let { prompt ->
-        AlertDialog(
+        ClawSeedFormDialog(
             onDismissRequest = viewModel::dismissAuthPrompt,
             title = { Text(stringResource(R.string.chat_provider_action_title)) },
             text = { Text(prompt.hint) },
             confirmButton = {
-                TextButton(onClick = {
+                ClawSeedTextButton(onClick = {
                     val resolution = prompt.resolution
                     val requestId = prompt.requestId
                     if (resolution != null && requestId != null) {
@@ -631,7 +533,7 @@ fun ChatScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = viewModel::dismissAuthPrompt) {
+                ClawSeedTextButton(onClick = viewModel::dismissAuthPrompt) {
                     Text(stringResource(R.string.common_cancel))
                 }
             },

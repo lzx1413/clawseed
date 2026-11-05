@@ -1,5 +1,12 @@
 package dev.clawseed.demo.ui.drawer
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import dev.clawseed.demo.ui.components.ClawSeedButton
+import dev.clawseed.demo.ui.components.ClawSeedOutlinedButton
+import dev.clawseed.demo.ui.components.ClawSeedTextButton
+import dev.clawseed.demo.ui.components.ClawSeedTextField
+import dev.clawseed.demo.ui.components.ClawSeedIconButton
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,28 +38,21 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import dev.clawseed.demo.ui.components.ClawSeedNavigationRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -135,7 +135,7 @@ fun SessionDrawer(
     }
 
     deletionRequest?.let { request ->
-        androidx.compose.material3.AlertDialog(
+        dev.clawseed.demo.ui.components.ClawSeedFormDialog(
             onDismissRequest = { deletionRequest = null },
             title = { Text(stringResource(R.string.drawer_delete_persona_sessions)) },
             text = {
@@ -146,7 +146,7 @@ fun SessionDrawer(
                 ))
             },
             confirmButton = {
-                TextButton(
+                ClawSeedTextButton(
                     enabled = !deleting,
                     onClick = {
                         deletionRequest = null
@@ -157,7 +157,7 @@ fun SessionDrawer(
                 ) { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { deletionRequest = null }) { Text(stringResource(R.string.common_cancel)) }
+                ClawSeedTextButton(onClick = { deletionRequest = null }) { Text(stringResource(R.string.common_cancel)) }
             },
         )
     }
@@ -196,7 +196,7 @@ fun SessionDrawer(
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-            OutlinedTextField(
+            ClawSeedTextField(
                 value = query,
                 onValueChange = { query = it },
                 label = { Text(stringResource(R.string.drawer_search)) },
@@ -205,7 +205,7 @@ fun SessionDrawer(
                 keyboardActions = KeyboardActions(onSearch = { dismissSearchInput() }),
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 trailingIcon = {
-                    if (query.isNotEmpty()) IconButton(onClick = { query = "" }) {
+                    if (query.isNotEmpty()) ClawSeedIconButton(onClick = { query = "" }) {
                         Icon(Icons.Default.Close, contentDescription = stringResource(R.string.drawer_clear_search))
                     }
                 },
@@ -214,7 +214,7 @@ fun SessionDrawer(
             if (uiState.error != null) {
                 Column(Modifier.padding(horizontal = 16.dp)) {
                     Text(uiState.error!!, color = MaterialTheme.colorScheme.error, maxLines = 3)
-                    TextButton(onClick = viewModel::loadSessions) { Text(stringResource(R.string.common_retry)) }
+                    ClawSeedTextButton(onClick = viewModel::loadSessions) { Text(stringResource(R.string.common_retry)) }
                 }
             }
             if (deleting) {
@@ -228,7 +228,7 @@ fun SessionDrawer(
             if (uiState.deletionError != null) {
                 Column(Modifier.padding(horizontal = 16.dp)) {
                     Text(uiState.deletionError!!, color = MaterialTheme.colorScheme.error)
-                    TextButton(onClick = viewModel::dismissDeletionError) { Text(stringResource(R.string.common_close)) }
+                    ClawSeedTextButton(onClick = viewModel::dismissDeletionError) { Text(stringResource(R.string.common_close)) }
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -308,28 +308,28 @@ fun SessionDrawer(
 
             HorizontalDivider()
 
-            NavigationDrawerItem(
+            ClawSeedNavigationRow(
                 label = { Text(stringResource(R.string.drawer_personas)) },
                 selected = false,
                 onClick = onPersonas,
                 icon = { Icon(Icons.Default.Person, contentDescription = null) },
             )
 
-            NavigationDrawerItem(
+            ClawSeedNavigationRow(
                 label = { Text(stringResource(R.string.drawer_scheduled_tasks)) },
                 selected = false,
                 onClick = onScheduledTasks,
                 icon = { Icon(Icons.Default.Info, contentDescription = null) },
             )
 
-            NavigationDrawerItem(
+            ClawSeedNavigationRow(
                 label = { Text(stringResource(R.string.drawer_settings)) },
                 selected = false,
                 onClick = onSettings,
                 icon = { Icon(Icons.Default.Settings, contentDescription = null) },
             )
 
-            NavigationDrawerItem(
+            ClawSeedNavigationRow(
                 label = { Text(stringResource(R.string.drawer_about)) },
                 selected = false,
                 onClick = { showAbout = true },
@@ -376,8 +376,6 @@ private fun PersonaGroupHeader(
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = sessionCount.toString(),
@@ -391,7 +389,7 @@ private fun PersonaGroupHeader(
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Box {
-            IconButton(enabled = actionsEnabled, onClick = { showMenu = true }) {
+            ClawSeedIconButton(enabled = actionsEnabled, onClick = { showMenu = true }) {
                 Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.drawer_persona_actions))
             }
             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
@@ -424,15 +422,15 @@ private fun SessionItem(
     var confirmDelete by remember { mutableStateOf(false) }
 
     if (confirmDelete) {
-        androidx.compose.material3.AlertDialog(
+        dev.clawseed.demo.ui.components.ClawSeedFormDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) },
             text = { Text(stringResource(R.string.drawer_delete_confirm, session.name ?: session.id.take(8))) },
             confirmButton = {
-                TextButton(enabled = actionsEnabled, onClick = { confirmDelete = false; onDelete() }) { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) }
+                ClawSeedTextButton(dangerous = true, enabled = actionsEnabled, onClick = { confirmDelete = false; onDelete() }) { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.common_cancel)) }
+                ClawSeedTextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.common_cancel)) }
             },
         )
     }
@@ -445,7 +443,7 @@ private fun SessionItem(
         )
     }
 
-    NavigationDrawerItem(
+    ClawSeedNavigationRow(
         label = {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -483,10 +481,11 @@ private fun SessionItem(
             }
         },
         selected = isSelected,
-        onClick = { if (actionsEnabled) onSelect() },
+        enabled = actionsEnabled,
+        onClick = onSelect,
         badge = {
             Box {
-                IconButton(enabled = actionsEnabled, onClick = { showMenu = true }) {
+                ClawSeedIconButton(enabled = actionsEnabled, onClick = { showMenu = true }) {
                     Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.drawer_session_actions))
                 }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
@@ -520,23 +519,25 @@ private fun RenameDialog(
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var name by remember { mutableStateOf(currentName) }
+    var name by rememberSaveable(currentName) { mutableStateOf(currentName) }
 
-    androidx.compose.material3.AlertDialog(
+    dev.clawseed.demo.ui.components.ClawSeedFormDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.drawer_rename_dialog_title)) },
         text = {
-            OutlinedTextField(
+            ClawSeedTextField(
                 value = name,
                 onValueChange = { name = it },
                 singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.drawer_conversation_name)) },
             )
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(name) }) { Text(stringResource(R.string.common_confirm)) }
+            ClawSeedButton(onClick = { onConfirm(name) }) { Text(stringResource(R.string.common_confirm)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+            ClawSeedTextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }
@@ -556,7 +557,7 @@ private fun AboutDialog(onDismiss: () -> Unit) {
         pop()
     }
 
-    androidx.compose.material3.AlertDialog(
+    dev.clawseed.demo.ui.components.ClawSeedFormDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.drawer_about_title)) },
         text = {
@@ -592,7 +593,7 @@ private fun AboutDialog(onDismiss: () -> Unit) {
                             strokeWidth = 2.dp,
                         )
                     } else {
-                        OutlinedButton(onClick = { viewModel.checkForUpdate() }) {
+                        ClawSeedOutlinedButton(onClick = { viewModel.checkForUpdate() }) {
                             Icon(
                                 Icons.Default.Refresh,
                                 contentDescription = null,
@@ -688,7 +689,7 @@ private fun AboutDialog(onDismiss: () -> Unit) {
                         )
                     } else if (uiState.updateApkReady) {
                         // APK downloaded and ready to install
-                        Button(
+                        ClawSeedButton(
                             onClick = {
                                 if (dev.clawseed.demo.updater.ApkInstaller.canInstallPackages(context)) {
                                     viewModel.installUpdate()
@@ -704,7 +705,7 @@ private fun AboutDialog(onDismiss: () -> Unit) {
                         }
                     } else if (!uiState.isDownloadingUpdate) {
                         // Download button
-                        Button(
+                        ClawSeedButton(
                             onClick = { viewModel.downloadUpdate() },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
@@ -717,7 +718,7 @@ private fun AboutDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_confirm)) }
+            ClawSeedTextButton(onClick = onDismiss) { Text(stringResource(R.string.common_confirm)) }
         },
     )
 }

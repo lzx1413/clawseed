@@ -1,22 +1,29 @@
 package dev.clawseed.demo.ui.chat.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Create
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -34,6 +41,7 @@ fun EmptyChatState(
         R.string.chat_empty_suggestion_schedule,
         R.string.chat_empty_suggestion_idea,
     )
+    val icons = listOf(Icons.Default.Build, Icons.Default.Favorite, Icons.Default.DateRange, Icons.Default.Create)
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -52,17 +60,20 @@ fun EmptyChatState(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
+        BoxWithConstraints {
+        val columns = if (maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.3f) 1 else 2
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            suggestions.chunked(2).forEachIndexed { rowIndex, row ->
+            suggestions.chunked(columns).forEachIndexed { rowIndex, row ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     row.forEachIndexed { columnIndex, labelRes ->
-                        val index = rowIndex * 2 + columnIndex
+                        val index = rowIndex * columns + columnIndex
                         val label = stringResource(labelRes)
                         EmptySuggestion(
                             label = label,
+                            icon = icons[index],
                             onClick = { onSuggestion(label) },
                             modifier = Modifier
                                 .weight(1f)
@@ -72,32 +83,34 @@ fun EmptyChatState(
                 }
             }
         }
+        }
     }
 }
 
 @Composable
 private fun EmptySuggestion(
     label: String,
+    icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(percent = 50)
-    Row(
-        modifier = modifier
-            .heightIn(min = 48.dp)
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.82f), shape)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f), shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    dev.clawseed.demo.ui.components.GlassContainer(
+        modifier = modifier,
+        level = dev.clawseed.demo.ui.components.GlassLevel.Pill,
+        shape = dev.clawseed.demo.ui.theme.ClawSeedShapes.Card,
     ) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-        )
+        Column(Modifier.clickable(role = Role.Button, onClick = onClick).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Surface(shape = dev.clawseed.demo.ui.theme.ClawSeedShapes.Small,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer) {
+                Icon(icon, null, Modifier.padding(8.dp).size(20.dp))
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }

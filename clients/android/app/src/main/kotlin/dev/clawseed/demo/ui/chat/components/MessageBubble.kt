@@ -1,5 +1,9 @@
 package dev.clawseed.demo.ui.chat.components
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import dev.clawseed.demo.ui.components.ClawSeedButton
+import dev.clawseed.demo.ui.components.ClawSeedTextButton
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -18,7 +22,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -27,19 +30,15 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -653,9 +652,9 @@ private fun ProfileContentCard(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     block.actions.forEach { action ->
                         if (action.destructive) {
-                            Button(onClick = { onAction(action.command) }) { Text(action.label) }
+                            ClawSeedButton(onClick = { onAction(action.command) }) { Text(action.label) }
                         } else {
-                            TextButton(onClick = { onAction(action.command) }) { Text(action.label) }
+                            ClawSeedTextButton(onClick = { onAction(action.command) }) { Text(action.label) }
                         }
                     }
                 }
@@ -775,7 +774,7 @@ private fun AudioContentCard(media: MediaReference, title: String?, modifier: Mo
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        TextButton(onClick = {
+        ClawSeedTextButton(onClick = {
             if (isPlaying) player.pause() else {
                 player.prepare()
                 player.play()
@@ -1229,7 +1228,7 @@ private fun DebugInfoCard(entry: ChatEntry.DebugInfo, modifier: Modifier = Modif
                         }
                     }
                     if (entry.toolsJson != null) {
-                        TextButton(onClick = { toolsExpanded = !toolsExpanded }) {
+                        ClawSeedTextButton(onClick = { toolsExpanded = !toolsExpanded }) {
                             Text(stringResource(R.string.debug_prompt_native_tools))
                         }
                         if (toolsExpanded) {

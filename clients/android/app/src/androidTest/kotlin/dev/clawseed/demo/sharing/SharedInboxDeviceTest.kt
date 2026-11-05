@@ -58,8 +58,8 @@ class SharedInboxDeviceTest {
             val inbox = SharedInbox(context)
             val intent = Intent(Intent.ACTION_SEND_MULTIPLE).setType("*/*").putParcelableArrayListExtra(Intent.EXTRA_STREAM, arrayListOf(
                 fixture("md"), fixture("unsupported"), fixture("oversized"), fixture("denied"),
-                Uri.parse("file:///data/user/0/dev.clawseed.demo/private.txt"),
-                Uri.parse("content://dev.clawseed.demo.fileprovider/private.txt"),
+                Uri.parse("file:///data/user/0/${target.packageName}/private.txt"),
+                Uri.parse("content://${target.packageName}.fileprovider/private.txt"),
             ))
             val bundle = inbox.receive(UUID.randomUUID().toString(), intent)
             assertEquals(1, bundle.items.size)
@@ -71,12 +71,14 @@ class SharedInboxDeviceTest {
     }
 
     companion object {
+        private val fixtureAuthority: String
+            get() = InstrumentationRegistry.getInstrumentation().context.packageName + ".share-fixtures"
         fun grantFixtures() {
             val descriptor = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(
-                "content call --uri content://dev.clawseed.demo.test.share-fixtures --method grant",
+                "content call --uri content://$fixtureAuthority --method grant",
             )
             android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { it.readBytes() }
         }
-        fun fixture(name: String): Uri = Uri.parse("content://dev.clawseed.demo.test.share-fixtures/$name")
+        fun fixture(name: String): Uri = Uri.parse("content://$fixtureAuthority/$name")
     }
 }
