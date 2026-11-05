@@ -58,7 +58,6 @@ fun ClawseedNavHost(
                 newSessionPersona = newSessionPersona,
                 hasNewSessionPersona = hasNewSessionPersona,
                 onNewSessionPersonaConsumed = onNewSessionPersonaConsumed,
-                onManagePersonas = { navController.navigate(Routes.PERSONAS) },
                 onOpenPersona = { persona -> navController.navigate(Routes.personaDetail(persona)) },
                 autoSendMessage = pendingAutoMessage,
                 onAutoMessageSent = onAutoMessageSent,

@@ -96,7 +96,7 @@
     <string name="persona_default_desc">默认分身</string>
     <string name="persona_start">聊天</string>
     <string name="persona_load_failed">加载分身失败</string>
-    <string name="persona_picker_empty">还没有自定义分身。点“管理”创建一个。</string>
+    <string name="persona_picker_empty">还没有自定义分身。可从侧边栏的“分身”入口创建。</string>
     <string name="persona_manage">管理</string>
     <string name="persona_current_desc">此会话已绑定该分身。修改分身配置只影响新会话。</string>
     <string name="chat_input_placeholder">输入消息…</string>

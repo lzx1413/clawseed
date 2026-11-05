@@ -96,7 +96,7 @@
     <string name="persona_default_desc">Default persona</string>
     <string name="persona_start">Chat</string>
     <string name="persona_load_failed">Failed to load personas</string>
-    <string name="persona_picker_empty">No custom personas yet. Use Manage to create one.</string>
+    <string name="persona_picker_empty">No custom personas yet. Create one from Personas in the sidebar.</string>
     <string name="persona_manage">Manage</string>
     <string name="persona_current_desc">This session is bound to this persona. Edits affect new sessions.</string>
     <string name="chat_input_placeholder">Enter message…</string>

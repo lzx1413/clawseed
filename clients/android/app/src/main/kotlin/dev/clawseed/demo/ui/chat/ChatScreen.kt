@@ -87,7 +87,6 @@ fun ChatScreen(
     newSessionPersona: String? = null,
     hasNewSessionPersona: Boolean = false,
     onNewSessionPersonaConsumed: () -> Unit = {},
-    onManagePersonas: () -> Unit = {},
     onOpenPersona: (String) -> Unit = {},
     autoSendMessage: String? = null,
     onAutoMessageSent: () -> Unit = {},
@@ -499,10 +498,6 @@ fun ChatScreen(
             onStart = { persona ->
                 showPersonaSheet = false
                 onNewSession(persona)
-            },
-            onManage = {
-                showPersonaSheet = false
-                onManagePersonas()
             },
         )
     }

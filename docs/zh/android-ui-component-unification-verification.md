@@ -209,3 +209,16 @@ cd clients/android
 APK 已覆盖安装，启动后首页正常显示。最初两次非流式安装遇到 ADB 传输中断，改用流式安装后返回 Success。
 
 本次 UI 调整提交前重新执行 `./tools/ci-local.sh`，fmt、clippy、全部功能/无默认功能检查、CI profile 构建及 1512 个 Rust 测试全部通过（0 跳过）。Android 验证沿用本轮构建和 86 个单元测试结果。
+
+## 第十轮：分身点击即开始对话（2026-11-05）
+
+新建对话弹层中的分身卡片改为直接操作入口：点击后关闭弹层，并通过原有 `onNewSession(persona)` 流程进入对应分身的新对话。移除临时单选状态、单选圆点以及底部取消/管理/聊天按钮，卡片右侧改为进入箭头；增加重复点击保护。右上角关闭、系统返回及弹层关闭行为保留，分身管理仍可从侧边栏进入，空列表提示同步更新为该入口。
+
+`:app:compileReleaseKotlin :app:testDebugUnitTest :app:assembleRelease` 通过，86 个现有单元测试通过（0 失败、0 错误、0 跳过），`git diff --check` 通过。未运行 instrumentation 或大字号测试。
+
+更新已覆盖安装到 Android 16 手机。正常字号浅色真机确认：底部取消/管理/聊天按钮均已移除；点击自定义分身后直接进入新对话，等待连接完成后顶部显示对应分身；默认分身同样可直接进入。右上角关闭和系统返回可退出弹层。结束时回到默认分身的新对话，没有发送消息。
+
+- [移除底部按钮后的分身弹层](images/android-controls/persona-direct-start-picker.png)
+- [点击自定义分身后进入新对话](images/android-controls/persona-direct-start-chat.png)
+
+提交前重新执行 `./tools/ci-local.sh`，全部阶段通过，1512 个 Rust 测试通过（0 跳过）。Android 构建、86 个单元测试及真机结果沿用本轮记录。
