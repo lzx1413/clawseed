@@ -179,3 +179,33 @@ cd clients/android
 ## Git 提交前检查（2026-11-05）
 
 按仓库约定重新运行 `./tools/ci-local.sh`，fmt、clippy、全部功能/无默认功能检查、CI profile 构建及 1512 个 Rust 测试全部通过（0 跳过）。Android 最终构建与 86 个单元测试结果沿用第七轮；没有重新运行设备测试或大字号测试。
+
+## 第八轮：首页独立悬浮控件（2026-11-05）
+
+按用户最新要求，移除聊天顶部整条容器，菜单、Persona、新建入口改为独立圆形按钮，会话标题改为居中胶囊。新增 `ClawSeedFloatingSurface` 与 `ClawSeedFloatingIconButton`，共用 48dp 高度、Chrome 填充/描边及 4dp 阴影；三个按钮宽度均为 48dp。Persona 保留头像和颜色，标题单行省略，原入口回调保留。
+
+验证：`:app:compileReleaseKotlin :app:testDebugUnitTest :app:assembleRelease` 通过，86 个单元测试通过（0 失败、0 错误、0 跳过），`git diff --check` 通过。版本 2.1.0（20）已覆盖安装到上述 Android 16 手机。
+
+正常字号、浅色真机截图确认控件独立悬浮，三个按钮边界均为 144×144 像素（48dp，density 480）。菜单打开侧边栏、Persona 打开默认分身详情、新建按钮打开分身选择弹层，取消返回首页。没有发送消息或确认新建会话。字号保持 1.0，未执行大字号测试或 instrumentation；本轮没有重新运行 Rust CI。
+
+- [顶部前后对照（仅裁取顶部；安装前为已有会话，安装后为新会话）](images/android-controls/home-floating-header-comparison.png)
+- [更新后首页完整截图](images/android-controls/home-floating-header.png)
+
+后续按用户要求，将输入框阴影从 2dp 调整为 4dp，并与顶部控件共用 `ClawSeedElevation.FloatingControl`，防止两处样式值再次偏离。此补充调整只涉及阴影；`:app:assembleRelease` 和 `git diff --check` 通过，已覆盖安装并在正常字号下截图复核，上方首页完整截图已更新。没有重复运行单元测试或大字号测试。
+
+用户随后指出输入框阴影仍偏重于下沿。最终改为 `ClawSeedShadows.FloatingControl`：顶部按钮、标题和输入框共用零偏移、4dp 模糊半径、22% 黑色的 `dropShadow`，同时取消这些控件的 elevation 阴影，避免两种阴影叠加。`dropShadow` 支持直接指定半径、颜色与偏移，参见 [Compose 阴影文档](https://developer.android.com/develop/ui/compose/graphics/draw/shadows)。这替代了上面的 elevation 实现，4dp 现在表示模糊半径。
+
+最终修正重新通过 `:app:assembleRelease` 和 `git diff --check`，已覆盖安装。正常字号浅色截图确认输入框上下及两侧均有柔和阴影，下沿不再明显偏重；首页完整截图已更新，另存 [输入框阴影前后对照](images/android-controls/input-centered-shadow-comparison.png)。未重复运行单元测试或大字号测试。
+
+## 第九轮：Ask User 细节对齐（2026-11-05）
+
+- 提问容器改用 `GlassSurface` 的 Chrome 表面、共享卡片圆角及 `ClawSeedShadows.FloatingControl` 四周阴影，与首页悬浮控件一致；边距、内容间距改用共享 token，标题使用 `titleMedium` 并提供标题语义。
+- 新增 `ClawSeedChoiceRow`，组合共享卡片和 `SettingsRow`。单选、多选均使用整行选择语义，右侧指示器不重复提供点击/朗读目标；选中项统一主题色填充和描边，禁用态沿用共享组件样式，说明可换行。
+- 文本提问使用统一输入框并补齐中英文标签。提交状态使用共享按钮内置 loading，避免旁边额外的进度条挤占布局；取消/拒绝与提交/确认回调、答案格式及提交期间禁用规则保留。
+- 增加正常字号浅色/深色预览样例，覆盖单选、多选、文本、确认、提交中及禁用态。这里只确认预览代码编译通过，没有声称已渲染或完成交互验收。
+
+`:app:compileReleaseKotlin :app:testDebugUnitTest :app:assembleRelease` 通过；86 个现有单元测试通过（0 失败、0 错误、0 跳过），`git diff --check` 通过。没有运行 instrumentation 或大字号测试，也没有自动发送消息来触发真实 Ask User；实际提问场景截图和选择/提交交互尚未完成真机验收。
+
+APK 已覆盖安装，启动后首页正常显示。最初两次非流式安装遇到 ADB 传输中断，改用流式安装后返回 Success。
+
+本次 UI 调整提交前重新执行 `./tools/ci-local.sh`，fmt、clippy、全部功能/无默认功能检查、CI profile 构建及 1512 个 Rust 测试全部通过（0 跳过）。Android 验证沿用本轮构建和 86 个单元测试结果。

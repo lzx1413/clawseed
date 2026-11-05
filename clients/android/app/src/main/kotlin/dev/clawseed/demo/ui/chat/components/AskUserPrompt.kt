@@ -8,29 +8,27 @@ import dev.clawseed.demo.ui.components.ClawSeedTextField
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.ui.semantics.Role
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import dev.clawseed.demo.R
+import dev.clawseed.demo.ui.components.ClawSeedChoiceRow
+import dev.clawseed.demo.ui.components.GlassLevel
+import dev.clawseed.demo.ui.components.GlassSurface
+import dev.clawseed.demo.ui.theme.ClawSeedShapes
+import dev.clawseed.demo.ui.theme.ClawSeedShadows
+import dev.clawseed.demo.ui.theme.ClawSeedSpacing
 import dev.clawseed.sdk.core.model.ChatEvent
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
@@ -49,44 +47,53 @@ fun AskUserPrompt(
     var text by remember(request.requestId) { mutableStateOf("") }
     val controlsEnabled = enabled && !submitting
 
-    Surface(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-        shape = dev.clawseed.demo.ui.theme.ClawSeedShapes.Card,
-        tonalElevation = 0.dp,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    GlassSurface(
+        modifier = modifier.fillMaxWidth()
+            .padding(horizontal = ClawSeedSpacing.Medium, vertical = ClawSeedSpacing.Small)
+            .dropShadow(ClawSeedShapes.Card, ClawSeedShadows.FloatingControl),
+        shape = ClawSeedShapes.Card,
+        level = GlassLevel.Chrome,
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(ClawSeedSpacing.Page),
+            verticalArrangement = Arrangement.spacedBy(ClawSeedSpacing.Medium),
         ) {
-            Text(request.question, style = MaterialTheme.typography.titleSmall)
+            Text(request.question, style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.semantics { heading() })
             when (request.kind) {
-                "single_select" -> Column(Modifier.selectableGroup()) { request.options.forEach { option ->
-                    OptionRow(
-                        option = option,
-                        selected = selected == option.id,
-                        multiple = false,
-                        enabled = controlsEnabled,
-                        onClick = { selected = option.id },
-                    )
+                "single_select" -> Column(
+                    modifier = Modifier.selectableGroup(),
+                    verticalArrangement = Arrangement.spacedBy(ClawSeedSpacing.Small),
+                ) {
+                    request.options.forEach { option ->
+                        OptionRow(
+                            option = option,
+                            selected = selected == option.id,
+                            multiple = false,
+                            enabled = controlsEnabled,
+                            onClick = { selected = option.id },
+                        )
+                    }
                 }
-                }
-                "multi_select" -> request.options.forEach { option ->
-                    OptionRow(
-                        option = option,
-                        selected = option.id in selectedMany,
-                        multiple = true,
-                        enabled = controlsEnabled,
-                        onClick = {
-                            selectedMany = if (option.id in selectedMany) selectedMany - option.id
-                            else selectedMany + option.id
-                        },
-                    )
+                "multi_select" -> Column(verticalArrangement = Arrangement.spacedBy(ClawSeedSpacing.Small)) {
+                    request.options.forEach { option ->
+                        OptionRow(
+                            option = option,
+                            selected = option.id in selectedMany,
+                            multiple = true,
+                            enabled = controlsEnabled,
+                            onClick = {
+                                selectedMany = if (option.id in selectedMany) selectedMany - option.id
+                                else selectedMany + option.id
+                            },
+                        )
+                    }
                 }
                 "text" -> ClawSeedTextField(
                     value = text,
                     onValueChange = { if (it.length <= 1000) text = it },
                     enabled = controlsEnabled,
+                    label = { Text(stringResource(R.string.ask_user_answer)) },
                     placeholder = request.placeholder?.let { { Text(it) } },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 1,
@@ -95,15 +102,9 @@ fun AskUserPrompt(
             }
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(ClawSeedSpacing.Small, Alignment.End),
+                verticalArrangement = Arrangement.spacedBy(ClawSeedSpacing.Small),
             ) {
-                if (submitting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.padding(end = 12.dp).size(20.dp),
-                        strokeWidth = 2.dp,
-                    )
-                }
                 ClawSeedTextButton(
                     onClick = { onAnswer(if (request.kind == "confirm") "declined" else "cancelled", null) },
                     enabled = controlsEnabled,
@@ -111,6 +112,7 @@ fun AskUserPrompt(
                     Text(stringResource(if (request.kind == "confirm") R.string.ask_user_decline else R.string.common_cancel))
                 }
                 ClawSeedButton(
+                    loading = submitting,
                     onClick = {
                         val answer = when (request.kind) {
                             "confirm" -> JsonPrimitive(true)
@@ -141,19 +143,12 @@ private fun OptionRow(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).then(
-            if (multiple) Modifier.toggleable(selected, enabled = enabled, role = Role.Checkbox, onValueChange = { onClick() })
-            else Modifier.selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (multiple) Checkbox(selected, onCheckedChange = null, enabled = enabled)
-        else RadioButton(selected, onClick = null, enabled = enabled)
-        Column(modifier = Modifier.weight(1f).padding(start = 6.dp)) {
-            Text(option.label, style = MaterialTheme.typography.bodyMedium)
-            option.description?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
+    ClawSeedChoiceRow(
+        title = option.label,
+        subtitle = option.description?.takeIf { it.isNotBlank() },
+        selected = selected,
+        multiple = multiple,
+        enabled = enabled,
+        onClick = onClick,
+    )
 }

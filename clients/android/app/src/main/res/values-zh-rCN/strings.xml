@@ -78,6 +78,7 @@
     <string name="common_copy">复制</string>
     <string name="ask_user_decline">拒绝</string>
     <string name="ask_user_submit">提交</string>
+    <string name="ask_user_answer">你的回答</string>
     <string name="common_show">显示</string>
     <string name="common_hide">隐藏</string>
 

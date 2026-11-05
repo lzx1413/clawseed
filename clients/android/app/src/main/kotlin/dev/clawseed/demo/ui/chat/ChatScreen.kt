@@ -11,7 +11,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -32,6 +34,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
 import dev.clawseed.demo.ui.components.ClawSeedFormDialog
+import dev.clawseed.demo.ui.components.ClawSeedFloatingIconButton
+import dev.clawseed.demo.ui.components.ClawSeedFloatingSurface
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -303,41 +307,38 @@ fun ChatScreen(
 
     Scaffold(
         topBar = {
-            dev.clawseed.demo.ui.components.GlassContainer(
+            Row(
                 modifier = Modifier.statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp).fillMaxWidth(),
-                level = dev.clawseed.demo.ui.components.GlassLevel.Chrome,
-                shape = dev.clawseed.demo.ui.theme.ClawSeedShapes.Card,
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                androidx.compose.foundation.layout.Row(
-                    Modifier.fillMaxWidth().padding(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    dev.clawseed.demo.ui.components.ClawSeedIconButton(
-                        onClick = { dismissInput(); onToggleDrawer() },
-                        contentDescription = stringResource(R.string.chat_menu),
-                    ) { Icon(Icons.Default.Menu, null) }
-                    Text(
-                        uiState.sessionName ?: stringResource(R.string.chat_new_conversation),
-                        modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
-                    uiState.currentPersona?.takeIf { it.isNotEmpty() }?.let { personaName ->
-                        val visual = uiState.personaVisuals[personaName]
-                        dev.clawseed.demo.ui.components.ClawSeedIconButton(
-                            onClick = { onOpenPersona(personaName) },
-                            contentDescription = personaName,
-                        ) {
-                            PersonaDot(personaName, Modifier.size(32.dp), showInitial = true,
-                                avatar = visual?.avatar, color = visual?.color)
-                        }
+                ClawSeedFloatingIconButton(
+                    onClick = { dismissInput(); onToggleDrawer() },
+                    contentDescription = stringResource(R.string.chat_menu),
+                ) { Icon(Icons.Default.Menu, null) }
+                ClawSeedFloatingSurface(Modifier.weight(1f)) {
+                    Box(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            uiState.sessionName ?: stringResource(R.string.chat_new_conversation),
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
                     }
-                    dev.clawseed.demo.ui.components.ClawSeedIconButton(
-                        onClick = { dismissInput(); showPersonaSheet = true },
-                        contentDescription = stringResource(R.string.chat_new_session), filled = true,
-                    ) { Icon(Icons.Default.Add, null) }
                 }
+                uiState.currentPersona?.takeIf { it.isNotEmpty() }?.let { personaName ->
+                    val visual = uiState.personaVisuals[personaName]
+                    ClawSeedFloatingIconButton(
+                        onClick = { onOpenPersona(personaName) },
+                        contentDescription = personaName,
+                    ) {
+                        PersonaDot(personaName, Modifier.size(32.dp), showInitial = true,
+                            avatar = visual?.avatar, color = visual?.color)
+                    }
+                }
+                ClawSeedFloatingIconButton(
+                    onClick = { dismissInput(); showPersonaSheet = true },
+                    contentDescription = stringResource(R.string.chat_new_session),
+                ) { Icon(Icons.Default.Add, null) }
             }
         },
     ) { innerPadding ->

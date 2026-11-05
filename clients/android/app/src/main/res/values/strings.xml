@@ -78,6 +78,7 @@
     <string name="common_copy">Copy</string>
     <string name="ask_user_decline">Decline</string>
     <string name="ask_user_submit">Submit</string>
+    <string name="ask_user_answer">Your answer</string>
     <string name="common_show">Show</string>
     <string name="common_hide">Hide</string>
 

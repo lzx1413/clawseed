@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import dev.clawseed.demo.R
 import dev.clawseed.demo.ui.components.GlassLevel
 import dev.clawseed.demo.ui.components.GlassSurface
+import androidx.compose.ui.draw.dropShadow
+import dev.clawseed.demo.ui.theme.ClawSeedShadows
 import androidx.compose.ui.platform.testTag
 
 @Composable
@@ -59,6 +61,7 @@ fun ChatBottomBar(
     var inputFocused by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
     val colorScheme = MaterialTheme.colorScheme
+    val inputShape = RoundedCornerShape(28.dp)
 
     fun submitQuestion() {
         if ((input.isNotBlank() || hasImages) && canSend) {
@@ -71,11 +74,11 @@ fun ChatBottomBar(
         GlassSurface(
             modifier = Modifier
                 .padding(horizontal = 12.dp, vertical = 8.dp)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .dropShadow(inputShape, ClawSeedShadows.FloatingControl),
             level = GlassLevel.Chrome,
-            shape = RoundedCornerShape(28.dp),
+            shape = inputShape,
             interactive = inputFocused,
-            shadowElevation = 2.dp,
         ) {
             Row(
                 modifier = Modifier
