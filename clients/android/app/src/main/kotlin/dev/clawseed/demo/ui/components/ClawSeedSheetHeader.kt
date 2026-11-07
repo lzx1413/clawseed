@@ -14,6 +14,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.clawseed.demo.R
+import dev.clawseed.demo.ui.theme.sectionTitle
 
 @Composable
 fun ClawSeedSheetHeader(title: String, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
@@ -22,7 +23,7 @@ fun ClawSeedSheetHeader(title: String, onDismiss: () -> Unit, modifier: Modifier
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(title, style = MaterialTheme.typography.titleLarge,
+        Text(title, style = MaterialTheme.typography.sectionTitle,
             modifier = Modifier.weight(1f).semantics { heading() })
         ClawSeedIconButton(onClick = onDismiss) {
             Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_close))

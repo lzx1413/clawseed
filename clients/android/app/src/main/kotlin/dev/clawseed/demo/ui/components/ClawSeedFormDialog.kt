@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.clawseed.demo.ui.theme.ClawSeedShapes
+import dev.clawseed.demo.ui.theme.ClawSeedSpacing
+import dev.clawseed.demo.ui.theme.sectionTitle
 
 /** Forms keep their actions visible while the fields scroll within the available IME-safe space. */
 @Composable
@@ -35,7 +37,7 @@ fun ClawSeedFormDialog(
                 onClick = onDismissRequest,
             ).clearAndSetSemantics {})
             BoxWithConstraints(
-                Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp),
+                Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(ClawSeedSpacing.Page),
                 contentAlignment = Alignment.Center,
             ) {
                 val availableHeight = maxHeight
@@ -44,17 +46,17 @@ fun ClawSeedFormDialog(
                     contentColor = MaterialTheme.colorScheme.onSurface) {
                     Column {
                         Box(Modifier.heightIn(max = availableHeight * 0.3f).verticalScroll(rememberScrollState())
-                            .padding(horizontal = 20.dp, vertical = 16.dp)) {
-                            ProvideTextStyle(MaterialTheme.typography.titleLarge, title)
+                            .padding(horizontal = ClawSeedSpacing.Large, vertical = ClawSeedSpacing.Page)) {
+                            ProvideTextStyle(MaterialTheme.typography.sectionTitle, title)
                         }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
-                            .padding(20.dp)) { text() }
+                            .padding(ClawSeedSpacing.Large)) { text() }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         FlowRow(Modifier.fillMaxWidth().heightIn(max = availableHeight * 0.45f)
-                            .verticalScroll(rememberScrollState()).padding(12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            .verticalScroll(rememberScrollState()).padding(ClawSeedSpacing.Medium),
+                            horizontalArrangement = Arrangement.spacedBy(ClawSeedSpacing.Small, Alignment.End),
+                            verticalArrangement = Arrangement.spacedBy(ClawSeedSpacing.Small)) {
                             dismissButton()
                             confirmButton()
                         }

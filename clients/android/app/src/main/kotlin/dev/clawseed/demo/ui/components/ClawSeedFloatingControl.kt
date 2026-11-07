@@ -3,6 +3,9 @@ package dev.clawseed.demo.ui.components
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.dropShadow
@@ -39,5 +42,21 @@ fun ClawSeedFloatingIconButton(
             contentDescription = contentDescription,
             content = content,
         )
+    }
+}
+
+/** Shared add action used by toolbar and scaffold floating-action slots. */
+@Composable
+fun ClawSeedAddAction(
+    onClick: () -> Unit,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+) {
+    ClawSeedFloatingIconButton(
+        onClick = onClick,
+        contentDescription = contentDescription,
+        modifier = modifier,
+    ) {
+        Icon(Icons.Default.Add, contentDescription = null)
     }
 }

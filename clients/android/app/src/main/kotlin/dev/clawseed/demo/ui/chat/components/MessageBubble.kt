@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.TextSelectionColors
@@ -57,6 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.clawseed.demo.R
 import dev.clawseed.demo.ui.theme.success
+import dev.clawseed.demo.ui.theme.ClawSeedShapes
 import dev.clawseed.demo.data.ChatEntry
 import dev.clawseed.demo.data.ToolCallInfo
 import dev.clawseed.demo.ui.chat.rememberRichMediaImageLoader
@@ -171,7 +171,7 @@ private fun UserBubble(content: String, modifier: Modifier = Modifier) {
     ) {
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp))
+                .clip(ClawSeedShapes.UserBubble)
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
         ) {
@@ -292,7 +292,7 @@ private fun SpeakButton(
 ) {
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(ClawSeedShapes.Micro)
             .clickable {
                 if (isSpeaking) onStop() else onSpeak(content)
             }
@@ -322,7 +322,7 @@ private fun CopyButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
 
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(ClawSeedShapes.Micro)
             .clickable {
                 if (!copied) {
                     copied = true
@@ -354,7 +354,7 @@ private fun CopyButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
 private fun RegenerateButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(ClawSeedShapes.Micro)
             .clickable { onClick() }
             .padding(4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -619,7 +619,7 @@ private fun ProfileContentCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = ClawSeedShapes.Content,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         ),
@@ -675,7 +675,7 @@ private fun ImageContentCard(media: MediaReference, alt: String?, modifier: Modi
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(ClawSeedShapes.Media)
             .background(colorScheme.surfaceVariant.copy(alpha = 0.45f))
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -695,7 +695,7 @@ private fun ImageContentCard(media: MediaReference, alt: String?, modifier: Modi
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 260.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(ClawSeedShapes.Content)
                     .clickable { showPreview = true },
             )
             alt?.takeIf { it.isNotBlank() }?.let { description ->
@@ -768,7 +768,7 @@ private fun AudioContentCard(media: MediaReference, title: String?, modifier: Mo
         modifier = modifier
             .fillMaxWidth()
             .padding(top = 8.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(ClawSeedShapes.Media)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -818,7 +818,7 @@ private fun VideoContentCard(media: MediaReference, title: String?, modifier: Mo
         modifier = modifier
             .fillMaxWidth()
             .padding(top = 8.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(ClawSeedShapes.Media)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -835,7 +835,7 @@ private fun VideoContentCard(media: MediaReference, title: String?, modifier: Mo
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(8.dp)),
+                .clip(ClawSeedShapes.Content),
         )
     }
 }
@@ -848,7 +848,7 @@ private fun LinkContentCard(block: ContentBlock.Link, modifier: Modifier = Modif
         modifier = modifier
             .fillMaxWidth()
             .padding(top = 8.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(ClawSeedShapes.Media)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
             .then(if (safeUrl != null) Modifier.clickable {
                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(safeUrl))) }
@@ -876,7 +876,7 @@ private fun SearchResultsCard(block: ContentBlock.SearchResults, modifier: Modif
         modifier = modifier
             .fillMaxWidth()
             .padding(top = 8.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(ClawSeedShapes.Media)
             .background(colorScheme.surfaceVariant.copy(alpha = 0.45f))
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -893,7 +893,7 @@ private fun SearchResultsCard(block: ContentBlock.SearchResults, modifier: Modif
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(ClawSeedShapes.Content)
                     .then(
                         if (isSafeExternalUrl) {
                             Modifier.clickable {
@@ -955,7 +955,7 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(ClawSeedShapes.Content)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
             .clickable { detailExpanded = !detailExpanded }
             .padding(horizontal = 16.dp, vertical = 6.dp),
@@ -1087,7 +1087,7 @@ private fun SystemBubble(content: String, modifier: Modifier = Modifier) {
     ) {
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(999.dp))
+                .clip(ClawSeedShapes.Pill)
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         ) {
@@ -1178,7 +1178,7 @@ private fun DebugInfoCard(entry: ChatEntry.DebugInfo, modifier: Modifier = Modif
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(ClawSeedShapes.Media)
             .background(MaterialTheme.colorScheme.secondaryContainer)
             .clickable { expanded = !expanded }
             .padding(12.dp),

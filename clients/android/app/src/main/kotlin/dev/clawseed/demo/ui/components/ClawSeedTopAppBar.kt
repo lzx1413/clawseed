@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import dev.clawseed.demo.ui.theme.pageTitle
 
 /** Page titles may grow with the user's font size instead of clipping inside a fixed bar. */
 @Composable
@@ -23,7 +24,7 @@ fun ClawSeedTopAppBar(
         ) {
             navigationIcon()
             Box(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                ProvideTextStyle(MaterialTheme.typography.titleLarge, title)
+                ProvideTextStyle(MaterialTheme.typography.pageTitle, title)
             }
             Row(verticalAlignment = Alignment.CenterVertically, content = actions)
         }

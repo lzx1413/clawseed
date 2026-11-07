@@ -8,10 +8,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.VisualTransformation
 import dev.clawseed.demo.ui.theme.ClawSeedShapes
+import dev.clawseed.demo.ui.theme.rowTitle
 
 @Composable
 fun ClawSeedTextField(value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier,
-    enabled: Boolean = true, readOnly: Boolean = false, textStyle: TextStyle = MaterialTheme.typography.bodyMedium,
+    enabled: Boolean = true, readOnly: Boolean = false, textStyle: TextStyle = MaterialTheme.typography.rowTitle,
     label: (@Composable () -> Unit)? = null, placeholder: (@Composable () -> Unit)? = null,
     leadingIcon: (@Composable () -> Unit)? = null, trailingIcon: (@Composable () -> Unit)? = null,
     supportingText: (@Composable () -> Unit)? = null, prefix: (@Composable () -> Unit)? = null,

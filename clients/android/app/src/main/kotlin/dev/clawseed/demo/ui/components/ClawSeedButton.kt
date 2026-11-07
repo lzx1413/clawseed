@@ -19,7 +19,10 @@ fun ClawSeedButton(
     onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
     loading: Boolean = false, dangerous: Boolean = false,
     style: ClawSeedButtonStyle = ClawSeedButtonStyle.Primary,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+    contentPadding: PaddingValues = PaddingValues(
+        horizontal = ClawSeedSpacing.ButtonHorizontal,
+        vertical = ClawSeedSpacing.ButtonVertical,
+    ),
     content: @Composable RowScope.() -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -52,13 +55,19 @@ fun ClawSeedButton(
 @Composable
 fun ClawSeedOutlinedButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
     loading: Boolean = false, dangerous: Boolean = false,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+    contentPadding: PaddingValues = PaddingValues(
+        horizontal = ClawSeedSpacing.ButtonHorizontal,
+        vertical = ClawSeedSpacing.ButtonVertical,
+    ),
     content: @Composable RowScope.() -> Unit) = ClawSeedButton(onClick, modifier, enabled, loading,
     dangerous, ClawSeedButtonStyle.Outlined, contentPadding, content)
 
 @Composable
 fun ClawSeedTextButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
     loading: Boolean = false, dangerous: Boolean = false,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+    contentPadding: PaddingValues = PaddingValues(
+        horizontal = ClawSeedSpacing.Medium,
+        vertical = ClawSeedSpacing.Small,
+    ),
     content: @Composable RowScope.() -> Unit) = ClawSeedButton(onClick, modifier, enabled, loading,
     dangerous, ClawSeedButtonStyle.Text, contentPadding, content)

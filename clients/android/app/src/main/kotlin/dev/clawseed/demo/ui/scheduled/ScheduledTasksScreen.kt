@@ -34,7 +34,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -43,14 +42,14 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
 import dev.clawseed.demo.ui.components.ClawSeedFormDialog
+import dev.clawseed.demo.ui.components.ClawSeedAddAction
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import dev.clawseed.demo.ui.components.ClawSeedTopAppBar
+import dev.clawseed.demo.ui.components.ClawSeedSwitch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -159,9 +158,10 @@ fun ScheduledTasksScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAddDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.task_add))
-            }
+            ClawSeedAddAction(
+                onClick = { showAddDialog = true },
+                contentDescription = stringResource(R.string.task_add),
+            )
         },
     ) { padding ->
         Column(
@@ -268,7 +268,7 @@ private fun TaskCard(
                         style = MaterialTheme.typography.headlineSmall,
                     )
                 }
-                Switch(
+                ClawSeedSwitch(
                     checked = task.enabled,
                     onCheckedChange = onToggle,
                 )

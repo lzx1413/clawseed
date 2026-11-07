@@ -29,8 +29,8 @@ fun ClawSeedChoiceChip(selected: Boolean, onClick: () -> Unit, label: @Composabl
         contentColor = (if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant)
             .let { if (enabled) it else it.copy(alpha = 0.38f) },
         border = BorderStroke(1.dp, if (selected) colors.primary else colors.outlineVariant)) {
-        Row(selection.padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(selection.padding(horizontal = ClawSeedSpacing.Page, vertical = ClawSeedSpacing.ChipVertical),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ClawSeedSpacing.Small)) {
             if (choiceType == ChoiceType.Multiple && selected) Icon(Icons.Default.Check, null, Modifier.size(18.dp))
             else leadingIcon?.invoke()
             ProvideTextStyle(MaterialTheme.typography.labelLarge) { label() }

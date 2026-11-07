@@ -7,6 +7,7 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 
 object ClawSeedShapes {
+    val Micro = RoundedCornerShape(4.dp)
     val Compact = RoundedCornerShape(6.dp)
     val Field = RoundedCornerShape(14.dp)
     val Card = RoundedCornerShape(20.dp)
@@ -14,6 +15,10 @@ object ClawSeedShapes {
     val Small = RoundedCornerShape(10.dp)
     val Medium = RoundedCornerShape(16.dp)
     val Large = RoundedCornerShape(24.dp)
+    val Input = RoundedCornerShape(28.dp)
+    val Content = RoundedCornerShape(8.dp)
+    val Media = RoundedCornerShape(12.dp)
+    val UserBubble = RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp)
     val Sheet = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
 }
 
@@ -25,6 +30,9 @@ object ClawSeedSpacing {
     val Large = 20.dp
     val Group = 24.dp
     val Huge = 32.dp
+    val ChipVertical = 10.dp
+    val ButtonHorizontal = 24.dp
+    val ButtonVertical = 12.dp
 }
 object ClawSeedSizes {
     val TouchTarget = 48.dp

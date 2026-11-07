@@ -11,6 +11,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import dev.clawseed.demo.ui.theme.ClawSeedShapes
 import dev.clawseed.demo.ui.theme.ClawSeedSizes
+import dev.clawseed.demo.ui.theme.rowTitle
 
 /** Drawer rows grow with wrapped labels and keep secondary actions separate. */
 @Composable
@@ -29,7 +30,7 @@ fun ClawSeedNavigationRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             icon?.let { Box(Modifier.size(ClawSeedSizes.IconSlot), contentAlignment = Alignment.Center) { it() } }
-            Box(Modifier.weight(1f)) { ProvideTextStyle(MaterialTheme.typography.bodyMedium) { label() } }
+            Box(Modifier.weight(1f)) { ProvideTextStyle(MaterialTheme.typography.rowTitle) { label() } }
             badge?.invoke()
         }
     }

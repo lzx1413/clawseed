@@ -29,10 +29,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -41,8 +39,10 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import dev.clawseed.demo.ui.components.ClawSeedTopAppBar
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import dev.clawseed.demo.ui.components.ClawSeedAddAction
+import dev.clawseed.demo.ui.components.ClawSeedCheckbox
+import dev.clawseed.demo.ui.components.ClawSeedTab
+import dev.clawseed.demo.ui.components.ClawSeedTabRow
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
@@ -122,9 +122,10 @@ fun UserProfileScreen(
         },
         floatingActionButton = {
             if (!uiState.isSaving && uiState.tab == KnowledgeTab.ABOUT_ME) {
-                FloatingActionButton(onClick = viewModel::create) {
-                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.profile_add))
-                }
+                ClawSeedAddAction(
+                    onClick = viewModel::create,
+                    contentDescription = stringResource(R.string.profile_add),
+                )
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -134,13 +135,13 @@ fun UserProfileScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            TabRow(selectedTabIndex = uiState.tab.ordinal) {
-                Tab(
+            ClawSeedTabRow(selectedTabIndex = uiState.tab.ordinal) {
+                ClawSeedTab(
                     selected = uiState.tab == KnowledgeTab.ABOUT_ME,
                     onClick = { viewModel.selectTab(KnowledgeTab.ABOUT_ME) },
                     text = { Text(stringResource(R.string.knowledge_about_me)) },
                 )
-                Tab(
+                ClawSeedTab(
                     selected = uiState.tab == KnowledgeTab.MEMORY,
                     onClick = { viewModel.selectTab(KnowledgeTab.MEMORY) },
                     text = { Text(stringResource(R.string.knowledge_memory)) },
@@ -322,7 +323,7 @@ private fun UserProfileItemCard(
             Row(modifier = Modifier.fillMaxWidth().toggleable(value = selected, enabled = enabled,
                 role = Role.Checkbox, onValueChange = { onToggleSelection() }),
                 verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = selected, onCheckedChange = null, enabled = enabled)
+                ClawSeedCheckbox(checked = selected, onCheckedChange = null, enabled = enabled)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.key,

@@ -19,14 +19,14 @@ fun SettingsRow(title: String, modifier: Modifier = Modifier, subtitle: String? 
     enabled: Boolean = true, trailing: (@Composable () -> Unit)? = null) {
     Row(modifier.fillMaxWidth().heightIn(min = if (subtitle == null) ClawSeedSizes.Row else ClawSeedSizes.TwoLineRow)
         .then(if (onClick != null) Modifier.clickable(enabled = enabled, onClick = onClick) else Modifier)
-        .padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        .padding(vertical = ClawSeedSpacing.Small), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(ClawSeedSpacing.Medium)) {
         if (icon != null) Box(Modifier.size(ClawSeedSizes.IconSlot), contentAlignment = Alignment.Center) { icon() }
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyMedium,
+            Text(title, style = MaterialTheme.typography.rowTitle,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f))
-            subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            value?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            subtitle?.let { Text(it, style = MaterialTheme.typography.supporting, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            value?.let { Text(it, style = MaterialTheme.typography.rowTitle, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         if (trailing != null) trailing() else if (onClick != null) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
     }
@@ -38,7 +38,7 @@ fun SettingsSwitchRow(title: String, checked: Boolean, onCheckedChange: (Boolean
     icon: (@Composable () -> Unit)? = null) {
     SettingsRow(title, modifier.toggleable(checked, enabled = enabled, role = Role.Switch,
         onValueChange = onCheckedChange), subtitle, icon = icon, enabled = enabled,
-        trailing = { Switch(checked, onCheckedChange = null, enabled = enabled,
+        trailing = { ClawSeedSwitch(checked, onCheckedChange = null, enabled = enabled,
             modifier = Modifier.clearAndSetSemantics {}) })
 }
 
@@ -60,7 +60,7 @@ fun SettingsCheckboxRow(
             onValueChange = onCheckedChange,
         ),
         trailing = {
-            Checkbox(
+            ClawSeedCheckbox(
                 checked = checked, onCheckedChange = null, enabled = enabled,
                 modifier = Modifier.clearAndSetSemantics {},
             )

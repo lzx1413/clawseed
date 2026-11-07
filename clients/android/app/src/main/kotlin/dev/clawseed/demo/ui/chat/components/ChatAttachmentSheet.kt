@@ -25,7 +25,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -127,7 +126,7 @@ internal fun ChatAttachmentSheet(
                     itemsIndexed(recent, key = { _, uri -> uri.toString() }) { index, uri ->
                         val checked = uri in selected
                         Box(
-                            Modifier.size(88.dp).clip(RoundedCornerShape(18.dp))
+                            Modifier.size(88.dp).clip(ClawSeedShapes.Media)
                                 .toggleable(
                                     value = checked,
                                     enabled = canPickImages && onSelectRecent != null && (checked || selected.size < imageSlots),

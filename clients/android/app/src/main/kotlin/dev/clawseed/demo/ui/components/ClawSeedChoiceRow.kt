@@ -3,7 +3,6 @@ package dev.clawseed.demo.ui.components
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -35,7 +34,7 @@ fun ClawSeedChoiceRow(
             modifier = selection.padding(horizontal = ClawSeedSpacing.Medium),
             trailing = {
                 if (multiple) {
-                    Checkbox(selected, onCheckedChange = null, enabled = enabled,
+                    ClawSeedCheckbox(selected, onCheckedChange = null, enabled = enabled,
                         modifier = Modifier.clearAndSetSemantics {})
                 } else {
                     RadioButton(selected, onClick = null, enabled = enabled,

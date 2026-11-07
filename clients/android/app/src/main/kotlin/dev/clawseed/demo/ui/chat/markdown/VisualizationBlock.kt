@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -23,6 +22,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.put
+import dev.clawseed.demo.ui.theme.ClawSeedShapes
 
 /** Render a validated visualization in a local, network-disabled Chart.js WebView. */
 @SuppressLint("SetJavaScriptEnabled")
@@ -44,7 +44,7 @@ internal fun VisualizationBlock(
     val html = remember(config) { buildVisualizationHtml(config) }
     Surface(
         modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
-        shape = RoundedCornerShape(8.dp),
+        shape = ClawSeedShapes.Content,
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         Column {
@@ -84,7 +84,7 @@ internal fun VisualizationBlock(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(if (config.type == "dashboard") 320.dp else 260.dp)
-                    .clip(RoundedCornerShape(8.dp)),
+                    .clip(ClawSeedShapes.Content),
             )
         }
     }

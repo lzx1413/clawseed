@@ -39,13 +39,13 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import dev.clawseed.demo.ui.components.ClawSeedFormDialog
+import dev.clawseed.demo.ui.components.ClawSeedAddAction
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -117,9 +117,10 @@ fun PersonaManagerScreen(
         },
         floatingActionButton = {
             if (uiState.editing == null && uiState.viewing == null) {
-                FloatingActionButton(onClick = viewModel::newPersona) {
-                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.persona_create))
-                }
+                ClawSeedAddAction(
+                    onClick = viewModel::newPersona,
+                    contentDescription = stringResource(R.string.persona_create),
+                )
             }
         },
     ) { padding ->

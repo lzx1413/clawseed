@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
@@ -36,6 +35,7 @@ import dev.clawseed.demo.ui.components.GlassLevel
 import dev.clawseed.demo.ui.components.GlassSurface
 import androidx.compose.ui.draw.dropShadow
 import dev.clawseed.demo.ui.theme.ClawSeedShadows
+import dev.clawseed.demo.ui.theme.ClawSeedShapes
 import androidx.compose.ui.platform.testTag
 
 @Composable
@@ -61,7 +61,7 @@ fun ChatBottomBar(
     var inputFocused by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
     val colorScheme = MaterialTheme.colorScheme
-    val inputShape = RoundedCornerShape(28.dp)
+    val inputShape = ClawSeedShapes.Input
 
     fun submitQuestion() {
         if ((input.isNotBlank() || hasImages) && canSend) {

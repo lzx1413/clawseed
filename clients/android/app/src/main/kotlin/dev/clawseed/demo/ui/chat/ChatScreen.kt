@@ -31,8 +31,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
+import dev.clawseed.demo.ui.components.ClawSeedAddAction
 import dev.clawseed.demo.ui.components.ClawSeedFormDialog
 import dev.clawseed.demo.ui.components.ClawSeedFloatingIconButton
 import dev.clawseed.demo.ui.components.ClawSeedFloatingSurface
@@ -334,10 +334,10 @@ fun ChatScreen(
                             avatar = visual?.avatar, color = visual?.color)
                     }
                 }
-                ClawSeedFloatingIconButton(
+                ClawSeedAddAction(
                     onClick = { dismissInput(); showPersonaSheet = true },
                     contentDescription = stringResource(R.string.chat_new_session),
-                ) { Icon(Icons.Default.Add, null) }
+                )
             }
         },
     ) { innerPadding ->
