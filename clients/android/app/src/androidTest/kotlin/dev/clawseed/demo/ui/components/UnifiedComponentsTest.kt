@@ -45,6 +45,18 @@ class UnifiedComponentsTest {
         assertEquals(width, compose.onNodeWithTag("save").fetchSemanticsNode().boundsInRoot.width)
     }
 
+    @Test fun glassButtonExposesButtonSemanticsAndInvokesAction() {
+        var calls = 0
+        compose.setContent {
+            ClawSeedTheme {
+                ClawSeedGlassButton(onClick = { calls++ }) { Text("Glass") }
+            }
+        }
+        compose.onNode(hasClickAction()).performClick()
+        compose.runOnIdle { assertEquals(1, calls) }
+        compose.onNode(hasClickAction()).assertHasClickAction()
+    }
+
     @Test fun singleAndMultipleChoicesExposeDifferentSemantics() {
         compose.setContent {
             var selected by remember { mutableIntStateOf(0) }

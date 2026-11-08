@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 import dev.clawseed.demo.R
 import dev.clawseed.demo.ui.theme.*
 
-enum class ClawSeedButtonStyle { Primary, Outlined, Text }
+enum class ClawSeedButtonStyle { Primary, Outlined, Text, Glass }
 
 @Composable
 fun ClawSeedButton(
@@ -49,6 +49,9 @@ fun ClawSeedButton(
         ClawSeedButtonStyle.Text -> TextButton(onClick, buttonModifier, enabled && !loading,
             shape = ClawSeedShapes.Field, contentPadding = contentPadding,
             colors = ButtonDefaults.textButtonColors(contentColor = if (dangerous) scheme.error else scheme.primary), content = body)
+        ClawSeedButtonStyle.Glass -> GlassButton(onClick = onClick, modifier = buttonModifier,
+            enabled = enabled && !loading, dangerous = dangerous,
+            contentPadding = contentPadding, content = body)
     }
 }
 
@@ -71,3 +74,13 @@ fun ClawSeedTextButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabl
     ),
     content: @Composable RowScope.() -> Unit) = ClawSeedButton(onClick, modifier, enabled, loading,
     dangerous, ClawSeedButtonStyle.Text, contentPadding, content)
+
+@Composable
+fun ClawSeedGlassButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
+    loading: Boolean = false, dangerous: Boolean = false,
+    contentPadding: PaddingValues = PaddingValues(
+        horizontal = ClawSeedSpacing.ButtonHorizontal,
+        vertical = ClawSeedSpacing.ButtonVertical,
+    ),
+    content: @Composable RowScope.() -> Unit) = ClawSeedButton(onClick, modifier, enabled, loading,
+    dangerous, ClawSeedButtonStyle.Glass, contentPadding, content)

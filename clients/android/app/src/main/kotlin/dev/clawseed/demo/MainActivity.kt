@@ -15,6 +15,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.lifecycle.ViewModelProvider
 import dev.clawseed.demo.sharing.SharedInbox
 import dev.clawseed.demo.sharing.ShareReceiverViewModel
@@ -24,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import dev.clawseed.demo.ui.theme.ClawSeedTheme
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.demo.i18n.LocaleHelper
 import dev.clawseed.demo.scheduled.ScheduledTaskManager
@@ -109,6 +111,11 @@ class MainActivity : ComponentActivity() {
                 "light" -> false
                 "dark" -> true
                 else -> isSystemInDarkTheme()
+            }
+            SideEffect {
+                val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+                insetsController.isAppearanceLightStatusBars = !useDarkTheme
+                insetsController.isAppearanceLightNavigationBars = !useDarkTheme
             }
             ClawSeedTheme(dark = useDarkTheme, oled = oledMode) {
                 Surface(modifier = Modifier.fillMaxSize()) {

@@ -24,6 +24,7 @@ private fun ComponentPreview() {
             ClawSeedTextField("", {}, label = { Text("API key") }, isError = true, supportingText = { Text("Required / 必填") })
             ClawSeedSegmentedPill(listOf("浅色 Light", "深色 Dark", "系统 System"), 0, {})
             ClawSeedButton({}, loading = true) { Text("保存 Save") }
+            ClawSeedGlassButton({}) { Text("毛玻璃 Glass") }
             ClawSeedOutlinedButton({}, enabled = false) { Text("Disabled") }
             ClawSeedTextButton({}, dangerous = true) { Text("Delete") }
         } }
