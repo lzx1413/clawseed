@@ -8,6 +8,7 @@ data class ToolCallInfo(
     val toolArgs: String,
     val toolResult: String? = null,    // null = 正在调用中
     val toolSuccess: Boolean? = null,  // null = 正在调用中
+    val presentation: dev.clawseed.sdk.core.model.ToolPresentation? = null,
 )
 
 sealed class ChatEntry {

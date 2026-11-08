@@ -22,7 +22,7 @@ fun ClawSeedFloatingSurface(
     GlassContainer(
         modifier = modifier.height(ClawSeedSizes.TouchTarget)
             .dropShadow(ClawSeedShapes.Pill, ClawSeedShadows.FloatingControl),
-        level = GlassLevel.Elevated,
+        level = GlassLevel.Pill,
         shape = ClawSeedShapes.Pill,
         content = content,
     )

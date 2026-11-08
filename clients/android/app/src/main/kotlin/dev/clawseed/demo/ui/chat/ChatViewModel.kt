@@ -30,6 +30,7 @@ import dev.clawseed.sdk.android.ChatAccumulator
 import dev.clawseed.sdk.core.ClawSeedSession
 import dev.clawseed.sdk.core.model.ConnectionState
 import dev.clawseed.sdk.core.model.ChatEvent
+import dev.clawseed.sdk.core.model.ContentBlock
 import dev.clawseed.sdk.core.model.PersonaInfo
 import dev.clawseed.sdk.core.model.SessionMessage
 import dev.clawseed.sdk.core.model.ToolPresentation
@@ -218,10 +219,11 @@ internal data class SessionSlot(
                         toolArgs = msg.args,
                         toolResult = result?.output,
                         toolSuccess = if (result != null) true else null,
+                        presentation = result?.presentation?.searchResultsOnly(),
                     ))
                 }
                 is dev.clawseed.sdk.android.AccumulatedMessage.ToolResult -> {
-                    msg.presentation?.blocks?.let(pendingPresentationBlocks::addAll)
+                    msg.presentation?.withoutSearchResults()?.blocks?.let(pendingPresentationBlocks::addAll)
                 }
                 is dev.clawseed.sdk.android.AccumulatedMessage.Thinking -> intermediate.add(ChatEntry.Thinking(
                     id = msg.id,
@@ -366,6 +368,16 @@ private fun jsonText(value: JsonElement?): String? = when (value) {
     else -> value.toString()
 }
 
+private fun ToolPresentation.searchResultsOnly(): ToolPresentation? {
+    val searchBlocks = blocks.filterIsInstance<ContentBlock.SearchResults>()
+    return searchBlocks.takeIf { it.isNotEmpty() }?.let { ToolPresentation(version, it) }
+}
+
+private fun ToolPresentation.withoutSearchResults(): ToolPresentation? {
+    val remainingBlocks = blocks.filterNot { it is ContentBlock.SearchResults }
+    return remainingBlocks.takeIf { it.isNotEmpty() }?.let { ToolPresentation(version, it) }
+}
+
 private fun jsonObjectOrNull(content: String?): JsonObject? {
     val trimmed = content?.trim().orEmpty()
     if (trimmed.isEmpty() || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) return null
@@ -396,6 +408,7 @@ private fun toolResultInfoFromJson(value: JsonElement): ToolCallInfo? {
         toolArgs = "",
         toolResult = output,
         toolSuccess = obj["success"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: true,
+        presentation = parseToolPresentation(obj["presentation"])?.searchResultsOnly(),
     )
 }
 
@@ -451,6 +464,7 @@ private fun appendPersistedTimeline(
                 toolArgs = "",
                 toolResult = jsonText(obj["output"] ?: obj["content"]).orEmpty(),
                 toolSuccess = true,
+                presentation = parseToolPresentation(obj["presentation"])?.searchResultsOnly(),
             )
         }
     }
@@ -476,7 +490,11 @@ private fun mergePersistedToolResults(items: List<Any>): List<Any> {
             item
         } else {
             resultById[item.toolCallId]?.let { result ->
-                item.copy(toolResult = result.toolResult, toolSuccess = result.toolSuccess)
+                item.copy(
+                    toolResult = result.toolResult,
+                    toolSuccess = result.toolSuccess,
+                    presentation = result.presentation,
+                )
             } ?: item
         }
     }
@@ -504,7 +522,7 @@ internal fun mapPersistedSessionMessages(messages: List<SessionMessage>): List<C
                             id = "hist-$idx",
                             timestamp = timestamp,
                             content = msg.content.orEmpty(),
-                            presentation = parseToolPresentation(msg.presentation),
+                            presentation = parseToolPresentation(msg.presentation)?.withoutSearchResults(),
                             metrics = msg.metrics,
                         )
                         continue
@@ -520,6 +538,7 @@ internal fun mapPersistedSessionMessages(messages: List<SessionMessage>): List<C
                             toolArgs = msg.toolArgs.orEmpty(),
                             toolResult = msg.toolResult,
                             toolSuccess = msg.toolResult?.let { msg.success ?: true },
+                            presentation = parseToolPresentation(msg.presentation)?.searchResultsOnly(),
                         )
                     }
                     if (hasStructuredActivity) {
@@ -529,7 +548,7 @@ internal fun mapPersistedSessionMessages(messages: List<SessionMessage>): List<C
                             id = "hist-$idx",
                             timestamp = timestamp,
                             content = msg.content.orEmpty(),
-                            presentation = parseToolPresentation(msg.presentation),
+                            presentation = parseToolPresentation(msg.presentation)?.withoutSearchResults(),
                             metrics = msg.metrics,
                         )
                     }
@@ -554,7 +573,7 @@ internal fun mapPersistedSessionMessages(messages: List<SessionMessage>): List<C
                 // retaining the role/content payload.
                 when (msg.role) {
                     "user" -> intermediate += ChatEntry.UserMessage("hist-$idx", timestamp, stripEnrichmentPrefixes(msg.content.orEmpty()), msg.attachments, msg.files)
-                    "assistant" -> intermediate += ChatEntry.AssistantMessage("hist-$idx", timestamp, msg.content.orEmpty(), presentation = parseToolPresentation(msg.presentation), metrics = msg.metrics)
+                    "assistant" -> intermediate += ChatEntry.AssistantMessage("hist-$idx", timestamp, msg.content.orEmpty(), presentation = parseToolPresentation(msg.presentation)?.withoutSearchResults(), metrics = msg.metrics)
                 }
             }
         }

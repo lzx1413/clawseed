@@ -12,9 +12,9 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -25,21 +25,24 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import dev.clawseed.demo.ui.components.ClawSeedAddAction
 import dev.clawseed.demo.ui.components.ClawSeedFormDialog
 import dev.clawseed.demo.ui.components.ClawSeedFloatingIconButton
 import dev.clawseed.demo.ui.components.ClawSeedFloatingSurface
+import dev.clawseed.demo.ui.components.GlassBackdropHost
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -49,6 +52,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.interaction.DragInteraction
 import kotlinx.coroutines.launch
@@ -57,6 +61,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.activity.ComponentActivity
@@ -146,6 +152,11 @@ fun ChatScreen(
     val density = LocalDensity.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val coroutineScope = rememberCoroutineScope()
+    val chatTopContentPadding = with(density) {
+        WindowInsets.statusBars.getTop(this).toDp() + 72.dp
+    }
+    var bottomBarTopPx by remember { mutableStateOf<Float?>(null) }
     var showPersonaSheet by remember { mutableStateOf(false) }
 
     fun dismissInput() {
@@ -184,6 +195,9 @@ fun ChatScreen(
     }
 
     val listState = rememberLazyListState()
+    val showScrollToBottom by remember {
+        derivedStateOf { listState.canScrollForward }
+    }
     val displayedItemCount = uiState.messages.size +
         (if (uiState.streamingContent.isNotEmpty()) 1 else 0)
     val bottomAnchorIndex = displayedItemCount
@@ -304,8 +318,162 @@ fun ChatScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
+    GlassBackdropHost(
+        modifier = Modifier.fillMaxSize(),
+        background = {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .navigationBarsPadding(),
+            ) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentPadding = PaddingValues(
+                        top = chatTopContentPadding,
+                        bottom = 8.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (
+                        sessionSwitchReady &&
+                        uiState.messages.isEmpty() &&
+                        uiState.thinkingContent.isEmpty() &&
+                        uiState.streamingContent.isEmpty()
+                    ) {
+                        item(key = "__empty_chat_state__", contentType = "empty_chat_state") {
+                            EmptyChatState(
+                                modifier = Modifier.heightIn(min = 360.dp),
+                                onSuggestion = { prompt ->
+                                    viewModel.sendMessage(prompt, uiState.currentSessionId)
+                                },
+                            )
+                        }
+                    }
+                    items(
+                        items = uiState.messages,
+                        key = { it.id },
+                        contentType = { it.javaClass },
+                    ) { entry ->
+                        val isLastAssistant = entry is ChatEntry.AssistantMessage
+                            && !entry.isStreaming
+                            && entry.id == lastAssistantId
+                        val canSpeak = entry is ChatEntry.AssistantMessage && !entry.isStreaming
+                        MessageBubble(
+                            onReadImage = { id -> viewModel.readImage(uiState.currentSessionId.orEmpty(), id) },
+                            entry = if (entry is ChatEntry.AssistantMessage && !uiState.showDebugInfo)
+                                entry.copy(
+                                    metrics = null,
+                                    estimatedTokens = null,
+                                    estimatedToolTokens = null,
+                                ) else entry,
+                            onRegenerate = if (isLastAssistant && !isLoading) ({ viewModel.regenerateLastResponse() }) else null,
+                            onSpeak = if (canSpeak) ({ viewModel.speakMessage(entry.content, entry.id) }) else null,
+                            onStop = if (canSpeak) ({ viewModel.stopSpeech() }) else null,
+                            onPresentationAction = if (!isLoading) ({ command ->
+                                viewModel.sendMessage(command, uiState.currentSessionId)
+                            }) else null,
+                            isSpeakingThis = canSpeak && uiState.speakingMessageId == entry.id,
+                        )
+                    }
+                    if (uiState.streamingContent.isNotEmpty()) {
+                        item(key = "__streaming__", contentType = ChatEntry.AssistantMessage::class.java) {
+                            MessageBubble(
+                                entry = ChatEntry.AssistantMessage(
+                                    id = "__streaming__",
+                                    timestamp = System.currentTimeMillis(),
+                                    content = uiState.streamingContent,
+                                    isStreaming = true,
+                                )
+                            )
+                        }
+                    }
+                    item(key = "__bottom_anchor__", contentType = "anchor") {
+                        Spacer(Modifier.size(1.dp))
+                    }
+                }
+
+                uiState.pendingQuestion?.let { request ->
+                    AskUserPrompt(
+                        request = request,
+                        submitting = uiState.questionSubmitting,
+                        enabled = uiState.connState == ConnectionState.CONNECTED,
+                        onAnswer = viewModel::answerQuestion,
+                    )
+                }
+
+                // Error banner
+                if (uiState.error != null) {
+                    Snackbar(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        action = {
+                            ClawSeedTextButton(onClick = { viewModel.retryLastRequest() }) {
+                                Text(stringResource(R.string.common_retry))
+                        }
+                    },
+                    dismissAction = {
+                        ClawSeedTextButton(onClick = { viewModel.clearError() }) {
+                            Text(stringResource(R.string.common_close))
+                        }
+                    },
+                ) {
+                    Text(uiState.error!!, maxLines = 2)
+                }
+            }
+
+            ChatBottomBar(
+                input = input,
+                onInputChange = { viewModel.updateDraft(draftKey, it) },
+                onSend = {
+                    val text = input
+                    dismissInput()
+                    if ((selectedImages.isNotEmpty() || selectedFiles.isNotEmpty()) && imageTarget != null) {
+                        viewModel.sendImageDraft(text, imageTarget)
+                    } else if (viewModel.sendMessage(text, uiState.currentSessionId)) viewModel.updateDraft(draftKey, "")
+                },
+                onStop = { viewModel.abortGeneration() },
+                isLoading = isLoading,
+                canSend = sessionSwitchReady && imageDraftsReady && fileDraftsReady,
+                modifier = Modifier
+                    .imePadding()
+                    .onGloballyPositioned { coordinates ->
+                        bottomBarTopPx = coordinates.positionInRoot().y
+                    },
+                hasImages = selectedImages.isNotEmpty() || selectedFiles.isNotEmpty(),
+                canPickFiles = uiState.fileAttachmentsSupported,
+                onPickFiles = imageTarget?.let { target -> { filePickerTarget = target; filePicker.launch(arrayOf("text/*", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/octet-stream")) } },
+                canPickImages = uiState.imageAttachmentsSupported,
+                imageSlots = (4 - selectedImages.size).coerceAtLeast(0),
+                onSelectRecent = imageTarget?.let { target -> { uris -> viewModel.addImages(target, uris) } },
+                onTakePhoto = imageTarget?.let { target -> {
+                    try {
+                        val directory = File(activity.cacheDir, "chat-camera").apply { mkdirs() }
+                        val file = File.createTempFile("capture-", ".jpg", directory)
+                        cameraFileName = file.name
+                        cameraTargetKey = target.key
+                        cameraPicker.launch(FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file))
+                    } catch (_: Exception) {
+                        cameraFileName?.let { File(activity.cacheDir, "chat-camera/$it").delete() }
+                        cameraFileName = null
+                        cameraTargetKey = null
+                        android.widget.Toast.makeText(activity, "无法打开相机，请使用相册选择图片", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                } },
+                onPickImages = imageTarget?.let { target -> { pickerTarget = target; imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } },
+                imageDrafts = {
+                    if (imageTarget != null) dev.clawseed.demo.ui.chat.components.DraftFileList(selectedFiles,
+                        { viewModel.changeFile(imageTarget, it, false) }, { viewModel.changeFile(imageTarget, it, true) })
+                    if (imageTarget != null) dev.clawseed.demo.ui.chat.components.DraftImageStrip(
+                        selectedImages, viewModel::imageDraftFile,
+                        { viewModel.removeImage(imageTarget, it) }, { viewModel.retryImage(imageTarget, it) },
+                    )
+                },
+            )
+            }
+        },
+        content = {
             Row(
                 modifier = Modifier.statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp).fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -339,157 +507,31 @@ fun ChatScreen(
                     contentDescription = stringResource(R.string.chat_new_session),
                 )
             }
+            if (showScrollToBottom) {
+                BoxWithConstraints(
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    val bottomPadding = bottomBarTopPx?.let { topPx ->
+                        with(density) { (maxHeight.toPx() - topPx).toDp() + 8.dp }
+                    } ?: 96.dp
+                    ClawSeedFloatingIconButton(
+                        onClick = {
+                            followLatest = true
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(bottomAnchorIndex)
+                            }
+                        },
+                        contentDescription = "滚动到底部",
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 16.dp, bottom = bottomPadding),
+                    ) {
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
+                    }
+                }
+            }
         },
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .consumeWindowInsets(innerPadding),
-        ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentPadding = PaddingValues(
-                    top = 8.dp,
-                    bottom = 8.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                if (
-                    sessionSwitchReady &&
-                    uiState.messages.isEmpty() &&
-                    uiState.thinkingContent.isEmpty() &&
-                    uiState.streamingContent.isEmpty()
-                ) {
-                    item(key = "__empty_chat_state__", contentType = "empty_chat_state") {
-                        EmptyChatState(
-                            modifier = Modifier.heightIn(min = 360.dp),
-                            onSuggestion = { prompt ->
-                                viewModel.sendMessage(prompt, uiState.currentSessionId)
-                            },
-                        )
-                    }
-                }
-                items(
-                    items = uiState.messages,
-                    key = { it.id },
-                    contentType = { it.javaClass },
-                ) { entry ->
-                    val isLastAssistant = entry is ChatEntry.AssistantMessage
-                        && !entry.isStreaming
-                        && entry.id == lastAssistantId
-                    val canSpeak = entry is ChatEntry.AssistantMessage && !entry.isStreaming
-                    MessageBubble(
-                        onReadImage = { id -> viewModel.readImage(uiState.currentSessionId.orEmpty(), id) },
-                        entry = if (entry is ChatEntry.AssistantMessage && !uiState.showDebugInfo)
-                            entry.copy(
-                                metrics = null,
-                                estimatedTokens = null,
-                                estimatedToolTokens = null,
-                            ) else entry,
-                        onRegenerate = if (isLastAssistant && !isLoading) ({ viewModel.regenerateLastResponse() }) else null,
-                        onSpeak = if (canSpeak) ({ viewModel.speakMessage(entry.content, entry.id) }) else null,
-                        onStop = if (canSpeak) ({ viewModel.stopSpeech() }) else null,
-                        onPresentationAction = if (!isLoading) ({ command ->
-                            viewModel.sendMessage(command, uiState.currentSessionId)
-                        }) else null,
-                        isSpeakingThis = canSpeak && uiState.speakingMessageId == entry.id,
-                    )
-                }
-                if (uiState.streamingContent.isNotEmpty()) {
-                    item(key = "__streaming__", contentType = ChatEntry.AssistantMessage::class.java) {
-                        MessageBubble(
-                            entry = ChatEntry.AssistantMessage(
-                                id = "__streaming__",
-                                timestamp = System.currentTimeMillis(),
-                                content = uiState.streamingContent,
-                                isStreaming = true,
-                            )
-                        )
-                    }
-                }
-                item(key = "__bottom_anchor__", contentType = "anchor") {
-                    Spacer(Modifier.size(1.dp))
-                }
-            }
-
-            uiState.pendingQuestion?.let { request ->
-                AskUserPrompt(
-                    request = request,
-                    submitting = uiState.questionSubmitting,
-                    enabled = uiState.connState == ConnectionState.CONNECTED,
-                    onAnswer = viewModel::answerQuestion,
-                )
-            }
-
-            // Error banner
-            if (uiState.error != null) {
-                Snackbar(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    action = {
-                        ClawSeedTextButton(onClick = { viewModel.retryLastRequest() }) {
-                            Text(stringResource(R.string.common_retry))
-                        }
-                    },
-                    dismissAction = {
-                        ClawSeedTextButton(onClick = { viewModel.clearError() }) {
-                            Text(stringResource(R.string.common_close))
-                        }
-                    },
-                ) {
-                    Text(uiState.error!!, maxLines = 2)
-                }
-            }
-
-            ChatBottomBar(
-                input = input,
-                onInputChange = { viewModel.updateDraft(draftKey, it) },
-                onSend = {
-                    val text = input
-                    dismissInput()
-                    if ((selectedImages.isNotEmpty() || selectedFiles.isNotEmpty()) && imageTarget != null) {
-                        viewModel.sendImageDraft(text, imageTarget)
-                    } else if (viewModel.sendMessage(text, uiState.currentSessionId)) viewModel.updateDraft(draftKey, "")
-                },
-                onStop = { viewModel.abortGeneration() },
-                isLoading = isLoading,
-                canSend = sessionSwitchReady && imageDraftsReady && fileDraftsReady,
-                modifier = Modifier.imePadding(),
-                hasImages = selectedImages.isNotEmpty() || selectedFiles.isNotEmpty(),
-                canPickFiles = uiState.fileAttachmentsSupported,
-                onPickFiles = imageTarget?.let { target -> { filePickerTarget = target; filePicker.launch(arrayOf("text/*", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/octet-stream")) } },
-                canPickImages = uiState.imageAttachmentsSupported,
-                imageSlots = (4 - selectedImages.size).coerceAtLeast(0),
-                onSelectRecent = imageTarget?.let { target -> { uris -> viewModel.addImages(target, uris) } },
-                onTakePhoto = imageTarget?.let { target -> {
-                    try {
-                        val directory = File(activity.cacheDir, "chat-camera").apply { mkdirs() }
-                        val file = File.createTempFile("capture-", ".jpg", directory)
-                        cameraFileName = file.name
-                        cameraTargetKey = target.key
-                        cameraPicker.launch(FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file))
-                    } catch (_: Exception) {
-                        cameraFileName?.let { File(activity.cacheDir, "chat-camera/$it").delete() }
-                        cameraFileName = null
-                        cameraTargetKey = null
-                        android.widget.Toast.makeText(activity, "无法打开相机，请使用相册选择图片", android.widget.Toast.LENGTH_LONG).show()
-                    }
-                } },
-                onPickImages = imageTarget?.let { target -> { pickerTarget = target; imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } },
-                imageDrafts = {
-                    if (imageTarget != null) dev.clawseed.demo.ui.chat.components.DraftFileList(selectedFiles,
-                        { viewModel.changeFile(imageTarget, it, false) }, { viewModel.changeFile(imageTarget, it, true) })
-                    if (imageTarget != null) dev.clawseed.demo.ui.chat.components.DraftImageStrip(
-                        selectedImages, viewModel::imageDraftFile,
-                        { viewModel.removeImage(imageTarget, it) }, { viewModel.retryImage(imageTarget, it) },
-                    )
-                },
-            )
-        }
-    }
+    )
 
     // Persona picker — shown when the user taps "+" to start a new chat.
     if (showPersonaSheet) {

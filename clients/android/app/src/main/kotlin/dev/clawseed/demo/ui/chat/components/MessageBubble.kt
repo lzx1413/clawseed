@@ -1036,6 +1036,13 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
                         )
                     }
                 }
+                inv.presentation?.let { presentation ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    RichContentBlocks(
+                        presentation = presentation,
+                        onAction = null,
+                    )
+                }
             }
         }
     }
