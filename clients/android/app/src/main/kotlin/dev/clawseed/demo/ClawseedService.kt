@@ -884,14 +884,27 @@ class ClawseedService : Service() {
         }
     }
 
-    private fun buildNotification(text: String): Notification =
-        NotificationCompat.Builder(this, CHANNEL_ID)
+    private fun buildNotification(text: String): Notification {
+        val contentIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            this,
+            NOTIFICATION_ID,
+            contentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("ClawSeed")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .setSilent(true)
+            .setContentIntent(contentPendingIntent)
             .build()
+    }
 
     private fun updateNotification(text: String) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
