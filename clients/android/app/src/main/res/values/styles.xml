@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.ClawSeed.Light" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorBackground">@color/clawseed_platform_light_background</item>
+        <item name="android:textColorPrimary">@color/clawseed_platform_light_foreground</item>
+        <item name="android:textColorSecondary">@color/clawseed_platform_light_foreground</item>
+        <item name="android:actionMenuTextColor">@color/clawseed_platform_light_foreground</item>
+        <item name="android:colorAccent">@color/clawseed_platform_light_accent</item>
+        <item name="android:colorControlActivated">@color/clawseed_platform_light_accent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+
+    <style name="Theme.ClawSeed.Dark" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorBackground">@color/clawseed_platform_dark_background</item>
+        <item name="android:textColorPrimary">@color/clawseed_platform_dark_foreground</item>
+        <item name="android:textColorSecondary">@color/clawseed_platform_dark_secondary</item>
+        <item name="android:actionMenuTextColor">@color/clawseed_platform_dark_foreground</item>
+        <item name="android:colorAccent">@color/clawseed_platform_dark_accent</item>
+        <item name="android:colorControlActivated">@color/clawseed_platform_dark_accent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

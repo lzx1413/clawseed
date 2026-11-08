@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="clawseed_platform_light_background">#FAFBFC</color>
+    <color name="clawseed_platform_light_foreground">#20242A</color>
+    <color name="clawseed_platform_light_accent">#3D7083</color>
+    <color name="clawseed_platform_dark_background">#17191C</color>
+    <color name="clawseed_platform_dark_foreground">#E7E9ED</color>
+    <color name="clawseed_platform_dark_secondary">#B7BEC8</color>
+    <color name="clawseed_platform_dark_accent">#76AFC4</color>
+</resources>

@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
     private val pendingSessionId = mutableStateOf<String?>(null)
     private var pendingAlarmDismissId: String? = null
     private var gatewayServiceStarted = false
+    private var platformThemeIsDark: Boolean? = null
     private val shareReceiver by lazy { ViewModelProvider(this)[ShareReceiverViewModel::class.java] }
     private var shareRequestId: String? = null
 
@@ -113,6 +114,10 @@ class MainActivity : ComponentActivity() {
                 else -> isSystemInDarkTheme()
             }
             SideEffect {
+                if (platformThemeIsDark != useDarkTheme) {
+                    setTheme(if (useDarkTheme) R.style.Theme_ClawSeed_Dark else R.style.Theme_ClawSeed_Light)
+                    platformThemeIsDark = useDarkTheme
+                }
                 val insetsController = WindowCompat.getInsetsController(window, window.decorView)
                 insetsController.isAppearanceLightStatusBars = !useDarkTheme
                 insetsController.isAppearanceLightNavigationBars = !useDarkTheme
