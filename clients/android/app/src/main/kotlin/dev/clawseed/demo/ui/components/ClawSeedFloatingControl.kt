@@ -2,7 +2,7 @@ package dev.clawseed.demo.ui.components
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Icon
@@ -35,7 +35,7 @@ fun ClawSeedFloatingIconButton(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    ClawSeedFloatingSurface(modifier.width(ClawSeedSizes.TouchTarget)) {
+    ClawSeedFloatingSurface(modifier.size(ClawSeedSizes.TouchTarget)) {
         ClawSeedIconButton(
             onClick = onClick,
             modifier = Modifier.fillMaxSize(),

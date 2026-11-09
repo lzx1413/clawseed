@@ -634,19 +634,23 @@ fun ChatScreen(
                     val bottomPadding = bottomBarTopPx?.let { topPx ->
                         with(density) { (maxHeight.toPx() - topPx).toDp() + 8.dp }
                     } ?: 96.dp
-                    ClawSeedFloatingIconButton(
-                        onClick = {
-                            followLatest = true
-                            coroutineScope.launch {
-                                listState.animateScrollToItem(bottomAnchorIndex)
-                            }
-                        },
-                        contentDescription = stringResource(R.string.chat_scroll_to_bottom),
+                    Box(
                         modifier = Modifier
-                            .align(Alignment.BottomEnd)
+                            .fillMaxSize()
                             .padding(end = 16.dp, bottom = bottomPadding),
                     ) {
-                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
+                        ClawSeedFloatingIconButton(
+                            onClick = {
+                                followLatest = true
+                                coroutineScope.launch {
+                                    listState.animateScrollToItem(bottomAnchorIndex)
+                                }
+                            },
+                            contentDescription = stringResource(R.string.chat_scroll_to_bottom),
+                            modifier = Modifier.align(Alignment.BottomEnd),
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
+                        }
                     }
                 }
             }
