@@ -15,7 +15,7 @@
 | `FileEditTool` | `file_edit` | Precise string replacement editing |
 | `GlobSearchTool` | `glob_search` | Filename pattern search |
 | `ContentSearchTool` | `content_search` | File content search |
-| `CsvProcessTool` | `csv_process` | Inspect, page, filter, sort, and write CSV files |
+| `CsvProcessTool` | `csv_process` | Inspect, page, filter, sort, write, and append CSV files |
 
 ### Web
 
@@ -78,7 +78,7 @@ Background commands use a process-local queue with at most two running and 16 qu
 | `ModelRoutingConfigTool` | `model_routing_config` | Model routing configuration |
 | `BackupTool` | `backup` | Backup management |
 
-`csv_process` supports `inspect`, `read`, `query`, and `write` operations. Reads and queries use workspace-relative paths, UTF-8 (optionally with a BOM), quoted fields, embedded newlines, configurable single-character delimiters, and pagination. `query` also supports column selection, multiple filters, and sorting. `write` accepts `headers` and array or object `rows`; writes remain inside the workspace and are subject to file and response size limits.
+`csv_process` supports `inspect`, `read`, `query`, `write`, and `append` operations. Reads and queries use workspace-relative paths, UTF-8 (optionally with a BOM), quoted fields, embedded newlines, configurable single-character delimiters, and pagination. `query` also supports column selection, multiple filters, and sorting. `write` accepts `headers` and array or object `rows` and replaces the file; `append` reads the existing header and adds array or object `rows` to the end of the file. Both write operations remain inside the workspace and use atomic replacement with process-local serialization. Input files are limited to 20 MiB and 200,000 records; each call returns at most 1,000 rows and 1 MiB of JSON.
 
 ## Registration Mechanism
 

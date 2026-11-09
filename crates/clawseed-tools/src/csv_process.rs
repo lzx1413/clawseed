@@ -1,4 +1,4 @@
-//! Read, query, inspect, and write CSV files in the workspace.
+//! Read, query, inspect, write, and append CSV files in the workspace.
 
 use crate::util_helpers::{resolve_existing_workspace_path, resolve_workspace_write_path};
 use async_trait::async_trait;
@@ -6,11 +6,17 @@ use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
 use serde_json::{Map, Value, json};
 use std::cmp::Ordering;
+use std::path::Path;
+use std::sync::OnceLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const MAX_FILE_BYTES: usize = 20 * 1024 * 1024;
 const MAX_ROWS: usize = 200_000;
 const MAX_RETURN_ROWS: usize = 1_000;
 const DEFAULT_RETURN_ROWS: usize = 100;
+const MAX_RETURN_BYTES: usize = 1_048_576;
+
+static CSV_WRITE_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 
 pub struct CsvProcessTool;
 
@@ -33,14 +39,14 @@ impl Tool for CsvProcessTool {
     }
 
     fn description(&self) -> &str {
-        "Inspect, read, filter, sort, and write CSV files in the workspace. Supports quoted fields, escaped quotes, multiline records, configurable delimiters, pagination, and simple typed comparisons."
+        "Inspect, read, filter, sort, write, and append CSV files in the workspace. Supports quoted fields, escaped quotes, multiline records, configurable delimiters, pagination, and simple typed comparisons."
     }
 
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "operation": { "type": "string", "enum": ["inspect", "read", "query", "write"] },
+                "operation": { "type": "string", "enum": ["inspect", "read", "query", "write", "append"] },
                 "path": { "type": "string", "description": "CSV path relative to the workspace" },
                 "delimiter": { "type": "string", "description": "One-character delimiter; defaults to comma" },
                 "has_header": { "type": "boolean", "description": "Whether the first row contains column names; defaults to true" },
@@ -61,7 +67,22 @@ impl Tool for CsvProcessTool {
                 "sort_order": { "type": "string", "enum": ["asc", "desc"], "default": "asc" },
                 "sample_size": { "type": "integer", "minimum": 0, "maximum": 20, "description": "Rows returned by inspect; defaults to 5" },
                 "headers": { "type": "array", "items": { "type": "string" }, "description": "Column names for write" },
-                "rows": { "type": "array", "description": "Rows for write; each item may be an array or an object keyed by headers" }
+                "rows": {
+                    "type": "array",
+                    "description": "Rows for write or append; each item may be an array or an object keyed by headers",
+                    "items": {
+                        "oneOf": [
+                            {
+                                "type": "array",
+                                "items": { "type": ["string", "number", "boolean", "null"] }
+                            },
+                            {
+                                "type": "object",
+                                "additionalProperties": { "type": ["string", "number", "boolean", "null"] }
+                            }
+                        ]
+                    }
+                }
             },
             "required": ["operation", "path"]
         })
@@ -69,7 +90,9 @@ impl Tool for CsvProcessTool {
 
     async fn execute(&self, args: Value, ctx: &dyn ToolContext) -> anyhow::Result<ToolResult> {
         let operation = match args.get("operation").and_then(Value::as_str) {
-            Some(value) if matches!(value, "inspect" | "read" | "query" | "write") => value,
+            Some(value) if matches!(value, "inspect" | "read" | "query" | "write" | "append") => {
+                value
+            }
             Some(value) => return Ok(failure(format!("Unknown operation '{value}'"))),
             None => return Ok(failure("Missing required parameter: operation")),
         };
@@ -81,13 +104,16 @@ impl Tool for CsvProcessTool {
             Ok(value) => value,
             Err(error) => return Ok(failure(error)),
         };
-        let has_header = args
-            .get("has_header")
-            .and_then(Value::as_bool)
-            .unwrap_or(true);
+        let has_header = match optional_bool(&args, "has_header", true) {
+            Ok(value) => value,
+            Err(error) => return Ok(failure(error)),
+        };
 
         if operation == "write" {
             return self.write(&args, ctx, path, delimiter).await;
+        }
+        if operation == "append" {
+            return self.append(&args, ctx, path, delimiter, has_header).await;
         }
 
         let resolved = match resolve_existing_workspace_path(ctx.workspace_dir(), path) {
@@ -137,6 +163,87 @@ impl Tool for CsvProcessTool {
 }
 
 impl CsvProcessTool {
+    async fn append(
+        &self,
+        args: &Value,
+        ctx: &dyn ToolContext,
+        path: &str,
+        delimiter: char,
+        has_header: bool,
+    ) -> anyhow::Result<ToolResult> {
+        let _guard = CSV_WRITE_LOCK
+            .get_or_init(|| tokio::sync::Mutex::new(()))
+            .lock()
+            .await;
+        let source = match resolve_existing_workspace_path(ctx.workspace_dir(), path) {
+            Ok(value) => value,
+            Err(error) => return Ok(failure(error)),
+        };
+        let bytes = match tokio::fs::read(&source).await {
+            Ok(value) => value,
+            Err(error) => return Ok(failure(format!("Failed to read CSV file: {error}"))),
+        };
+        if bytes.len() > MAX_FILE_BYTES {
+            return Ok(failure(format!(
+                "CSV file is too large: {} bytes (limit: {MAX_FILE_BYTES})",
+                bytes.len()
+            )));
+        }
+        let text = match decode_utf8(&bytes) {
+            Ok(value) => value,
+            Err(error) => return Ok(failure(error)),
+        };
+        let rows = match parse_csv(&text, delimiter) {
+            Ok(value) => value,
+            Err(error) => return Ok(failure(error)),
+        };
+        if rows.len() > MAX_ROWS {
+            return Ok(failure(format!(
+                "CSV contains too many rows: {} (limit: {MAX_ROWS})",
+                rows.len()
+            )));
+        }
+        let table = match Table::new(rows, has_header) {
+            Ok(value) => value,
+            Err(error) => return Ok(failure(error)),
+        };
+        if table.headers.is_empty() {
+            return Ok(failure("append requires an existing CSV header row"));
+        }
+        let rows = match encode_rows(args.get("rows"), &table.headers) {
+            Ok(value) => value,
+            Err(error) => return Ok(failure(error)),
+        };
+        if table.rows.len() + rows.len() > MAX_ROWS {
+            return Ok(failure(format!(
+                "Too many rows: {} (limit: {MAX_ROWS})",
+                table.rows.len() + rows.len()
+            )));
+        }
+        let mut output = String::new();
+        if !bytes.is_empty() && !bytes.ends_with(b"\n") && !bytes.ends_with(b"\r") {
+            output.push('\n');
+        }
+        for row in &rows {
+            output.push_str(&encode_row(row, delimiter));
+        }
+        if bytes.len() + output.len() > MAX_FILE_BYTES {
+            return Ok(failure(format!(
+                "Output CSV is too large (limit: {MAX_FILE_BYTES} bytes)"
+            )));
+        }
+        if !output.is_empty() {
+            let contents = [bytes.as_slice(), output.as_bytes()].concat();
+            atomic_write(&source, &contents).await?;
+        }
+        Ok(success(json!({
+            "path": path,
+            "rows_appended": rows.len(),
+            "total_rows": table.rows.len() + rows.len(),
+            "columns": table.headers.len()
+        })))
+    }
+
     async fn write(
         &self,
         args: &Value,
@@ -173,46 +280,12 @@ impl CsvProcessTool {
                 rows.len()
             )));
         }
-        let mut output = String::new();
-        output.push_str(&encode_row(&headers, delimiter));
-        for row in rows {
-            let fields = if let Some(values) = row.as_array() {
-                if values.len() != headers.len() {
-                    return Ok(failure(format!(
-                        "Row has {} fields but headers have {} columns",
-                        values.len(),
-                        headers.len()
-                    )));
-                }
-                match values
-                    .iter()
-                    .map(value_to_string)
-                    .collect::<Result<Vec<_>, _>>()
-                {
-                    Ok(fields) => fields,
-                    Err(error) => return Ok(failure(error.to_string())),
-                }
-            } else if let Some(values) = row.as_object() {
-                if let Some(extra) = values
-                    .keys()
-                    .find(|key| !headers.iter().any(|header| header == *key))
-                {
-                    return Ok(failure(format!("Row contains unknown column '{extra}'")));
-                }
-                match headers
-                    .iter()
-                    .map(|header| match values.get(header) {
-                        Some(value) => value_to_string(value),
-                        None => Ok(String::new()),
-                    })
-                    .collect::<Result<Vec<_>, _>>()
-                {
-                    Ok(fields) => fields,
-                    Err(error) => return Ok(failure(error.to_string())),
-                }
-            } else {
-                return Ok(failure("Each row must be an array or object"));
-            };
+        let mut output = encode_row(&headers, delimiter);
+        let fields = match encode_rows(args.get("rows"), &headers) {
+            Ok(value) => value,
+            Err(error) => return Ok(failure(error)),
+        };
+        for fields in fields {
             output.push_str(&encode_row(&fields, delimiter));
         }
         if output.len() > MAX_FILE_BYTES {
@@ -220,6 +293,10 @@ impl CsvProcessTool {
                 "Output CSV is too large (limit: {MAX_FILE_BYTES} bytes)"
             )));
         }
+        let _guard = CSV_WRITE_LOCK
+            .get_or_init(|| tokio::sync::Mutex::new(()))
+            .lock()
+            .await;
         let destination = match resolve_workspace_write_path(ctx.workspace_dir(), path) {
             Ok(value) => value,
             Err(error) => return Ok(failure(error)),
@@ -227,11 +304,55 @@ impl CsvProcessTool {
         if let Some(parent) = destination.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        tokio::fs::write(&destination, output.as_bytes()).await?;
+        atomic_write(&destination, output.as_bytes()).await?;
         Ok(success(
             json!({ "path": path, "rows_written": rows.len(), "columns": headers.len() }),
         ))
     }
+}
+
+fn encode_rows(value: Option<&Value>, headers: &[String]) -> Result<Vec<Vec<String>>, String> {
+    let rows = value
+        .and_then(Value::as_array)
+        .ok_or_else(|| "rows must be an array".to_string())?;
+    if rows.len() > MAX_ROWS {
+        return Err(format!("Too many rows: {} (limit: {MAX_ROWS})", rows.len()));
+    }
+    rows.iter()
+        .map(|row| {
+            let fields = if let Some(values) = row.as_array() {
+                if values.len() != headers.len() {
+                    return Err(format!(
+                        "Row has {} fields but headers have {} columns",
+                        values.len(),
+                        headers.len()
+                    ));
+                }
+                values
+                    .iter()
+                    .map(value_to_string)
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|error| error.to_string())?
+            } else if let Some(values) = row.as_object() {
+                if let Some(extra) = values
+                    .keys()
+                    .find(|key| !headers.iter().any(|header| header == *key))
+                {
+                    return Err(format!("Row contains unknown column '{extra}'"));
+                }
+                headers
+                    .iter()
+                    .map(|header| match values.get(header) {
+                        Some(value) => value_to_string(value).map_err(|error| error.to_string()),
+                        None => Ok(String::new()),
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+            } else {
+                return Err("Each row must be an array or object".into());
+            };
+            Ok(fields)
+        })
+        .collect()
 }
 
 struct Table {
@@ -266,11 +387,7 @@ impl Table {
 }
 
 fn inspect(table: &Table, args: &Value, delimiter: char) -> Result<Value, String> {
-    let sample_size = args
-        .get("sample_size")
-        .and_then(Value::as_u64)
-        .unwrap_or(5)
-        .min(20) as usize;
+    let sample_size = optional_usize(args, "sample_size", 5, 0, Some(20))?;
     let sample = table
         .rows
         .iter()
@@ -297,10 +414,12 @@ fn select_rows(table: &Table, args: &Value, apply_query: bool) -> Result<Value, 
     } else {
         None
     };
-    let sort_order = args
-        .get("sort_order")
-        .and_then(Value::as_str)
-        .unwrap_or("asc");
+    let sort_order = match args.get("sort_order") {
+        None => "asc",
+        Some(value) => value
+            .as_str()
+            .ok_or_else(|| "sort_order must be a string".to_string())?,
+    };
     if !matches!(sort_order, "asc" | "desc") {
         return Err("sort_order must be 'asc' or 'desc'".into());
     }
@@ -323,12 +442,8 @@ fn select_rows(table: &Table, args: &Value, apply_query: bool) -> Result<Value, 
             }
         });
     }
-    let offset = args.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize;
-    let limit = args
-        .get("limit")
-        .and_then(Value::as_u64)
-        .unwrap_or(DEFAULT_RETURN_ROWS as u64)
-        .min(MAX_RETURN_ROWS as u64) as usize;
+    let offset = optional_usize(args, "offset", 0, 0, None)?;
+    let limit = optional_usize(args, "limit", DEFAULT_RETURN_ROWS, 1, Some(MAX_RETURN_ROWS))?;
     let rows = indices
         .into_iter()
         .skip(offset)
@@ -467,7 +582,12 @@ fn compare_values(left: &str, right: &str) -> Ordering {
 }
 
 fn delimiter(value: Option<&Value>) -> Result<char, String> {
-    let value = value.and_then(Value::as_str).unwrap_or(",");
+    let value = match value {
+        None => ",",
+        Some(value) => value
+            .as_str()
+            .ok_or_else(|| "delimiter must be a string".to_string())?,
+    };
     let mut chars = value.chars();
     let Some(delimiter) = chars.next() else {
         return Err("delimiter must be one character".into());
@@ -476,6 +596,41 @@ fn delimiter(value: Option<&Value>) -> Result<char, String> {
         return Err("delimiter must be one character and cannot be quote or newline".into());
     }
     Ok(delimiter)
+}
+
+fn optional_bool(args: &Value, name: &str, default: bool) -> Result<bool, String> {
+    match args.get(name) {
+        None => Ok(default),
+        Some(value) => value
+            .as_bool()
+            .ok_or_else(|| format!("{name} must be a boolean")),
+    }
+}
+
+fn optional_usize(
+    args: &Value,
+    name: &str,
+    default: usize,
+    minimum: usize,
+    maximum: Option<usize>,
+) -> Result<usize, String> {
+    let Some(value) = args.get(name) else {
+        return Ok(default);
+    };
+    let number = value
+        .as_u64()
+        .ok_or_else(|| format!("{name} must be a non-negative integer"))?;
+    let number =
+        usize::try_from(number).map_err(|_| format!("{name} is too large for this platform"))?;
+    if number < minimum {
+        return Err(format!("{name} must be at least {minimum}"));
+    }
+    if let Some(maximum) = maximum
+        && number > maximum
+    {
+        return Err(format!("{name} must be at most {maximum}"));
+    }
+    Ok(number)
 }
 
 fn decode_utf8(bytes: &[u8]) -> Result<String, String> {
@@ -597,6 +752,50 @@ fn encode_row(fields: &[String], delimiter: char) -> String {
     output
 }
 
+async fn atomic_write(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
+    let target = match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) if metadata.file_type().is_symlink() => tokio::fs::canonicalize(path).await?,
+        Ok(_) => path.to_path_buf(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => path.to_path_buf(),
+        Err(error) => return Err(error.into()),
+    };
+    let permissions = match tokio::fs::metadata(&target).await {
+        Ok(metadata) => Some(metadata.permissions()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error.into()),
+    };
+    let parent = target
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("CSV destination has no parent directory"))?;
+    let name = target
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("csv");
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temporary = parent.join(format!(
+        ".{name}.clawseed-tmp-{}-{timestamp}",
+        std::process::id()
+    ));
+    if let Err(error) = tokio::fs::write(&temporary, contents).await {
+        let _ = tokio::fs::remove_file(&temporary).await;
+        return Err(error.into());
+    }
+    if let Some(permissions) = permissions
+        && let Err(error) = tokio::fs::set_permissions(&temporary, permissions).await
+    {
+        let _ = tokio::fs::remove_file(&temporary).await;
+        return Err(error.into());
+    }
+    if let Err(error) = tokio::fs::rename(&temporary, &target).await {
+        let _ = tokio::fs::remove_file(&temporary).await;
+        return Err(error.into());
+    }
+    Ok(())
+}
+
 fn validate_headers(headers: &[String]) -> Result<(), String> {
     if headers.iter().any(|header| header.is_empty()) {
         return Err("CSV headers must not be empty".into());
@@ -621,9 +820,19 @@ fn value_to_string(value: &Value) -> Result<String, anyhow::Error> {
 }
 
 fn success(value: Value) -> ToolResult {
+    let output = match serde_json::to_string_pretty(&value) {
+        Ok(output) if output.len() <= MAX_RETURN_BYTES => output,
+        Ok(output) => {
+            return failure(format!(
+                "CSV result is too large: {} bytes (limit: {MAX_RETURN_BYTES}); use a smaller limit or select fewer columns",
+                output.len()
+            ));
+        }
+        Err(error) => return failure(format!("Failed to encode CSV result: {error}")),
+    };
     ToolResult {
         success: true,
-        output: serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".into()),
+        output,
         error: None,
         presentation: None,
     }

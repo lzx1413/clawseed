@@ -15,7 +15,7 @@
 | `FileEditTool` | `file_edit` | 精确字符串替换编辑 |
 | `GlobSearchTool` | `glob_search` | 文件名模式搜索 |
 | `ContentSearchTool` | `content_search` | 文件内容搜索 |
-| `CsvProcessTool` | `csv_process` | 检查、分页读取、过滤排序和写入 CSV |
+| `CsvProcessTool` | `csv_process` | 检查、分页读取、过滤排序、写入和追加 CSV |
 
 ### Web
 
@@ -78,7 +78,7 @@ HTML 提取会移除脚本、样式、导航、页脚、侧栏、表单和隐藏
 | `ModelRoutingConfigTool` | `model_routing_config` | 模型路由配置 |
 | `BackupTool` | `backup` | 备份管理 |
 
-`csv_process` 的 `operation` 支持 `inspect`、`read`、`query` 和 `write`。读取与查询支持工作区相对路径、UTF-8（可带 BOM）、引号字段、字段内换行、自定义单字符分隔符和分页；`query` 还支持选择列、多个条件过滤以及按列排序。`write` 接受 `headers` 和数组或对象形式的 `rows`，只允许写入工作区，单文件和返回结果都有大小上限。
+`csv_process` 的 `operation` 支持 `inspect`、`read`、`query`、`write` 和 `append`。读取与查询支持工作区相对路径、UTF-8（可带 BOM）、引号字段、字段内换行、自定义单字符分隔符和分页；`query` 还支持选择列、多个条件过滤以及按列排序。`write` 接受 `headers` 和数组或对象形式的 `rows` 并覆盖写入文件；`append` 读取现有文件表头并将数组或对象形式的 `rows` 追加到文件末尾。两种写入操作都只允许写入工作区，并使用原子替换和进程内串行保护；输入文件最多 20 MiB、20 万条记录，单次返回最多 1000 行且返回 JSON 不超过 1 MiB。
 
 ## 注册机制
 

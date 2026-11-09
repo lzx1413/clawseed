@@ -324,6 +324,77 @@ async fn csv_process_queries_and_writes_csv() {
         std::fs::read_to_string(dir.path().join("out.csv")).unwrap(),
         "name,note\nA,\"quoted, value\"\n"
     );
+
+    let result = csv
+        .execute(
+            serde_json::json!({
+                "operation": "append",
+                "path": "people.csv",
+                "rows": [
+                    {"name": "Dora", "city": "Shenzhen", "score": 40},
+                    ["Evan", "Hangzhou", 15]
+                ]
+            }),
+            &c,
+        )
+        .await
+        .unwrap();
+    assert!(result.success, "csv append failed: {:?}", result.error);
+    let output: serde_json::Value = serde_json::from_str(&result.output).unwrap();
+    assert_eq!(output["rows_appended"], 2);
+    assert_eq!(output["total_rows"], 5);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("people.csv")).unwrap(),
+        "name,city,score\nAlice,Shanghai,10\nBob,Beijing,25\nCarol,Shanghai,30\nDora,Shenzhen,40\nEvan,Hangzhou,15\n"
+    );
+}
+
+#[tokio::test]
+async fn csv_process_rejects_invalid_parameters_and_large_results() {
+    let dir = tempfile::TempDir::new().unwrap();
+    std::fs::write(dir.path().join("data.csv"), "value\none\n").unwrap();
+    let tools = all_tools(dir.path().to_path_buf());
+    let csv = tools
+        .iter()
+        .find(|tool| tool.name() == "csv_process")
+        .unwrap();
+    let c = ctx(dir.path().to_path_buf());
+
+    let result = csv
+        .execute(
+            serde_json::json!({"operation": "read", "path": "data.csv", "limit": 0}),
+            &c,
+        )
+        .await
+        .unwrap();
+    assert!(!result.success);
+    assert!(result.error.unwrap().contains("limit must be at least 1"));
+
+    let result = csv
+        .execute(
+            serde_json::json!({"operation": "read", "path": "data.csv", "delimiter": 1}),
+            &c,
+        )
+        .await
+        .unwrap();
+    assert!(!result.success);
+    assert!(result.error.unwrap().contains("delimiter must be a string"));
+
+    let large_value = "x".repeat(1_100_000);
+    std::fs::write(
+        dir.path().join("large.csv"),
+        format!("value\n{large_value}\n"),
+    )
+    .unwrap();
+    let result = csv
+        .execute(
+            serde_json::json!({"operation": "read", "path": "large.csv"}),
+            &c,
+        )
+        .await
+        .unwrap();
+    assert!(!result.success);
+    assert!(result.error.unwrap().contains("CSV result is too large"));
 }
 
 #[tokio::test]
