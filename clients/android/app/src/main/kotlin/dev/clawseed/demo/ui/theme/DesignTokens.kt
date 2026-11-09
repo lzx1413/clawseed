@@ -48,6 +48,11 @@ object ClawSeedShadows {
         color = Color.Black.copy(alpha = 0.22f),
         offset = DpOffset.Zero,
     )
+    val FloatingInput = Shadow(
+        radius = 2.dp,
+        color = Color.Black.copy(alpha = 0.12f),
+        offset = DpOffset.Zero,
+    )
 }
 object ClawSeedMotion {
     const val Press = 100

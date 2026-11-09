@@ -76,6 +76,8 @@ fun stripEnrichmentPrefixes(content: String): String {
     return result
 }
 
+internal fun normalizeSessionTitle(value: String): String? = value.trim().takeIf { it.isNotEmpty() }
+
 data class AuthPrompt(
     val providerPackageName: String,
     val hint: String,
@@ -98,6 +100,8 @@ data class ChatUiState(
     val sessionName: String? = null,
     val currentSessionId: String? = null,
     val error: String? = null,
+    val isRenamingSession: Boolean = false,
+    val renameError: String? = null,
     val authPrompt: AuthPrompt? = null,
     val pendingQuestion: ChatEvent.AskUserRequested? = null,
     val questionSubmitting: Boolean = false,
@@ -861,6 +865,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
 
     /** Pool of active session slots. Kept alive across session switches. */
     private val sessionSlots = HashMap<String, SessionSlot>()
+    private val sessionTitleOverrides = HashMap<String, String>()
     private var registeredSession: ClawSeedSession? = null
     private var currentSessionId: String? = null
     private var currentSession: ClawSeedSession? = null
@@ -1039,6 +1044,8 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
             sessionName = null,
             currentSessionId = null,
             currentPersona = null,
+            isRenamingSession = false,
+            renameError = null,
             imageAttachmentsSupported = false,
             fileAttachmentsSupported = false,
             pendingQuestion = null,
@@ -1083,8 +1090,12 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
             isGenerating = slot.accumulator.isGenerating.value,
             error = slot.accumulator.error.value,
             connState = slot.session.connectionState.value,
-            sessionName = slot.accumulator.sessionTitle.value ?: slot.session.sessionInfo.value?.name,
+            sessionName = sessionTitleOverrides[sessionId]
+                ?: slot.accumulator.sessionTitle.value
+                ?: slot.session.sessionInfo.value?.name,
             currentSessionId = sessionId,
+            isRenamingSession = false,
+            renameError = null,
             currentPersona = slot.session.sessionInfo.value?.persona,
             imageAttachmentsSupported = slot.session.sessionInfo.value?.imageAttachmentsSupported == true,
             fileAttachmentsSupported = slot.session.sessionInfo.value?.fileAttachmentsSupported == true,
@@ -1378,7 +1389,10 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
             }
             launch {
                 acc.sessionTitle.collect { title ->
-                    _uiState.value = _uiState.value.copy(sessionName = title)
+                    val sid = slot.session.sessionInfo.value?.sessionId
+                    _uiState.value = _uiState.value.copy(
+                        sessionName = sid?.let { sessionTitleOverrides[it] } ?: title,
+                    )
                 }
             }
         }
@@ -1403,7 +1417,9 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
                         migrateNewDraft = false
                     }
                     _uiState.value = _uiState.value.copy(
-                        sessionName = info?.name ?: _uiState.value.sessionName,
+                        sessionName = info?.sessionId?.let { sessionTitleOverrides[it] }
+                            ?: info?.name
+                            ?: _uiState.value.sessionName,
                         currentSessionId = info?.sessionId,
                         // Persona is echoed by the gateway on every connect/resume;
                         // null is a valid value (default global agent), only set
@@ -1432,6 +1448,43 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
 
     fun sendMessage(content: String, expectedSessionId: String? = null): Boolean =
         currentSlot?.sendMessage(content, debugEnabled, expectedSessionId) ?: false
+
+    fun renameCurrentSession(name: String, onSuccess: () -> Unit = {}) {
+        val trimmed = normalizeSessionTitle(name)
+        val sessionId = _uiState.value.currentSessionId ?: currentSessionId
+        if (trimmed == null) {
+            _uiState.value = _uiState.value.copy(renameError = getApplication<Application>().getString(R.string.chat_title_empty))
+            return
+        }
+        if (sessionId.isNullOrBlank()) {
+            _uiState.value = _uiState.value.copy(renameError = getApplication<Application>().getString(R.string.chat_title_unavailable))
+            return
+        }
+        _uiState.value = _uiState.value.copy(isRenamingSession = true, renameError = null)
+        viewModelScope.launch {
+            ClawSeedAndroid.gatewayClient().renameSession(sessionId, trimmed)
+                .onSuccess {
+                    sessionTitleOverrides[sessionId] = trimmed
+                    _uiState.value = _uiState.value.copy(
+                        sessionName = trimmed,
+                        isRenamingSession = false,
+                        renameError = null,
+                    )
+                    onSuccess()
+                }
+                .onFailure { error ->
+                    _uiState.value = _uiState.value.copy(
+                        isRenamingSession = false,
+                        renameError = error.message
+                            ?: getApplication<Application>().getString(R.string.chat_title_save_failed),
+                    )
+                }
+        }
+    }
+
+    fun clearRenameError() {
+        _uiState.value = _uiState.value.copy(renameError = null)
+    }
 
     fun regenerateLastResponse() {
         val session = currentSession ?: return

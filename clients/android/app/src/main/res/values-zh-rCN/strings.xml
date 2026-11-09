@@ -86,6 +86,11 @@
     <string name="chat_new_conversation">新对话</string>
     <string name="chat_menu">菜单</string>
     <string name="chat_new_session">新建对话</string>
+    <string name="chat_title_edit">编辑对话标题</string>
+    <string name="chat_title_dialog_title">编辑对话标题</string>
+    <string name="chat_title_empty">标题不能为空。</string>
+    <string name="chat_title_unavailable">当前对话尚未准备好，无法修改标题。</string>
+    <string name="chat_title_save_failed">对话标题保存失败。</string>
     <string name="chat_speech_output">语音朗读</string>
     <string name="chat_enable_auto_speech">开启自动朗读回复</string>
     <string name="chat_disable_auto_speech">关闭自动朗读回复</string>

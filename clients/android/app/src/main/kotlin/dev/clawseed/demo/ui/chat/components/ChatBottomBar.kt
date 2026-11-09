@@ -75,8 +75,8 @@ fun ChatBottomBar(
             modifier = Modifier
                 .padding(horizontal = 12.dp, vertical = 8.dp)
                 .fillMaxWidth()
-                .dropShadow(inputShape, ClawSeedShadows.FloatingControl),
-            level = GlassLevel.Chrome,
+                .dropShadow(inputShape, ClawSeedShadows.FloatingInput),
+            level = GlassLevel.FloatingInput,
             shape = inputShape,
             interactive = inputFocused,
         ) {
@@ -87,79 +87,80 @@ fun ChatBottomBar(
                     .padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (onPickImages != null || onPickFiles != null) {
-                    ClawSeedIconButton(
-                        onClick = {
-                            keyboardController?.hide()
-                            showAttachmentPicker = true
-                        },
-                        enabled = canSend && !isLoading,
-                    ) {
-                        Icon(
-                            imageVector = AttachmentIcon,
-                            contentDescription = "添加附件",
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
-                }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 48.dp, max = 128.dp)
-                        .padding(horizontal = 4.dp),
-                    contentAlignment = Alignment.CenterStart,
+            if (onPickImages != null || onPickFiles != null) {
+                ClawSeedIconButton(
+                    onClick = {
+                        keyboardController?.hide()
+                        showAttachmentPicker = true
+                    },
+                    enabled = canSend && !isLoading,
+                    contentDescription = "添加附件",
                 ) {
-                    BasicTextField(
-                        value = input,
-                        onValueChange = onInputChange,
-                        modifier = Modifier
-                            .testTag("chat_input")
-                            .fillMaxWidth()
-                            .onFocusChanged { inputFocused = it.isFocused },
-                        textStyle = MaterialTheme.typography.bodyLarge.merge(
-                            TextStyle(color = colorScheme.onSurface),
-                        ),
-                        cursorBrush = SolidColor(colorScheme.primary),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
-                        maxLines = 4,
-                        decorationBox = { innerTextField ->
-                            Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.CenterStart,
-                            ) {
-                                if (input.isEmpty()) {
-                                    Text(
-                                        stringResource(R.string.chat_input_placeholder),
-                                        color = colorScheme.onSurfaceVariant,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                    )
-                                }
-                                innerTextField()
-                            }
-                        },
+                    Icon(
+                        imageVector = AttachmentIcon,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
                     )
                 }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
-                ) {
-                    if (isLoading) {
-                        ComposerCircleButton(
-                            icon = StopIcon,
-                            onClick = onStop,
-                            contentDescription = stringResource(R.string.chat_stop_generating),
-                            testTag = "chat_stop",
-                        )
-                    } else if ((input.isNotBlank() || hasImages) && canSend) {
-                        ComposerCircleButton(
-                            icon = SendIcon,
-                            onClick = { submitQuestion() },
-                            contentDescription = stringResource(R.string.chat_send),
-                            testTag = "chat_send",
-                        )
-                    }
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 56.dp, max = 136.dp)
+                    .padding(horizontal = 4.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                BasicTextField(
+                    value = input,
+                    onValueChange = onInputChange,
+                    modifier = Modifier
+                        .testTag("chat_input")
+                        .fillMaxWidth()
+                        .onFocusChanged { inputFocused = it.isFocused },
+                    textStyle = MaterialTheme.typography.bodyLarge.merge(
+                        TextStyle(color = colorScheme.onSurface),
+                    ),
+                    cursorBrush = SolidColor(colorScheme.primary),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                    maxLines = 4,
+                    decorationBox = { innerTextField ->
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            if (input.isEmpty()) {
+                                Text(
+                                    stringResource(R.string.chat_input_placeholder),
+                                    color = colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                            }
+                            innerTextField()
+                        }
+                    },
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
+            ) {
+                if (isLoading) {
+                    ComposerCircleButton(
+                        icon = StopIcon,
+                        onClick = onStop,
+                        contentDescription = stringResource(R.string.chat_stop_generating),
+                        testTag = "chat_stop",
+                    )
+                } else if ((input.isNotBlank() || hasImages) && canSend) {
+                    ComposerCircleButton(
+                        icon = SendIcon,
+                        onClick = { submitQuestion() },
+                        contentDescription = stringResource(R.string.chat_send),
+                        testTag = "chat_send",
+                    )
                 }
             }
+        }
         }
 
     }

@@ -49,7 +49,7 @@ import dev.clawseed.demo.ui.theme.ClawSeedShapes
 import dev.clawseed.demo.ui.theme.ClawSeedSizes
 import dev.clawseed.demo.ui.theme.ClawSeedSpacing
 
-enum class GlassLevel { Chrome, Sheet, Surface, Pill, Elevated }
+enum class GlassLevel { Chrome, Sheet, Surface, Pill, FloatingInput, Elevated }
 
 private class GlassBackdropState(val layer: GraphicsLayer) {
     var hostCoordinates by mutableStateOf<LayoutCoordinates?>(null)
@@ -110,6 +110,7 @@ internal fun glassFill(colors: androidx.compose.material3.ColorScheme, level: Gl
     GlassLevel.Elevated -> colors.surface.copy(alpha = 0.88f)
     GlassLevel.Sheet -> colors.surfaceContainerLow
     GlassLevel.Pill -> colors.surface.copy(alpha = 0.64f)
+    GlassLevel.FloatingInput -> colors.surface.copy(alpha = 0.46f)
 }
 
 /**
@@ -132,6 +133,7 @@ fun GlassContainer(
     val border = when {
         interactive -> colors.primary
         level == GlassLevel.Chrome -> colors.outlineVariant
+        level == GlassLevel.FloatingInput -> colors.outlineVariant.copy(alpha = 0.32f)
         level == GlassLevel.Elevated -> colors.outline.copy(alpha = 0.46f)
         else -> colors.outlineVariant.copy(alpha = 0.56f)
     }

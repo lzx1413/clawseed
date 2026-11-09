@@ -86,6 +86,11 @@
     <string name="chat_new_conversation">New Conversation</string>
     <string name="chat_menu">Menu</string>
     <string name="chat_new_session">New Session</string>
+    <string name="chat_title_edit">Edit conversation title</string>
+    <string name="chat_title_dialog_title">Edit conversation title</string>
+    <string name="chat_title_empty">Title cannot be empty.</string>
+    <string name="chat_title_unavailable">The conversation is not ready to rename.</string>
+    <string name="chat_title_save_failed">Could not save the conversation title.</string>
     <string name="chat_speech_output">Toggle speech output</string>
     <string name="chat_enable_auto_speech">Enable automatic reply reading</string>
     <string name="chat_disable_auto_speech">Disable automatic reply reading</string>

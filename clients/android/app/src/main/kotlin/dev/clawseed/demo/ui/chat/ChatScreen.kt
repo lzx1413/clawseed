@@ -25,10 +25,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -55,9 +54,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.foundation.clickable
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -67,6 +71,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.res.stringResource
 import dev.clawseed.demo.R
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -79,6 +86,8 @@ import dev.clawseed.demo.ui.chat.components.ChatBottomBar
 import dev.clawseed.demo.ui.chat.components.AskUserPrompt
 import dev.clawseed.demo.ui.chat.components.EmptyChatState
 import dev.clawseed.demo.ui.chat.components.MessageBubble
+import dev.clawseed.demo.ui.components.ClawSeedButton
+import dev.clawseed.demo.ui.components.ClawSeedTextField
 import dev.clawseed.demo.ui.persona.PersonaDot
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -153,11 +162,86 @@ fun ChatScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val coroutineScope = rememberCoroutineScope()
-    val chatTopContentPadding = with(density) {
-        WindowInsets.statusBars.getTop(this).toDp() + 72.dp
+    val windowInsetsController = remember(activity) {
+        WindowCompat.getInsetsController(activity.window, activity.window.decorView)
     }
+    var areSystemBarsVisible by remember(sessionVersion) { mutableStateOf(true) }
+    val stableSystemInsets = remember(activity, density) {
+        val rootInsets = activity.window.decorView.rootWindowInsets?.let {
+            WindowInsetsCompat.toWindowInsetsCompat(it)
+        }
+        val statusResource = activity.resources.getIdentifier(
+            "status_bar_height", "dimen", "android",
+        )
+        val navigationResource = activity.resources.getIdentifier(
+            "navigation_bar_height", "dimen", "android",
+        )
+        val fallbackStatusPx = if (statusResource != 0) {
+            activity.resources.getDimensionPixelSize(statusResource)
+        } else {
+            with(density) { 24.dp.toPx().toInt() }
+        }
+        val fallbackNavigationPx = if (navigationResource != 0) {
+            activity.resources.getDimensionPixelSize(navigationResource)
+        } else {
+            with(density) { 24.dp.toPx().toInt() }
+        }
+        val statusPx = maxOf(
+            rootInsets?.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.statusBars())?.top ?: 0,
+            fallbackStatusPx,
+        )
+        val navigationPx = maxOf(
+            rootInsets?.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0,
+            fallbackNavigationPx,
+        )
+        with(density) { statusPx.toDp() to navigationPx.toDp() }
+    }
+    val topSystemInset = stableSystemInsets.first
+    val bottomSystemInset = stableSystemInsets.second
+    val chatTopContentPadding = topSystemInset + 72.dp
     var bottomBarTopPx by remember { mutableStateOf<Float?>(null) }
     var showPersonaSheet by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+
+    DisposableEffect(windowInsetsController) {
+        WindowCompat.setDecorFitsSystemWindows(activity.window, false)
+        activity.window.statusBarColor = android.graphics.Color.TRANSPARENT
+        activity.window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            activity.window.isNavigationBarContrastEnforced = false
+        }
+        windowInsetsController.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+        onDispose {
+            windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+            WindowCompat.setDecorFitsSystemWindows(activity.window, true)
+        }
+    }
+
+    LaunchedEffect(sessionVersion) {
+        areSystemBarsVisible = true
+        windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+    }
+
+    val systemBarScrollConnection = remember(windowInsetsController) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
+                when {
+                    available.y < 0f && areSystemBarsVisible -> {
+                        areSystemBarsVisible = false
+                        windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
+                    }
+                    available.y > 0f && !areSystemBarsVisible -> {
+                        areSystemBarsVisible = true
+                        windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
 
     fun dismissInput() {
         focusManager.clearFocus(force = true)
@@ -219,7 +303,9 @@ fun ChatScreen(
     LaunchedEffect(listState, sessionVersion) {
         launch {
             listState.interactionSource.interactions.collect {
-                if (it is DragInteraction.Start) followLatest = false
+                if (it is DragInteraction.Start) {
+                    followLatest = false
+                }
             }
         }
         // Follow measured content growth, including background Markdown parsing.
@@ -323,12 +409,12 @@ fun ChatScreen(
         background = {
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .navigationBarsPadding(),
+                    .fillMaxSize(),
             ) {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
+                        .nestedScroll(systemBarScrollConnection)
                         .weight(1f)
                         .fillMaxWidth(),
                     contentPadding = PaddingValues(
@@ -422,6 +508,7 @@ fun ChatScreen(
                     Text(uiState.error!!, maxLines = 2)
                 }
             }
+        }
 
             ChatBottomBar(
                 input = input,
@@ -437,7 +524,11 @@ fun ChatScreen(
                 isLoading = isLoading,
                 canSend = sessionSwitchReady && imageDraftsReady && fileDraftsReady,
                 modifier = Modifier
+                    .align(Alignment.BottomCenter)
                     .imePadding()
+                    .padding(
+                        bottom = if (isImeVisible) 0.dp else bottomSystemInset,
+                    )
                     .onGloballyPositioned { coordinates ->
                         bottomBarTopPx = coordinates.positionInRoot().y
                     },
@@ -471,41 +562,50 @@ fun ChatScreen(
                     )
                 },
             )
-            }
         },
         content = {
             Row(
-                modifier = Modifier.statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp).fillMaxWidth(),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = topSystemInset, start = 12.dp, end = 12.dp, bottom = 8.dp)
+                    .fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                ClawSeedFloatingIconButton(
-                    onClick = { dismissInput(); onToggleDrawer() },
-                    contentDescription = stringResource(R.string.chat_menu),
-                ) { Icon(Icons.Default.Menu, null) }
-                ClawSeedFloatingSurface(Modifier.weight(1f)) {
-                    Box(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-                        Text(
-                            uiState.sessionName ?: stringResource(R.string.chat_new_conversation),
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                uiState.currentPersona?.takeIf { it.isNotEmpty() }?.let { personaName ->
-                    val visual = uiState.personaVisuals[personaName]
                     ClawSeedFloatingIconButton(
-                        onClick = { onOpenPersona(personaName) },
-                        contentDescription = personaName,
+                        onClick = { dismissInput(); onToggleDrawer() },
+                        contentDescription = stringResource(R.string.chat_menu),
+                    ) { Icon(Icons.Default.Menu, null) }
+                    ClawSeedFloatingSurface(
+                        Modifier
+                            .weight(1f)
+                            .clickable(
+                                enabled = uiState.currentSessionId != null && !uiState.isRenamingSession,
+                                onClick = { dismissInput(); showRenameDialog = true },
+                            )
                     ) {
-                        PersonaDot(personaName, Modifier.size(32.dp), showInitial = true,
-                            avatar = visual?.avatar, color = visual?.color)
+                        Box(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                            Text(
+                                uiState.sessionName ?: stringResource(R.string.chat_new_conversation),
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
-                }
-                ClawSeedAddAction(
-                    onClick = { dismissInput(); showPersonaSheet = true },
-                    contentDescription = stringResource(R.string.chat_new_session),
-                )
+                    uiState.currentPersona?.takeIf { it.isNotEmpty() }?.let { personaName ->
+                        val visual = uiState.personaVisuals[personaName]
+                        ClawSeedFloatingIconButton(
+                            onClick = { onOpenPersona(personaName) },
+                            contentDescription = personaName,
+                        ) {
+                            PersonaDot(personaName, Modifier.size(32.dp), showInitial = true,
+                                avatar = visual?.avatar, color = visual?.color)
+                        }
+                    }
+                    ClawSeedAddAction(
+                        onClick = { dismissInput(); showPersonaSheet = true },
+                        contentDescription = stringResource(R.string.chat_new_session),
+                    )
             }
             if (showScrollToBottom) {
                 BoxWithConstraints(
@@ -544,6 +644,24 @@ fun ChatScreen(
         )
     }
 
+    if (showRenameDialog) {
+        RenameChatDialog(
+            currentName = uiState.sessionName.orEmpty(),
+            error = uiState.renameError,
+            saving = uiState.isRenamingSession,
+            onConfirm = { name ->
+                viewModel.renameCurrentSession(name) { showRenameDialog = false }
+            },
+            onValueChanged = viewModel::clearRenameError,
+            onDismiss = {
+                if (!uiState.isRenamingSession) {
+                    showRenameDialog = false
+                    viewModel.clearRenameError()
+                }
+            },
+        )
+    }
+
     uiState.authPrompt?.let { prompt ->
         ClawSeedFormDialog(
             onDismissRequest = viewModel::dismissAuthPrompt,
@@ -577,4 +695,50 @@ fun ChatScreen(
             },
         )
     }
+}
+
+@Composable
+private fun RenameChatDialog(
+    currentName: String,
+    error: String?,
+    saving: Boolean,
+    onConfirm: (String) -> Unit,
+    onValueChanged: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by rememberSaveable(currentName) { mutableStateOf(currentName) }
+    val empty = name.trim().isEmpty()
+    ClawSeedFormDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.chat_title_dialog_title)) },
+        text = {
+            ClawSeedTextField(
+                value = name,
+                onValueChange = {
+                    name = it
+                    onValueChanged()
+                },
+                enabled = !saving,
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.drawer_conversation_name)) },
+                isError = empty || error != null,
+                supportingText = error?.let { message -> { Text(message) } },
+            )
+        },
+        confirmButton = {
+            ClawSeedButton(
+                onClick = { onConfirm(name) },
+                enabled = !empty && !saving,
+                loading = saving,
+            ) {
+                Text(stringResource(R.string.common_confirm))
+            }
+        },
+        dismissButton = {
+            ClawSeedTextButton(onClick = onDismiss, enabled = !saving) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        },
+    )
 }
