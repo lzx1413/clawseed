@@ -107,6 +107,9 @@
     <string name="chat_input_placeholder">Enter message…</string>
     <string name="chat_stop_generating">Stop generating</string>
     <string name="chat_send">Send</string>
+    <string name="chat_add_attachment">Add attachment</string>
+    <string name="chat_scroll_to_bottom">Scroll to bottom</string>
+    <string name="chat_camera_unavailable">Could not open the camera. Choose an image from the gallery instead.</string>
     <string name="chat_empty_greeting">Good evening</string>
     <string name="chat_empty_prompt">What would you like to work on today?</string>
     <string name="chat_empty_suggestion_tools">Explore available tools</string>
@@ -128,6 +131,16 @@
     <string name="msg_parameters">Parameters</string>
     <string name="msg_result">Result</string>
     <string name="msg_thinking_process">Thinking Process</string>
+    <string name="msg_image_unavailable">Image unavailable</string>
+    <string name="msg_audio_unavailable">Audio unavailable</string>
+    <string name="msg_video_unavailable">Video unavailable</string>
+    <string name="msg_play">Play</string>
+    <string name="msg_pause">Pause</string>
+    <string name="msg_audio_default_title">Audio</string>
+    <string name="msg_image_attachment">Image attachment</string>
+    <string name="msg_image_attachment_expand">Image attachment, tap to enlarge</string>
+    <string name="msg_search_results">Search results · %1$s</string>
+    <string name="msg_more_search_results">%1$d more results. Expand tool details to view.</string>
 
     <!-- ========== Drawer ========== -->
     <string name="drawer_chat_history">Chat History</string>
@@ -697,4 +710,16 @@
     <string name="chat_take_photo">Take photo</string>
     <string name="chat_choose_photo">Gallery</string>
     <string name="chat_choose_file">File</string>
+    <string name="chat_image_processing">Processing…</string>
+    <string name="chat_image_uploading">Uploading…</string>
+    <string name="chat_remove_image">Remove image</string>
+    <string name="chat_image_retry">Image unavailable. Retry</string>
+    <string name="chat_file_importing">Importing…</string>
+    <string name="chat_file_parsing">Parsing…</string>
+    <string name="chat_file_ready">Ready to send</string>
+    <string name="chat_file_parse_failed">Parsing failed</string>
+    <string name="chat_remove_file">Remove file</string>
+    <string name="chat_file_pages">%1$d pages</string>
+    <string name="chat_file_records">%1$d records (including header)</string>
+    <string name="chat_file_characters">%1$d characters</string>
 </resources>

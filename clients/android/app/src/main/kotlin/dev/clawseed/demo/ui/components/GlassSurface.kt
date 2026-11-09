@@ -71,8 +71,22 @@ fun GlassBackdropHost(
     val density = androidx.compose.ui.platform.LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
 
+    androidx.compose.runtime.SideEffect {
+        state.layer.renderEffect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            BlurEffect(
+                with(density) { 52.dp.toPx() },
+                with(density) { 52.dp.toPx() },
+            )
+        } else {
+            null
+        }
+    }
+
     DisposableEffect(state, graphicsContext) {
-        onDispose { graphicsContext.releaseGraphicsLayer(state.layer) }
+        onDispose {
+            state.layer.renderEffect = null
+            graphicsContext.releaseGraphicsLayer(state.layer)
+        }
     }
 
     androidx.compose.runtime.CompositionLocalProvider(LocalGlassBackdrop provides state) {
@@ -109,8 +123,8 @@ internal fun glassFill(colors: androidx.compose.material3.ColorScheme, level: Gl
     GlassLevel.Chrome -> colors.surfaceContainerLowest.copy(alpha = 0.68f)
     GlassLevel.Elevated -> colors.surface.copy(alpha = 0.88f)
     GlassLevel.Sheet -> colors.surfaceContainerLow
-    GlassLevel.Pill -> colors.surface.copy(alpha = 0.64f)
-    GlassLevel.FloatingInput -> colors.surface.copy(alpha = 0.46f)
+    GlassLevel.Pill -> colors.surface.copy(alpha = 0.82f)
+    GlassLevel.FloatingInput -> colors.surface.copy(alpha = 0.76f)
 }
 
 /**
@@ -150,21 +164,14 @@ fun GlassContainer(
             }
             .drawWithCache {
                 val clip = shape.createOutline(size, layoutDirection, this).toPath()
-                val blurRadius = 18.dp.toPx()
                 val blurSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                 onDrawWithContent {
                     if (blurSupported) {
                         val layer = backdrop.layer
-                        val previousEffect = layer.renderEffect
-                        try {
-                            layer.renderEffect = BlurEffect(blurRadius, blurRadius)
-                            clipPath(clip) {
-                                translate(-backdropOffset.x, -backdropOffset.y) {
-                                    drawLayer(layer)
-                                }
+                        clipPath(clip) {
+                            translate(-backdropOffset.x, -backdropOffset.y) {
+                                drawLayer(layer)
                             }
-                        } finally {
-                            layer.renderEffect = previousEffect
                         }
                     }
                     drawContent()

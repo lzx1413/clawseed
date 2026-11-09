@@ -107,6 +107,9 @@
     <string name="chat_input_placeholder">输入消息…</string>
     <string name="chat_stop_generating">停止生成</string>
     <string name="chat_send">发送</string>
+    <string name="chat_add_attachment">添加附件</string>
+    <string name="chat_scroll_to_bottom">滚动到底部</string>
+    <string name="chat_camera_unavailable">无法打开相机，请改用相册选择图片。</string>
     <string name="chat_empty_greeting">晚上好</string>
     <string name="chat_empty_prompt">今天想先做点什么？</string>
     <string name="chat_empty_suggestion_tools">看看有哪些工具</string>
@@ -128,6 +131,16 @@
     <string name="msg_parameters">参数</string>
     <string name="msg_result">结果</string>
     <string name="msg_thinking_process">​思考过程</string>
+    <string name="msg_image_unavailable">图片资源暂不可用</string>
+    <string name="msg_audio_unavailable">音频资源暂不可用</string>
+    <string name="msg_video_unavailable">视频资源暂不可用</string>
+    <string name="msg_play">播放</string>
+    <string name="msg_pause">暂停</string>
+    <string name="msg_audio_default_title">音频</string>
+    <string name="msg_image_attachment">图片附件</string>
+    <string name="msg_image_attachment_expand">图片附件，点击放大</string>
+    <string name="msg_search_results">搜索结果 · %1$s</string>
+    <string name="msg_more_search_results">另有 %1$d 条结果，可展开工具详情查看。</string>
 
     <!-- ========== Drawer ========== -->
     <string name="drawer_chat_history">对话历史</string>
@@ -697,4 +710,16 @@
     <string name="chat_take_photo">拍照</string>
     <string name="chat_choose_photo">相册</string>
     <string name="chat_choose_file">文件</string>
+    <string name="chat_image_processing">处理中…</string>
+    <string name="chat_image_uploading">上传中…</string>
+    <string name="chat_remove_image">移除图片</string>
+    <string name="chat_image_retry">图片不可用，重试</string>
+    <string name="chat_file_importing">正在导入…</string>
+    <string name="chat_file_parsing">正在解析…</string>
+    <string name="chat_file_ready">可发送</string>
+    <string name="chat_file_parse_failed">解析失败</string>
+    <string name="chat_remove_file">移除文件</string>
+    <string name="chat_file_pages">%1$d 页</string>
+    <string name="chat_file_records">%1$d 条记录（含表头）</string>
+    <string name="chat_file_characters">%1$d 字符</string>
 </resources>

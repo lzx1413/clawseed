@@ -1351,16 +1351,19 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
         accumulatorObservationJob = viewModelScope.launch {
             launch {
                 acc.isGenerating.collect { generating ->
+                    if (currentSlot !== slot) return@collect
                     _uiState.value = _uiState.value.copy(isGenerating = generating)
                 }
             }
             launch {
                 acc.error.collect { error ->
+                    if (currentSlot !== slot) return@collect
                     _uiState.value = _uiState.value.copy(error = error)
                 }
             }
             launch {
                 acc.streamingContent.collect { content ->
+                    if (currentSlot !== slot) return@collect
                     val isStreaming = content.isNotEmpty()
                     _uiState.value = _uiState.value.copy(
                         streamingContent = content,
@@ -1370,11 +1373,13 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
             }
             launch {
                 acc.thinkingContent.collect { content ->
+                    if (currentSlot !== slot) return@collect
                     _uiState.value = _uiState.value.copy(thinkingContent = content)
                 }
             }
             launch {
                 acc.messages.collect { accumulated ->
+                    if (currentSlot !== slot) return@collect
                     _uiState.value = _uiState.value.copy(
                         messages = slot.messages(),
                     )
@@ -1389,6 +1394,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
             }
             launch {
                 acc.sessionTitle.collect { title ->
+                    if (currentSlot !== slot) return@collect
                     val sid = slot.session.sessionInfo.value?.sessionId
                     _uiState.value = _uiState.value.copy(
                         sessionName = sid?.let { sessionTitleOverrides[it] } ?: title,
@@ -1403,6 +1409,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
         sessionObservationJob = viewModelScope.launch {
             launch {
                 session.connectionState.collect { state ->
+                    if (currentSlot?.session !== session) return@collect
                     if (state != ConnectionState.CONNECTED && accumulator?.isGenerating?.value == true) {
                         accumulator?.failTurn(getApplication<Application>().getString(R.string.chat_connection_interrupted))
                     }
@@ -1412,6 +1419,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
             }
             launch {
                 session.sessionInfo.collect { info ->
+                    if (currentSlot?.session !== session) return@collect
                     if (info != null && migrateNewDraft) {
                         draftStore.moveNewDraft(info.sessionId)
                         migrateNewDraft = false

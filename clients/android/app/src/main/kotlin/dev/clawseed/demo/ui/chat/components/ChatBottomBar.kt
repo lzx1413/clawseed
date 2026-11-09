@@ -94,7 +94,7 @@ fun ChatBottomBar(
                         showAttachmentPicker = true
                     },
                     enabled = canSend && !isLoading,
-                    contentDescription = "添加附件",
+                    contentDescription = stringResource(R.string.chat_add_attachment),
                 ) {
                     Icon(
                         imageVector = AttachmentIcon,

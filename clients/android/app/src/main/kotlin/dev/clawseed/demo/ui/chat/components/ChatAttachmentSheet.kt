@@ -167,23 +167,44 @@ internal fun ChatAttachmentSheet(
                     Text(stringResource(R.string.chat_manage_photos))
                 }
             }
-            BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                val stacked = maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.3f
-                val actions: @Composable (Modifier) -> Unit = { actionModifier ->
-                    AttachmentAction(stringResource(R.string.chat_take_photo), CameraIcon,
-                        canPickImages && imageSlots > 0 && onTakePhoto != null,
-                        { launch(onTakePhoto) }, actionModifier, stacked)
-                    AttachmentAction(stringResource(R.string.chat_choose_photo), GalleryIcon,
-                        canPickImages && imageSlots > 0 && onPickImages != null,
-                        { launch(onPickImages) }, actionModifier, stacked)
-                    AttachmentAction(stringResource(R.string.chat_choose_file), AttachmentIcon,
-                        canPickFiles && onPickFiles != null,
-                        { launch(onPickFiles) }, actionModifier, stacked)
-                }
-                if (stacked) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { actions(Modifier.fillMaxWidth()) }
-                } else {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { actions(Modifier.weight(1f)) }
+            val showCamera = canPickImages && imageSlots > 0 && onTakePhoto != null
+            val showGallery = canPickImages && imageSlots > 0 && onPickImages != null
+            val showFile = canPickFiles && onPickFiles != null
+            if (showCamera || showGallery || showFile) {
+                BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                    val stacked = maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.3f
+                    val actions: @Composable (Modifier) -> Unit = { actionModifier ->
+                        if (showCamera) {
+                            AttachmentAction(
+                                label = stringResource(R.string.chat_take_photo), icon = CameraIcon,
+                                enabled = true,
+                                onClick = { launch(onTakePhoto) }, modifier = actionModifier, stacked = stacked,
+                            )
+                        }
+                        if (showGallery) {
+                            AttachmentAction(
+                                label = stringResource(R.string.chat_choose_photo), icon = GalleryIcon,
+                                enabled = true,
+                                onClick = { launch(onPickImages) }, modifier = actionModifier, stacked = stacked,
+                            )
+                        }
+                        if (showFile) {
+                            AttachmentAction(
+                                label = stringResource(R.string.chat_choose_file), icon = AttachmentIcon,
+                                enabled = true,
+                                onClick = { launch(onPickFiles) }, modifier = actionModifier, stacked = stacked,
+                            )
+                        }
+                    }
+                    if (stacked) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            actions(Modifier.fillMaxWidth())
+                        }
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            actions(Modifier.weight(1f))
+                        }
+                    }
                 }
             }
             if (!canPickFiles) Text(stringResource(R.string.chat_files_unavailable), Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall)

@@ -682,7 +682,7 @@ private fun ImageContentCard(media: MediaReference, alt: String?, modifier: Modi
     ) {
         if (url == null) {
             Text(
-                text = "图片资源暂不可用",
+                text = stringResource(R.string.msg_image_unavailable),
                 style = MaterialTheme.typography.bodySmall,
                 color = colorScheme.onSurfaceVariant,
             )
@@ -690,7 +690,7 @@ private fun ImageContentCard(media: MediaReference, alt: String?, modifier: Modi
             AsyncImage(
                 model = url,
                 imageLoader = imageLoader,
-                contentDescription = alt,
+                contentDescription = alt ?: stringResource(R.string.msg_image_attachment),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -715,7 +715,7 @@ private fun ImageContentCard(media: MediaReference, alt: String?, modifier: Modi
                     model = url,
                     imageLoader = imageLoader,
                 ),
-                contentDescription = alt,
+                contentDescription = alt ?: stringResource(R.string.msg_image_attachment),
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -731,7 +731,7 @@ private fun AudioContentCard(media: MediaReference, title: String?, modifier: Mo
     val context = LocalContext.current
     if (url == null) {
         Text(
-            text = "音频资源暂不可用",
+            text = stringResource(R.string.msg_audio_unavailable),
             modifier = modifier.padding(top = 8.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -779,9 +779,9 @@ private fun AudioContentCard(media: MediaReference, title: String?, modifier: Mo
                 player.prepare()
                 player.play()
             }
-        }) { Text(if (isPlaying) "暂停" else "播放") }
+        }) { Text(stringResource(if (isPlaying) R.string.msg_pause else R.string.msg_play)) }
         Column(modifier = Modifier.weight(1f)) {
-            Text(title ?: "音频", style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title ?: stringResource(R.string.msg_audio_default_title), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (durationMs > 0) {
                 Text(
                     text = "${formatDuration(positionMs)} / ${formatDuration(durationMs)}",
@@ -799,7 +799,7 @@ private fun VideoContentCard(media: MediaReference, title: String?, modifier: Mo
     val context = LocalContext.current
     if (url == null) {
         Text(
-            text = "视频资源暂不可用",
+            text = stringResource(R.string.msg_video_unavailable),
             modifier = modifier.padding(top = 8.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -882,7 +882,7 @@ private fun SearchResultsCard(block: ContentBlock.SearchResults, modifier: Modif
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "搜索结果 · ${block.query}",
+            text = stringResource(R.string.msg_search_results, block.query),
             style = MaterialTheme.typography.titleSmall,
             color = colorScheme.onSurfaceVariant,
             maxLines = 1,
@@ -938,7 +938,7 @@ private fun SearchResultsCard(block: ContentBlock.SearchResults, modifier: Modif
         }
         if (block.items.size > 3) {
             Text(
-                text = "另有 ${block.items.size - 3} 条结果，可展开工具详情查看。",
+                text = stringResource(R.string.msg_more_search_results, block.items.size - 3),
                 style = MaterialTheme.typography.labelSmall,
                 color = colorScheme.onSurfaceVariant,
             )

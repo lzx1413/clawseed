@@ -12,6 +12,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import dev.clawseed.demo.R
 import dev.clawseed.demo.ui.chat.ChatFileDraft
 import dev.clawseed.sdk.core.model.FileAttachment
 
@@ -20,14 +22,14 @@ internal fun DraftFileList(files: List<ChatFileDraft>, remove: (String) -> Unit,
     files.forEach { file ->
         FileCard(file.name, file.format, file.size) {
             Text(when (file.status) {
-                "importing" -> "正在导入…"
-                "parsing" -> "正在解析…"
-                "ready" -> "可发送"
-                else -> file.error ?: "解析失败"
+                "importing" -> stringResource(R.string.chat_file_importing)
+                "parsing" -> stringResource(R.string.chat_file_parsing)
+                "ready" -> stringResource(R.string.chat_file_ready)
+                else -> file.error ?: stringResource(R.string.chat_file_parse_failed)
             }, style = MaterialTheme.typography.bodySmall)
             Row {
-                if (file.status == "failed") ClawSeedTextButton(onClick = { retry(file.id) }) { Text("重试") }
-                ClawSeedTextButton(onClick = { remove(file.id) }, enabled = file.status !in setOf("importing", "parsing")) { Text("移除") }
+                if (file.status == "failed") ClawSeedTextButton(onClick = { retry(file.id) }) { Text(stringResource(R.string.common_retry)) }
+                ClawSeedTextButton(onClick = { remove(file.id) }, enabled = file.status !in setOf("importing", "parsing")) { Text(stringResource(R.string.chat_remove_file)) }
             }
         }
     }
@@ -38,9 +40,9 @@ internal fun MessageFileList(files: List<FileAttachment>) {
     files.forEach { file ->
         FileCard(file.name, file.format, file.sizeBytes) {
             Text(when (file.unit) {
-                "page" -> "${file.total} 页"
-                "record" -> "${file.total} 条记录（含表头）"
-                else -> "${file.total} 字符"
+                "page" -> stringResource(R.string.chat_file_pages, file.total)
+                "record" -> stringResource(R.string.chat_file_records, file.total)
+                else -> stringResource(R.string.chat_file_characters, file.total)
             }, style = MaterialTheme.typography.bodySmall)
         }
     }

@@ -200,8 +200,21 @@ fun ChatScreen(
     val bottomSystemInset = stableSystemInsets.second
     val chatTopContentPadding = topSystemInset + 72.dp
     var bottomBarTopPx by remember { mutableStateOf<Float?>(null) }
+    var chatRootHeightPx by remember { mutableStateOf(0) }
     var showPersonaSheet by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
+
+    // Keep the background behind the fixed composer for the glass effect, but
+    // give the message list enough trailing space to scroll its last item
+    // completely above the composer.
+    val bottomBarContentPadding = bottomBarTopPx?.let { topPx ->
+        val rootHeightPx = chatRootHeightPx.toFloat()
+        if (rootHeightPx > topPx) {
+            with(density) { (rootHeightPx - topPx).toDp() } + 8.dp
+        } else {
+            96.dp
+        }
+    } ?: 96.dp
 
     DisposableEffect(windowInsetsController) {
         WindowCompat.setDecorFitsSystemWindows(activity.window, false)
@@ -409,7 +422,10 @@ fun ChatScreen(
         background = {
             Column(
                 modifier = Modifier
-                    .fillMaxSize(),
+                    .fillMaxSize()
+                    .onGloballyPositioned { coordinates ->
+                        chatRootHeightPx = coordinates.size.height
+                    },
             ) {
                 LazyColumn(
                     state = listState,
@@ -419,7 +435,7 @@ fun ChatScreen(
                         .fillMaxWidth(),
                     contentPadding = PaddingValues(
                         top = chatTopContentPadding,
-                        bottom = 8.dp,
+                        bottom = bottomBarContentPadding,
                     ),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -549,7 +565,11 @@ fun ChatScreen(
                         cameraFileName?.let { File(activity.cacheDir, "chat-camera/$it").delete() }
                         cameraFileName = null
                         cameraTargetKey = null
-                        android.widget.Toast.makeText(activity, "无法打开相机，请使用相册选择图片", android.widget.Toast.LENGTH_LONG).show()
+                        android.widget.Toast.makeText(
+                            activity,
+                            activity.getString(R.string.chat_camera_unavailable),
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
                     }
                 } },
                 onPickImages = imageTarget?.let { target -> { pickerTarget = target; imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } },
@@ -621,7 +641,7 @@ fun ChatScreen(
                                 listState.animateScrollToItem(bottomAnchorIndex)
                             }
                         },
-                        contentDescription = "滚动到底部",
+                        contentDescription = stringResource(R.string.chat_scroll_to_bottom),
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(end = 16.dp, bottom = bottomPadding),
