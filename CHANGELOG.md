@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.2.0 — 2026-11-10
+
+### Android
+
+- Refreshed the interface with shared glass surfaces, updated chat controls, and consistent navigation and settings components.
+- Added persona-specific new-chat shortcuts with customizable prompts, ordering, icons, and visibility.
+- Added long-press selection and confirmed batch deletion for conversation history.
+- Added MiMo cloud voice playback and persistent turn activity presentation.
+- Improved persona chat creation, data management navigation, profile deletion confirmations, keyboard insets, and foreground-service notification navigation.
+
+### Runtime and tools
+
+- Added a CSV processing tool with validation and safer file writes.
+- Added gateway support for MiMo text-to-speech and persisted session activity metadata.
+
+### Verification
+
+- Local CI and Android unit tests pass; release APK builds successfully.
+- The Android app was tested on a physical device.
+
 ## 2.1.0 — 2026-10-22
 
 ### Android
