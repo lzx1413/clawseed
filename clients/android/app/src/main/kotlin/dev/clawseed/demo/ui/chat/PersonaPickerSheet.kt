@@ -2,6 +2,19 @@ package dev.clawseed.demo.ui.chat
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import dev.clawseed.demo.ui.components.GlassContainer
+import dev.clawseed.demo.ui.components.GlassLevel
+import dev.clawseed.demo.ui.theme.ClawSeedShapes
 import dev.clawseed.demo.ui.components.ClawSeedCard
 import dev.clawseed.demo.ui.components.ClawSeedSheetHeader
 import androidx.compose.material3.HorizontalDivider
@@ -21,9 +34,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import dev.clawseed.demo.ui.components.ClawSeedBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -53,8 +64,6 @@ fun PersonaPickerSheet(
     onDismiss: () -> Unit,
     onStart: (persona: String?) -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
     var loading by remember { mutableStateOf(true) }
     var personas by remember { mutableStateOf<List<PersonaInfo>>(emptyList()) }
     var loadError by remember { mutableStateOf(false) }
@@ -71,9 +80,27 @@ fun PersonaPickerSheet(
             .onFailure { loadError = true; loading = false }
     }
 
-    ClawSeedBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
-            ClawSeedSheetHeader(stringResource(R.string.persona_new_chat_title), onDismiss)
+    BackHandler(onBack = onDismiss)
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)
+            .clearAndSetSemantics {})
+        GlassContainer(
+            modifier = Modifier.align(Alignment.BottomCenter).statusBarsPadding().fillMaxWidth(),
+            level = GlassLevel.FloatingInput,
+            shape = ClawSeedShapes.Sheet,
+        ) {
+        Column(modifier = Modifier.navigationBarsPadding().padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+            var dragDistance by remember { mutableStateOf(0f) }
+            Box(Modifier.fillMaxWidth().pointerInput(onDismiss) {
+                detectVerticalDragGestures(
+                    onDragEnd = { if (dragDistance > 80.dp.toPx()) onDismiss(); dragDistance = 0f },
+                    onDragCancel = { dragDistance = 0f },
+                    onVerticalDrag = { _, amount -> dragDistance += amount },
+                )
+            }) {
+                ClawSeedSheetHeader(stringResource(R.string.persona_new_chat_title), onDismiss)
+            }
             HorizontalDivider(Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
             val entries = buildList {
@@ -153,6 +180,7 @@ fun PersonaPickerSheet(
                 }
             }
 
+        }
         }
     }
 }

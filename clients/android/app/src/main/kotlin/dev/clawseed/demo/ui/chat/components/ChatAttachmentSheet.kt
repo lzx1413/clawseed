@@ -9,7 +9,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
-import dev.clawseed.demo.ui.components.ClawSeedBottomSheet
+import dev.clawseed.demo.ui.components.GlassContainer
+import dev.clawseed.demo.ui.components.GlassLevel
 import dev.clawseed.demo.ui.components.ClawSeedTextButton
 import android.Manifest
 import android.content.ContentUris
@@ -18,8 +19,13 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -38,7 +44,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -113,13 +121,28 @@ internal fun ChatAttachmentSheet(
         action?.invoke()
     }
 
-    ClawSeedBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-    ) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            ClawSeedSheetHeader(stringResource(R.string.chat_attachments_title), onDismiss,
-                Modifier.padding(horizontal = 20.dp))
+    BackHandler(onBack = onDismiss)
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)
+            .clearAndSetSemantics {})
+        GlassContainer(
+            modifier = Modifier.align(Alignment.BottomCenter).statusBarsPadding().fillMaxWidth(),
+            level = GlassLevel.FloatingInput,
+            shape = ClawSeedShapes.Sheet,
+        ) {
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            var dragDistance by remember { mutableFloatStateOf(0f) }
+            Box(Modifier.fillMaxWidth().pointerInput(onDismiss) {
+                detectVerticalDragGestures(
+                    onDragEnd = { if (dragDistance > 80.dp.toPx()) onDismiss(); dragDistance = 0f },
+                    onDragCancel = { dragDistance = 0f },
+                    onVerticalDrag = { _, amount -> dragDistance += amount },
+                )
+            }) {
+                ClawSeedSheetHeader(stringResource(R.string.chat_attachments_title), onDismiss,
+                    Modifier.padding(horizontal = 20.dp))
+            }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             if (recent.isNotEmpty()) {
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -210,6 +233,7 @@ internal fun ChatAttachmentSheet(
             if (!canPickFiles) Text(stringResource(R.string.chat_files_unavailable), Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall)
             if (imageSlots <= 0) Text(stringResource(R.string.chat_image_limit), Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall)
         }
+        }
     }
 }
 
@@ -222,7 +246,7 @@ private fun AttachmentAction(
     Surface(
         onClick = onClick, enabled = enabled,
         modifier = modifier.heightIn(min = if (stacked) 64.dp else 92.dp),
-        shape = ClawSeedShapes.Card, color = colors.surface,
+        shape = ClawSeedShapes.Card, color = colors.surface.copy(alpha = 0.45f),
         contentColor = colors.onSurface.copy(alpha = if (enabled) 1f else 0.38f),
         border = BorderStroke(1.dp, colors.outlineVariant),
     ) {

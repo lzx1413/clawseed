@@ -8,6 +8,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.core.content.FileProvider
 import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -22,7 +23,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
@@ -55,6 +60,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.isTraversalGroup
+import dev.clawseed.demo.ui.components.GlassContainer
+import dev.clawseed.demo.ui.components.GlassLevel
+import dev.clawseed.demo.ui.theme.ClawSeedShapes
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -202,6 +218,7 @@ fun ChatScreen(
     var bottomBarTopPx by remember { mutableStateOf<Float?>(null) }
     var chatRootHeightPx by remember { mutableStateOf(0) }
     var showPersonaSheet by remember { mutableStateOf(false) }
+    var showAttachmentSheet by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
 
     // Keep the background behind the fixed composer for the glass effect, but
@@ -300,8 +317,7 @@ fun ChatScreen(
     val bottomAnchorIndex = displayedItemCount
     val isLoading = uiState.isGenerating
     val imeInsets = WindowInsets.ime
-    // IME height changes every animation frame. Only visibility changes need
-    // composition; imePadding handles the intermediate heights during layout.
+    // Visibility is used for scroll behavior; the composer reads animated insets during layout.
     val isImeVisible by remember(imeInsets, density) {
         derivedStateOf { imeInsets.getBottom(density) > 0 }
     }
@@ -543,38 +559,15 @@ fun ChatScreen(
                 canSend = sessionSwitchReady && imageDraftsReady && fileDraftsReady,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .imePadding()
-                    .padding(
-                        bottom = if (isImeVisible) 0.dp else bottomSystemInset,
+                    .windowInsetsPadding(
+                        imeInsets.union(WindowInsets(0.dp, 0.dp, 0.dp, bottomSystemInset)),
                     )
                     .onGloballyPositioned { coordinates ->
                         bottomBarTopPx = coordinates.positionInRoot().y
                     },
                 hasImages = selectedImages.isNotEmpty() || selectedFiles.isNotEmpty(),
-                canPickFiles = uiState.fileAttachmentsSupported,
-                onPickFiles = imageTarget?.let { target -> { filePickerTarget = target; filePicker.launch(arrayOf("text/*", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/octet-stream")) } },
-                canPickImages = uiState.imageAttachmentsSupported,
-                imageSlots = (4 - selectedImages.size).coerceAtLeast(0),
-                onSelectRecent = imageTarget?.let { target -> { uris -> viewModel.addImages(target, uris) } },
-                onTakePhoto = imageTarget?.let { target -> {
-                    try {
-                        val directory = File(activity.cacheDir, "chat-camera").apply { mkdirs() }
-                        val file = File.createTempFile("capture-", ".jpg", directory)
-                        cameraFileName = file.name
-                        cameraTargetKey = target.key
-                        cameraPicker.launch(FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file))
-                    } catch (_: Exception) {
-                        cameraFileName?.let { File(activity.cacheDir, "chat-camera/$it").delete() }
-                        cameraFileName = null
-                        cameraTargetKey = null
-                        android.widget.Toast.makeText(
-                            activity,
-                            activity.getString(R.string.chat_camera_unavailable),
-                            android.widget.Toast.LENGTH_LONG,
-                        ).show()
-                    }
-                } },
-                onPickImages = imageTarget?.let { target -> { pickerTarget = target; imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } },
+                attachmentsAvailable = imageTarget != null,
+                onOpenAttachments = { showAttachmentSheet = true },
                 imageDrafts = {
                     if (imageTarget != null) dev.clawseed.demo.ui.chat.components.DraftFileList(selectedFiles,
                         { viewModel.changeFile(imageTarget, it, false) }, { viewModel.changeFile(imageTarget, it, true) })
@@ -654,37 +647,61 @@ fun ChatScreen(
                     }
                 }
             }
+            if (showRenameDialog) {
+                RenameChatDialog(
+                    currentName = uiState.sessionName.orEmpty(),
+                    error = uiState.renameError,
+                    saving = uiState.isRenamingSession,
+                    onConfirm = { name -> viewModel.renameCurrentSession(name) { showRenameDialog = false } },
+                    onValueChanged = viewModel::clearRenameError,
+                    onDismiss = {
+                        if (!uiState.isRenamingSession) {
+                            showRenameDialog = false
+                            viewModel.clearRenameError()
+                        }
+                    },
+                )
+            }
+            if (showAttachmentSheet) {
+                dev.clawseed.demo.ui.chat.components.ChatAttachmentSheet(
+                    onDismiss = { showAttachmentSheet = false },
+                canPickFiles = sessionSwitchReady && imageDraftsReady && fileDraftsReady && !isLoading && uiState.fileAttachmentsSupported,
+                onPickFiles = imageTarget?.let { target -> { filePickerTarget = target; filePicker.launch(arrayOf("text/*", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/octet-stream")) } },
+                canPickImages = sessionSwitchReady && imageDraftsReady && fileDraftsReady && !isLoading && uiState.imageAttachmentsSupported,
+                imageSlots = (4 - selectedImages.size).coerceAtLeast(0),
+                onSelectRecent = imageTarget?.let { target -> { uris -> viewModel.addImages(target, uris) } },
+                onTakePhoto = imageTarget?.let { target -> {
+                    try {
+                        val directory = File(activity.cacheDir, "chat-camera").apply { mkdirs() }
+                        val file = File.createTempFile("capture-", ".jpg", directory)
+                        cameraFileName = file.name
+                        cameraTargetKey = target.key
+                        cameraPicker.launch(FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file))
+                    } catch (_: Exception) {
+                        cameraFileName?.let { File(activity.cacheDir, "chat-camera/$it").delete() }
+                        cameraFileName = null
+                        cameraTargetKey = null
+                        android.widget.Toast.makeText(
+                            activity,
+                            activity.getString(R.string.chat_camera_unavailable),
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                } },
+                onPickImages = imageTarget?.let { target -> { pickerTarget = target; imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } },
+                )
+            }
+            if (showPersonaSheet) {
+                PersonaPickerSheet(
+                    onDismiss = { showPersonaSheet = false },
+                    onStart = { persona ->
+                        showPersonaSheet = false
+                        onNewSession(persona)
+                    },
+                )
+            }
         },
     )
-
-    // Persona picker — shown when the user taps "+" to start a new chat.
-    if (showPersonaSheet) {
-        PersonaPickerSheet(
-            onDismiss = { showPersonaSheet = false },
-            onStart = { persona ->
-                showPersonaSheet = false
-                onNewSession(persona)
-            },
-        )
-    }
-
-    if (showRenameDialog) {
-        RenameChatDialog(
-            currentName = uiState.sessionName.orEmpty(),
-            error = uiState.renameError,
-            saving = uiState.isRenamingSession,
-            onConfirm = { name ->
-                viewModel.renameCurrentSession(name) { showRenameDialog = false }
-            },
-            onValueChanged = viewModel::clearRenameError,
-            onDismiss = {
-                if (!uiState.isRenamingSession) {
-                    showRenameDialog = false
-                    viewModel.clearRenameError()
-                }
-            },
-        )
-    }
 
     uiState.authPrompt?.let { prompt ->
         ClawSeedFormDialog(
@@ -732,37 +749,52 @@ private fun RenameChatDialog(
 ) {
     var name by rememberSaveable(currentName) { mutableStateOf(currentName) }
     val empty = name.trim().isEmpty()
-    ClawSeedFormDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.chat_title_dialog_title)) },
-        text = {
-            ClawSeedTextField(
-                value = name,
-                onValueChange = {
-                    name = it
-                    onValueChanged()
-                },
-                enabled = !saving,
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text(stringResource(R.string.drawer_conversation_name)) },
-                isError = empty || error != null,
-                supportingText = error?.let { message -> { Text(message) } },
-            )
-        },
-        confirmButton = {
-            ClawSeedButton(
-                onClick = { onConfirm(name) },
-                enabled = !empty && !saving,
-                loading = saving,
+    BackHandler { onDismiss() }
+    Box(Modifier.fillMaxSize().semantics { isTraversalGroup = true }) {
+        Box(
+            Modifier.fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.32f))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)
+                .clearAndSetSemantics {},
+        )
+        Box(
+            Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            GlassContainer(
+                modifier = Modifier.widthIn(max = 400.dp).fillMaxWidth(),
+                level = GlassLevel.FloatingInput,
+                shape = ClawSeedShapes.Card,
             ) {
-                Text(stringResource(R.string.common_confirm))
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()).padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Text(stringResource(R.string.chat_title_dialog_title), style = MaterialTheme.typography.titleLarge)
+                    ClawSeedTextField(
+                        value = name,
+                        onValueChange = {
+                            name = it
+                            onValueChanged()
+                        },
+                        enabled = !saving,
+                        singleLine = true,
+                        glass = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(stringResource(R.string.drawer_conversation_name)) },
+                        isError = empty || error != null,
+                        supportingText = error?.let { message -> { Text(message) } },
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                        ClawSeedTextButton(onClick = onDismiss, enabled = !saving) {
+                            Text(stringResource(R.string.common_cancel))
+                        }
+                        ClawSeedButton(onClick = { onConfirm(name) }, enabled = !empty && !saving, loading = saving) {
+                            Text(stringResource(R.string.common_confirm))
+                        }
+                    }
+                }
             }
-        },
-        dismissButton = {
-            ClawSeedTextButton(onClick = onDismiss, enabled = !saving) {
-                Text(stringResource(R.string.common_cancel))
-            }
-        },
-    )
+        }
+    }
 }

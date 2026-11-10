@@ -91,7 +91,7 @@ class SessionsViewModel(application: Application) : AndroidViewModel(application
         deleteSessions(listOf(sessionId)) { onSuccess?.invoke() }
     }
 
-    fun deleteSessions(sessionIds: List<String>, onDeleted: (String) -> Unit) {
+    internal fun deleteSessions(sessionIds: List<String>, onComplete: (SessionDeletionResult) -> Unit = {}, onDeleted: (String) -> Unit) {
         if (sessionIds.isEmpty() || _uiState.value.deletingSessionIds.isNotEmpty()) return
         loadJob?.cancel()
         val ids = sessionIds.distinct()
@@ -100,6 +100,7 @@ class SessionsViewModel(application: Application) : AndroidViewModel(application
         )
         viewModelScope.launch {
             val deletedIds = mutableSetOf<String>()
+            var completion: SessionDeletionResult? = null
             try {
                 val result = deleteHistorySessions(
                     ids,
@@ -116,6 +117,7 @@ class SessionsViewModel(application: Application) : AndroidViewModel(application
                         onDeleted(id)
                     },
                 )
+                completion = result
                 if (result.failed.isNotEmpty()) {
                     _uiState.value = _uiState.value.copy(
                         deletionError = getApplication<Application>().getString(
@@ -129,6 +131,7 @@ class SessionsViewModel(application: Application) : AndroidViewModel(application
                     saveHistoryPreference { localStore.removePinnedSessions(deletedIds) }
                 }
             }
+            completion?.let(onComplete)
         }
     }
 

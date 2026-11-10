@@ -5,6 +5,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.VisualTransformation
 import dev.clawseed.demo.ui.theme.ClawSeedShapes
@@ -21,14 +22,19 @@ fun ClawSeedTextField(value: String, onValueChange: (String) -> Unit, modifier: 
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default, singleLine: Boolean = false,
     maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE, minLines: Int = 1,
+    glass: Boolean = false,
+    shape: Shape = ClawSeedShapes.Field,
 ) {
     val colors = MaterialTheme.colorScheme
     OutlinedTextField(value, onValueChange, modifier, enabled, readOnly, textStyle,
         label, placeholder, leadingIcon, trailingIcon, prefix, suffix, supportingText, isError,
         visualTransformation, keyboardOptions, keyboardActions, singleLine, maxLines, minLines,
-        shape = ClawSeedShapes.Field,
+        shape = shape,
         colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = colors.surfaceContainerLow, unfocusedContainerColor = colors.surfaceContainerLow,
-            disabledContainerColor = colors.surfaceContainerLow, errorContainerColor = colors.surfaceContainerLow,
-            unfocusedBorderColor = colors.outline, focusedBorderColor = colors.primary, errorBorderColor = colors.error))
+            focusedContainerColor = if (glass) colors.surface.copy(alpha = 0.36f) else colors.surfaceContainerLow,
+            unfocusedContainerColor = if (glass) colors.surface.copy(alpha = 0.24f) else colors.surfaceContainerLow,
+            disabledContainerColor = if (glass) colors.surface.copy(alpha = 0.18f) else colors.surfaceContainerLow,
+            errorContainerColor = if (glass) colors.surface.copy(alpha = 0.36f) else colors.surfaceContainerLow,
+            unfocusedBorderColor = if (glass) colors.outlineVariant.copy(alpha = 0.5f) else colors.outline,
+            focusedBorderColor = colors.primary, errorBorderColor = colors.error))
 }

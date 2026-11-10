@@ -741,4 +741,10 @@
     <string name="suggestion_icon_number">Icon %1$d</string>
     <string name="suggestion_restore_defaults">Restore defaults</string>
     <string name="suggestion_save">Save</string>
+    <string name="drawer_selected_count">%1$d selected</string>
+    <string name="drawer_select_matches">Select matches</string>
+    <string name="drawer_bulk_delete_title">Delete selected conversations</string>
+    <string name="drawer_bulk_delete_confirm">Delete %1$d selected conversations? This cannot be undone.</string>
+    <string name="drawer_bulk_includes_pinned">The selection includes pinned conversations.</string>
+    <string name="drawer_bulk_includes_current">The selection includes the current conversation.</string>
 </resources>

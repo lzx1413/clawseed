@@ -48,16 +48,10 @@ fun ChatBottomBar(
     canSend: Boolean,
     modifier: Modifier = Modifier,
     hasImages: Boolean = false,
-    canPickImages: Boolean = true,
-    onPickImages: (() -> Unit)? = null,
-    canPickFiles: Boolean = false,
-    onPickFiles: (() -> Unit)? = null,
-    onTakePhoto: (() -> Unit)? = null,
-    onSelectRecent: ((List<android.net.Uri>) -> Unit)? = null,
-    imageSlots: Int = 4,
+    attachmentsAvailable: Boolean = false,
+    onOpenAttachments: () -> Unit = {},
     imageDrafts: @Composable () -> Unit = {},
 ) {
-    var showAttachmentPicker by remember { mutableStateOf(false) }
     var inputFocused by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
     val colorScheme = MaterialTheme.colorScheme
@@ -87,11 +81,11 @@ fun ChatBottomBar(
                     .padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-            if (onPickImages != null || onPickFiles != null) {
+            if (attachmentsAvailable) {
                 ClawSeedIconButton(
                     onClick = {
                         keyboardController?.hide()
-                        showAttachmentPicker = true
+                        onOpenAttachments()
                     },
                     enabled = canSend && !isLoading,
                     contentDescription = stringResource(R.string.chat_add_attachment),
@@ -163,18 +157,6 @@ fun ChatBottomBar(
         }
         }
 
-    }
-    if (showAttachmentPicker) {
-        ChatAttachmentSheet(
-            onDismiss = { showAttachmentPicker = false },
-            canPickImages = canSend && !isLoading && canPickImages,
-            canPickFiles = canSend && !isLoading && canPickFiles,
-            imageSlots = imageSlots,
-            onPickImages = onPickImages,
-            onPickFiles = onPickFiles,
-            onTakePhoto = onTakePhoto,
-            onSelectRecent = onSelectRecent,
-        )
     }
 
 }

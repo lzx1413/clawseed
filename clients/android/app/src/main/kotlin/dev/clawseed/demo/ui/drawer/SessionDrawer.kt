@@ -2,6 +2,8 @@ package dev.clawseed.demo.ui.drawer
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.activity.compose.BackHandler
+import dev.clawseed.demo.ui.components.ClawSeedCheckbox
 import dev.clawseed.demo.ui.components.ClawSeedButton
 import dev.clawseed.demo.ui.components.ClawSeedOutlinedButton
 import dev.clawseed.demo.ui.components.ClawSeedTextButton
@@ -105,6 +107,12 @@ fun SessionDrawer(
     }
     val groups = history.groups
     var deletionRequest by remember { mutableStateOf<PersonaDeletionRequest?>(null) }
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var bulkDeleteIds by remember { mutableStateOf<List<String>?>(null) }
+    val matchingIds = remember(history) {
+        (history.pinned + history.groups.flatMap { it.sessions }).map { it.id }.toSet()
+    }
     val deleting = uiState.deletingSessionIds.isNotEmpty()
     val latestSessionId by rememberUpdatedState(currentSessionId)
     val latestDeleteCurrent by rememberUpdatedState(onDeleteCurrentSession)
@@ -120,9 +128,23 @@ fun SessionDrawer(
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
     }
+    fun toggleSelected(id: String) {
+        selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
+    }
+    BackHandler(enabled = isDrawerOpen && selectionMode && bulkDeleteIds == null && !deleting) {
+        selectionMode = false
+        selectedIds = emptySet()
+    }
 
     LaunchedEffect(isDrawerOpen) {
-        if (!isDrawerOpen) dismissSearchInput()
+        if (!isDrawerOpen) {
+            dismissSearchInput()
+            if (uiState.deletionError == null || selectedIds.isEmpty()) {
+                selectionMode = false
+                selectedIds = emptySet()
+            }
+            bulkDeleteIds = null
+        }
     }
 
     // Refresh session list every time drawer opens
@@ -162,6 +184,31 @@ fun SessionDrawer(
         )
     }
 
+    bulkDeleteIds?.let { ids ->
+        dev.clawseed.demo.ui.components.ClawSeedFormDialog(
+            onDismissRequest = { bulkDeleteIds = null },
+            title = { Text(stringResource(R.string.drawer_bulk_delete_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.drawer_bulk_delete_confirm, ids.size))
+                    if (ids.any { it in uiState.pinnedSessionIds }) Text(stringResource(R.string.drawer_bulk_includes_pinned))
+                    if (currentSessionId in ids) Text(stringResource(R.string.drawer_bulk_includes_current))
+                }
+            },
+            confirmButton = {
+                ClawSeedTextButton(dangerous = true, enabled = !deleting, onClick = {
+                    bulkDeleteIds = null
+                    viewModel.deleteSessions(ids, onComplete = { result ->
+                        if (latestSessionId in result.deleted) latestDeleteCurrent()
+                    }) { id ->
+                        selectedIds = selectedIds - id
+                    }
+                }) { Text(stringResource(R.string.common_delete)) }
+            },
+            dismissButton = { ClawSeedTextButton(onClick = { bulkDeleteIds = null }) { Text(stringResource(R.string.common_cancel)) } },
+        )
+    }
+
     val renderSession: @Composable (SessionSummary, Boolean) -> Unit = { session, pinned ->
         SessionItem(
             session = session,
@@ -173,10 +220,12 @@ fun SessionDrawer(
             },
             personaLabel = if (pinned) sessionPersona(session)
                 ?: stringResource(R.string.drawer_default_persona) else null,
-            isSelected = session.id == currentSessionId,
+            isSelected = if (selectionMode) session.id in selectedIds else session.id == currentSessionId,
             isPinned = pinned,
+            selectionMode = selectionMode,
             actionsEnabled = !deleting,
-            onSelect = { onSelectSession(session.id) },
+            onSelect = { if (selectionMode) toggleSelected(session.id) else onSelectSession(session.id) },
+            onLongClick = { if (!deleting) { selectionMode = true; selectedIds = selectedIds + session.id; dismissSearchInput() } },
             onDelete = {
                 viewModel.deleteSession(session.id) {
                     if (session.id == latestSessionId) latestDeleteCurrent()
@@ -189,7 +238,20 @@ fun SessionDrawer(
 
     ModalDrawerSheet {
         Column(modifier = Modifier.fillMaxWidth().imePadding()) {
-            Text(
+            if (selectionMode) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.drawer_selected_count, selectedIds.size), modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                    ClawSeedTextButton(enabled = !deleting && matchingIds.isNotEmpty(), onClick = { selectedIds = selectedIds + matchingIds }) {
+                        Text(stringResource(R.string.drawer_select_matches))
+                    }
+                    ClawSeedIconButton(enabled = !deleting && selectedIds.isNotEmpty(), onClick = { bulkDeleteIds = selectedIds.toList() }, dangerous = true) {
+                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.drawer_bulk_delete_title))
+                    }
+                    ClawSeedIconButton(enabled = !deleting, onClick = { selectionMode = false; selectedIds = emptySet() }) {
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_cancel))
+                    }
+                }
+            } else Text(
                 text = stringResource(R.string.drawer_chat_history),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 8.dp),
@@ -198,6 +260,7 @@ fun SessionDrawer(
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             ClawSeedTextField(
                 value = query,
+                shape = dev.clawseed.demo.ui.theme.ClawSeedShapes.Pill,
                 onValueChange = { query = it },
                 label = { Text(stringResource(R.string.drawer_search)) },
                 singleLine = true,
@@ -270,7 +333,7 @@ fun SessionDrawer(
                                     personaVisuals = uiState.personaVisuals,
                                     expanded = expanded,
                                     sessionCount = group.sessions.size + group.pinnedCount,
-                                    actionsEnabled = !deleting,
+                                    actionsEnabled = !deleting && !selectionMode,
                                     onDeleteAll = {
                                         deletionRequest = PersonaDeletionRequest(
                                             group.persona, personaSessionIds(uiState.sessions, group.persona),
@@ -412,7 +475,9 @@ private fun SessionItem(
     actionsEnabled: Boolean,
     isSelected: Boolean,
     isPinned: Boolean,
+    selectionMode: Boolean,
     onSelect: () -> Unit,
+    onLongClick: () -> Unit,
     onDelete: () -> Unit,
     onRename: (String) -> Unit,
     onTogglePinned: () -> Unit,
@@ -483,7 +548,11 @@ private fun SessionItem(
         selected = isSelected,
         enabled = actionsEnabled,
         onClick = onSelect,
+        onLongClick = onLongClick,
         badge = {
+            if (selectionMode) {
+                ClawSeedCheckbox(checked = isSelected, onCheckedChange = null, enabled = actionsEnabled)
+            } else {
             Box {
                 ClawSeedIconButton(enabled = actionsEnabled, onClick = { showMenu = true }) {
                     Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.drawer_session_actions))
@@ -508,6 +577,7 @@ private fun SessionItem(
                         onClick = { showMenu = false; confirmDelete = true },
                     )
                 }
+            }
             }
         },
     )

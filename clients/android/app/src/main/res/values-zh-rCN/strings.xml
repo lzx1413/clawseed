@@ -741,4 +741,10 @@
     <string name="suggestion_icon_number">图标 %1$d</string>
     <string name="suggestion_restore_defaults">恢复默认</string>
     <string name="suggestion_save">保存</string>
+    <string name="drawer_selected_count">已选择 %1$d 项</string>
+    <string name="drawer_select_matches">全选结果</string>
+    <string name="drawer_bulk_delete_title">删除选中会话</string>
+    <string name="drawer_bulk_delete_confirm">删除选中的 %1$d 个会话？此操作无法撤销。</string>
+    <string name="drawer_bulk_includes_pinned">选中项包含置顶会话。</string>
+    <string name="drawer_bulk_includes_current">选中项包含当前会话。</string>
 </resources>
