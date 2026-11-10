@@ -1,7 +1,10 @@
 package dev.clawseed.demo.updater
 
 import android.content.Context
+import android.os.Build
+import dev.clawseed.demo.BuildConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -103,6 +106,18 @@ class ApkDownloader(private val context: Context) {
         return if (file.exists() && file.length() > 0) file else null
     }
 
+    /** Only reuse a complete APK for this app and the selected release. */
+    suspend fun getVerifiedApk(info: UpdateInfo): File? = withContext(Dispatchers.IO) {
+        val file = getDownloadedApk() ?: return@withContext null
+        if (info.downloadSize > 0 && file.length() != info.downloadSize) return@withContext null
+        @Suppress("DEPRECATION")
+        val archive = runCatching { context.packageManager.getPackageArchiveInfo(file.absolutePath, 0) }.getOrNull()
+            ?: return@withContext null
+        @Suppress("DEPRECATION")
+        val code = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) archive.longVersionCode else archive.versionCode.toLong()
+        file.takeIf { matchesUpdateApk(archive.packageName, archive.versionName, code, context.packageName, info.versionName, BuildConfig.VERSION_CODE.toLong()) }
+    }
+
     /**
      * Remove any previously downloaded APK files.
      */
@@ -110,3 +125,6 @@ class ApkDownloader(private val context: Context) {
         updateDir().listFiles()?.forEach { it.delete() }
     }
 }
+
+internal fun matchesUpdateApk(packageName: String?, versionName: String?, versionCode: Long, expectedPackage: String, expectedVersion: String, installedVersionCode: Long): Boolean =
+    packageName == expectedPackage && versionName == expectedVersion && versionCode > installedVersionCode

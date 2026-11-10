@@ -57,7 +57,7 @@ object ApkInstaller {
     /**
      * Install an APK file using the system package installer.
      *
-     * @param context Activity context (required for startActivity).
+     * @param context Context used to launch the system installer.
      * @param apkFile The downloaded APK file.
      *
      * @throws IllegalStateException if the app lacks install permission.
@@ -73,6 +73,7 @@ object ApkInstaller {
         val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             // Allow the installer to return a result
             putExtra(Intent.EXTRA_RETURN_RESULT, true)
         }

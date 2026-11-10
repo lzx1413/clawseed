@@ -491,6 +491,8 @@
     <string name="update_downloading">Downloading…</string>
     <string name="update_download_progress">%1$d%% · %2$s / %3$s</string>
     <string name="update_install">Install Update</string>
+    <string name="update_install_failed">Could not open the system installer. Please try again or install the APK from the release page.</string>
+    <string name="update_invalid_apk">The downloaded APK does not match this update. Please download it again.</string>
     <string name="update_install_permission">Allow installation from unknown sources</string>
     <string name="update_install_permission_desc">To install the update, you need to allow installing apps from unknown sources</string>
     <string name="update_check_failed">Update check failed: %1$s</string>

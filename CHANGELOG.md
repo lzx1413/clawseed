@@ -9,6 +9,7 @@
 - Added long-press selection and confirmed batch deletion for conversation history.
 - Added MiMo cloud voice playback and persistent turn activity presentation.
 - Improved persona chat creation, data management navigation, profile deletion confirmations, keyboard insets, and foreground-service notification navigation.
+- Fixed an update-install crash and validate cached APKs against the selected release before reuse or installation.
 
 ### Runtime and tools
 

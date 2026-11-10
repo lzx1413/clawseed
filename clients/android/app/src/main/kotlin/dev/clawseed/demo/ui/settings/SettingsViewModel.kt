@@ -96,6 +96,7 @@ data class SettingsUiState(
     val isDownloadingUpdate: Boolean = false,
     val updateDownloadProgress: dev.clawseed.demo.updater.ApkDownloadProgress? = null,
     val updateApkReady: Boolean = false,
+    val updateInstallError: String? = null,
     val updateCheckResult: UpdateCheckResult? = null,
 )
 
@@ -1118,20 +1119,24 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val apkDownloader = ApkDownloader(getApplication())
 
     fun checkForUpdate() {
+        if (_uiState.value.isDownloadingUpdate || _uiState.value.isCheckingUpdate) return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isCheckingUpdate = true,
                 updateInfo = null,
                 updateCheckResult = null,
+                updateApkReady = false,
+                updateInstallError = null,
                 error = null,
             )
             try {
                 val info = updateChecker.checkUpdate()
                 if (info != null) {
+                    val verifiedApk = apkDownloader.getVerifiedApk(info)
                     _uiState.value = _uiState.value.copy(
                         isCheckingUpdate = false,
                         updateInfo = info,
-                        updateApkReady = apkDownloader.getDownloadedApk() != null,
+                        updateApkReady = verifiedApk != null,
                     )
                 } else {
                     _uiState.value = _uiState.value.copy(
@@ -1140,6 +1145,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     )
                 }
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 _uiState.value = _uiState.value.copy(
                     isCheckingUpdate = false,
                     updateCheckResult = UpdateCheckResult.Error(e.message ?: "Unknown error"),
@@ -1150,40 +1156,56 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun downloadUpdate() {
         val info = _uiState.value.updateInfo ?: return
+        if (_uiState.value.isDownloadingUpdate || _uiState.value.isCheckingUpdate) return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isDownloadingUpdate = true,
                 updateDownloadProgress = null,
+                updateApkReady = false,
+                updateInstallError = null,
                 error = null,
             )
             try {
                 apkDownloader.download(info.downloadUrl, info.downloadSize).collect { progress ->
                     _uiState.value = _uiState.value.copy(updateDownloadProgress = progress)
                 }
+                val verifiedApk = apkDownloader.getVerifiedApk(info)
                 _uiState.value = _uiState.value.copy(
                     isDownloadingUpdate = false,
-                    updateApkReady = apkDownloader.getDownloadedApk() != null,
+                    updateApkReady = verifiedApk != null,
+                    updateInstallError = if (verifiedApk == null) getApplication<Application>().getString(R.string.update_invalid_apk) else null,
                 )
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 _uiState.value = _uiState.value.copy(
                     isDownloadingUpdate = false,
-                    error = getApplication<Application>().getString(R.string.update_download_failed, e.message?.take(100) ?: ""),
+                    updateInstallError = getApplication<Application>().getString(R.string.update_download_failed, e.message?.take(100) ?: ""),
                 )
             }
         }
     }
 
     fun installUpdate() {
-        val apkFile = apkDownloader.getDownloadedApk() ?: return
-        val context = getApplication<Application>()
-        if (!ApkInstaller.canInstallPackages(context)) {
-            // Request permission — the UI layer handles showing the settings intent
-            _uiState.value = _uiState.value.copy(
-                error = getApplication<Application>().getString(R.string.update_install_permission_desc),
-            )
-            return
+        val info = _uiState.value.updateInfo ?: return
+        if (_uiState.value.isDownloadingUpdate || _uiState.value.isCheckingUpdate) return
+        viewModelScope.launch {
+            val apkFile = apkDownloader.getVerifiedApk(info)
+            if (apkFile == null) {
+                _uiState.value = _uiState.value.copy(updateApkReady = false, updateInstallError = getApplication<Application>().getString(R.string.update_invalid_apk))
+                return@launch
+            }
+            val context = getApplication<Application>()
+            if (!ApkInstaller.canInstallPackages(context)) {
+                _uiState.value = _uiState.value.copy(updateInstallError = context.getString(R.string.update_install_permission_desc))
+                return@launch
+            }
+            try {
+                ApkInstaller.install(context, apkFile)
+                _uiState.value = _uiState.value.copy(updateInstallError = null)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(updateInstallError = context.getString(R.string.update_install_failed))
+            }
         }
-        ApkInstaller.install(context, apkFile)
     }
 
     fun getInstallPermissionIntent(): Intent = ApkInstaller.installPermissionIntent()

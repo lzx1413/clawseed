@@ -706,6 +706,10 @@ private fun AboutDialog(onDismiss: () -> Unit) {
                 }
 
                 // Update available
+                uiState.updateInstallError?.let { message ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
                 val updateInfo = uiState.updateInfo
                 if (updateInfo != null) {
                     Spacer(modifier = Modifier.height(8.dp))
