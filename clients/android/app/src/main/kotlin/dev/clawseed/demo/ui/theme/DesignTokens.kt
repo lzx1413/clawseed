@@ -45,12 +45,12 @@ object ClawSeedShadows {
     // Keep the halo centered: elevation shadows shift with screen position.
     val FloatingControl = Shadow(
         radius = 4.dp,
-        color = Color.Black.copy(alpha = 0.22f),
+        color = Color.Black.copy(alpha = 0.12f),
         offset = DpOffset.Zero,
     )
     val FloatingInput = Shadow(
         radius = 2.dp,
-        color = Color.Black.copy(alpha = 0.12f),
+        color = Color.Black.copy(alpha = 0.08f),
         offset = DpOffset.Zero,
     )
 }

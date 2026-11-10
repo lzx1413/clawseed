@@ -525,7 +525,8 @@ fun ChatScreen(
                 }
             }
         }
-
+        },
+        content = {
             ChatBottomBar(
                 input = input,
                 onInputChange = { viewModel.updateDraft(draftKey, it) },
@@ -582,8 +583,6 @@ fun ChatScreen(
                     )
                 },
             )
-        },
-        content = {
             Row(
                 modifier = Modifier
                     .align(Alignment.TopCenter)

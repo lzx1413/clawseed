@@ -33,7 +33,15 @@ val hasReleaseSigning = listOf(
 
 android {
     namespace = "dev.clawseed.demo"
-    compileSdk = 36
+    compileSdk = 37
+
+    // AGP 9.1 / Gradle 9.3.1 cannot serialize the Kotlin 2.4 dependency
+    // constraints for SDK metadata. Omit this optional metadata; dependency
+    // compatibility checks, compilation and lint still run normally.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
 
     defaultConfig {
         applicationId = "dev.clawseed.demo"
@@ -42,7 +50,7 @@ android {
             applicationIdSuffix = ".uitest"
         }
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 20
         versionName = "2.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -109,8 +117,10 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    // Haze provides source-backed backdrop blur and reusable glass styles.
-    implementation("dev.chrisbanes.haze:haze:1.7.2")
+    // Haze Glass provides source-backed blur, tint, lighting and refraction.
+    implementation("dev.chrisbanes.haze:haze:2.1.0")
+    implementation("dev.chrisbanes.haze:haze-glass:2.1.0")
+    implementation("dev.chrisbanes.haze:haze-glass-material3:2.1.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     // Navigation

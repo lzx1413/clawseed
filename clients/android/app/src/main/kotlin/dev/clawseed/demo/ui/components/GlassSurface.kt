@@ -21,17 +21,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
+import dev.chrisbanes.haze.glass.GlassOptics
+import dev.chrisbanes.haze.glass.OpticalSizeValue
+import dev.chrisbanes.haze.glass.GlassStyle
+import dev.chrisbanes.haze.glass.hazeGlass
+import dev.chrisbanes.haze.glass.material3.material3
 import dev.clawseed.demo.ui.theme.ClawSeedShapes
 import dev.clawseed.demo.ui.theme.ClawSeedSizes
 import dev.clawseed.demo.ui.theme.ClawSeedSpacing
@@ -47,7 +54,7 @@ fun GlassBackdropHost(
     background: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val hazeState = rememberHazeState(blurEnabled = true)
+    val hazeState = rememberHazeState()
 
     androidx.compose.runtime.CompositionLocalProvider(LocalHazeState provides hazeState) {
         Box(modifier = modifier) {
@@ -91,33 +98,51 @@ fun GlassContainer(
     val colors = MaterialTheme.colorScheme
     val hazeState = LocalHazeState.current
     val fill = glassFill(colors, level)
+    val lightSurface = colors.surface.luminance() > 0.5f
     val border = when {
         interactive -> colors.primary
+        hazeState != null -> if (lightSurface) Color.White.copy(alpha = 0.55f) else colors.outlineVariant.copy(alpha = 0.3f)
         level == GlassLevel.Chrome -> colors.outlineVariant
         level == GlassLevel.FloatingInput -> colors.outlineVariant.copy(alpha = 0.32f)
         level == GlassLevel.Elevated -> colors.outline.copy(alpha = 0.46f)
         else -> colors.outlineVariant.copy(alpha = 0.56f)
     }
 
+    val inputGlass = level == GlassLevel.FloatingInput
+    // Diffuse text behind the editor more strongly than behind compact controls.
+    val glassStyle = GlassStyle.regular
+        .material3(tint = colors.surface.copy(alpha = if (inputGlass) 0.08f else 0.035f))
+        .then {
+            (shape as? RoundedCornerShape)?.let { shape(it) }
+            optics(GlassOptics.regular.copy(
+                depth = OpticalSizeValue.Fixed(1f),
+                blurRadius = OpticalSizeValue.Fixed(if (inputGlass) 28.dp else 16.dp),
+                refractionDisplacement = if (inputGlass) 8.dp else 14.dp,
+            ))
+            edgeShadow(Color.Black.copy(alpha = if (lightSurface) 0.025f else 0.12f))
+            specularIntensity(if (inputGlass) 0.26f else 0.34f)
+            ambientResponse(0.12f)
+            edgeSoftness(1.dp)
+            contrast(0f)
+            whitePoint(if (lightSurface) { if (inputGlass) 0.35f else 0.28f } else -0.18f)
+            chromaMultiplier(1.15f)
+        }
+
     val hazeModifier = if (hazeState == null) {
         Modifier
     } else {
         Modifier
             .clip(shape)
-            .hazeEffect(state = hazeState) {
-                blurEnabled = true
-                blurRadius = 52.dp
-                noiseFactor = 0.08f
-                blurredEdgeTreatment = BlurredEdgeTreatment(shape)
-                clipToAreasBounds = true
-                expandLayerBounds = false
-            }
+            .hazeGlass(
+                input = HazeInput.Sources(hazeState),
+                style = glassStyle,
+            )
     }
 
     Surface(
-        modifier = hazeModifier.then(modifier),
+        modifier = modifier.then(hazeModifier),
         shape = shape,
-        color = fill,
+        color = if (hazeState == null) fill else Color.Transparent,
         contentColor = colors.onSurface,
         tonalElevation = 0.dp,
         shadowElevation = shadowElevation,
