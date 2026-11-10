@@ -31,7 +31,14 @@ fun ClawSeedCard(
     }
     val border = BorderStroke(1.dp, if (selected) colors.primary else colors.outlineVariant)
     val body: @Composable () -> Unit = { Column(Modifier.fillMaxWidth(), content = content) }
-    if (onClick == null) {
+    if (!selected && !muted && containerColor == Color.Unspecified) {
+        GlassContainer(modifier = modifier, shape = ClawSeedShapes.Card) {
+            if (onClick == null) body() else Surface(
+                onClick = onClick, shape = ClawSeedShapes.Card,
+                color = Color.Transparent, contentColor = colors.onSurface, content = body,
+            )
+        }
+    } else if (onClick == null) {
         Surface(modifier, shape = ClawSeedShapes.Card, color = fill,
             contentColor = colors.onSurface, border = border, content = body)
     } else {

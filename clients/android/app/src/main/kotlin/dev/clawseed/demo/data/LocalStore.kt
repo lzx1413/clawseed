@@ -20,6 +20,34 @@ class LocalStore(private val context: Context) {
 
     private val store get() = context.dataStore
 
+    // One JSON object keeps persona-specific suggestions in the normal configuration backup.
+    private val suggestionCardsKey = stringPreferencesKey("persona_suggestion_cards")
+    val suggestionCards: Flow<String> = store.data.map { it[suggestionCardsKey] ?: "{}" }
+
+    suspend fun setSuggestionCards(persona: String?, cardsJson: String?) {
+        store.edit { prefs ->
+            val all = runCatching { org.json.JSONObject(prefs[suggestionCardsKey] ?: "{}") }
+                .getOrElse { org.json.JSONObject() }
+            val key = if (persona == null) "default" else "persona:$persona"
+            if (cardsJson == null) all.remove(key) else all.put(key, org.json.JSONArray(cardsJson))
+            prefs[suggestionCardsKey] = all.toString()
+        }
+    }
+
+    suspend fun moveSuggestionCards(oldPersona: String, newPersona: String) {
+        store.edit { prefs ->
+            val all = runCatching { org.json.JSONObject(prefs[suggestionCardsKey] ?: "{}") }
+                .getOrElse { org.json.JSONObject() }
+            val oldKey = "persona:$oldPersona"
+            val cards = all.optJSONArray(oldKey)
+            if (cards != null) {
+                all.put("persona:$newPersona", cards)
+                all.remove(oldKey)
+                prefs[suggestionCardsKey] = all.toString()
+            }
+        }
+    }
+
     // --- Active session ID ---
     private val KEY_SESSION_ID = stringPreferencesKey("active_session_id")
 

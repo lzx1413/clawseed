@@ -10,7 +10,6 @@ import dev.clawseed.demo.ui.components.ClawSeedTextField
 import dev.clawseed.demo.ui.components.ClawSeedChoiceChip
 import dev.clawseed.demo.ui.components.ClawSeedIconButton
 import android.Manifest
-import android.app.TimePickerDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -52,7 +51,6 @@ import dev.clawseed.demo.ui.components.ClawSeedTopAppBar
 import dev.clawseed.demo.ui.components.ClawSeedSwitch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
@@ -147,6 +145,7 @@ fun ScheduledTasksScreen(
     }
 
     Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             ClawSeedTopAppBar(
                 title = { Text(stringResource(R.string.task_title)) },
@@ -337,9 +336,6 @@ private fun TaskCard(
                         tint = MaterialTheme.colorScheme.error,
                     )
                 }
-                ClawSeedIconButton(onClick = onDetails) {
-                    Icon(Icons.Default.Info, contentDescription = stringResource(R.string.task_details))
-                }
             }
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -482,18 +478,20 @@ private fun TaskDialog(
     var hour by remember { mutableStateOf(initialTask?.hour ?: 8) }
     var minute by remember { mutableStateOf(initialTask?.minute ?: 0) }
     var showTimePicker by remember { mutableStateOf(false) }
-    val context = LocalContext.current
     if (showTimePicker) {
-        DisposableEffect(Unit) {
-            val dialog = TimePickerDialog(context, { _, selectedHour, selectedMinute ->
-                hour = selectedHour
-                minute = selectedMinute
+        val timeState = androidx.compose.material3.rememberTimePickerState(hour, minute, is24Hour = true)
+        ClawSeedFormDialog(
+            onDismissRequest = { showTimePicker = false },
+            title = { Text(stringResource(R.string.task_time_label)) },
+            text = { androidx.compose.material3.TimeInput(state = timeState) },
+            confirmButton = { ClawSeedButton(onClick = {
+                hour = timeState.hour
+                minute = timeState.minute
                 showTimePicker = false
-            }, hour, minute, true)
-            dialog.setOnDismissListener { showTimePicker = false }
-            dialog.show()
-            onDispose { dialog.dismiss() }
-        }
+            }) { Text(stringResource(R.string.common_confirm)) } },
+            dismissButton = { ClawSeedTextButton(onClick = { showTimePicker = false }) { Text(stringResource(R.string.common_cancel)) } },
+        )
+        return
     }
 
     dev.clawseed.demo.ui.components.ClawSeedFormDialog(

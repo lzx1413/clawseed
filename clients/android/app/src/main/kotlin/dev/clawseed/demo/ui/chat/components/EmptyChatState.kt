@@ -22,6 +22,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import dev.clawseed.demo.data.LocalStore
+import dev.clawseed.demo.ui.components.ClawSeedTextButton
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -34,14 +44,25 @@ import dev.clawseed.demo.R
 fun EmptyChatState(
     onSuggestion: (String) -> Unit,
     modifier: Modifier = Modifier,
+    persona: String? = null,
 ) {
-    val suggestions = listOf(
-        R.string.chat_empty_suggestion_tools,
-        R.string.chat_empty_suggestion_memory,
-        R.string.chat_empty_suggestion_schedule,
-        R.string.chat_empty_suggestion_idea,
-    )
-    val icons = listOf(Icons.Default.Build, Icons.Default.Favorite, Icons.Default.DateRange, Icons.Default.Create)
+    val defaults = listOf(
+        stringResource(R.string.chat_empty_suggestion_tools),
+        stringResource(R.string.chat_empty_suggestion_memory),
+        stringResource(R.string.chat_empty_suggestion_schedule),
+        stringResource(R.string.chat_empty_suggestion_idea),
+    ).mapIndexed { index, label -> SuggestionCard(label, label, index) }
+    val context = LocalContext.current
+    val store = remember(context) { LocalStore(context.applicationContext) }
+    val saved by store.suggestionCards.collectAsState(initial = "{}")
+    val cards = remember(saved, persona, defaults) { decodeSuggestions(saved, persona, defaults) }
+    val scope = rememberCoroutineScope()
+    var editing by remember(persona) { mutableStateOf(false) }
+    if (editing) {
+        SuggestionSettingsDialog(initial = cards, onDismiss = { editing = false },
+            onSave = { updated -> scope.launch { store.setSuggestionCards(persona, encodeSuggestions(updated)) }; editing = false },
+            onReset = { scope.launch { store.setSuggestionCards(persona, null) }; editing = false })
+    }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -60,21 +81,21 @@ fun EmptyChatState(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
+        ClawSeedTextButton(onClick = { editing = true }) { Text(stringResource(R.string.suggestion_edit_title)) }
         BoxWithConstraints {
         val columns = if (maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.3f) 1 else 2
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            suggestions.chunked(columns).forEachIndexed { rowIndex, row ->
+            cards.filter { it.visible }.chunked(columns).forEachIndexed { rowIndex, row ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    row.forEachIndexed { columnIndex, labelRes ->
+                    row.forEachIndexed { columnIndex, card ->
                         val index = rowIndex * columns + columnIndex
-                        val label = stringResource(labelRes)
                         EmptySuggestion(
-                            label = label,
-                            icon = icons[index],
-                            onClick = { onSuggestion(label) },
+                            label = card.title,
+                            icon = suggestionIcons[card.icon],
+                            onClick = { onSuggestion(card.prompt) },
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("chat_empty_suggestion_$index"),

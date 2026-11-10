@@ -121,7 +121,7 @@ fun SettingsScreen(
     var voiceExpanded by remember { mutableStateOf(false) }
     var sessionExpanded by remember { mutableStateOf(false) }
     var compactionExpanded by remember { mutableStateOf(false) }
-    var dataTransferExpanded by remember { mutableStateOf(false) }
+    var dataTransferExpanded by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
@@ -138,6 +138,25 @@ fun SettingsScreen(
     }
 
     BackHandler(enabled = llmExpanded) { llmExpanded = false }
+    BackHandler(enabled = dataTransferExpanded) { dataTransferExpanded = false }
+    if (dataTransferExpanded) {
+        Scaffold(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            topBar = {
+                ClawSeedTopAppBar(
+                    title = { Text(stringResource(R.string.settings_data_management)) },
+                    navigationIcon = { ClawSeedIconButton(onClick = { dataTransferExpanded = false }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
+                    } },
+                )
+            },
+        ) { padding ->
+            Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp)) {
+                DataTransferSection()
+            }
+        }
+        return
+    }
     if (llmExpanded) {
         LaunchedEffect(uiState.baseUrl, uiState.apiKey, uiState.isLoading) {
             viewModel.clearBalance()
@@ -150,6 +169,7 @@ fun SettingsScreen(
             }
         }
         Scaffold(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
             topBar = {
                 ClawSeedTopAppBar(
                     title = { Text(stringResource(R.string.settings_llm_config)) },
@@ -163,6 +183,7 @@ fun SettingsScreen(
             bottomBar = {
                 Column(Modifier.navigationBarsPadding().imePadding()) {
                     HorizontalDivider()
+                    Text(stringResource(R.string.settings_save_scope_notice), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall)
                     ClawSeedButton(
                         onClick = viewModel::saveConfig,
                         loading = uiState.isSaving,
@@ -171,7 +192,7 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.Check, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.settings_save_config))
+                        Text(stringResource(R.string.settings_save_all_config))
                     }
                 }
             },
@@ -196,6 +217,7 @@ fun SettingsScreen(
     }
 
     Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             ClawSeedTopAppBar(
                 title = { Text(stringResource(R.string.settings_title)) },
@@ -232,6 +254,8 @@ fun SettingsScreen(
                 item { Spacer(modifier = Modifier.height(4.dp)) }
 
                 item { StatusCard(uiState.status, uiState.downloadProgress) }
+
+                item { Text(stringResource(R.string.settings_save_scope_notice), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
 
                 if (localStore != null) {
                     item {
@@ -300,7 +324,7 @@ fun SettingsScreen(
                                     CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
                                     Spacer(modifier = Modifier.width(8.dp))
                                 }
-                                Text(if (uiState.isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_session_config))
+                                Text(if (uiState.isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_all_config))
                             }
                         }
                     }
@@ -350,7 +374,7 @@ fun SettingsScreen(
                                 }
                                 Text(
                                     if (uiState.isSaving) stringResource(R.string.common_saving)
-                                    else stringResource(R.string.settings_save_context_compaction),
+                                    else stringResource(R.string.settings_save_all_config),
                                 )
                             }
                         }
@@ -401,7 +425,7 @@ fun SettingsScreen(
                                     CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
                                     Spacer(modifier = Modifier.width(8.dp))
                                 }
-                                Text(if (uiState.isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_search_config))
+                                Text(if (uiState.isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_all_config))
                             }
                         }
                     }
@@ -512,12 +536,10 @@ fun SettingsScreen(
                 item {
                     ExpandableSection(
                         title = stringResource(R.string.settings_data_management),
-                        expanded = dataTransferExpanded,
-                        onToggle = { dataTransferExpanded = !dataTransferExpanded },
-                        subtitle = if (!dataTransferExpanded) stringResource(R.string.settings_data_management_subtitle) else null,
-                    ) {
-                        DataTransferSection()
-                    }
+                        expanded = false,
+                        onToggle = { dataTransferExpanded = true },
+                        subtitle = stringResource(R.string.settings_data_management_subtitle),
+                    ) {}
                 }
 
                 item { Spacer(modifier = Modifier.height(16.dp)) }

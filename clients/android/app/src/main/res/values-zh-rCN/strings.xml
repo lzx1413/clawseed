@@ -722,4 +722,23 @@
     <string name="chat_file_pages">%1$d 页</string>
     <string name="chat_file_records">%1$d 条记录（含表头）</string>
     <string name="chat_file_characters">%1$d 字符</string>
+    <string name="profile_confirm_delete_title">确认删除</string>
+    <string name="profile_confirm_clear">删除所有关于我的信息？此操作无法撤销。</string>
+    <string name="profile_confirm_selected">删除选中的 %1$d 条信息？此操作无法撤销。</string>
+    <string name="profile_confirm_inferred">删除全部推断信息，包括筛选后隐藏的信息？此操作无法撤销。</string>
+    <string name="profile_confirm_item">删除这条信息？此操作无法撤销。</string>
+    <string name="profile_no_filter_results">没有符合筛选条件的信息。</string>
+    <string name="profile_clear_filters">清除筛选</string>
+    <string name="settings_save_scope_notice">保存全部配置时，也会保存模型、会话、上下文和搜索中尚未保存的修改，并可能重启网关。</string>
+    <string name="settings_save_all_config">保存全部配置</string>
+    <string name="suggestion_edit_title">编辑快捷卡片</string>
+    <string name="suggestion_edit_hint">为当前角色自定义四张卡片。点击卡片后会立即发送对应内容。</string>
+    <string name="suggestion_card_number">卡片 %1$d</string>
+    <string name="suggestion_move_up">上移</string>
+    <string name="suggestion_move_down">下移</string>
+    <string name="suggestion_title_label">卡片标题</string>
+    <string name="suggestion_prompt_label">发送内容</string>
+    <string name="suggestion_icon_number">图标 %1$d</string>
+    <string name="suggestion_restore_defaults">恢复默认</string>
+    <string name="suggestion_save">保存</string>
 </resources>

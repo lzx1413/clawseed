@@ -448,6 +448,7 @@ fun ChatScreen(
                         item(key = "__empty_chat_state__", contentType = "empty_chat_state") {
                             EmptyChatState(
                                 modifier = Modifier.heightIn(min = 360.dp),
+                                persona = uiState.currentPersona?.takeIf { it.isNotEmpty() },
                                 onSuggestion = { prompt ->
                                     viewModel.sendMessage(prompt, uiState.currentSessionId)
                                 },

@@ -1,6 +1,12 @@
 package dev.clawseed.demo.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import dev.clawseed.demo.ui.components.GlassBackdropHost
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -64,40 +70,56 @@ fun ClawseedNavHost(
             )
         }
         composable(Routes.SETTINGS) {
-            SettingsScreen(
+            AppPageBackdrop { SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onManageUserProfile = { navController.navigate(Routes.USER_PROFILE) },
                 localStore = localStore,
-            )
+            ) }
         }
         composable(Routes.USER_PROFILE) {
-            UserProfileScreen(onBack = { navController.popBackStack() })
+            AppPageBackdrop { UserProfileScreen(onBack = { navController.popBackStack() }) }
         }
         composable(Routes.SCHEDULED_TASKS) {
-            ScheduledTasksScreen(
+            AppPageBackdrop { ScheduledTasksScreen(
                 onBack = { navController.popBackStack() },
                 onRunTask = onRunTask,
                 onSettings = { navController.navigate(Routes.SETTINGS) },
                 onOpenSession = onOpenTaskSession,
-            )
+            ) }
         }
         composable(Routes.PERSONAS) {
-            PersonaManagerScreen(
+            AppPageBackdrop { PersonaManagerScreen(
                 onBack = { navController.popBackStack() },
                 onStartChat = { persona ->
                     onNewSession(persona)
                 },
-            )
+            ) }
         }
         composable(Routes.PERSONA_DETAIL) { backStackEntry ->
             val encoded = backStackEntry.arguments?.getString(Routes.PERSONA_NAME_ARG).orEmpty()
-            PersonaManagerScreen(
+            AppPageBackdrop { PersonaManagerScreen(
                 onBack = { navController.popBackStack() },
                 onStartChat = { persona ->
                     onNewSession(persona)
                 },
                 initialPersona = java.net.URLDecoder.decode(encoded, "UTF-8"),
-            )
+            ) }
         }
     }
+}
+
+@Composable
+private fun AppPageBackdrop(content: @Composable () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    GlassBackdropHost(
+        modifier = Modifier.fillMaxSize(),
+        background = {
+            androidx.compose.foundation.layout.Box(
+                Modifier.fillMaxSize().background(colors.background).background(Brush.verticalGradient(listOf(
+                    colors.background, colors.primaryContainer.copy(alpha = 0.45f), colors.background,
+                )))
+            )
+        },
+        content = { content() },
+    )
 }

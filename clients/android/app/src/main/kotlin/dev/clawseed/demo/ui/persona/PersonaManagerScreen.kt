@@ -90,6 +90,7 @@ fun PersonaManagerScreen(
     }
 
     Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             ClawSeedTopAppBar(
                 title = {

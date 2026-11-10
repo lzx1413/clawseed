@@ -722,4 +722,23 @@
     <string name="chat_file_pages">%1$d pages</string>
     <string name="chat_file_records">%1$d records (including header)</string>
     <string name="chat_file_characters">%1$d characters</string>
+    <string name="profile_confirm_delete_title">Confirm deletion</string>
+    <string name="profile_confirm_clear">Delete all About me entries? This cannot be undone.</string>
+    <string name="profile_confirm_selected">Delete %1$d selected entries? This cannot be undone.</string>
+    <string name="profile_confirm_inferred">Delete all inferred entries, including those hidden by filters? This cannot be undone.</string>
+    <string name="profile_confirm_item">Delete this entry? This cannot be undone.</string>
+    <string name="profile_no_filter_results">No entries match these filters.</string>
+    <string name="profile_clear_filters">Clear filters</string>
+    <string name="settings_save_scope_notice">Save all configuration also saves pending changes in the model, session, context and search sections. The gateway may restart.</string>
+    <string name="settings_save_all_config">Save all configuration</string>
+    <string name="suggestion_edit_title">Edit shortcuts</string>
+    <string name="suggestion_edit_hint">Customize the four shortcuts for the current assistant. Tap a shortcut to send its prompt immediately.</string>
+    <string name="suggestion_card_number">Shortcut %1$d</string>
+    <string name="suggestion_move_up">Move up</string>
+    <string name="suggestion_move_down">Move down</string>
+    <string name="suggestion_title_label">Card title</string>
+    <string name="suggestion_prompt_label">Message to send</string>
+    <string name="suggestion_icon_number">Icon %1$d</string>
+    <string name="suggestion_restore_defaults">Restore defaults</string>
+    <string name="suggestion_save">Save</string>
 </resources>

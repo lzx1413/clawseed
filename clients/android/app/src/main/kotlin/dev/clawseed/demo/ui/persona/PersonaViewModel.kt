@@ -177,7 +177,10 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
                 .onSuccess {
                     val oldName = draft.originalName
                     if (oldName != null && oldName != name) {
-                        ClawSeedAndroid.gatewayClient().deletePersona(oldName)
+                        val deleted = ClawSeedAndroid.gatewayClient().deletePersona(oldName)
+                        if (deleted.isSuccess) {
+                            dev.clawseed.demo.data.LocalStore(getApplication()).moveSuggestionCards(oldName, name)
+                        }
                     }
                     _uiState.value = _uiState.value.copy(isSaving = false, editing = null)
                     load()
@@ -208,7 +211,10 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
     fun delete(name: String) {
         viewModelScope.launch {
             ClawSeedAndroid.gatewayClient().deletePersona(name)
-                .onSuccess { load() }
+                .onSuccess {
+                    dev.clawseed.demo.data.LocalStore(getApplication()).setSuggestionCards(name, null)
+                    load()
+                }
                 .onFailure { e -> _uiState.value = _uiState.value.copy(error = e.message) }
         }
     }

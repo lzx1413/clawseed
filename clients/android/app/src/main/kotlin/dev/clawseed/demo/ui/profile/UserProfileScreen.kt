@@ -51,6 +51,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -73,6 +74,25 @@ fun UserProfileScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    var pendingDelete by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var deleteDescription by remember { mutableStateOf("") }
+    pendingDelete?.let { action ->
+        dev.clawseed.demo.ui.components.ClawSeedFormDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text(stringResource(R.string.profile_confirm_delete_title)) },
+            text = { Text(deleteDescription) },
+            confirmButton = {
+                ClawSeedButton(onClick = { pendingDelete = null; action() }, dangerous = true) {
+                    Text(stringResource(R.string.common_delete))
+                }
+            },
+            dismissButton = { ClawSeedTextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.common_cancel)) } },
+        )
+    }
+    val clearDescription = stringResource(R.string.profile_confirm_clear)
+    val selectedDescription = stringResource(R.string.profile_confirm_selected, uiState.selectedIds.size)
+    val inferredDescription = stringResource(R.string.profile_confirm_inferred)
+    val itemDescription = stringResource(R.string.profile_confirm_item)
     LaunchedEffect(Unit) { viewModel.load() }
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
@@ -92,6 +112,7 @@ fun UserProfileScreen(
     }
 
     Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             ClawSeedTopAppBar(
                 title = { Text(stringResource(R.string.knowledge_title)) },
@@ -113,7 +134,7 @@ fun UserProfileScreen(
                         Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.common_refresh))
                     }
                     if (uiState.tab == KnowledgeTab.ABOUT_ME && uiState.items.isNotEmpty()) {
-                        ClawSeedIconButton(onClick = viewModel::clear, enabled = !uiState.isSaving) {
+                        ClawSeedIconButton(onClick = { deleteDescription = clearDescription; pendingDelete = viewModel::clear }, enabled = !uiState.isSaving) {
                             Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.profile_clear))
                         }
                     }
@@ -148,14 +169,14 @@ fun UserProfileScreen(
                 )
             }
             val profileHeader: @Composable () -> Unit = {
-                ProfileFilters(uiState, viewModel)
+                ProfileFilters(uiState, viewModel, onDeleteInferred = { deleteDescription = inferredDescription; pendingDelete = viewModel::deleteAllInferred })
                 if (uiState.selectedIds.isNotEmpty()) {
                     FlowRow(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        ClawSeedButton(onClick = viewModel::deleteSelected, dangerous = true) {
+                        ClawSeedButton(onClick = { deleteDescription = selectedDescription; pendingDelete = viewModel::deleteSelected }, dangerous = true) {
                             Text(stringResource(R.string.profile_delete_selected, uiState.selectedIds.size))
                         }
                         ClawSeedTextButton(onClick = viewModel::rejectSelected) {
@@ -187,6 +208,8 @@ fun UserProfileScreen(
 
                 else -> UserProfileList(
                     items = filteredItems,
+                    hasFilters = uiState.categoryFilter != null || uiState.sourceFilter != null || uiState.statusFilter != null,
+                    onClearFilters = { viewModel.setCategoryFilter(null); viewModel.setSourceFilter(null); viewModel.setStatusFilter(null) },
                     header = profileHeader,
                     onAdd = viewModel::create,
                     selectedIds = uiState.selectedIds,
@@ -195,7 +218,7 @@ fun UserProfileScreen(
                     onToggleSelection = viewModel::toggleSelection,
                     onEdit = viewModel::edit,
                     onReject = viewModel::reject,
-                    onDelete = viewModel::delete,
+                    onDelete = { item -> deleteDescription = itemDescription; pendingDelete = { viewModel.delete(item) } },
                 )
             }
 
@@ -209,7 +232,7 @@ fun UserProfileScreen(
 }
 
 @Composable
-private fun ProfileFilters(uiState: UserProfileUiState, viewModel: UserProfileViewModel) {
+private fun ProfileFilters(uiState: UserProfileUiState, viewModel: UserProfileViewModel, onDeleteInferred: () -> Unit) {
     FlowRow(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -246,7 +269,7 @@ private fun ProfileFilters(uiState: UserProfileUiState, viewModel: UserProfileVi
             label = { Text(stringResource(R.string.profile_status_rejected)) },
         )
         if (uiState.items.any { it.source == ProfileSource.INFERRED }) {
-            ClawSeedTextButton(onClick = viewModel::deleteAllInferred, dangerous = true) {
+            ClawSeedTextButton(onClick = onDeleteInferred, dangerous = true) {
                 Text(stringResource(R.string.profile_delete_inferred))
             }
         }
@@ -256,6 +279,8 @@ private fun ProfileFilters(uiState: UserProfileUiState, viewModel: UserProfileVi
 @Composable
 private fun UserProfileList(
     items: List<UserProfileItem>,
+    hasFilters: Boolean,
+    onClearFilters: () -> Unit,
     header: @Composable () -> Unit,
     onAdd: () -> Unit,
     selectedIds: Set<String>,
@@ -274,7 +299,14 @@ private fun UserProfileList(
     ) {
         item(key = "filters") { header() }
         if (items.isEmpty()) {
-            item(key = "empty") { EmptyProfileState(onAdd, Modifier.fillMaxWidth()) }
+            item(key = "empty") {
+                if (hasFilters) {
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(stringResource(R.string.profile_no_filter_results))
+                        ClawSeedTextButton(onClick = onClearFilters) { Text(stringResource(R.string.profile_clear_filters)) }
+                    }
+                } else EmptyProfileState(onAdd, Modifier.fillMaxWidth())
+            }
         }
         ProfileCategory.entries.forEach { category ->
             val categoryItems = grouped[category].orEmpty()
