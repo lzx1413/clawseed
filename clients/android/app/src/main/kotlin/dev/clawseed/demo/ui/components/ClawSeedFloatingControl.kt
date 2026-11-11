@@ -33,13 +33,19 @@ fun ClawSeedFloatingIconButton(
     onClick: () -> Unit,
     contentDescription: String,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    dangerous: Boolean = false,
+    tooltip: String? = null,
     content: @Composable () -> Unit,
 ) {
     ClawSeedFloatingSurface(modifier.size(ClawSeedSizes.TouchTarget)) {
         ClawSeedIconButton(
             onClick = onClick,
             modifier = Modifier.fillMaxSize(),
+            enabled = enabled,
+            dangerous = dangerous,
             contentDescription = contentDescription,
+            tooltip = tooltip,
             content = content,
         )
     }

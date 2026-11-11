@@ -48,6 +48,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import dev.clawseed.demo.ui.components.ClawSeedNavigationRow
+import dev.clawseed.demo.ui.components.GlassContainer
+import dev.clawseed.demo.ui.components.GlassLevel
+import dev.clawseed.demo.ui.theme.ClawSeedShapes
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -455,13 +458,21 @@ private fun PersonaGroupHeader(
             ClawSeedIconButton(enabled = actionsEnabled, onClick = { showMenu = true }) {
                 Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.drawer_persona_actions))
             }
-            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                DropdownMenuItem(
-                    enabled = actionsEnabled,
-                    text = { Text(stringResource(R.string.drawer_delete_persona_sessions), color = MaterialTheme.colorScheme.error) },
-                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-                    onClick = { showMenu = false; onDeleteAll() },
-                )
+            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false },
+                containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                shadowElevation = 0.dp,
+                shape = ClawSeedShapes.Card,
+            ) {
+                GlassContainer(level = GlassLevel.FloatingInput, shape = ClawSeedShapes.Card) {
+                    Column {
+                        DropdownMenuItem(
+                            enabled = actionsEnabled,
+                            text = { Text(stringResource(R.string.drawer_delete_persona_sessions), color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                            onClick = { showMenu = false; onDeleteAll() },
+                        )
+                    }
+                }
             }
         }
     }
@@ -557,25 +568,33 @@ private fun SessionItem(
                 ClawSeedIconButton(enabled = actionsEnabled, onClick = { showMenu = true }) {
                     Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.drawer_session_actions))
                 }
-                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                    DropdownMenuItem(
-                        enabled = actionsEnabled,
-                        text = { Text(stringResource(if (isPinned) R.string.drawer_unpin else R.string.drawer_pin)) },
-                        leadingIcon = { Icon(Icons.Default.Star, contentDescription = null) },
-                        onClick = { showMenu = false; onTogglePinned() },
-                    )
-                    DropdownMenuItem(
-                        enabled = actionsEnabled,
-                        text = { Text(stringResource(R.string.drawer_rename)) },
-                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                        onClick = { showMenu = false; showRenameDialog = true },
-                    )
-                    DropdownMenuItem(
-                        enabled = actionsEnabled,
-                        text = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) },
-                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-                        onClick = { showMenu = false; confirmDelete = true },
-                    )
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false },
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                    shadowElevation = 0.dp,
+                    shape = ClawSeedShapes.Card,
+                ) {
+                    GlassContainer(level = GlassLevel.FloatingInput, shape = ClawSeedShapes.Card) {
+                        Column {
+                            DropdownMenuItem(
+                                enabled = actionsEnabled,
+                                text = { Text(stringResource(if (isPinned) R.string.drawer_unpin else R.string.drawer_pin)) },
+                                leadingIcon = { Icon(Icons.Default.Star, contentDescription = null) },
+                                onClick = { showMenu = false; onTogglePinned() },
+                            )
+                            DropdownMenuItem(
+                                enabled = actionsEnabled,
+                                text = { Text(stringResource(R.string.drawer_rename)) },
+                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                onClick = { showMenu = false; showRenameDialog = true },
+                            )
+                            DropdownMenuItem(
+                                enabled = actionsEnabled,
+                                text = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) },
+                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                                onClick = { showMenu = false; confirmDelete = true },
+                            )
+                        }
+                    }
                 }
             }
             }

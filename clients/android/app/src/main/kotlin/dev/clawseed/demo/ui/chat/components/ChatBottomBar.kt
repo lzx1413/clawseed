@@ -2,7 +2,7 @@ package dev.clawseed.demo.ui.chat.components
 
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
-import dev.clawseed.demo.ui.components.ClawSeedIconButton
+import dev.clawseed.demo.ui.components.ClawSeedFloatingIconButton
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -82,18 +82,19 @@ fun ChatBottomBar(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
             if (attachmentsAvailable) {
-                ClawSeedIconButton(
+                ClawSeedFloatingIconButton(
                     onClick = {
                         keyboardController?.hide()
                         onOpenAttachments()
                     },
-                    enabled = canSend && !isLoading,
                     contentDescription = stringResource(R.string.chat_add_attachment),
+                    enabled = canSend && !isLoading,
                 ) {
                     Icon(
                         imageVector = AttachmentIcon,
                         contentDescription = null,
                         modifier = Modifier.size(24.dp),
+                        tint = colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -169,13 +170,18 @@ private fun ComposerCircleButton(
     modifier: Modifier = Modifier,
     testTag: String? = null,
 ) {
-    ClawSeedIconButton(
+    ClawSeedFloatingIconButton(
         onClick = onClick,
         modifier = modifier.then(testTag?.let { Modifier.testTag(it) } ?: Modifier),
         contentDescription = contentDescription,
-        filled = true,
+        dangerous = icon == StopIcon,
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(32.dp))
+        Icon(
+            icon,
+            contentDescription = null,
+            modifier = Modifier.size(28.dp),
+            tint = if (icon == StopIcon) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+        )
     }
 }
 

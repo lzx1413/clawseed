@@ -40,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import dev.clawseed.demo.ui.components.ClawSeedTopAppBar
 import dev.clawseed.demo.ui.components.ClawSeedAddAction
+import dev.clawseed.demo.ui.components.ClawSeedFloatingIconButton
 import dev.clawseed.demo.ui.components.ClawSeedCheckbox
 import dev.clawseed.demo.ui.components.ClawSeedTab
 import dev.clawseed.demo.ui.components.ClawSeedTabRow
@@ -374,16 +375,33 @@ private fun UserProfileItemCard(
 
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                ClawSeedIconButton(onClick = onEdit, enabled = enabled) {
-                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.profile_edit))
+                ClawSeedFloatingIconButton(
+                    onClick = onEdit,
+                    enabled = enabled,
+                    contentDescription = stringResource(R.string.profile_edit),
+                    tooltip = stringResource(R.string.profile_edit),
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(20.dp))
                 }
                 if (item.source == ProfileSource.INFERRED && item.status == ProfileStatus.ACTIVE) {
-                    ClawSeedIconButton(onClick = onReject, enabled = enabled) {
-                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.profile_reject))
+                    ClawSeedFloatingIconButton(
+                        onClick = onReject,
+                        enabled = enabled,
+                        dangerous = true,
+                        contentDescription = stringResource(R.string.profile_reject),
+                        tooltip = stringResource(R.string.profile_reject),
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(20.dp))
                     }
                 }
-                ClawSeedIconButton(onClick = onDelete, enabled = enabled, dangerous = true) {
-                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.common_delete))
+                ClawSeedFloatingIconButton(
+                    onClick = onDelete,
+                    enabled = enabled,
+                    dangerous = true,
+                    contentDescription = stringResource(R.string.common_delete),
+                    tooltip = stringResource(R.string.common_delete),
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(20.dp))
                 }
             }
             FlowRow(

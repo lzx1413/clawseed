@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.TextSelectionColors
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Card
@@ -293,9 +295,7 @@ private fun SpeakButton(
     Row(
         modifier = modifier
             .clip(ClawSeedShapes.Micro)
-            .clickable {
-                if (isSpeaking) onStop() else onSpeak(content)
-            }
+            .clickable { if (isSpeaking) onStop() else onSpeak(content) }
             .padding(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -303,8 +303,7 @@ private fun SpeakButton(
             imageVector = if (isSpeaking) SpeakerStopIcon else SpeakerPlayIcon,
             contentDescription = stringResource(if (isSpeaking) R.string.msg_stop_speaking else R.string.msg_speak),
             modifier = Modifier.size(14.dp),
-            tint = if (isSpeaking) MaterialTheme.colorScheme.primary
-                   else MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = if (isSpeaking) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -331,22 +330,14 @@ private fun CopyButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
             }
             .padding(4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Icon(
-            imageVector = CopyIcon,
-            contentDescription = stringResource(R.string.msg_copy),
+            imageVector = if (copied) Icons.Default.Check else CopyIcon,
+            contentDescription = stringResource(if (copied) R.string.msg_copied else R.string.msg_copy),
             modifier = Modifier.size(14.dp),
             tint = if (copied) MaterialTheme.colorScheme.success
                    else MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (copied) {
-            Text(
-                text = stringResource(R.string.msg_copied),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.success,
-            )
-        }
     }
 }
 
@@ -355,10 +346,9 @@ private fun RegenerateButton(onClick: () -> Unit, modifier: Modifier = Modifier)
     Row(
         modifier = modifier
             .clip(ClawSeedShapes.Micro)
-            .clickable { onClick() }
+            .clickable(onClick = onClick)
             .padding(4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Icon(
             imageVector = RefreshIcon,

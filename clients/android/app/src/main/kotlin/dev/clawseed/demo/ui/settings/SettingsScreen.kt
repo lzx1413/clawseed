@@ -51,6 +51,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import dev.clawseed.demo.ui.components.ClawSeedTopAppBar
+import dev.clawseed.demo.ui.components.ClawSeedGlassExposedDropdownMenu
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -1006,7 +1007,7 @@ private fun ProviderFormEditor(
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = providerExpanded) },
                     modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
                 )
-                ExposedDropdownMenu(
+                ClawSeedGlassExposedDropdownMenu(
                     expanded = providerExpanded,
                     onDismissRequest = { providerExpanded = false },
                 ) {
@@ -1143,7 +1144,7 @@ private fun ProviderFormEditor(
                         modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable),
                         singleLine = true,
                     )
-                    ExposedDropdownMenu(
+                    ClawSeedGlassExposedDropdownMenu(
                         expanded = modelExpanded,
                         onDismissRequest = { modelExpanded = false },
                     ) {
@@ -1241,7 +1242,7 @@ private fun ProviderFormEditor(
                         .fillMaxWidth()
                         .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
                 )
-                ExposedDropdownMenu(
+                ClawSeedGlassExposedDropdownMenu(
                     expanded = contextWindowExpanded,
                     onDismissRequest = { contextWindowExpanded = false },
                 ) {
@@ -1654,7 +1655,7 @@ private fun SearchEngineCard(
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                     modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
                 )
-                ExposedDropdownMenu(
+                ClawSeedGlassExposedDropdownMenu(
                     expanded = expanded,
                     onDismissRequest = { expanded = false },
                 ) {
@@ -1817,7 +1818,7 @@ private fun ContextCompactionCard(
                         .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
                     enabled = enabled,
                 )
-                ExposedDropdownMenu(
+                ClawSeedGlassExposedDropdownMenu(
                     expanded = keepExpanded,
                     onDismissRequest = { keepExpanded = false },
                 ) {
@@ -1849,7 +1850,7 @@ private fun ContextCompactionCard(
                         .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
                     enabled = enabled,
                 )
-                ExposedDropdownMenu(
+                ClawSeedGlassExposedDropdownMenu(
                     expanded = thresholdExpanded,
                     onDismissRequest = { thresholdExpanded = false },
                 ) {

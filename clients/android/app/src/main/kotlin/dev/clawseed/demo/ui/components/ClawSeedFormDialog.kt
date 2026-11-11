@@ -41,9 +41,11 @@ fun ClawSeedFormDialog(
                 contentAlignment = Alignment.Center,
             ) {
                 val availableHeight = maxHeight
-                Surface(Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(max = maxHeight),
-                    shape = ClawSeedShapes.Card, color = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface) {
+                GlassContainer(
+                    modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(max = maxHeight),
+                    level = GlassLevel.FloatingInput,
+                    shape = ClawSeedShapes.Card,
+                ) {
                     Column {
                         Box(Modifier.heightIn(max = availableHeight * 0.3f).verticalScroll(rememberScrollState())
                             .padding(horizontal = ClawSeedSpacing.Large, vertical = ClawSeedSpacing.Page)) {

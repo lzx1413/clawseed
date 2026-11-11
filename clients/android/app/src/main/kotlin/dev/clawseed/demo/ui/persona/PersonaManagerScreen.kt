@@ -40,6 +40,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import dev.clawseed.demo.ui.components.ClawSeedFormDialog
 import dev.clawseed.demo.ui.components.ClawSeedAddAction
+import dev.clawseed.demo.ui.components.ClawSeedFloatingIconButton
+import dev.clawseed.demo.ui.components.ClawSeedGlassExposedDropdownMenu
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -249,21 +251,34 @@ private fun PersonaList(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        ClawSeedOutlinedButton(onClick = { onStart(persona.name) }) {
-                            Icon(Icons.Default.PlayArrow, null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.persona_start))
+                        ClawSeedFloatingIconButton(
+                            onClick = { onStart(persona.name) },
+                            contentDescription = stringResource(R.string.persona_start),
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null)
                         }
-                        ClawSeedIconButton(onClick = { onEdit(persona.name) }, tooltip = stringResource(R.string.persona_edit)) {
-                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.persona_edit))
+                        ClawSeedFloatingIconButton(
+                            onClick = { onEdit(persona.name) },
+                            contentDescription = stringResource(R.string.persona_edit),
+                            tooltip = stringResource(R.string.persona_edit),
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = null)
                         }
-                        ClawSeedIconButton(onClick = { onDuplicate(persona) }, tooltip = stringResource(R.string.persona_duplicate)) {
-                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.persona_duplicate))
+                        ClawSeedFloatingIconButton(
+                            onClick = { onDuplicate(persona) },
+                            contentDescription = stringResource(R.string.persona_duplicate),
+                            tooltip = stringResource(R.string.persona_duplicate),
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null)
                         }
                         if (persona.name != "default") {
-                            ClawSeedIconButton(onClick = { confirmDelete = true }, dangerous = true,
-                                tooltip = stringResource(R.string.common_delete)) {
-                                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.common_delete))
+                            ClawSeedFloatingIconButton(
+                                onClick = { confirmDelete = true },
+                                contentDescription = stringResource(R.string.common_delete),
+                                dangerous = true,
+                                tooltip = stringResource(R.string.common_delete),
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = null)
                             }
                         }
                     }
@@ -292,16 +307,25 @@ private fun PersonaDetailView(
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                ClawSeedButton(onClick = { onStart(detail.name) }, modifier = Modifier.weight(1f)) {
+                ClawSeedFloatingIconButton(
+                    onClick = { onStart(detail.name) },
+                    contentDescription = stringResource(R.string.persona_start),
+                ) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.persona_start))
                 }
-                ClawSeedIconButton(onClick = onEdit) {
-                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.persona_edit))
+                ClawSeedFloatingIconButton(
+                    onClick = onEdit,
+                    contentDescription = stringResource(R.string.persona_edit),
+                    tooltip = stringResource(R.string.persona_edit),
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null)
                 }
-                ClawSeedIconButton(onClick = onDuplicate) {
-                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.persona_duplicate))
+                ClawSeedFloatingIconButton(
+                    onClick = onDuplicate,
+                    contentDescription = stringResource(R.string.persona_duplicate),
+                    tooltip = stringResource(R.string.persona_duplicate),
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
                 }
             }
         }
@@ -696,7 +720,7 @@ private fun PersonaEditor(
                         label = { Text("Provider") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = providerExpanded) },
                     )
-                    ExposedDropdownMenu(
+                    ClawSeedGlassExposedDropdownMenu(
                         expanded = providerExpanded,
                         onDismissRequest = { providerExpanded = false },
                     ) {
@@ -732,7 +756,7 @@ private fun PersonaEditor(
                             placeholder = { Text(stringResource(R.string.persona_model_placeholder)) },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded) },
                         )
-                        ExposedDropdownMenu(
+                        ClawSeedGlassExposedDropdownMenu(
                             expanded = modelExpanded,
                             onDismissRequest = { modelExpanded = false },
                         ) {

@@ -27,6 +27,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBoxScope
 import androidx.compose.material3.Surface
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -164,6 +166,28 @@ fun GlassSurface(
     }
 }
 
+/** Exposed dropdown with the same translucent surface used by floating controls. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExposedDropdownMenuBoxScope.ClawSeedGlassExposedDropdownMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    ExposedDropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        containerColor = Color.Transparent,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        shape = ClawSeedShapes.Card,
+    ) {
+        GlassContainer(level = GlassLevel.FloatingInput, shape = ClawSeedShapes.Card) {
+            Column(Modifier.fillMaxWidth(), content = content)
+        }
+    }
+}
+
 /**
  * A compact frosted action surface. The translucent fill lets the surface
  * inherit color from whatever is behind it, while the border and pressed tint
@@ -179,6 +203,7 @@ fun GlassButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     dangerous: Boolean = false,
+    prominent: Boolean = false,
     contentPadding: PaddingValues = PaddingValues(
         horizontal = ClawSeedSpacing.ButtonHorizontal,
         vertical = ClawSeedSpacing.ButtonVertical,
@@ -189,22 +214,22 @@ fun GlassButton(
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val accent = if (dangerous) scheme.error else scheme.primary
-    val containerColor = when {
-        !enabled -> scheme.surfaceContainer.copy(alpha = 0.42f)
-        pressed -> accent.copy(alpha = 0.26f)
-        else -> scheme.surfaceContainerHigh.copy(alpha = 0.72f)
-    }
     val contentColor = if (enabled) accent else scheme.onSurface.copy(alpha = 0.38f)
+    val containerColor = when {
+        !enabled -> scheme.surfaceContainer.copy(alpha = 0.72f)
+        prominent -> scheme.primaryContainer
+        else -> scheme.surfaceContainerHigh
+    }
     val borderColor = when {
-        !enabled -> scheme.outlineVariant.copy(alpha = 0.32f)
+        !enabled -> scheme.outlineVariant.copy(alpha = 0.48f)
         pressed -> accent.copy(alpha = 0.78f)
+        prominent -> accent.copy(alpha = 0.64f)
         else -> scheme.outline.copy(alpha = 0.48f)
     }
 
     Surface(
         onClick = onClick,
-        modifier = modifier
-            .defaultMinSize(minHeight = ClawSeedSizes.Button),
+        modifier = modifier.defaultMinSize(minHeight = ClawSeedSizes.Button),
         enabled = enabled,
         shape = ClawSeedShapes.Field,
         color = containerColor,

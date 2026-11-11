@@ -243,24 +243,31 @@ private fun AttachmentAction(
     modifier: Modifier, stacked: Boolean,
 ) {
     val colors = MaterialTheme.colorScheme
-    Surface(
-        onClick = onClick, enabled = enabled,
+    GlassContainer(
         modifier = modifier.heightIn(min = if (stacked) 64.dp else 92.dp),
-        shape = ClawSeedShapes.Card, color = colors.surface.copy(alpha = 0.45f),
-        contentColor = colors.onSurface.copy(alpha = if (enabled) 1f else 0.38f),
-        border = BorderStroke(1.dp, colors.outlineVariant),
+        level = GlassLevel.Surface,
+        shape = ClawSeedShapes.Card,
     ) {
-        if (stacked) {
-            Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
-                Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            }
-        } else {
-            Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
-                Text(label, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        Surface(
+            onClick = onClick,
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+            shape = ClawSeedShapes.Card,
+            color = Color.Transparent,
+            contentColor = colors.onSurface.copy(alpha = if (enabled) 1f else 0.38f),
+        ) {
+            if (stacked) {
+                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
+                    Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                }
+            } else {
+                Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)) {
+                    Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
+                    Text(label, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                }
             }
         }
     }

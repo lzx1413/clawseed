@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
 import dev.clawseed.demo.ui.components.ClawSeedFormDialog
 import dev.clawseed.demo.ui.components.ClawSeedAddAction
+import dev.clawseed.demo.ui.components.ClawSeedFloatingIconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -309,31 +310,39 @@ private fun TaskCard(
                         color = MaterialTheme.colorScheme.primary,
                     )
                 } else {
-                    ClawSeedOutlinedButton(
+                    ClawSeedFloatingIconButton(
                         onClick = onRunNow,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        contentDescription = stringResource(R.string.task_run_now),
+                        tooltip = stringResource(R.string.task_run_now),
                     ) {
                         Icon(
                             Icons.Default.PlayArrow,
-                            contentDescription = stringResource(R.string.task_run_now),
-                            modifier = Modifier.size(16.dp),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(R.string.task_run_now), style = MaterialTheme.typography.labelSmall)
                     }
                 }
-                ClawSeedIconButton(onClick = onEdit) {
+                ClawSeedFloatingIconButton(
+                    onClick = onEdit,
+                    contentDescription = stringResource(R.string.task_edit),
+                    tooltip = stringResource(R.string.task_edit),
+                ) {
                     Icon(
                         Icons.Default.Edit,
-                        contentDescription = stringResource(R.string.task_edit),
-                        tint = MaterialTheme.colorScheme.primary,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
                     )
                 }
-                ClawSeedIconButton(onClick = onDelete, dangerous = true) {
+                ClawSeedFloatingIconButton(
+                    onClick = onDelete,
+                    contentDescription = stringResource(R.string.common_delete),
+                    dangerous = true,
+                    tooltip = stringResource(R.string.common_delete),
+                ) {
                     Icon(
                         Icons.Default.Delete,
-                        contentDescription = stringResource(R.string.common_delete),
-                        tint = MaterialTheme.colorScheme.error,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }

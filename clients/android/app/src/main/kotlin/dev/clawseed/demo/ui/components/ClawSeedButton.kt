@@ -32,20 +32,23 @@ fun ClawSeedButton(
     }
     val body: @Composable RowScope.() -> Unit = {
         Box(contentAlignment = Alignment.Center) {
-            Row(Modifier.graphicsLayer { alpha = if (loading) 0f else 1f },
+            val contentModifier = if (loading) {
+                Modifier.graphicsLayer { alpha = 0f }
+            } else {
+                Modifier
+            }
+            Row(contentModifier,
                 verticalAlignment = Alignment.CenterVertically, content = content)
             if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
         }
     }
     when (style) {
-        ClawSeedButtonStyle.Primary -> Button(onClick, buttonModifier, enabled && !loading,
-            shape = ClawSeedShapes.Field, contentPadding = contentPadding,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (dangerous) scheme.error else scheme.primary,
-                contentColor = if (dangerous) scheme.onError else scheme.onPrimary), content = body)
-        ClawSeedButtonStyle.Outlined -> OutlinedButton(onClick, buttonModifier, enabled && !loading,
-            shape = ClawSeedShapes.Field, contentPadding = contentPadding,
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = if (dangerous) scheme.error else scheme.primary), content = body)
+        ClawSeedButtonStyle.Primary -> GlassButton(onClick = onClick, modifier = buttonModifier,
+            enabled = enabled && !loading, dangerous = dangerous, prominent = true,
+            contentPadding = contentPadding, content = body)
+        ClawSeedButtonStyle.Outlined -> GlassButton(onClick = onClick, modifier = buttonModifier,
+            enabled = enabled && !loading, dangerous = dangerous,
+            contentPadding = contentPadding, content = body)
         ClawSeedButtonStyle.Text -> TextButton(onClick, buttonModifier, enabled && !loading,
             shape = ClawSeedShapes.Field, contentPadding = contentPadding,
             colors = ButtonDefaults.textButtonColors(contentColor = if (dangerous) scheme.error else scheme.primary), content = body)
