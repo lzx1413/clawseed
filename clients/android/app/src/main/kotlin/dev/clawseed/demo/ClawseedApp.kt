@@ -3,6 +3,7 @@ package dev.clawseed.demo
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +35,7 @@ fun ClawseedApp(localStore: LocalStore, notificationSessionId: androidx.compose.
     var pendingAutoMessage by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingAutoTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    val defaultPersonaName by localStore.defaultPersonaName.collectAsState(initial = null)
 
     // Navigate to session from notification tap
     val notifSessionId = notificationSessionId.value
@@ -115,7 +117,10 @@ fun ClawseedApp(localStore: LocalStore, notificationSessionId: androidx.compose.
         ClawseedNavHost(
             navController = navController,
             onToggleDrawer = { scope.launch { drawerState.open() } },
-            onNewSession = { persona -> switchSession(null, persona, true) },
+            onNewSession = { persona ->
+                switchSession(null, persona, true)
+            },
+            defaultPersonaName = defaultPersonaName,
             currentSessionId = currentSessionId,
             onSessionIdChanged = { id ->
                 if (hasPendingNewSessionPersona && id != null) {

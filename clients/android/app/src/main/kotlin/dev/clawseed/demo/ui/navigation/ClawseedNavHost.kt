@@ -36,6 +36,7 @@ fun ClawseedNavHost(
     navController: NavHostController,
     onToggleDrawer: () -> Unit,
     onNewSession: (String?) -> Unit = {},
+    defaultPersonaName: String? = null,
     currentSessionId: String? = null,
     onSessionIdChanged: (String?) -> Unit = {},
     onSessionEstablished: () -> Unit = {},
@@ -57,6 +58,7 @@ fun ClawseedNavHost(
             ChatScreen(
                 onToggleDrawer = onToggleDrawer,
                 onNewSession = onNewSession,
+                defaultPersonaName = defaultPersonaName,
                 sessionId = currentSessionId,
                 onSessionIdChanged = onSessionIdChanged,
                 onSessionEstablished = onSessionEstablished,

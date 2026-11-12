@@ -5,6 +5,8 @@ import androidx.compose.runtime.setValue
 import dev.clawseed.demo.ui.components.ClawSeedButton
 import dev.clawseed.demo.ui.components.ClawSeedTextButton
 import dev.clawseed.demo.ui.components.ClawSeedTextField
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -52,53 +54,60 @@ fun AskUserPrompt(
             .padding(horizontal = ClawSeedSpacing.Medium, vertical = ClawSeedSpacing.Small)
             .dropShadow(ClawSeedShapes.Card, ClawSeedShadows.FloatingControl),
         shape = ClawSeedShapes.Card,
-        level = GlassLevel.Chrome,
+        level = GlassLevel.FloatingInput,
     ) {
         Column(
             modifier = Modifier.padding(ClawSeedSpacing.Page),
             verticalArrangement = Arrangement.spacedBy(ClawSeedSpacing.Medium),
         ) {
-            Text(request.question, style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.semantics { heading() })
-            when (request.kind) {
-                "single_select" -> Column(
-                    modifier = Modifier.selectableGroup(),
-                    verticalArrangement = Arrangement.spacedBy(ClawSeedSpacing.Small),
-                ) {
-                    request.options.forEach { option ->
-                        OptionRow(
-                            option = option,
-                            selected = selected == option.id,
-                            multiple = false,
-                            enabled = controlsEnabled,
-                            onClick = { selected = option.id },
-                        )
+            Column(
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(ClawSeedSpacing.Medium),
+            ) {
+                Text(request.question, style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.semantics { heading() })
+                when (request.kind) {
+                    "single_select" -> Column(
+                        modifier = Modifier.selectableGroup(),
+                        verticalArrangement = Arrangement.spacedBy(ClawSeedSpacing.Small),
+                    ) {
+                        request.options.forEach { option ->
+                            OptionRow(
+                                option = option,
+                                selected = selected == option.id,
+                                multiple = false,
+                                enabled = controlsEnabled,
+                                onClick = { selected = option.id },
+                            )
+                        }
                     }
-                }
-                "multi_select" -> Column(verticalArrangement = Arrangement.spacedBy(ClawSeedSpacing.Small)) {
-                    request.options.forEach { option ->
-                        OptionRow(
-                            option = option,
-                            selected = option.id in selectedMany,
-                            multiple = true,
-                            enabled = controlsEnabled,
-                            onClick = {
-                                selectedMany = if (option.id in selectedMany) selectedMany - option.id
-                                else selectedMany + option.id
-                            },
-                        )
+                    "multi_select" -> Column(verticalArrangement = Arrangement.spacedBy(ClawSeedSpacing.Small)) {
+                        request.options.forEach { option ->
+                            OptionRow(
+                                option = option,
+                                selected = option.id in selectedMany,
+                                multiple = true,
+                                enabled = controlsEnabled,
+                                onClick = {
+                                    selectedMany = if (option.id in selectedMany) selectedMany - option.id
+                                    else selectedMany + option.id
+                                },
+                            )
+                        }
                     }
+                    "text" -> ClawSeedTextField(
+                        value = text,
+                        onValueChange = { if (it.length <= 1000) text = it },
+                        enabled = controlsEnabled,
+                        label = { Text(stringResource(R.string.ask_user_answer)) },
+                        placeholder = request.placeholder?.let { { Text(it) } },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 1,
+                        maxLines = 4,
+                    )
                 }
-                "text" -> ClawSeedTextField(
-                    value = text,
-                    onValueChange = { if (it.length <= 1000) text = it },
-                    enabled = controlsEnabled,
-                    label = { Text(stringResource(R.string.ask_user_answer)) },
-                    placeholder = request.placeholder?.let { { Text(it) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 1,
-                    maxLines = 4,
-                )
             }
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),

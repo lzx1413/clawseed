@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.clawseed.demo.R
+import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.core.model.PersonaDetail
 import dev.clawseed.sdk.core.model.PersonaInfo
@@ -14,6 +15,7 @@ import dev.clawseed.sdk.core.model.ProviderInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 data class PersonaDraft(
@@ -46,6 +48,7 @@ data class PersonaUiState(
 )
 
 class PersonaViewModel(application: Application) : AndroidViewModel(application) {
+    private val localStore = LocalStore(application)
     private val _uiState = MutableStateFlow(PersonaUiState())
     val uiState: StateFlow<PersonaUiState> = _uiState.asStateFlow()
 
@@ -180,6 +183,9 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
                         val deleted = ClawSeedAndroid.gatewayClient().deletePersona(oldName)
                         if (deleted.isSuccess) {
                             dev.clawseed.demo.data.LocalStore(getApplication()).moveSuggestionCards(oldName, name)
+                            if (localStore.defaultPersonaName.first() == oldName) {
+                                localStore.setDefaultPersonaName(name)
+                            }
                         }
                     }
                     _uiState.value = _uiState.value.copy(isSaving = false, editing = null)
@@ -213,6 +219,9 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             ClawSeedAndroid.gatewayClient().deletePersona(name)
                 .onSuccess {
                     dev.clawseed.demo.data.LocalStore(getApplication()).setSuggestionCards(name, null)
+                    if (localStore.defaultPersonaName.first() == name) {
+                        localStore.setDefaultPersonaName("default")
+                    }
                     load()
                 }
                 .onFailure { e -> _uiState.value = _uiState.value.copy(error = e.message) }

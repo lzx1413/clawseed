@@ -99,6 +99,9 @@
     <string name="persona_new_chat_title">新建对话</string>
     <string name="persona_default">默认</string>
     <string name="persona_default_desc">默认分身</string>
+    <string name="persona_default_current">当前默认：%1$s</string>
+    <string name="persona_default_badge">默认分身</string>
+    <string name="persona_set_default">设为默认</string>
     <string name="persona_start">聊天</string>
     <string name="persona_load_failed">加载分身失败</string>
     <string name="persona_picker_empty">还没有自定义分身。可从侧边栏的“分身”入口创建。</string>
@@ -110,7 +113,9 @@
     <string name="chat_add_attachment">添加附件</string>
     <string name="chat_scroll_to_bottom">滚动到底部</string>
     <string name="chat_camera_unavailable">无法打开相机，请改用相册选择图片。</string>
-    <string name="chat_empty_greeting">晚上好</string>
+    <string name="chat_empty_greeting_morning">早上好</string>
+    <string name="chat_empty_greeting_afternoon">下午好</string>
+    <string name="chat_empty_greeting_evening">晚上好</string>
     <string name="chat_empty_prompt">今天想先做点什么？</string>
     <string name="chat_empty_suggestion_tools">看看有哪些工具</string>
     <string name="chat_empty_suggestion_memory">回顾我的记忆</string>

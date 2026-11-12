@@ -20,6 +20,21 @@ class LocalStore(private val context: Context) {
 
     private val store get() = context.dataStore
 
+    // Persona used when a new conversation does not specify an explicit target.
+    private val KEY_DEFAULT_PERSONA = stringPreferencesKey("default_persona")
+
+    val defaultPersonaName: Flow<String?> = store.data.map { prefs ->
+        prefs[KEY_DEFAULT_PERSONA]?.takeIf { it.isNotBlank() }
+    }
+
+    suspend fun setDefaultPersonaName(name: String?) {
+        store.edit { prefs ->
+            val normalized = name?.trim().orEmpty()
+            if (normalized.isBlank()) prefs.remove(KEY_DEFAULT_PERSONA)
+            else prefs[KEY_DEFAULT_PERSONA] = normalized
+        }
+    }
+
     // One JSON object keeps persona-specific suggestions in the normal configuration backup.
     private val suggestionCardsKey = stringPreferencesKey("persona_suggestion_cards")
     val suggestionCards: Flow<String> = store.data.map { it[suggestionCardsKey] ?: "{}" }

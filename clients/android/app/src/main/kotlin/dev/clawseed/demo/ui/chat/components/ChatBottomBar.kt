@@ -2,7 +2,13 @@ package dev.clawseed.demo.ui.chat.components
 
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
-import dev.clawseed.demo.ui.components.ClawSeedFloatingIconButton
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import dev.clawseed.demo.ui.components.ClawSeedIconButton
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -82,7 +89,7 @@ fun ChatBottomBar(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
             if (attachmentsAvailable) {
-                ClawSeedFloatingIconButton(
+                ClawSeedIconButton(
                     onClick = {
                         keyboardController?.hide()
                         onOpenAttachments()
@@ -94,7 +101,6 @@ fun ChatBottomBar(
                         imageVector = AttachmentIcon,
                         contentDescription = null,
                         modifier = Modifier.size(24.dp),
-                        tint = colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -145,6 +151,7 @@ fun ChatBottomBar(
                         onClick = onStop,
                         contentDescription = stringResource(R.string.chat_stop_generating),
                         testTag = "chat_stop",
+                        isBreathing = true,
                     )
                 } else if ((input.isNotBlank() || hasImages) && canSend) {
                     ComposerCircleButton(
@@ -169,18 +176,41 @@ private fun ComposerCircleButton(
     contentDescription: String,
     modifier: Modifier = Modifier,
     testTag: String? = null,
+    isBreathing: Boolean = false,
 ) {
-    ClawSeedFloatingIconButton(
+    val breathingModifier = if (isBreathing) {
+        val transition = rememberInfiniteTransition(label = "composerBreathing")
+        val progress by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "composerBreathingProgress",
+        )
+        // Animate the drawing layer without changing the button's layout size.
+        Modifier.graphicsLayer {
+            val breath = progress
+            scaleX = 1f + 0.05f * breath
+            scaleY = scaleX
+            alpha = 1f - 0.18f * breath
+        }
+    } else {
+        Modifier
+    }
+    ClawSeedIconButton(
         onClick = onClick,
-        modifier = modifier.then(testTag?.let { Modifier.testTag(it) } ?: Modifier),
+        modifier = modifier
+            .then(testTag?.let { Modifier.testTag(it) } ?: Modifier)
+            .then(breathingModifier),
         contentDescription = contentDescription,
-        dangerous = icon == StopIcon,
+        filled = true,
     ) {
         Icon(
             icon,
             contentDescription = null,
             modifier = Modifier.size(28.dp),
-            tint = if (icon == StopIcon) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
         )
     }
 }

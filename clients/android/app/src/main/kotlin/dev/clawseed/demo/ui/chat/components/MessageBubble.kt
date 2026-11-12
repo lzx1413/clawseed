@@ -154,7 +154,10 @@ private fun TurnActivityCard(entry: ChatEntry.TurnActivity, modifier: Modifier =
             )
         }
         AnimatedVisibility(visible = expanded) {
-            Column(modifier = Modifier.padding(top = 8.dp)) {
+            Column(
+                modifier = Modifier.padding(top = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 entry.activities.forEach { activity ->
                     MessageBubble(entry = activity)
                 }
@@ -527,7 +530,7 @@ private fun ToolInvocationsCard(entry: ChatEntry.ToolInvocations, modifier: Modi
         modifier = modifier
             .fillMaxWidth()
             .clickable { expanded = !expanded }
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = 16.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -1046,7 +1049,7 @@ private fun ThinkingCard(content: String, modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .clickable { expanded = !expanded }
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = 16.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

@@ -111,6 +111,7 @@ import dev.clawseed.demo.ui.persona.PersonaDot
 fun ChatScreen(
     onToggleDrawer: () -> Unit,
     onNewSession: (String?) -> Unit = {},
+    defaultPersonaName: String? = null,
     sessionId: String? = null,
     onSessionIdChanged: (String?) -> Unit = {},
     onSessionEstablished: () -> Unit = {},
@@ -223,7 +224,7 @@ fun ChatScreen(
 
     // Keep the background behind the fixed composer for the glass effect, but
     // give the message list enough trailing space to scroll its last item
-    // completely above the composer.
+    // completely above the prompt and composer.
     val bottomBarContentPadding = bottomBarTopPx?.let { topPx ->
         val rootHeightPx = chatRootHeightPx.toFloat()
         if (rootHeightPx > topPx) {
@@ -514,15 +515,6 @@ fun ChatScreen(
                     }
                 }
 
-                uiState.pendingQuestion?.let { request ->
-                    AskUserPrompt(
-                        request = request,
-                        submitting = uiState.questionSubmitting,
-                        enabled = uiState.connState == ConnectionState.CONNECTED,
-                        onAnswer = viewModel::answerQuestion,
-                    )
-                }
-
                 // Error banner
                 if (uiState.error != null) {
                     Snackbar(
@@ -544,39 +536,60 @@ fun ChatScreen(
         }
         },
         content = {
-            ChatBottomBar(
-                input = input,
-                onInputChange = { viewModel.updateDraft(draftKey, it) },
-                onSend = {
-                    val text = input
-                    dismissInput()
-                    if ((selectedImages.isNotEmpty() || selectedFiles.isNotEmpty()) && imageTarget != null) {
-                        viewModel.sendImageDraft(text, imageTarget)
-                    } else if (viewModel.sendMessage(text, uiState.currentSessionId)) viewModel.updateDraft(draftKey, "")
-                },
-                onStop = { viewModel.abortGeneration() },
-                isLoading = isLoading,
-                canSend = sessionSwitchReady && imageDraftsReady && fileDraftsReady,
+            // Keep the prompt and composer in one foreground stack so neither
+            // can cover the other's actions, and both sample the chat backdrop.
+            Box(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
+                    .fillMaxSize()
+                    .padding(top = chatTopContentPadding)
                     .windowInsetsPadding(
                         imeInsets.union(WindowInsets(0.dp, 0.dp, 0.dp, bottomSystemInset)),
+                    ),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .onGloballyPositioned { coordinates ->
+                            bottomBarTopPx = coordinates.positionInRoot().y
+                        },
+                ) {
+                    uiState.pendingQuestion?.let { request ->
+                        AskUserPrompt(
+                            request = request,
+                            submitting = uiState.questionSubmitting,
+                            enabled = uiState.connState == ConnectionState.CONNECTED,
+                            onAnswer = viewModel::answerQuestion,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                    }
+                    ChatBottomBar(
+                        input = input,
+                        onInputChange = { viewModel.updateDraft(draftKey, it) },
+                        onSend = {
+                            val text = input
+                            dismissInput()
+                            if ((selectedImages.isNotEmpty() || selectedFiles.isNotEmpty()) && imageTarget != null) {
+                                viewModel.sendImageDraft(text, imageTarget)
+                            } else if (viewModel.sendMessage(text, uiState.currentSessionId)) viewModel.updateDraft(draftKey, "")
+                        },
+                        onStop = { viewModel.abortGeneration() },
+                        isLoading = isLoading,
+                        canSend = sessionSwitchReady && imageDraftsReady && fileDraftsReady,
+                        hasImages = selectedImages.isNotEmpty() || selectedFiles.isNotEmpty(),
+                        attachmentsAvailable = imageTarget != null,
+                        onOpenAttachments = { showAttachmentSheet = true },
+                        imageDrafts = {
+                            if (imageTarget != null) dev.clawseed.demo.ui.chat.components.DraftFileList(selectedFiles,
+                                { viewModel.changeFile(imageTarget, it, false) }, { viewModel.changeFile(imageTarget, it, true) })
+                            if (imageTarget != null) dev.clawseed.demo.ui.chat.components.DraftImageStrip(
+                                selectedImages, viewModel::imageDraftFile,
+                                { viewModel.removeImage(imageTarget, it) }, { viewModel.retryImage(imageTarget, it) },
+                            )
+                        },
                     )
-                    .onGloballyPositioned { coordinates ->
-                        bottomBarTopPx = coordinates.positionInRoot().y
-                    },
-                hasImages = selectedImages.isNotEmpty() || selectedFiles.isNotEmpty(),
-                attachmentsAvailable = imageTarget != null,
-                onOpenAttachments = { showAttachmentSheet = true },
-                imageDrafts = {
-                    if (imageTarget != null) dev.clawseed.demo.ui.chat.components.DraftFileList(selectedFiles,
-                        { viewModel.changeFile(imageTarget, it, false) }, { viewModel.changeFile(imageTarget, it, true) })
-                    if (imageTarget != null) dev.clawseed.demo.ui.chat.components.DraftImageStrip(
-                        selectedImages, viewModel::imageDraftFile,
-                        { viewModel.removeImage(imageTarget, it) }, { viewModel.retryImage(imageTarget, it) },
-                    )
-                },
-            )
+                }
+            }
             Row(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -694,6 +707,7 @@ fun ChatScreen(
             if (showPersonaSheet) {
                 PersonaPickerSheet(
                     onDismiss = { showPersonaSheet = false },
+                    defaultPersonaName = defaultPersonaName,
                     onStart = { persona ->
                         showPersonaSheet = false
                         onNewSession(persona)

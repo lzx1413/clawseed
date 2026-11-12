@@ -1058,7 +1058,7 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
     }
 
     /**
-     * Start a brand-new session bound to [persona] (null = default global agent).
+     * Start a brand-new session bound to [persona] (null = user's default persona).
      * Persona is write-once: it only takes effect on a fresh session; the
      * gateway stores the binding and echoes it back in session_start.
      */
@@ -1114,7 +1114,14 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
         connectJob = viewModelScope.launch {
             try {
                 ClawSeedAndroid.awaitInit()
-                val session = sessionManager().connect(sessionId, persona)
+                // Resolve the saved default for every new-session entry point,
+                // including startup, before opening the connection.
+                val targetPersona = if (sessionId == null) {
+                    persona ?: localStore.defaultPersonaName.first() ?: "default"
+                } else {
+                    persona
+                }
+                val session = sessionManager().connect(sessionId, targetPersona)
                 currentSession = session
 
                 val sid = session.sessionInfo.value?.sessionId ?: sessionId

@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
 import dev.clawseed.demo.ui.components.ClawSeedFormDialog
 import dev.clawseed.demo.ui.components.ClawSeedAddAction
 import dev.clawseed.demo.ui.components.ClawSeedFloatingIconButton
@@ -58,6 +59,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -65,7 +67,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import dev.clawseed.demo.R
+import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.sdk.core.model.SkillInfo
 import dev.clawseed.sdk.core.model.PersonaDetail
 import dev.clawseed.sdk.core.model.PersonaInfo
@@ -80,6 +84,10 @@ fun PersonaManagerScreen(
     viewModel: PersonaViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val localStore = remember(context) { LocalStore(context.applicationContext) }
+    val defaultPersonaName by localStore.defaultPersonaName.collectAsState(initial = null)
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         viewModel.load()
@@ -167,11 +175,15 @@ fun PersonaManagerScreen(
 
                 else -> PersonaList(
                     personas = uiState.personas,
+                    defaultPersonaName = defaultPersonaName,
                     onStart = onStartChat,
                     onView = viewModel::view,
                     onEdit = viewModel::edit,
                     onDuplicate = viewModel::duplicate,
                     onDelete = viewModel::delete,
+                    onSetDefault = { name ->
+                        scope.launch { localStore.setDefaultPersonaName(name) }
+                    },
                 )
             }
 
@@ -198,11 +210,13 @@ fun PersonaManagerScreen(
 @Composable
 private fun PersonaList(
     personas: List<PersonaInfo>,
+    defaultPersonaName: String?,
     onStart: (String) -> Unit,
     onView: (String) -> Unit,
     onEdit: (String) -> Unit,
     onDuplicate: (PersonaInfo) -> Unit,
     onDelete: (String) -> Unit,
+    onSetDefault: (String) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -251,6 +265,27 @@ private fun PersonaList(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
+                        val isDefault = persona.name == (defaultPersonaName ?: "default")
+                        ClawSeedChoiceChip(
+                            selected = isDefault,
+                            onClick = { if (!isDefault) onSetDefault(persona.name) },
+                            choiceType = dev.clawseed.demo.ui.components.ChoiceType.Single,
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                            label = {
+                                Text(
+                                    stringResource(
+                                        if (isDefault) R.string.persona_default_badge
+                                        else R.string.persona_set_default,
+                                    ),
+                                )
+                            },
+                        )
                         ClawSeedFloatingIconButton(
                             onClick = { onStart(persona.name) },
                             contentDescription = stringResource(R.string.persona_start),

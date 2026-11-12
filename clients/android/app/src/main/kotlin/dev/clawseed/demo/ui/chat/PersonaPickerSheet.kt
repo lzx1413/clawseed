@@ -56,12 +56,18 @@ import dev.clawseed.sdk.core.model.PersonaInfo
  * A persona entry that starts a chat when tapped. The default assistant is an
  * explicit persona named `default`, just like every other chat target.
  */
-private data class PickerEntry(val name: String, val subtitle: String?)
+private data class PickerEntry(
+    val key: String,
+    val targetName: String,
+    val displayName: String,
+    val subtitle: String?,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PersonaPickerSheet(
     onDismiss: () -> Unit,
+    defaultPersonaName: String? = null,
     onStart: (persona: String?) -> Unit,
 ) {
     var loading by remember { mutableStateOf(true) }
@@ -104,9 +110,15 @@ fun PersonaPickerSheet(
             HorizontalDivider(Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
             val entries = buildList {
-                add(PickerEntry("default", personas.firstOrNull { it.name == "default" }?.subtitle()))
+                val defaultTarget = defaultPersonaName ?: "default"
+                val defaultSubtitle = if (defaultTarget == "default") {
+                    stringResource(R.string.persona_default_desc)
+                } else {
+                    stringResource(R.string.persona_default_current, defaultTarget)
+                }
+                add(PickerEntry("default", defaultTarget, stringResource(R.string.persona_default), defaultSubtitle))
                 personas.filterNot { it.name == "default" }
-                    .forEach { add(PickerEntry(it.name, it.subtitle())) }
+                    .forEach { add(PickerEntry(it.name, it.name, it.subtitle(), it.subtitle())) }
             }
 
             when {
@@ -126,14 +138,14 @@ fun PersonaPickerSheet(
                     modifier = Modifier.weight(1f, fill = false).heightIn(max = 360.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(entries, key = { it.name }) { entry ->
-                        val persona = personas.find { it.name == entry.name }
+                    items(entries, key = { it.key }) { entry ->
+                        val persona = personas.find { it.name == entry.targetName }
                         ClawSeedCard(
                             containerColor = persona?.let { personaCardColor(it.name, it.color) } ?: Color.Unspecified,
                             onClick = {
                                 if (!starting) {
                                     starting = true
-                                    onStart(entry.name)
+                                    onStart(entry.targetName)
                                 }
                             },
                         ) {
@@ -148,7 +160,7 @@ fun PersonaPickerSheet(
                                 }
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = if (entry.name == "default") stringResource(R.string.persona_default) else entry.name,
+                                        text = entry.displayName,
                                         style = MaterialTheme.typography.bodyLarge,
                                     )
                                     val sub = entry.subtitle ?: stringResource(R.string.persona_default_desc)

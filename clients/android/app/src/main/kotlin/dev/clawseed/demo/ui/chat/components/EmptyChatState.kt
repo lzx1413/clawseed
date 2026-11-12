@@ -26,12 +26,19 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import dev.clawseed.demo.data.LocalStore
 import dev.clawseed.demo.ui.components.ClawSeedTextButton
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import java.time.LocalTime
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -46,6 +53,20 @@ fun EmptyChatState(
     modifier: Modifier = Modifier,
     persona: String? = null,
 ) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val currentHour by produceState(LocalTime.now().hour, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (isActive) {
+                value = LocalTime.now().hour
+                delay(60_000L)
+            }
+        }
+    }
+    val greeting = when (currentHour) {
+        in 5..11 -> R.string.chat_empty_greeting_morning
+        in 12..17 -> R.string.chat_empty_greeting_afternoon
+        else -> R.string.chat_empty_greeting_evening
+    }
     val defaults = listOf(
         stringResource(R.string.chat_empty_suggestion_tools),
         stringResource(R.string.chat_empty_suggestion_memory),
@@ -71,7 +92,7 @@ fun EmptyChatState(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = stringResource(R.string.chat_empty_greeting),
+            text = stringResource(greeting),
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onBackground,
         )
