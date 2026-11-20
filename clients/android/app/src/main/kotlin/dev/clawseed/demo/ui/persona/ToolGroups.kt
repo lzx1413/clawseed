@@ -16,7 +16,7 @@ internal fun groupToolNames(names: List<String>): Map<ToolGroup, List<String>> =
     .groupBy { name ->
         when {
             name.startsWith("app__") -> ToolGroup.DEVICE
-            name.startsWith("file_") || name in setOf("glob_search", "content_search", "pdf_read", "shell", "git_operations") -> ToolGroup.FILES
+            name.startsWith("file_") || name in setOf("glob_search", "content_search", "pdf_read", "shell", "linux_exec", "runtime_status", "git_operations") -> ToolGroup.FILES
             name.startsWith("web_") || name == "http_request" -> ToolGroup.NETWORK
             name.startsWith("memory_") || name.startsWith("knowledge") -> ToolGroup.MEMORY
             name.startsWith("cron_") || name.startsWith("alarm_") -> ToolGroup.TASKS

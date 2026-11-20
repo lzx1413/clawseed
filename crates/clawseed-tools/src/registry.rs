@@ -135,6 +135,7 @@ use crate::glob_search::GlobSearchTool;
 use crate::http_request::HttpRequestTool;
 use crate::javascript::JavaScriptTool;
 use crate::knowledge_tool::KnowledgeTool;
+use crate::linux_exec::{LinuxExecTool, RuntimeStatusTool};
 use crate::llm_task::LlmTaskTool;
 use crate::memory_export::MemoryExportTool;
 use crate::memory_forget::MemoryForgetTool;
@@ -239,6 +240,7 @@ pub fn all_tools_with_runtime(
     }
 
     tools.push(Box::new(KnowledgeTool::new()));
+    tools.push(Box::new(LinuxExecTool::new()));
     tools.push(Box::new(LlmTaskTool::new()));
     tools.push(Box::new(MemoryExportTool::new(memory.clone())));
     tools.push(Box::new(MemoryForgetTool::new(memory.clone())));
@@ -249,6 +251,7 @@ pub fn all_tools_with_runtime(
     tools.push(Box::new(ModelRoutingConfigTool::new()));
     tools.push(Box::new(PdfReadTool::new()));
     tools.push(Box::new(ShellTool::new()));
+    tools.push(Box::new(RuntimeStatusTool::new()));
 
     // Skill tool: only include when skill system is enabled
     if config.skills.enabled {

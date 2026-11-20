@@ -8,6 +8,10 @@ plugins {
 }
 
 val buildDate: String = LocalDate.now().toString()
+val prootRuntimeManifestUrl = providers.gradleProperty("prootRuntimeManifestUrl").orNull ?: ""
+val prootRuntimePublisherKeyId = providers.gradleProperty("prootRuntimePublisherKeyId").orNull ?: ""
+val prootRuntimePublisherKey = providers.gradleProperty("prootRuntimePublisherKey").orNull ?: ""
+val prootRuntimeAllowUnsigned = providers.gradleProperty("prootRuntimeAllowUnsigned").orNull == "true"
 val localProperties = Properties().apply {
     val file = rootProject.file("local.properties")
     if (file.exists()) {
@@ -56,6 +60,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
         buildConfigField("String", "SDK_VERSION", "\"0.5.0\"")
+        buildConfigField("String", "PROOT_RUNTIME_MANIFEST_URL", "\"$prootRuntimeManifestUrl\"")
+        buildConfigField("String", "PROOT_RUNTIME_PUBLISHER_KEY_ID", "\"$prootRuntimePublisherKeyId\"")
+        buildConfigField("String", "PROOT_RUNTIME_PUBLISHER_KEY", "\"$prootRuntimePublisherKey\"")
+        buildConfigField("boolean", "PROOT_RUNTIME_ALLOW_UNSIGNED", prootRuntimeAllowUnsigned.toString())
     }
 
     signingConfigs {

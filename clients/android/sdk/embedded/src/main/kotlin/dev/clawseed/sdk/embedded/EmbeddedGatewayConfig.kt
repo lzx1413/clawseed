@@ -11,4 +11,6 @@ data class EmbeddedGatewayConfig(
     val healthCheckTimeoutMs: Long = 300_000,
     /** Delay between health checks while starting the process. */
     val healthCheckIntervalMs: Long = 500,
+    /** Optional HTTPS manifest used to install the PRoot Linux runtime. */
+    val prootRuntime: ProotRuntimeConfig = ProotRuntimeConfig(),
 )

@@ -121,6 +121,76 @@ cd clients/android
 # app/build/outputs/apk/release/app-release.apk
 ```
 
+如果要为 Android App 配置在线 PRoot runtime 清单，在构建时传入 HTTPS 地址：
+
+```bash
+./gradlew \
+  -PprootRuntimeManifestUrl=https://example.com/clawseed/proot/manifest.json \
+  -PprootRuntimePublisherKeyId=release-2026 \
+  -PprootRuntimePublisherKey='<base64-ed25519-public-key>' \
+  assembleDebug
+```
+
+未配置 manifest 时不会自动下载 runtime；已安装的本地 runtime 仍可由执行后端使用。
+开发测试可以显式加入 `-PprootRuntimeAllowUnsigned=true` 使用未签名夹具；该模式也允许通过本地 HTTP manifest/archive 验证安装流程。生产构建不得启用该选项，生产 runtime 必须使用 HTTPS 和签名清单。
+
+### PRoot App 开发夹具（adb 预置）
+
+首个 App 测试版本不依赖下载服务器。生成 fixture 后，脚本会安装 Debug APK，并通过 `run-as` 将 runtime generation 写入应用私有目录：
+
+```bash
+./tools/install-proot-runtime-fixture-adb.sh \
+  clients/android/app/build/outputs/apk/debug/app-debug.apk \
+  <adb-serial>
+```
+
+如果 `adb` 不在 PATH，可以设置：
+
+```bash
+ADB_BIN=/root/Android/Sdk/platform-tools/adb \
+  ./tools/install-proot-runtime-fixture-adb.sh \
+  clients/android/app/build/outputs/apk/debug/app-debug.apk \
+  <adb-serial>
+```
+
+该 fixture 的 `proot` 是 host-shell launcher，只验证 generation、状态、超时、输出限制和工具路由，不提供真实 Linux 用户空间或安全隔离。安装后在对话中调用 `runtime_status` 和 `linux_exec`；真实 PRoot 验收必须替换为官方或自建的 arm64 runtime bundle。下载、断点续传和正式签名发布暂不属于首测路径。
+
+### 真实 PRoot bundle
+
+生成只包含 PRoot 组件和最小 Ubuntu Base 的真实 arm64 bundle：
+
+```bash
+./tools/build-proot-runtime.sh arm64-v8a /tmp/clawseed-real-proot
+./tools/package-proot-bootstrap.sh /tmp/clawseed-real-proot
+```
+
+产物包含 `proot`、`proot-loader`、`proot-libs/` 和 `rootfs/`，不包含 DSH、Node.js 或 Python。通过 ADB 预置到设备：
+
+```bash
+ADB_BIN=/mnt/c/Users/Lenovo/AppData/Local/Android/Sdk/platform-tools/adb.exe \
+./tools/install-proot-runtime-bundle-adb.sh \
+  /tmp/clawseed-real-proot/clawseed-proot-runtime-arm64-v8a.tar.gz \
+  /tmp/clawseed-real-proot/manifest.json \
+  clients/android/app/build/outputs/apk/debug/app-debug.apk \
+  <adb-serial>
+```
+
+真实 bundle 的执行仍然是 PRoot 用户态兼容层，不提供 Android Root 或内核级隔离。Python、Node.js、Git 后续作为独立官方组件接入。
+
+已在实体 `arm64-v8a` 设备（Android API 36）完成真实启动验收：
+
+- PRoot ELF 成功从 App 私有目录执行；
+- `PROOT_LOADER`、`LD_LIBRARY_PATH`、`PROOT_TMP_DIR` 和 `PROOT_L2S_DIR` 生效；
+- Ubuntu Base rootfs 中的 `/etc/lsb-release` 可被真实 guest shell 读取；
+- Gateway 日志报告真实 runtime generation 为 `ubuntu-24.04.5-arm64-v8a-proot-5.1.107.102-adb`；
+- `/api/tools` 注册了 `runtime_status` 和 `linux_exec`。
+
+本次测试 bundle SHA-256：
+
+```text
+2806f30a2aeef86be418e66adaf2457208b2c6516cfb4997dd625836cab96e61
+```
+
 ## 其他交叉编译目标
 
 项目在 `.cargo/config.toml` 中配置了多个交叉编译目标：

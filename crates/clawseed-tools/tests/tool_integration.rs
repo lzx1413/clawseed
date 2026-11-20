@@ -100,6 +100,7 @@ async fn registry_all_tools_instantiated() {
         "glob_search",
         "http_request",
         "knowledge",
+        "linux_exec",
         "llm_task",
         "memory_export",
         "memory_forget",
@@ -110,6 +111,7 @@ async fn registry_all_tools_instantiated() {
         "model_routing_config",
         "pdf_read",
         "shell",
+        "runtime_status",
         "web_fetch",
         "web_search_tool",
     ] {

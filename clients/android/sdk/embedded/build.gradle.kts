@@ -29,6 +29,9 @@ android {
 dependencies {
     api(project(":sdk:android"))
     implementation("androidx.core:core-ktx:1.16.0")
+    // Pure Java Ed25519 verifier; Android API 26 does not guarantee a native Ed25519 provider.
+    implementation("org.bouncycastle:bcprov-jdk15to18:1.72")
+    testImplementation("junit:junit:4.13.2")
 }
 
 publishing {

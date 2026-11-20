@@ -35,6 +35,8 @@ class EmbeddedGateway(
 
     private var process: Process? = null
     private var stdoutReaderJob: Job? = null
+    // Service instances can construct this wrapper before their base Context is fully attached.
+    private val prootRuntimeManager by lazy { ProotRuntimeManager(context, config.prootRuntime) }
 
     /** Starts the embedded gateway and waits until health checks succeed. */
     suspend fun start() {
@@ -55,6 +57,8 @@ class EmbeddedGateway(
             configManager.ensureBundledSkills()
             configManager.ensureSkillsDir()
 
+            Log.i(TAG, "PRoot runtime status: ${prootRuntimeManager.status()}")
+
             process = ProcessBuilder(binary.absolutePath, "gateway", "--port", config.port.toString())
                 .redirectErrorStream(true)
                 .also { pb ->
@@ -63,6 +67,18 @@ class EmbeddedGateway(
                     pb.environment()["XDG_CONFIG_HOME"] = filesDir.absolutePath
                     pb.environment()["XDG_DATA_HOME"] = filesDir.absolutePath
                     pb.environment()["CLAWSEED_GATEWAY_TIMEOUT_SECS"] = "300"
+                    prootRuntimeManager.activePath()?.let { runtime ->
+                        pb.environment()["CLAWSEED_PROOT_RUNTIME_DIR"] = runtime.absolutePath
+                        val nativeLibDir = context.applicationInfo.nativeLibraryDir
+                        val nativeProot = File(nativeLibDir, "libproot.so")
+                        val nativeLoader = File(nativeLibDir, "libproot-loader.so")
+                        if (nativeProot.canExecute() && nativeLoader.isFile) {
+                            pb.environment()["CLAWSEED_PROOT_BINARY"] = nativeProot.absolutePath
+                            pb.environment()["CLAWSEED_PROOT_LOADER"] = nativeLoader.absolutePath
+                            pb.environment()["CLAWSEED_PROOT_LIBRARY_DIR"] =
+                                File(runtime, "proot-libs").absolutePath
+                        }
+                    }
                     // Point ort's load-dynamic to the bundled libonnxruntime.so
                     val nativeLibDir = context.applicationInfo.nativeLibraryDir
                     pb.environment()["ORT_DYLIB_PATH"] = "$nativeLibDir/libonnxruntime.so"

@@ -35,7 +35,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
@@ -50,6 +52,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import dev.clawseed.demo.ui.components.ClawSeedTopAppBar
 import dev.clawseed.demo.ui.components.ClawSeedGlassExposedDropdownMenu
 import androidx.compose.runtime.Composable
@@ -497,6 +500,7 @@ fun SettingsScreen(
                         ) {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 DeveloperOptionsCard(localStore)
+                                ProotRuntimeCard()
                                 SettingsGroup(modifier = Modifier.fillMaxWidth()) {
                                     Column(
                                         modifier = Modifier.padding(16.dp),
@@ -864,6 +868,157 @@ private fun DeveloperOptionsCard(localStore: LocalStore) {
             checked = debugEnabled,
             onCheckedChange = { scope.launch { localStore.setShowDebugInfo(it) } },
             modifier = Modifier.padding(16.dp),
+        )
+    }
+}
+
+@Composable
+private fun ProotRuntimeCard() {
+    val viewModel: ProotRuntimeViewModel = viewModel()
+    val state by viewModel.uiState.collectAsState()
+    var confirmClear by rememberSaveable { mutableStateOf(false) }
+    val statusText = when (state.status.state) {
+        dev.clawseed.sdk.embedded.ProotRuntimeState.NOT_INSTALLED -> stringResource(R.string.settings_proot_runtime_not_installed)
+        dev.clawseed.sdk.embedded.ProotRuntimeState.READY -> stringResource(R.string.settings_proot_runtime_ready)
+        dev.clawseed.sdk.embedded.ProotRuntimeState.INSTALLING -> stringResource(R.string.settings_proot_runtime_installing)
+        dev.clawseed.sdk.embedded.ProotRuntimeState.CORRUPTED -> stringResource(R.string.settings_proot_runtime_corrupted)
+        dev.clawseed.sdk.embedded.ProotRuntimeState.FAILED -> stringResource(R.string.settings_proot_runtime_failed)
+    }
+
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.settings_proot_runtime_title),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_proot_runtime_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                ClawSeedIconButton(
+                    onClick = viewModel::refresh,
+                    enabled = !state.isBusy,
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = stringResource(R.string.common_refresh),
+                    )
+                }
+            }
+
+            StatusRow(stringResource(R.string.settings_proot_runtime_status), statusText)
+            state.status.version?.let {
+                StatusRow(stringResource(R.string.settings_proot_runtime_version), it)
+            }
+            state.status.generation?.let {
+                StatusRow(stringResource(R.string.settings_proot_runtime_generation), it)
+            }
+            state.status.path?.let {
+                StatusRow(stringResource(R.string.settings_proot_runtime_path), it)
+            }
+
+            state.progress?.let { progress ->
+                Text(
+                    text = when (progress.phase) {
+                        "manifest" -> stringResource(R.string.settings_proot_runtime_phase_manifest)
+                        "download" -> stringResource(R.string.settings_proot_runtime_phase_download)
+                        "extract" -> stringResource(R.string.settings_proot_runtime_phase_extract)
+                        else -> progress.phase
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                val total = progress.totalBytes
+                if (total != null && total > 0L) {
+                    LinearProgressIndicator(
+                        progress = { (progress.downloadedBytes.toFloat() / total).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        text = "${formatBytes(progress.downloadedBytes)} / ${formatBytes(total)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            }
+
+            if (!state.manifestConfigured && state.status.state != dev.clawseed.sdk.embedded.ProotRuntimeState.READY) {
+                Text(
+                    text = stringResource(R.string.settings_proot_runtime_not_configured),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            state.status.error?.let { error ->
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+
+            if (state.status.state != dev.clawseed.sdk.embedded.ProotRuntimeState.READY) {
+                ClawSeedButton(
+                    onClick = viewModel::installOrRetry,
+                    enabled = state.manifestConfigured && !state.isBusy,
+                    loading = state.isBusy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = if (state.status.state == dev.clawseed.sdk.embedded.ProotRuntimeState.FAILED) {
+                            stringResource(R.string.settings_proot_runtime_retry)
+                        } else {
+                            stringResource(R.string.settings_proot_runtime_install)
+                        },
+                    )
+                }
+            } else {
+                ClawSeedOutlinedButton(
+                    onClick = { confirmClear = true },
+                    enabled = !state.isBusy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.settings_proot_runtime_clear))
+                }
+            }
+        }
+    }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text(stringResource(R.string.settings_proot_runtime_clear_title)) },
+            text = { Text(stringResource(R.string.settings_proot_runtime_clear_desc)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmClear = false
+                        viewModel.clearInstalled()
+                    },
+                ) {
+                    Text(stringResource(R.string.common_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClear = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
         )
     }
 }

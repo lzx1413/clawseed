@@ -105,15 +105,25 @@ pub(crate) async fn run_shell_command(
     workspace: &Path,
     timeout: Duration,
     max_output_bytes: usize,
-    mut cancel_rx: Option<watch::Receiver<bool>>,
+    cancel_rx: Option<watch::Receiver<bool>>,
 ) -> anyhow::Result<CommandOutput> {
     use tokio::process::Command;
 
     let mut cmd = Command::new("sh");
-    cmd.arg("-c")
-        .arg(command)
-        .current_dir(workspace)
-        .stdout(Stdio::piped())
+    cmd.arg("-c").arg(command).current_dir(workspace);
+    run_command(cmd, timeout, max_output_bytes, cancel_rx).await
+}
+
+/// Run a prepared Unix command with the same timeout, cancellation, bounded
+/// output, and process-group cleanup semantics used by the host shell tool.
+#[cfg(unix)]
+pub(crate) async fn run_command(
+    mut cmd: tokio::process::Command,
+    timeout: Duration,
+    max_output_bytes: usize,
+    mut cancel_rx: Option<watch::Receiver<bool>>,
+) -> anyhow::Result<CommandOutput> {
+    cmd.stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     cmd.process_group(0);
@@ -173,7 +183,7 @@ pub(crate) async fn run_shell_command(
 }
 
 #[cfg(unix)]
-async fn kill_process_group(child: &mut tokio::process::Child) -> std::io::Result<()> {
+pub(crate) async fn kill_process_group(child: &mut tokio::process::Child) -> std::io::Result<()> {
     if let Some(pid) = child.id() {
         // The child is the leader of a process group created above. A negative
         // PID targets that group, including grandchildren spawned by the shell.
@@ -191,7 +201,7 @@ async fn kill_process_group(child: &mut tokio::process::Child) -> std::io::Resul
 }
 
 #[cfg(unix)]
-async fn wait_for_cancel(cancel_rx: &mut watch::Receiver<bool>) {
+pub(crate) async fn wait_for_cancel(cancel_rx: &mut watch::Receiver<bool>) {
     if *cancel_rx.borrow() {
         return;
     }
@@ -203,7 +213,7 @@ async fn wait_for_cancel(cancel_rx: &mut watch::Receiver<bool>) {
 }
 
 #[cfg(unix)]
-async fn read_bounded<R: AsyncRead + Unpin>(
+pub(crate) async fn read_bounded<R: AsyncRead + Unpin>(
     mut reader: R,
     max_output_bytes: usize,
 ) -> std::io::Result<String> {

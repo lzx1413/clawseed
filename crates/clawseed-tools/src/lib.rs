@@ -33,6 +33,7 @@ pub mod glob_search;
 pub mod http_request;
 pub mod javascript;
 pub mod knowledge_tool;
+pub mod linux_exec;
 pub mod llm_task;
 pub mod memory_export;
 pub mod memory_forget;

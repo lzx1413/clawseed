@@ -41,7 +41,9 @@ import dev.clawseed.demo.datatransfer.WebDavSettingsStore
 import dev.clawseed.demo.datatransfer.webDavRemoteBackupPath
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.embedded.EmbeddedGateway
+import dev.clawseed.sdk.embedded.EmbeddedGatewayConfig
 import dev.clawseed.sdk.embedded.GatewayState
+import dev.clawseed.sdk.embedded.ProotRuntimeConfig
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
@@ -70,7 +72,19 @@ class ClawseedService : Service() {
     private val supervisorJob = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.IO + supervisorJob)
 
-    val gateway = EmbeddedGateway(this)
+    val gateway = EmbeddedGateway(
+        this,
+        EmbeddedGatewayConfig(
+            prootRuntime = ProotRuntimeConfig(
+                manifestUrl = BuildConfig.PROOT_RUNTIME_MANIFEST_URL.takeIf { it.isNotBlank() },
+                publisherKeys = BuildConfig.PROOT_RUNTIME_PUBLISHER_KEY
+                    .takeIf { it.isNotBlank() }
+                    ?.let { mapOf(BuildConfig.PROOT_RUNTIME_PUBLISHER_KEY_ID to it) }
+                    ?: emptyMap(),
+                allowUnsignedManifest = BuildConfig.PROOT_RUNTIME_ALLOW_UNSIGNED,
+            ),
+        ),
+    )
     val state: StateFlow<GatewayState> = gateway.state
 
     private val readyCallbacks = mutableListOf<() -> Unit>()
