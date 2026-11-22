@@ -123,6 +123,17 @@ class GatewayClient(
         }
     }
 
+    /** Active background commands, independent of chat generation lifetime. */
+    suspend fun activeBackgroundJobCount(): Result<Int> {
+        val request = Request.Builder().url("$baseUrl/api/background-jobs").addAuth().build()
+        return execute(request).mapCatching { body ->
+            val count = json.parseToJsonElement(body).jsonObject["active_count"]
+                ?.jsonPrimitive?.content?.toIntOrNull()
+            require(count != null && count >= 0) { "Invalid background job count" }
+            count
+        }
+    }
+
     /** Lists persisted sessions known to the gateway. */
     suspend fun sessions(): Result<List<SessionSummary>> = withContext(Dispatchers.IO) {
         runCatching {

@@ -55,14 +55,54 @@ HTML extraction removes scripts, styles, navigation, footers, sidebars, forms, a
 
 | Tool | Name | Description |
 |------|------|-------------|
-| `ShellTool` | `shell` | Execute shell commands |
-| `BackgroundRunTool` | `background_run` | Start a workspace command and immediately return a job ID |
+| `ShellTool` | `shell` | Run workspace commands synchronously on host or Linux |
+| `BackgroundRunTool` | `background_run` | Start a host/Linux command and immediately return a job ID |
+| `LinuxExecTool` | `linux_exec` | Compatibility alias for `shell` with `backend=linux` |
 | `BackgroundStatusTool` | `background_status` | Read job state, exit code, and bounded stdout/stderr |
 | `BackgroundCancelTool` | `background_cancel` | Cancel a queued or running command and wait for it to stop |
 | `GitOperationsTool` | `git_operations` | Git operations |
 | `PdfReadTool` | `pdf_read` | Read PDF files |
 
-Background commands use a process-local queue with at most two running and 16 queued jobs. Each job has a five-minute runtime limit and stores at most 1 MiB from each output stream. `background_run` passes through the same `SecurityPolicy` command allowlist and sensitive-path checks as `shell`. Jobs do not survive a gateway restart.
+`shell` and `background_run` share one command runner and accept `backend`,
+`timeout_secs`, and `max_output_bytes`. The default backend is `host` (the native
+Android shell on Android); `android` is an alias for `host`. `linux` uses the
+installed PRoot runtime and fails without falling back when it is unavailable.
+Existing command-only calls retain host behavior. `linux_exec` remains a fixed
+Linux compatibility alias; new callers should use `shell` with `backend=linux`.
+`eval_javascript` continues to use embedded QuickJS.
+
+Synchronous calls default to 30 seconds, with a maximum of 300 seconds. The legacy
+`linux_exec` alias keeps its 60-second default. Background jobs default to 300
+seconds and allow up to 3600 seconds. Each output stream retains 1 MiB by default,
+configurable from 1024 bytes to 4 MiB. Waiting for shared Linux execution capacity
+counts against the timeout and can be cancelled. Running PRoot tasks receive
+SIGQUIT to stop tracees before the remaining process group is cleaned up.
+Before executing PRoot, the child restores SIGQUIT handling and unblocks that
+signal so ART's inherited mask cannot suppress cancellation. Device regression
+also covers tracees in detached process groups.
+
+Background commands share a process-local queue with at most two running and 16
+queued jobs. File-backed configurations persist results; after restart, former
+active jobs are marked interrupted and never replayed. Completed history is
+pruned on access and transitions to 24 hours, 64 entries and 16 MiB total output.
+Omit `job_id` from `background_status` to list metadata and the active count.
+Status snapshots and completion events include
+the actual `backend`; `background_status` and `background_cancel` work for both.
+The same command allowlist and sensitive-path policy applies to synchronous and
+background commands. All Linux callers
+share a maximum of two concurrent executions.
+
+For example, call `shell` to run Python synchronously:
+
+```json
+{"backend":"linux","command":"python3 report.py","timeout_secs":60}
+```
+
+Call `background_run` for a longer task, then query or cancel its `job_id`:
+
+```json
+{"backend":"linux","command":"node process.js","timeout_secs":1800}
+```
 
 ### Utilities
 

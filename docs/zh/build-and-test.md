@@ -157,14 +157,14 @@ ADB_BIN=/root/Android/Sdk/platform-tools/adb \
 
 ### 真实 PRoot bundle
 
-生成只包含 PRoot 组件和最小 Ubuntu Base 的真实 arm64 bundle：
+生成包含 Ubuntu Base、Node.js/npm、Python/pip 的离线 arm64 bundle（完整流程见 [Android 离线 Linux runtime](android-linux-runtime.md)）：
 
 ```bash
-./tools/build-proot-runtime.sh arm64-v8a /tmp/clawseed-real-proot
-./tools/package-proot-bootstrap.sh /tmp/clawseed-real-proot
+./tools/build-proot-runtime.sh arm64-v8a build/proot-runtime-arm64
+./tools/package-proot-bootstrap.sh
 ```
 
-产物包含 `proot`、`proot-loader`、`proot-libs/` 和 `rootfs/`，不包含 DSH、Node.js 或 Python。通过 ADB 预置到设备：
+产物包含 `proot`、`proot-loader`、`proot-libs/` 和含解释器的 `rootfs/`，不包含 DSH。Gradle 将 packaged 目录中的资源打入 APK，优先在设置中离线安装。旧版 tar.gz bundle 也可通过 ADB 预置：
 
 ```bash
 ADB_BIN=/mnt/c/Users/Lenovo/AppData/Local/Android/Sdk/platform-tools/adb.exe \
@@ -175,7 +175,7 @@ ADB_BIN=/mnt/c/Users/Lenovo/AppData/Local/Android/Sdk/platform-tools/adb.exe \
   <adb-serial>
 ```
 
-真实 bundle 的执行仍然是 PRoot 用户态兼容层，不提供 Android Root 或内核级隔离。Python、Node.js、Git 后续作为独立官方组件接入。
+真实 bundle 的执行仍然是 PRoot 用户态兼容层，不提供 Android Root 或内核级隔离。Node.js 和 Python 已纳入离线包；Git 和编译工具链尚未纳入。
 
 已在实体 `arm64-v8a` 设备（Android API 36）完成真实启动验收：
 

@@ -663,6 +663,7 @@ pub async fn run_gateway(
         .route("/api/status", get(api::handle_api_status))
         .route("/api/config", get(api::handle_api_config_get))
         .route("/api/tools", get(api::handle_api_tools))
+        .route("/api/background-jobs", get(api::handle_api_background_jobs))
         .route("/api/skills", get(api::handle_api_skills))
         .route("/api/skills/reload", post(api::handle_api_skills_reload))
         .route(

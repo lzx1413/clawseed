@@ -182,7 +182,10 @@ impl Hook for SecurityPolicy {
         }
 
         // 2. Shell execution entry points share the same command policy.
-        if (call.name == "shell" || call.name == "exec" || call.name == "background_run")
+        if (call.name == "shell"
+            || call.name == "exec"
+            || call.name == "background_run"
+            || call.name == "linux_exec")
             && let Some(cmd) = call.arguments.get("command").and_then(|v| v.as_str())
         {
             if let Some(forbidden) = self.forbidden_path_argument(cmd) {
@@ -263,5 +266,28 @@ mod tests {
             policy.before_tool_call(&mut denied),
             HookResult::Cancel(_)
         ));
+    }
+    #[test]
+    fn linux_exec_uses_command_policy() {
+        let config = AutonomyConfig {
+            allowed_commands: vec!["echo".into()],
+            ..AutonomyConfig::default()
+        };
+        let policy = SecurityPolicy::from_config(&config, Path::new("."));
+        for (command, allowed) in [
+            ("echo ok", true),
+            ("python3 script.py", false),
+            ("echo /etc/shadow", false),
+        ] {
+            let mut call = ToolCall {
+                id: "linux".into(),
+                name: "linux_exec".into(),
+                arguments: serde_json::json!({"command": command}),
+            };
+            assert_eq!(
+                matches!(policy.before_tool_call(&mut call), HookResult::Continue),
+                allowed
+            );
+        }
     }
 }

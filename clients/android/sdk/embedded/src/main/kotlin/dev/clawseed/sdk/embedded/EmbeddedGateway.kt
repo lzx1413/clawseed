@@ -67,16 +67,18 @@ class EmbeddedGateway(
                     pb.environment()["XDG_CONFIG_HOME"] = filesDir.absolutePath
                     pb.environment()["XDG_DATA_HOME"] = filesDir.absolutePath
                     pb.environment()["CLAWSEED_GATEWAY_TIMEOUT_SECS"] = "300"
-                    prootRuntimeManager.activePath()?.let { runtime ->
-                        pb.environment()["CLAWSEED_PROOT_RUNTIME_DIR"] = runtime.absolutePath
-                        val nativeLibDir = context.applicationInfo.nativeLibraryDir
-                        val nativeProot = File(nativeLibDir, "libproot.so")
-                        val nativeLoader = File(nativeLibDir, "libproot-loader.so")
-                        if (nativeProot.canExecute() && nativeLoader.isFile) {
-                            pb.environment()["CLAWSEED_PROOT_BINARY"] = nativeProot.absolutePath
-                            pb.environment()["CLAWSEED_PROOT_LOADER"] = nativeLoader.absolutePath
-                            pb.environment()["CLAWSEED_PROOT_LIBRARY_DIR"] =
-                                File(runtime, "proot-libs").absolutePath
+                    // Resolve active.json for each tool call, including after first install.
+                    pb.environment()["CLAWSEED_PROOT_RUNTIME_DIR"] =
+                        File(filesDir, "proot-runtime").absolutePath
+                    pb.environment()["TMPDIR"] = context.cacheDir.absolutePath
+                    val nativeProotDir = context.applicationInfo.nativeLibraryDir
+                    val nativeProot = File(nativeProotDir, "libproot.so")
+                    val nativeLoader = File(nativeProotDir, "libproot-loader.so")
+                    if (nativeProot.canExecute() && nativeLoader.isFile) {
+                        pb.environment()["CLAWSEED_PROOT_BINARY"] = nativeProot.absolutePath
+                        pb.environment()["CLAWSEED_PROOT_LOADER"] = nativeLoader.absolutePath
+                        if (File(nativeProotDir, "libtalloc.so").isFile) {
+                            pb.environment()["CLAWSEED_PROOT_LIBRARY_DIR"] = nativeProotDir
                         }
                     }
                     // Point ort's load-dynamic to the bundled libonnxruntime.so

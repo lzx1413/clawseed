@@ -10,6 +10,7 @@ pub mod background;
 pub mod backup_tool;
 pub mod calculator;
 pub mod canvas;
+pub mod command;
 pub mod content_search;
 #[cfg(not(feature = "android"))]
 pub mod cron_add;

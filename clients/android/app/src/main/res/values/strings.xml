@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="settings_proot_runtime_checked_at">Last checked</string>
+    <string name="settings_proot_runtime_check_health">Check Python and Node.js</string>
+    <string name="settings_proot_runtime_update">Update or repair environment</string>
+    <string name="settings_proot_runtime_rollback">Restore previous environment</string>
+    <string name="settings_proot_runtime_update_desc">Install and check a fresh environment, then switch to it. Your workspace is preserved. Dependencies installed inside the current Linux environment stay in the previous version for rollback; they are not copied to the new environment. One previous version is retained. Wait for Linux commands to finish first.</string>
+    <string name="svc_notification_background_commands">Background commands are running</string>
     <string name="debug_prompt_token_estimates">Debug · input ~%1$d · tools ~%2$d tokens</string>
     <string name="debug_prompt_native_tools">Show / hide native tool definitions</string>
     <string name="debug_prompt_context_hint">This is the latest model call, including history and tool definitions. The pre-request estimate is calibrated from the previous provider input when available, then replaced by the exact input reported for this request. Native tool definitions are shown separately.</string>
@@ -405,7 +411,7 @@
     <string name="settings_debug_query">Debug Query Message</string>
     <string name="settings_debug_desc">Show the prompt and response statistics: input/output tokens, cache hit ratio, output speed, and total time. Counts cover all model calls in a turn. Speed excludes first-token waiting and tool execution; unavailable data is marked.</string>
     <string name="settings_proot_runtime_title">Linux Runtime (PRoot)</string>
-    <string name="settings_proot_runtime_desc">Install a versioned Linux user space for scripts and command-line tools.</string>
+    <string name="settings_proot_runtime_desc">Install Linux, Node.js and Python for scripts and command-line tools, including offline setup.</string>
     <string name="settings_proot_runtime_status">Status</string>
     <string name="settings_proot_runtime_not_installed">Not installed</string>
     <string name="settings_proot_runtime_ready">Ready</string>
@@ -415,15 +421,15 @@
     <string name="settings_proot_runtime_version">Version</string>
     <string name="settings_proot_runtime_generation">Generation</string>
     <string name="settings_proot_runtime_path">Path</string>
-    <string name="settings_proot_runtime_not_configured">This build has no runtime manifest configured.</string>
+    <string name="settings_proot_runtime_not_configured">This build has no bundled Linux runtime or download source.</string>
     <string name="settings_proot_runtime_phase_manifest">Reading runtime manifest…</string>
     <string name="settings_proot_runtime_phase_download">Downloading runtime…</string>
     <string name="settings_proot_runtime_phase_extract">Extracting runtime…</string>
     <string name="settings_proot_runtime_install">Install runtime</string>
-    <string name="settings_proot_runtime_retry">Retry download</string>
+    <string name="settings_proot_runtime_retry">Retry installation</string>
     <string name="settings_proot_runtime_clear">Remove runtime</string>
     <string name="settings_proot_runtime_clear_title">Remove Linux runtime?</string>
-    <string name="settings_proot_runtime_clear_desc">This removes the downloaded PRoot environment and its installed tools. It can be downloaded again later.</string>
+    <string name="settings_proot_runtime_clear_desc">This removes the Linux environment and its installed tools. Workspace files are kept. You can install it again later.</string>
     <string name="settings_global_config">Global Config (TOML)</string>
     <string name="settings_global_config_desc">Edit clawseed.toml directly. Unsaved form changes are not reflected here. Restart Gateway after changes.</string>
     <string name="settings_save_global_config">Save Global Config</string>
@@ -774,4 +780,6 @@
     <string name="drawer_bulk_delete_confirm">Delete %1$d selected conversations? This cannot be undone.</string>
     <string name="drawer_bulk_includes_pinned">The selection includes pinned conversations.</string>
     <string name="drawer_bulk_includes_current">The selection includes the current conversation.</string>
+<string name="settings_proot_runtime_phase_verify">Verifying bundled runtime…</string>
+<string name="settings_proot_runtime_phase_check">Checking Node.js, Python and subprocesses…</string>
 </resources>

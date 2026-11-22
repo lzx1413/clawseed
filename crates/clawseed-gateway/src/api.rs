@@ -9,6 +9,7 @@ use axum::{
 };
 
 mod attachments;
+mod background;
 mod config;
 mod config_secrets;
 mod cron;
@@ -24,8 +25,8 @@ mod system;
 mod tts;
 
 pub use self::{
-    attachments::*, config::*, cron::*, hooks::*, identity::*, integrations::*, memory::*,
-    providers::*, sessions::*, skills::*, status::*, system::*, tts::*,
+    attachments::*, background::*, config::*, cron::*, hooks::*, identity::*, integrations::*,
+    memory::*, providers::*, sessions::*, skills::*, status::*, system::*, tts::*,
 };
 use config_secrets::{hydrate_config_for_save, mask_sensitive_fields};
 

@@ -101,6 +101,7 @@ class ClawseedService : Service() {
     private var alarmVibrator: Vibrator? = null
     private val ringingAlarmIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var generationKeepAliveJob: Job? = null
+    private val executionKeepAlive = ExecutionKeepAlive(android.os.SystemClock.elapsedRealtime())
     private var chatWakeLock: PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent): IBinder {
@@ -242,10 +243,10 @@ class ClawseedService : Service() {
                     // Woken by unbind, fall through to shutdown check
                 }
             }
-            if (!isBound && taskChannel.isEmpty && ringingAlarmIds.isEmpty() && !hasActiveChatGeneration()) {
+            if (!isBound && taskChannel.isEmpty && ringingAlarmIds.isEmpty() && !hasActiveChatGeneration() && !hasActiveCommands()) {
                 val stopCandidateId = latestStartId
                 delay(REBIND_GRACE_PERIOD_MS)
-                if (isBound || !taskChannel.isEmpty || ringingAlarmIds.isNotEmpty() || hasActiveChatGeneration()) {
+                if (isBound || !taskChannel.isEmpty || ringingAlarmIds.isNotEmpty() || hasActiveChatGeneration() || hasActiveCommands()) {
                     continue
                 }
                 // Signal intent to stop, but don't exit the loop.
@@ -859,28 +860,52 @@ class ClawseedService : Service() {
         generationKeepAliveJob?.cancel()
         val sessionManager = ClawSeedAndroid.sessionManager()
         generationKeepAliveJob = scope.launch {
-            sessionManager.generatingSessionCount
-                .collect { count ->
-                    // Wake the unbind grace-period loop so it can retain the service while
-                    // a turn is active and stop it promptly after the turn completes.
-                    unbindSignal.trySend(Unit)
+            // Acquire immediately on generation, then release only after an
+            // authoritative background-job poll. A finished chat can leave jobs running.
+            val generationWatcher = launch {
+                sessionManager.generatingSessionCount.collect { count ->
+                    executionKeepAlive.generationChanged(count, android.os.SystemClock.elapsedRealtime())
                     if (count > 0) {
                         acquireChatWakeLock()
-                        updateNotification(getString(R.string.svc_notification_chat_generating))
-                    } else {
-                        releaseChatWakeLock()
-                        val running = gateway.state.value as? GatewayState.Running
-                        if (running != null) {
-                            updateNotification(getString(R.string.svc_notification_running, running.port))
-                        }
                     }
                 }
+            }
+            try {
+                while (true) {
+                    val running = gateway.state.value as? GatewayState.Running
+                    if (running == null) {
+                        releaseChatWakeLock()
+                    } else {
+                        // Keep the previous lease on transient HTTP failures.
+                        val pollRevision = executionKeepAlive.pollRevision()
+                        val count = ClawSeedAndroid.gatewayClient().activeBackgroundJobCount().getOrNull()
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        executionKeepAlive.polled(pollRevision, count, now)
+                        val generating = sessionManager.generatingSessionCount.value > 0
+                        if (generating || executionKeepAlive.shouldKeepAlive(now)) acquireChatWakeLock()
+                        else releaseChatWakeLock()
+                        updateNotification(when {
+                            generating -> getString(R.string.svc_notification_chat_generating)
+                            executionKeepAlive.hasBackgroundCommands() -> getString(R.string.svc_notification_background_commands)
+                            else -> getString(R.string.svc_notification_running, running.port)
+                        })
+                    }
+                    unbindSignal.trySend(Unit)
+                    delay(1_000)
+                }
+            } finally {
+                generationWatcher.cancel()
+                releaseChatWakeLock()
+            }
         }
     }
 
     private fun hasActiveChatGeneration(): Boolean =
         runCatching { ClawSeedAndroid.sessionManager().generatingSessionCount.value > 0 }
             .getOrDefault(false)
+
+    private fun hasActiveCommands(): Boolean = gateway.state.value is GatewayState.Running &&
+        executionKeepAlive.shouldKeepAlive(android.os.SystemClock.elapsedRealtime())
 
     private fun acquireChatWakeLock() {
         val lock = chatWakeLock ?: getSystemService(PowerManager::class.java)
@@ -889,7 +914,7 @@ class ClawseedService : Service() {
                 it.setReferenceCounted(false)
                 chatWakeLock = it
             } ?: return
-        if (!lock.isHeld) runCatching { lock.acquire() }
+        if (!lock.isHeld) runCatching { lock.acquire(ExecutionKeepAlive.LEASE_MS) }
     }
 
     private fun releaseChatWakeLock() {

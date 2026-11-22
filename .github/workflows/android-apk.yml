@@ -117,6 +117,25 @@ jobs:
       - name: Build native gateway
         run: ./tools/build-clawseed-android.sh "${ARCH}" build
 
+      - uses: actions/cache@v4
+        if: env.ARCH == 'aarch64'
+        with:
+          path: build/proot-runtime-arm64/cache
+          key: linux-runtime-arm64-${{ hashFiles('tools/build-proot-runtime.sh') }}
+
+      - name: Build bundled Linux, Node.js and Python (arm64)
+        if: env.ARCH == 'aarch64'
+        run: |
+          ./tools/build-proot-runtime.sh arm64-v8a build/proot-runtime-arm64
+          ./tools/package-proot-bootstrap.sh
+
+      - name: Test bundled runtime extraction
+        if: env.ARCH == 'aarch64'
+        working-directory: clients/android
+        run: |
+          ./gradlew --no-daemon :sdk:embedded:testDebugUnitTest \
+            -PruntimeBundle=../../build/proot-runtime-arm64/clawseed-proot-runtime-arm64-v8a.tar.xz
+
       - name: Build release APK
         working-directory: clients/android
         run: ./gradlew --no-daemon assembleRelease

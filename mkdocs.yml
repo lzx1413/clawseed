@@ -133,6 +133,7 @@ nav:
       - Build and Test: build-and-test.md
       - Skill System: skills.md
       - Android Demo: android-demo.md
+      - Linux Runtime: android-linux-runtime.md
       - File Attachments: android-file-attachments.md
   - Modules:
       - modules/index.md

@@ -55,14 +55,46 @@ HTML 提取会移除脚本、样式、导航、页脚、侧栏、表单和隐藏
 
 | 工具 | 名称 | 描述 |
 |------|------|------|
-| `ShellTool` | `shell` | 执行 shell 命令 |
-| `BackgroundRunTool` | `background_run` | 启动工作区命令并立即返回作业 ID |
+| `ShellTool` | `shell` | 选择 host/Linux 后端同步执行工作区命令 |
+| `BackgroundRunTool` | `background_run` | 选择 host/Linux 后端启动命令，立即返回作业 ID |
+| `LinuxExecTool` | `linux_exec` | `shell` 的 Linux 兼容入口，新调用使用 `shell` + `backend=linux` |
 | `BackgroundStatusTool` | `background_status` | 查询作业状态、退出码和有界 stdout/stderr |
 | `BackgroundCancelTool` | `background_cancel` | 取消排队或运行中的命令并等待其停止 |
 | `GitOperationsTool` | `git_operations` | Git 操作 |
 | `PdfReadTool` | `pdf_read` | 读取 PDF 文件 |
 
-后台命令使用进程内队列，最多同时运行 2 个作业并排队 16 个作业。每个作业最长运行 5 分钟，每个输出流最多保留 1 MiB。`background_run` 与 `shell` 经过相同的 `SecurityPolicy` 命令白名单和敏感路径检查。Gateway 重启后不恢复旧作业。
+`shell` 和 `background_run` 使用同一套命令执行器，接受 `backend`、`timeout_secs` 和
+`max_output_bytes`。`backend` 默认为 `host`（Android 上为宿主 shell），`android` 是
+`host` 的别名；`linux` 进入已安装的 PRoot 环境，未就绪时返回错误，不回退到宿主。
+原有仅传 `command` 的调用保持宿主行为，`linux_exec` 保留为固定 Linux 后端的兼容入口。
+`eval_javascript` 继续使用内置 QuickJS。
+
+同步执行默认 30 秒、最长 300 秒；兼容入口 `linux_exec` 保留原先的 60 秒默认值。
+后台任务默认 300 秒、最长 3600 秒。每个输出流默认保留 1 MiB，可通过
+`max_output_bytes` 设置为 1024 字节至 4 MiB。Linux 等待共享执行容量的时间也计入执行预算，
+等待期间支持取消；执行中的 PRoot 先接收 SIGQUIT 清理 tracees，再清理残留进程组。
+Android 启动 PRoot 前仅在子进程中恢复 SIGQUIT 的处理及屏蔽状态，避免继承 ART
+的信号屏蔽导致取消无效；包含分离进程组的 tracees 也纳入真机回归。
+
+后台命令共享进程内队列，最多同时运行 2 个作业并排队 16 个作业。
+文件配置对应的后台结果会落盘；重启后原活动任务标记为中断，不自动重跑。
+已完成记录最多保留 24 小时、64 条及合计 16 MiB 输出，在查询和状态变化时清理。
+`background_status` 不传 `job_id` 时返回活动数量和最近任务元数据。
+状态快照和完成事件包含实际 `backend`，`background_status` 和 `background_cancel`
+同时适用于两种后端。后台任务与同步命令经过相同的命令白名单和敏感路径检查。
+Gateway 重启后恢复历史结果，旧作业不会自动继续执行。所有 Linux 命令合计最多同时执行 2 条。
+
+例如，调用 `shell` 同步运行 Python：
+
+```json
+{"backend":"linux","command":"python3 report.py","timeout_secs":60}
+```
+
+调用 `background_run` 提交较长任务，然后使用返回的 `job_id` 查询或取消：
+
+```json
+{"backend":"linux","command":"node process.js","timeout_secs":1800}
+```
 
 ### 工具
 

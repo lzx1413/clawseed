@@ -877,6 +877,7 @@ private fun ProotRuntimeCard() {
     val viewModel: ProotRuntimeViewModel = viewModel()
     val state by viewModel.uiState.collectAsState()
     var confirmClear by rememberSaveable { mutableStateOf(false) }
+    var confirmRuntimeUpdate by rememberSaveable { mutableStateOf(false) }
     val statusText = when (state.status.state) {
         dev.clawseed.sdk.embedded.ProotRuntimeState.NOT_INSTALLED -> stringResource(R.string.settings_proot_runtime_not_installed)
         dev.clawseed.sdk.embedded.ProotRuntimeState.READY -> stringResource(R.string.settings_proot_runtime_ready)
@@ -926,10 +927,16 @@ private fun ProotRuntimeCard() {
             state.status.path?.let {
                 StatusRow(stringResource(R.string.settings_proot_runtime_path), it)
             }
+            state.status.checkedAtMs?.let {
+                StatusRow(stringResource(R.string.settings_proot_runtime_checked_at),
+                    java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it)))
+            }
 
             state.progress?.let { progress ->
                 Text(
                     text = when (progress.phase) {
+                        "check" -> stringResource(R.string.settings_proot_runtime_phase_check)
+                        "verify" -> stringResource(R.string.settings_proot_runtime_phase_verify)
                         "manifest" -> stringResource(R.string.settings_proot_runtime_phase_manifest)
                         "download" -> stringResource(R.string.settings_proot_runtime_phase_download)
                         "extract" -> stringResource(R.string.settings_proot_runtime_phase_extract)
@@ -968,6 +975,19 @@ private fun ProotRuntimeCard() {
                 )
             }
 
+            if (state.status.path != null) {
+                ClawSeedOutlinedButton(onClick = viewModel::checkHealth, enabled = !state.isBusy, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.settings_proot_runtime_check_health))
+                }
+                ClawSeedOutlinedButton(onClick = { confirmRuntimeUpdate = true }, enabled = state.manifestConfigured && !state.isBusy, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.settings_proot_runtime_update))
+                }
+            }
+            if (state.status.canRollback) {
+                ClawSeedOutlinedButton(onClick = viewModel::rollback, enabled = !state.isBusy, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.settings_proot_runtime_rollback))
+                }
+            }
             if (state.status.state != dev.clawseed.sdk.embedded.ProotRuntimeState.READY) {
                 ClawSeedButton(
                     onClick = viewModel::installOrRetry,
@@ -999,6 +1019,21 @@ private fun ProotRuntimeCard() {
         }
     }
 
+    if (confirmRuntimeUpdate) {
+        AlertDialog(
+            onDismissRequest = { confirmRuntimeUpdate = false },
+            title = { Text(stringResource(R.string.settings_proot_runtime_update)) },
+            text = { Text(stringResource(R.string.settings_proot_runtime_update_desc)) },
+            confirmButton = {
+                TextButton(onClick = { confirmRuntimeUpdate = false; viewModel.updateInstalled() }) {
+                    Text(stringResource(R.string.settings_proot_runtime_update))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRuntimeUpdate = false }) { Text(stringResource(R.string.common_cancel)) }
+            },
+        )
+    }
     if (confirmClear) {
         AlertDialog(
             onDismissRequest = { confirmClear = false },

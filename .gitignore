@@ -94,3 +94,7 @@ memory
 
 # MkDocs build output
 site/
+
+# Generated Linux runtime archives, caches, staging and APK inputs
+/build/proot-runtime-*/
+clients/android/app/src/androidTest/jniLibs/*/libcommand-backends-probe.so

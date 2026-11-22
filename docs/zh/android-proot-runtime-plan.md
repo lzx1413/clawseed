@@ -1,3 +1,5 @@
+> 实现进展：已加入 Node.js/Python 离线打包、APK assets 安装及安装时 guest 执行检查。当前用法与验证边界见 [Android 离线 Linux runtime](android-linux-runtime.md)。下文保留早期设计与分阶段规划。
+
 ---
 title: Android PRoot Linux 执行环境开发方案
 description: 为 ClawSeed Android App 提供可下载、可更新、受约束的 Linux 用户态执行环境。

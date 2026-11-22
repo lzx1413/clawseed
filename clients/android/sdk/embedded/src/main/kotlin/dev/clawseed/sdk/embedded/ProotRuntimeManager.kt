@@ -2,16 +2,14 @@ package dev.clawseed.sdk.embedded
 
 import android.content.Context
 import android.os.Build
-import android.system.Os
+import android.os.PowerManager
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
@@ -19,8 +17,9 @@ import java.util.Locale
 import java.util.UUID
 import java.nio.channels.FileChannel
 import java.nio.file.StandardOpenOption
-import java.util.zip.GZIPInputStream
-import java.util.zip.ZipInputStream
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
+import kotlinx.coroutines.CancellationException
 
 /** Configuration for downloading and storing a PRoot Linux runtime. */
 data class ProotRuntimeConfig(
@@ -47,6 +46,8 @@ data class ProotRuntimeStatus(
     val generation: String? = null,
     val path: String? = null,
     val error: String? = null,
+    val canRollback: Boolean = false,
+    val checkedAtMs: Long? = null,
 )
 
 data class ProotRuntimeProgress(
@@ -58,13 +59,12 @@ data class ProotRuntimeProgress(
 /**
  * Installs a versioned PRoot bundle into app-private storage.
  *
- * The first bundle format is a gzip-compressed tar containing `proot` and `rootfs/`. A
- * ZIP fallback is kept for development fixtures. The
- * active pointer is written only after download, hashing, extraction, and
- * layout validation all succeed.
+ * Bundled assets are authenticated by APK signing; remote manifests need a trusted
+ * publisher signature. tar.gz/tar.xz and development ZIP bundles are supported.
+ * Activation follows hash verification, safe extraction and guest execution checks.
  */
 class ProotRuntimeManager(
-    context: Context,
+    private val context: Context,
     private val config: ProotRuntimeConfig = ProotRuntimeConfig(),
 ) {
     private val root = File(context.filesDir, "proot-runtime")
@@ -75,36 +75,126 @@ class ProotRuntimeManager(
     private val stateFile = File(root, "state.json")
     private val manifests = File(root, "manifests")
 
+    fun hasInstallSource(): Boolean = config.manifestUrl?.isNotBlank() == true ||
+        runCatching { context.assets.open(BUNDLED_MANIFEST).use { } }.isSuccess
+
     suspend fun ensureReady(
         onProgress: (ProotRuntimeProgress) -> Unit = {},
-    ): ProotRuntimeStatus = withContext(Dispatchers.IO) {
-        status().takeIf { it.state == ProotRuntimeState.READY } ?: run {
-            val manifestUrl = config.manifestUrl?.trim().orEmpty()
-            if (manifestUrl.isEmpty()) {
-                status()
-            } else {
-                runCatching { install(manifestUrl, onProgress) }
-                    .getOrElse { error ->
-                        Log.e(TAG, "Failed to install PRoot runtime", error)
-                        writeState("FAILED", error.message)
-                        ProotRuntimeStatus(
-                            state = ProotRuntimeState.FAILED,
-                            error = error.message ?: "runtime installation failed",
-                        )
+    ): ProotRuntimeStatus = install(false, onProgress)
+
+    /** Prepare and check a new generation while retaining the current one for rollback. */
+    suspend fun updateInstalled(
+        onProgress: (ProotRuntimeProgress) -> Unit = {},
+    ): ProotRuntimeStatus = install(true, onProgress)
+
+    private suspend fun install(force: Boolean, onProgress: (ProotRuntimeProgress) -> Unit): ProotRuntimeStatus = withContext(Dispatchers.IO) {
+        if (!force && status().state == ProotRuntimeState.READY) return@withContext status()
+        try {
+            withInstallLock {
+                if (!force && status().state == ProotRuntimeState.READY) return@withInstallLock status()
+                if (!hasInstallSource()) return@withInstallLock status()
+                withIdleRuntime {
+                val wakeLock = context.getSystemService(PowerManager::class.java)
+                    .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ClawSeed:runtime-install")
+                wakeLock.acquire(10 * 60 * 1000L)
+                try {
+                    writeState("INSTALLING")
+                    recoverStaging()
+                    val bundled = runCatching { context.assets.open(BUNDLED_MANIFEST)
+                        .bufferedReader().use { it.readText() } }.getOrNull()
+                    onProgress(ProotRuntimeProgress("manifest"))
+                    if (bundled != null) {
+                        installUnlocked(bundled, true, onProgress)
+                    } else {
+                        val url = config.manifestUrl!!.trim()
+                        require(isAllowedUrl(url)) { "runtime manifest must use HTTPS" }
+                        installUnlocked(requestText(url), false, onProgress)
                     }
+                } finally {
+                    if (wakeLock.isHeld) wakeLock.release()
+                }
+                }
             }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.e(TAG, "Failed to install PRoot runtime", error)
+            writeState("FAILED", error.message)
+            val previous = status()
+            if (previous.state == ProotRuntimeState.READY) previous.copy(error = error.message)
+            else ProotRuntimeStatus(ProotRuntimeState.FAILED, error = error.message ?: "runtime installation failed")
+        }
+    }
+
+    suspend fun checkHealth(): ProotRuntimeStatus = withContext(Dispatchers.IO) {
+        try {
+            withInstallLock { withIdleRuntime {
+                val active = activePointer() ?: error("Linux runtime is not installed")
+                val directory = File(versions, active.generation)
+                runHealthCheck(directory)
+                status()
+            } }
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { status().copy(error = error.message) }
+    }
+
+    suspend fun rollback(): ProotRuntimeStatus = withContext(Dispatchers.IO) {
+        try {
+            withInstallLock { withIdleRuntime {
+                val active = activePointer() ?: error("Linux runtime is not installed")
+                val previous = active.previousGeneration ?: error("No previous Linux runtime is available")
+                val directory = File(versions, previous)
+                require(isValidRuntime(directory)) { "Previous Linux runtime is incomplete" }
+                runHealthCheck(directory)
+                val runtimeId = JSONObject(File(directory, "manifest.json").readText()).getString("runtime_id")
+                writeActive(runtimeId, previous, active.generation)
+                writeState("READY")
+                status()
+            } }
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { status().copy(error = error.message) }
+    }
+
+    private fun runHealthCheck(directory: File) {
+        val wakeLock = context.getSystemService(PowerManager::class.java)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ClawSeed:runtime-check")
+        wakeLock.acquire(2 * 60 * 1000L)
+        val health = JSONObject().put("checked_at_ms", System.currentTimeMillis())
+        try {
+            RuntimeReadinessProbe.check(context, directory)
+            health.put("ok", true)
+        } catch (error: Exception) {
+            health.put("ok", false).put("error", error.message?.take(2000))
+            throw error
+        } finally {
+            try {
+                val temporary = File(directory, "health.json.tmp")
+                temporary.writeText(health.toString())
+                check(temporary.renameTo(File(directory, "health.json"))) { "Could not save runtime health check" }
+            } finally { if (wakeLock.isHeld) wakeLock.release() }
         }
     }
 
     fun status(): ProotRuntimeStatus {
-        val active = activePointer() ?: return ProotRuntimeStatus(ProotRuntimeState.NOT_INSTALLED)
+        val active = activePointer() ?: return runCatching {
+            val state = JSONObject(stateFile.readText())
+            if (state.optString("state") == "FAILED") {
+                ProotRuntimeStatus(ProotRuntimeState.FAILED, error = state.optString("error"))
+            } else ProotRuntimeStatus(ProotRuntimeState.NOT_INSTALLED)
+        }.getOrDefault(ProotRuntimeStatus(ProotRuntimeState.NOT_INSTALLED))
         val directory = File(versions, active.generation)
-        return if (isValidRuntime(directory)) {
+        val healthFile = File(directory, "health.json")
+        val health = runCatching { JSONObject(healthFile.readText()) }.getOrNull()
+        val checkedAt = health?.optLong("checked_at_ms")?.takeIf { it > 0 }
+        val canRollback = active.previousGeneration?.let { isValidRuntime(File(versions, it)) } == true
+        return if (isValidRuntime(directory) && (!healthFile.exists() || health?.optBoolean("ok", false) == true)) {
             ProotRuntimeStatus(
                 ProotRuntimeState.READY,
                 active.runtimeId,
                 active.generation,
                 directory.absolutePath,
+                canRollback = canRollback,
+                checkedAtMs = checkedAt,
             )
         } else {
             ProotRuntimeStatus(
@@ -112,7 +202,9 @@ class ProotRuntimeManager(
                 version = active.runtimeId,
                 generation = active.generation,
                 path = directory.absolutePath,
-                error = "active runtime is incomplete",
+                error = health?.optString("error")?.takeIf { it.isNotBlank() } ?: "active runtime is incomplete",
+                canRollback = canRollback,
+                checkedAtMs = checkedAt,
             )
         }
     }
@@ -121,24 +213,28 @@ class ProotRuntimeManager(
         ?.path
         ?.let(::File)
 
-    fun clearInstalled(): Boolean = root.exists() && root.deleteRecursively()
+    fun clearInstalled(): Boolean = withInstallLock {
+        // Keep both lock inodes stable while the gateway is alive. linux_exec
+        // holds a shared POSIX lock for the full lifetime of each task.
+        withIdleRuntime {
+                listOf(activeFile, stateFile, versions, staging, manifests, File(root, "archives"))
+                    .all { RuntimeFiles.deleteTree(it) }
+        }
+    }
 
-    private fun install(
-        manifestUrl: String,
-        onProgress: (ProotRuntimeProgress) -> Unit,
-    ): ProotRuntimeStatus = withInstallLock {
-        writeState("INSTALLING")
-        recoverStaging()
-        installUnlocked(manifestUrl, onProgress)
+    private fun <T> withIdleRuntime(block: () -> T): T {
+        FileChannel.open(File(root, "usage.lock").toPath(), StandardOpenOption.CREATE,
+            StandardOpenOption.READ, StandardOpenOption.WRITE).use { channel ->
+            val lease = channel.tryLock() ?: error("Linux commands are running; wait for them to finish before changing or checking the runtime")
+            try { return block() } finally { lease.release() }
+        }
     }
 
     private fun installUnlocked(
-        manifestUrl: String,
+        manifest: String,
+        bundled: Boolean,
         onProgress: (ProotRuntimeProgress) -> Unit,
     ): ProotRuntimeStatus {
-        onProgress(ProotRuntimeProgress("manifest"))
-        require(isAllowedUrl(manifestUrl)) { "runtime manifest must use HTTPS" }
-        val manifest = requestText(manifestUrl)
         val json = JSONObject(manifest)
         require(json.optInt("schema_version", 0) == 1) { "unsupported runtime manifest schema" }
         val version = json.getString("runtime_version").trim()
@@ -151,22 +247,23 @@ class ProotRuntimeManager(
         require(json.getInt("min_android") <= Build.VERSION.SDK_INT) {
             "runtime requires Android ${json.getInt("min_android")}, device is ${Build.VERSION.SDK_INT}"
         }
-        val archiveUrl = json.getString("archive_url").trim()
-        require(isAllowedUrl(archiveUrl)) { "runtime archive must use HTTPS" }
+        val archiveUrl = json.optString("archive_url").trim()
+        if (!bundled) require(isAllowedUrl(archiveUrl)) { "runtime archive must use HTTPS" }
         val archiveSize = json.getLong("archive_size")
         require(archiveSize > 0L) { "archive_size must be positive" }
         val expectedSha256 = json.getString("archive_sha256").lowercase()
         require(SHA256_PATTERN.matches(expectedSha256)) { "invalid archive_sha256" }
         val archiveFormat = json.optString("archive_format", "tar.gz").lowercase(Locale.ROOT)
-        require(archiveFormat == "tar.gz" || archiveFormat == "zip") {
+        require(archiveFormat in setOf("tar.gz", "tar.xz", "zip")) {
             "unsupported runtime archive format: $archiveFormat"
         }
 
         val publisherKeyId = json.optString("publisher_key_id").trim()
         val signature = json.optString("signature").trim()
-        if (signature.isEmpty()) {
+        // APK signing authenticates bundled manifests and expected archive digests.
+        if (!bundled && signature.isEmpty()) {
             require(config.allowUnsignedManifest) { "runtime manifest signature is required" }
-        } else {
+        } else if (!bundled) {
             val publicKey = config.publisherKeys[publisherKeyId]
                 ?: error("unknown runtime publisher key: $publisherKeyId")
             require(RuntimeManifestVerifier.verify(json, publicKey)) {
@@ -175,44 +272,76 @@ class ProotRuntimeManager(
         }
 
         val active = activePointer()
-        if (active?.runtimeId == runtimeId) {
-            val activeDirectory = File(versions, active.generation)
-            val activeArchive = File(root, "archives/$runtimeId.${if (archiveFormat == "zip") "zip" else "tar.gz"}")
-            if (isValidRuntime(activeDirectory) && sha256(activeArchive) == expectedSha256) {
-                writeState("READY")
-                return status()
-            }
-        }
 
         val generation = "$runtimeId-${UUID.randomUUID()}"
         val target = File(versions, generation)
-        val archiveName = if (archiveFormat == "zip") "$runtimeId.zip" else "$runtimeId.tar.gz"
+        val archiveName = "$expectedSha256.$archiveFormat"
         val archive = File(root, "archives/$archiveName")
 
         root.mkdirs()
         versions.mkdirs()
         val generationStaging = File(staging, generation)
-        generationStaging.deleteRecursively()
+        check(RuntimeFiles.deleteTree(generationStaging)) { "could not clean runtime staging" }
         generationStaging.mkdirs()
         archive.parentFile?.mkdirs()
-        onProgress(ProotRuntimeProgress("download"))
-        download(archiveUrl, archive, archiveSize, onProgress)
-        require(archive.length() == archiveSize) { "runtime archive size mismatch" }
-        require(sha256(archive) == expectedSha256) { "runtime archive SHA-256 mismatch" }
-
+        val unpackedSize = json.optLong("unpacked_size", 512L * 1024 * 1024)
+        require(unpackedSize in 1..(2L * 1024 * 1024 * 1024)) { "invalid unpacked runtime size" }
+        val reserve = unpackedSize + unpackedSize / 5 + if (bundled) 0L else archiveSize
+        require(context.filesDir.usableSpace >= reserve) { "not enough storage for Linux runtime" }
+        val input = if (bundled) {
+            // Read directly from the APK: do not retain a second compressed copy.
+            onProgress(ProotRuntimeProgress("verify"))
+            val asset = "$BUNDLED_DIR/runtime.$archiveFormat"
+            val digest = MessageDigest.getInstance("SHA-256")
+            var bytes = 0L
+            context.assets.open(asset).use { stream ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val count = stream.read(buffer)
+                    if (count < 0) break
+                    bytes += count
+                    require(bytes <= archiveSize) { "bundled runtime size mismatch" }
+                    digest.update(buffer, 0, count)
+                    onProgress(ProotRuntimeProgress("verify", bytes, archiveSize))
+                }
+            }
+            require(bytes == archiveSize && digest.digest().joinToString("") { "%02x".format(it) } == expectedSha256) {
+                "bundled runtime SHA-256/size mismatch"
+            }
+            context.assets.open(asset)
+        } else {
+            onProgress(ProotRuntimeProgress("download"))
+            download(archiveUrl, archive, archiveSize, onProgress)
+            if (archive.length() != archiveSize || sha256(archive) != expectedSha256) {
+                archive.delete()
+                error("runtime archive SHA-256/size mismatch")
+            }
+            FileInputStream(archive)
+        }
         onProgress(ProotRuntimeProgress("extract"))
-        extractArchive(archive, generationStaging, archiveFormat)
+        input.use { RuntimeArchiveExtractor.extract(it, generationStaging, archiveFormat, unpackedSize) }
         File(generationStaging, "manifest.json").writeText(manifest)
         require(isValidRuntime(generationStaging)) {
             "runtime archive must contain executable proot and rootfs/"
         }
 
+        if (json.has("components")) {
+            for (path in listOf("usr/bin/env", "bin/sh", "opt/node/bin/node", "opt/python/bin/python3")) {
+                require(File(generationStaging, "rootfs/$path").canExecute()) { "runtime component is missing: $path" }
+            }
+            onProgress(ProotRuntimeProgress("check"))
+            runHealthCheck(generationStaging)
+        }
         target.parentFile?.mkdirs()
         require(generationStaging.renameTo(target)) { "could not activate extracted runtime" }
         manifests.mkdirs()
         File(manifests, "${config.expectedAbi}-$runtimeId.json").writeText(manifest)
-        writeActive(runtimeId, generation)
+        writeActive(runtimeId, generation, active?.generation)
         writeState("READY")
+        // Never remove the preceding environment or its manually installed dependencies.
+        // All users are excluded by usage.lock while older generations are pruned.
+        versions.listFiles()?.filter { it.name != generation && it.name != active?.generation }
+            ?.forEach { RuntimeFiles.deleteTreeOrThrow(it) }
         onProgress(ProotRuntimeProgress("ready"))
         return status()
     }
@@ -269,8 +398,9 @@ class ProotRuntimeManager(
                     while (true) {
                         val count = input.read(buffer)
                         if (count <= 0) break
-                        output.write(buffer, 0, count)
                         downloadedBytes += count
+                        check(downloadedBytes <= expectedSize) { "runtime download exceeds declared size" }
+                        output.write(buffer, 0, count)
                         onProgress(ProotRuntimeProgress("download", downloadedBytes, totalBytes))
                     }
                 }
@@ -291,171 +421,46 @@ class ProotRuntimeManager(
             if (offset > 0L) setRequestProperty("Range", "bytes=$offset-")
         }
 
-    private fun extractArchive(archive: File, destination: File, format: String) {
-        if (format == "tar.gz") {
-            extractTarGz(archive, destination)
-        } else {
-            extractZip(archive, destination)
-        }
-    }
-
-    private fun extractZip(archive: File, destination: File) {
-        val canonicalDestination = destination.canonicalFile
-        destination.mkdirs()
-        ZipInputStream(FileInputStream(archive).buffered()).use { input ->
-            while (true) {
-                val entry = input.nextEntry ?: break
-                val output = File(destination, entry.name).canonicalFile
-                require(output.path == canonicalDestination.path ||
-                    output.path.startsWith(canonicalDestination.path + File.separator)) {
-                    "runtime archive contains an unsafe path"
-                }
-                if (entry.isDirectory) {
-                    output.mkdirs()
-                } else {
-                    output.parentFile?.mkdirs()
-                    FileOutputStream(output).use { input.copyTo(it) }
-                }
-                input.closeEntry()
-            }
-        }
-        File(destination, "proot").setExecutable(true, false)
-    }
-
-    private fun extractTarGz(archive: File, destination: File) {
-        destination.mkdirs()
-        GZIPInputStream(BufferedInputStream(FileInputStream(archive))).use { input ->
-            val header = ByteArray(TAR_BLOCK_SIZE)
-            while (readBlock(input, header)) {
-                if (header.all { it == 0.toByte() }) break
-
-                val name = tarString(header, 0, 100)
-                val prefix = tarString(header, 345, 155)
-                val entryName = if (prefix.isEmpty()) name else "$prefix/$name"
-                val size = tarOctal(header, 124, 12)
-                val mode = tarOctal(header, 100, 8)
-                val linkName = tarString(header, 157, 100)
-                val output = safeOutput(destination, entryName)
-                when (header[156].toInt().toChar()) {
-                    '\u0000', '0' -> {
-                        output.parentFile?.mkdirs()
-                        FileOutputStream(output).use { copyExactly(input, it, size) }
-                        applyMode(output, mode)
-                    }
-                    '1' -> {
-                        output.parentFile?.mkdirs()
-                        val target = safeOutput(destination, linkName)
-                        Os.link(target.absolutePath, output.absolutePath)
-                    }
-                    '2' -> {
-                        output.parentFile?.mkdirs()
-                        Os.symlink(linkName, output.absolutePath)
-                    }
-                    '5' -> output.mkdirs()
-                    // GNU/PAX metadata is not part of the extracted runtime tree.
-                    'L', 'K', 'x', 'g' -> skipExactly(input, size)
-                    else -> skipExactly(input, size)
-                }
-                skipPadding(input, size)
-            }
-        }
-        File(destination, "proot").setExecutable(true, false)
-    }
-
-    private fun safeOutput(destination: File, entryName: String): File {
-        require(entryName.isNotEmpty()) { "runtime archive contains an empty path" }
-        val canonicalDestination = destination.canonicalFile
-        val output = File(destination, entryName).canonicalFile
-        require(output.path.startsWith(canonicalDestination.path + File.separator)) {
-            "runtime archive contains an unsafe path"
-        }
-        return output
-    }
-
-    private fun applyMode(file: File, mode: Long) {
-        if (mode and 0b001_001_001L != 0L) file.setExecutable(true, false)
-        if (mode and 0b010_010_010L != 0L) file.setWritable(true, false)
-    }
-
-    private fun tarString(bytes: ByteArray, offset: Int, length: Int): String {
-        val end = (offset until offset + length).firstOrNull { bytes[it].toInt() == 0 || bytes[it].toInt() == 32 }
-            ?: (offset + length)
-        return bytes.copyOfRange(offset, end).toString(Charsets.UTF_8).trim()
-    }
-
-    private fun tarOctal(bytes: ByteArray, offset: Int, length: Int): Long {
-        val value = tarString(bytes, offset, length)
-        return if (value.isEmpty()) 0L else value.toLong(8)
-    }
-
-    private fun readBlock(input: InputStream, block: ByteArray): Boolean {
-        var offset = 0
-        while (offset < block.size) {
-            val count = input.read(block, offset, block.size - offset)
-            if (count < 0) return offset != 0 && error("truncated tar header")
-            offset += count
-        }
-        return true
-    }
-
-    private fun copyExactly(input: InputStream, output: FileOutputStream, size: Long) {
-        var remaining = size
-        val buffer = ByteArray(64 * 1024)
-        while (remaining > 0L) {
-            val count = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
-            check(count > 0) { "truncated runtime archive entry" }
-            output.write(buffer, 0, count)
-            remaining -= count
-        }
-    }
-
-    private fun skipExactly(input: InputStream, size: Long) {
-        var remaining = size
-        while (remaining > 0L) {
-            val skipped = input.skip(remaining)
-            if (skipped > 0L) {
-                remaining -= skipped
-            } else {
-                check(input.read() >= 0) { "truncated runtime archive entry" }
-                remaining -= 1L
-            }
-        }
-    }
-
-    private fun skipPadding(input: InputStream, size: Long) {
-        val padding = (TAR_BLOCK_SIZE - (size % TAR_BLOCK_SIZE)) % TAR_BLOCK_SIZE
-        skipExactly(input, padding)
-    }
-
-    private fun isValidRuntime(directory: File): Boolean =
-        File(directory, "proot").isFile &&
-            File(directory, "proot").canExecute() &&
+    private fun isValidRuntime(directory: File): Boolean {
+        if (!((File(directory, "proot").canExecute() ||
+            File(context.applicationInfo.nativeLibraryDir, "libproot.so").canExecute()) &&
             File(directory, "rootfs").isDirectory &&
-            File(directory, "manifest.json").isFile
+            File(directory, "manifest.json").isFile)) return false
+        return runCatching {
+            val manifest = JSONObject(File(directory, "manifest.json").readText())
+            !manifest.has("components") || listOf("usr/bin/env", "bin/sh", "opt/node/bin/node", "opt/python/bin/python3")
+                .all { File(directory, "rootfs/$it").canExecute() }
+        }.getOrDefault(false)
+    }
 
-    private data class ActivePointer(val runtimeId: String, val generation: String)
+    private data class ActivePointer(val runtimeId: String, val generation: String, val previousGeneration: String? = null)
 
     private fun activePointer(): ActivePointer? {
         if (!activeFile.isFile) return null
         return runCatching {
             val json = JSONObject(activeFile.readText())
-            ActivePointer(json.getString("runtime_id"), json.getString("generation"))
+            val generation = json.getString("generation")
+            require(RUNTIME_ID_PATTERN.matches(generation) && generation != "." && generation != "..")
+            val previous = json.optString("previous_generation").takeIf { it.isNotBlank() }
+            require(previous == null || (RUNTIME_ID_PATTERN.matches(previous) && previous != "." && previous != ".." && previous != generation))
+            ActivePointer(json.getString("runtime_id"), generation, previous)
         }.getOrNull()
     }
 
-    private fun writeActive(runtimeId: String, generation: String) {
+    private fun writeActive(runtimeId: String, generation: String, previousGeneration: String? = null) {
         root.mkdirs()
         val temporary = File(root, "active.json.tmp")
         temporary.writeText(
             JSONObject()
                 .put("runtime_id", runtimeId)
                 .put("generation", generation)
+                .put("previous_generation", previousGeneration)
                 .toString(),
         )
         check(temporary.renameTo(activeFile)) { "could not update active runtime" }
     }
 
-    private fun <T> withInstallLock(block: () -> T): T {
+    private fun <T> withInstallLock(block: () -> T): T = INSTALL_MUTEX.withLock {
         root.mkdirs()
         FileChannel.open(
             installLockFile.toPath(),
@@ -463,7 +468,7 @@ class ProotRuntimeManager(
             StandardOpenOption.WRITE,
         ).use { channel ->
             val lock = channel.lock()
-            return try {
+            try {
                 block()
             } finally {
                 lock.release()
@@ -472,7 +477,7 @@ class ProotRuntimeManager(
     }
 
     private fun recoverStaging() {
-        staging.listFiles()?.forEach { entry -> entry.deleteRecursively() }
+        staging.listFiles()?.forEach { entry -> RuntimeFiles.deleteTreeOrThrow(entry) }
     }
 
     private fun writeState(state: String, error: String? = null) {
@@ -502,7 +507,9 @@ class ProotRuntimeManager(
 
     companion object {
         private const val TAG = "ProotRuntimeManager"
-        private const val TAR_BLOCK_SIZE = 512
+        private val INSTALL_MUTEX = ReentrantLock()
+        private const val BUNDLED_DIR = "clawseed-runtime"
+        private const val BUNDLED_MANIFEST = "$BUNDLED_DIR/manifest.json"
         private val VERSION_PATTERN = Regex("[A-Za-z0-9._-]{1,80}")
         private val RUNTIME_ID_PATTERN = Regex("[A-Za-z0-9._+-]{1,120}")
         private val SHA256_PATTERN = Regex("[0-9a-f]{64}")

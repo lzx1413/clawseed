@@ -71,3 +71,5 @@ clawseed-api (traits only, no impls)
 
 clients/android (Kotlin/Compose demo app)
 ```
+
+- [Offline Linux, Node.js and Python on Android](android-linux-runtime.md)

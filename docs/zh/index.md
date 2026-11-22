@@ -69,3 +69,5 @@ clawseed-api (traits only, no impls)
 
 clients/android (Kotlin/Compose demo app)
 ```
+
+- [Android 离线 Linux、Node.js 和 Python](android-linux-runtime.md)

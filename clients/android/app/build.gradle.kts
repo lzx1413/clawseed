@@ -100,12 +100,21 @@ android {
         buildConfig = true
     }
 
+    // Generated, ignored artifacts; build-proot-runtime.sh + package-proot-bootstrap.sh.
+    sourceSets.getByName("main") {
+        assets.srcDir(rootProject.file("../../build/proot-runtime-arm64/packaged/assets"))
+        jniLibs.srcDir(rootProject.file("../../build/proot-runtime-arm64/packaged/jniLibs"))
+    }
+    androidResources { noCompress += listOf("xz", "gz") }
+
     packaging {
         // Extract libclawseed.so to nativeLibraryDir so we can exec() it as a process.
         // Without this, AGP leaves .so files uncompressed inside the APK (Android 6+ default),
         // and ProcessBuilder cannot launch a binary from inside a zip file.
         jniLibs {
             useLegacyPackaging = true
+            keepDebugSymbols += listOf("**/libproot.so", "**/libproot-loader.so",
+                "**/libtalloc.so", "**/libandroid-shmem.so")
         }
     }
 }

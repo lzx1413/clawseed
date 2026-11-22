@@ -38,7 +38,7 @@ class ProotRuntimeViewModel(application: Application) : AndroidViewModel(applica
     )
     private val _uiState = MutableStateFlow(
         ProotRuntimeUiState(
-            manifestConfigured = BuildConfig.PROOT_RUNTIME_MANIFEST_URL.isNotBlank(),
+            manifestConfigured = manager.hasInstallSource(),
         ),
     )
     val uiState: StateFlow<ProotRuntimeUiState> = _uiState.asStateFlow()
@@ -70,9 +70,40 @@ class ProotRuntimeViewModel(application: Application) : AndroidViewModel(applica
         if (_uiState.value.isBusy) return
         viewModelScope.launch {
             _uiState.update { it.copy(isBusy = true) }
-            withContext(Dispatchers.IO) { manager.clearInstalled() }
-            val status = withContext(Dispatchers.IO) { manager.status() }
-            _uiState.update { it.copy(status = status, isBusy = false) }
+            try {
+                withContext(Dispatchers.IO) { check(manager.clearInstalled()) { "Could not remove Linux runtime" } }
+                val status = withContext(Dispatchers.IO) { manager.status() }
+                _uiState.update { it.copy(status = status) }
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                _uiState.update { it.copy(status = it.status.copy(error = error.message)) }
+            } finally {
+                _uiState.update { it.copy(isBusy = false) }
+            }
+        }
+    }
+
+    fun checkHealth() = runtimeAction("check") { manager.checkHealth() }
+
+    fun updateInstalled() = runtimeAction("manifest") {
+        manager.updateInstalled { progress -> _uiState.update { it.copy(progress = progress) } }
+    }
+
+    fun rollback() = runtimeAction("check") { manager.rollback() }
+
+    private fun runtimeAction(phase: String, action: suspend () -> ProotRuntimeStatus) {
+        if (_uiState.value.isBusy) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBusy = true, progress = ProotRuntimeProgress(phase)) }
+            try {
+                val status = action()
+                _uiState.update { it.copy(status = status) }
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                _uiState.update { it.copy(status = it.status.copy(error = error.message)) }
+            } finally {
+                _uiState.update { it.copy(isBusy = false, progress = null) }
+            }
         }
     }
 }

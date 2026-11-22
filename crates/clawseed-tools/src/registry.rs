@@ -191,7 +191,14 @@ pub fn all_tools_with_runtime(
     background_event_sink: Option<BackgroundEventSink>,
     ask_user_handler: Option<Arc<dyn AskUserHandler>>,
 ) -> Vec<Box<dyn Tool>> {
-    let background_manager = BackgroundJobManager::new(background_event_sink);
+    let background_manager = if config.config_path.as_os_str().is_empty() {
+        BackgroundJobManager::new(background_event_sink)
+    } else {
+        BackgroundJobManager::persistent(
+            config.config_path.with_extension("background-jobs"),
+            background_event_sink,
+        )
+    };
     let mut tools: Vec<Box<dyn Tool>> = vec![
         Box::new(AskUserTool::new(
             ask_user_handler.unwrap_or_else(|| Arc::new(CliAskUserHandler)),
