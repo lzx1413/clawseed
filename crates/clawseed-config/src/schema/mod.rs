@@ -209,6 +209,10 @@ pub struct Config {
     /// Skill system configuration.
     #[serde(default)]
     pub skills: SkillsConfig,
+
+    /// Local Linux runtime plugin configuration.
+    #[serde(default)]
+    pub plugins: PluginsConfig,
 }
 
 /// Secrets / encryption configuration.
@@ -887,6 +891,7 @@ impl Default for Config {
             locale: None,
             identity: IdentityConfig::default(),
             skills: SkillsConfig::default(),
+            plugins: PluginsConfig::default(),
         }
     }
 }
@@ -956,6 +961,10 @@ max_inferred_items_per_turn = 3
 [reliability]
 max_retries = 2
 provider_backoff_ms = 500
+
+[plugins]
+enabled = false
+max_loaded = 16
 
 [secrets]
 encrypt = true
@@ -1764,6 +1773,46 @@ impl Default for SkillsConfig {
             extra_roots: Vec::new(),
             max_active: default_max_active_skills(),
             excluded: Vec::new(),
+        }
+    }
+}
+
+/// Local CETP plugin configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginsConfig {
+    /// Enable local plugin discovery and loading.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Additional plugin roots.
+    #[serde(default)]
+    pub extra_roots: Vec<String>,
+
+    /// Maximum number of plugin manifests loaded into one Agent.
+    #[serde(default = "default_max_plugins")]
+    pub max_loaded: usize,
+
+    /// Optional plugin ID allowlist. Empty means all discovered plugins.
+    #[serde(default)]
+    pub allowed: Vec<String>,
+
+    /// Plugin IDs excluded even when they are allowed.
+    #[serde(default)]
+    pub denied: Vec<String>,
+}
+
+fn default_max_plugins() -> usize {
+    16
+}
+
+impl Default for PluginsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            extra_roots: Vec::new(),
+            max_loaded: default_max_plugins(),
+            allowed: Vec::new(),
+            denied: Vec::new(),
         }
     }
 }

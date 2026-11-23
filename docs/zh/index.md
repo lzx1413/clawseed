@@ -50,6 +50,8 @@ Tool Protocol（CETP）暴露自身能力；ClawSeed 发现这些工具后，将
 - [教程](tutorials/index.md) — 扩展 ClawSeed 的实践指南
 - [Android 示例](android-demo.md) — 在设备上运行完整的 Agent 栈
 - [Android PRoot Linux 执行环境方案](android-proot-runtime-plan.md) — 下载并管理受控的 Linux 用户态运行时
+- [CETP Linux 插件开发方案](plugin-development-plan.md) — 使用 CETP 为 Linux runtime 增加本地可执行插件
+- [CETP 插件开发复盘](plugin-development-lessons.md) — 插件创建、验证和启用流程中的问题记录
 - [Android WebDAV 备份计划](android-webdav-backup-plan.md) — WebDAV 备份、恢复和自动化路线
 - [CETP v1](external-tool-protocol.md) / [v2 实验规范](external-tool-protocol-v2.md) — Android 跨应用工具协议
 - [九财花联动](integrations/jiucaihua.md) — 通过 CETP 调用另一个 Android App 的投资工具

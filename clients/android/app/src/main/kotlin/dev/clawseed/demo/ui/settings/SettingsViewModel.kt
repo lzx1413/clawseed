@@ -16,6 +16,7 @@ import dev.clawseed.sdk.core.client.GatewayClient
 import dev.clawseed.sdk.core.model.GatewayStatus
 import dev.clawseed.sdk.core.model.SkillInfo
 import dev.clawseed.sdk.core.model.ToolInfo
+import dev.clawseed.sdk.core.model.PluginInfo
 import dev.clawseed.sdk.embedded.GatewayConfigManager
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,6 +47,10 @@ data class SettingsUiState(
     val isFetchingBalance: Boolean = false,
     val status: GatewayStatus? = null,
     val tools: List<ToolInfo> = emptyList(),
+    val plugins: List<PluginInfo> = emptyList(),
+    val pluginsEnabled: Boolean = false,
+    val pluginAllowed: Set<String> = emptySet(),
+    val pluginDenied: Set<String> = emptySet(),
     val skills: List<SkillInfo> = emptyList(),
     val configToml: String = "",
     val isLoading: Boolean = true,
@@ -175,6 +180,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
             val statusResult = client().status()
             val toolsResult = client().tools()
+            val pluginsResult = client().pluginCatalog()
+            val pluginCatalog = pluginsResult.getOrElse { dev.clawseed.sdk.core.model.PluginCatalog() }
             val skillsResult = client().skills()
             val configResult = client().config()
             val personalityResult = client().personality()
@@ -229,6 +236,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             _uiState.value = _uiState.value.copy(
                 status = status,
                 tools = toolsResult.getOrElse { emptyList() },
+                plugins = pluginCatalog.plugins,
+                pluginsEnabled = pluginCatalog.enabled,
+                pluginAllowed = pluginCatalog.allowed.toSet(),
+                pluginDenied = pluginCatalog.denied.toSet(),
                 skills = skillsResult.getOrElse { emptyList() },
                 configToml = toml,
                 isLoading = false,
@@ -563,6 +574,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(
             status = null,
             tools = emptyList(),
+            plugins = emptyList(),
+            pluginsEnabled = false,
+            pluginAllowed = emptySet(),
+            pluginDenied = emptySet(),
             skills = emptyList(),
             configToml = toml,
             isLoading = false,
@@ -1002,6 +1017,46 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                         error = getApplication<Application>().getString(R.string.settings_save_failed, e.message?.take(100) ?: ""),
                     )
                 }
+        }
+    }
+
+    fun togglePlugin(pluginId: String, enabled: Boolean) {
+        val previous = _uiState.value
+        val allowed = previous.pluginAllowed.toMutableSet()
+        val denied = previous.pluginDenied.toMutableSet()
+        if (enabled) {
+            denied.remove(pluginId)
+            if (allowed.isNotEmpty() || !previous.pluginsEnabled) allowed.add(pluginId)
+        } else if (allowed.isNotEmpty()) {
+            allowed.remove(pluginId)
+        } else {
+            denied.add(pluginId)
+        }
+        _uiState.value = previous.copy(
+            plugins = previous.plugins.map {
+                if (it.pluginId == pluginId) it.copy(enabled = enabled, status = if (enabled) "enabled" else "disabled") else it
+            },
+            pluginsEnabled = if (enabled) true else previous.pluginsEnabled,
+            pluginAllowed = allowed,
+            pluginDenied = denied,
+        )
+        viewModelScope.launch {
+            val result = client().updatePluginConfig(
+                dev.clawseed.sdk.core.model.PluginConfigPatch(
+                    enabled = if (enabled) true else if (previous.plugins.all { !it.enabled }) false else true,
+                    allowed = allowed.toList().sorted(),
+                    denied = denied.toList().sorted(),
+                ),
+            )
+            result.onSuccess {
+                runCatching { ClawSeedAndroid.restartGateway() }
+                    .onFailure { error ->
+                        _uiState.value = _uiState.value.copy(error = error.message)
+                    }
+                loadAll()
+            }.onFailure { error ->
+                _uiState.value = previous.copy(error = getApplication<Application>().getString(R.string.settings_save_failed, error.message?.take(100) ?: ""))
+            }
         }
     }
 

@@ -35,7 +35,7 @@ use anyhow::{Context, Result};
 use axum::{
     Router,
     http::StatusCode,
-    routing::{delete, get, post, put},
+    routing::{delete, get, patch, post, put},
 };
 use clawseed_agent::cost::CostTracker;
 use clawseed_agent::security::SecurityPolicy;
@@ -44,6 +44,7 @@ use clawseed_agent::tools;
 use clawseed_agent::tools::CanvasStore;
 use clawseed_api::memory_traits::Memory;
 use clawseed_api::provider::Provider;
+use clawseed_api::tool_registry::ToolRegistry;
 use clawseed_api::user_profile::UserProfileStore;
 
 use clawseed_config::schema::Config;
@@ -370,6 +371,19 @@ pub async fn run_gateway(
             shared_builtin_tools.to_vec(),
             clawseed_api::tool_registry::ToolSource::BuiltIn,
         );
+        if config.plugins.enabled {
+            for registration in
+                clawseed_tools::plugins::load_plugin_tools(&config.workspace_dir, &config.plugins)
+                    .await
+            {
+                if !reg.register(registration.tool, registration.source.clone()) {
+                    tracing::warn!(
+                        source = ?registration.source,
+                        "Gateway plugin tool name conflicts with an existing tool"
+                    );
+                }
+            }
+        }
         Arc::new(reg)
     };
 
@@ -663,6 +677,8 @@ pub async fn run_gateway(
         .route("/api/status", get(api::handle_api_status))
         .route("/api/config", get(api::handle_api_config_get))
         .route("/api/tools", get(api::handle_api_tools))
+        .route("/api/plugins", get(api::handle_api_plugins))
+        .route("/api/plugins/config", patch(api::handle_api_plugins_config))
         .route("/api/background-jobs", get(api::handle_api_background_jobs))
         .route("/api/skills", get(api::handle_api_skills))
         .route("/api/skills/reload", post(api::handle_api_skills_reload))

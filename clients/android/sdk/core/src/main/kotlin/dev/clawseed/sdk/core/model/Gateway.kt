@@ -51,6 +51,54 @@ data class ToolInfo(
     val source: String? = null,
 )
 
+/** Discovered local Linux runtime plugin and its current load status. */
+@Serializable
+data class PluginInfo(
+    @SerialName("plugin_id") val pluginId: String = "",
+    val name: String? = null,
+    val version: String? = null,
+    val description: String? = null,
+    val language: String? = null,
+    val entry: String? = null,
+    val path: String? = null,
+    val enabled: Boolean = false,
+    val status: String = "unknown",
+    @SerialName("manifest_valid") val manifestValid: Boolean = false,
+    @SerialName("validation_error") val validationError: String? = null,
+)
+
+/** Discovered plugin catalog, including the global plugin load policy. */
+@Serializable
+data class PluginCatalog(
+    val enabled: Boolean = false,
+    @SerialName("max_loaded") val maxLoaded: Int = 16,
+    val allowed: List<String> = emptyList(),
+    val denied: List<String> = emptyList(),
+    val plugins: List<PluginInfo> = emptyList(),
+)
+
+/** Partial update for the gateway's [plugins] configuration section. */
+@Serializable
+data class PluginConfigPatch(
+    val enabled: Boolean? = null,
+    @SerialName("extra_roots") val extraRoots: List<String>? = null,
+    @SerialName("max_loaded") val maxLoaded: Int? = null,
+    val allowed: List<String>? = null,
+    val denied: List<String>? = null,
+)
+
+/** Persisted plugin configuration returned after a patch. */
+@Serializable
+data class PluginConfigState(
+    val status: String = "",
+    val enabled: Boolean = false,
+    @SerialName("extra_roots") val extraRoots: List<String> = emptyList(),
+    @SerialName("max_loaded") val maxLoaded: Int = 16,
+    val allowed: List<String> = emptyList(),
+    val denied: List<String> = emptyList(),
+    @SerialName("reload_required") val reloadRequired: Boolean = false,
+)
+
 /** A named persona (分身) returned by `/api/personas`. */
 @Serializable
 data class PersonaInfo(

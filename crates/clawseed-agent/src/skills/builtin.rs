@@ -10,11 +10,18 @@ struct BuiltinSkill {
     skill_md: &'static str,
 }
 
-const BUILTIN_SKILLS: &[BuiltinSkill] = &[BuiltinSkill {
-    name: "skill-creator",
-    manifest: include_str!("builtin_skill-creator_manifest.toml"),
-    skill_md: include_str!("builtin_skill-creator_SKILL.md"),
-}];
+const BUILTIN_SKILLS: &[BuiltinSkill] = &[
+    BuiltinSkill {
+        name: "skill-creator",
+        manifest: include_str!("builtin_skill-creator_manifest.toml"),
+        skill_md: include_str!("builtin_skill-creator_SKILL.md"),
+    },
+    BuiltinSkill {
+        name: "plugin-authoring",
+        manifest: include_str!("builtin_plugin-authoring_manifest.toml"),
+        skill_md: include_str!("builtin_plugin-authoring_SKILL.md"),
+    },
+];
 
 /// Ensure all built-in skills exist in the workspace's skill directory.
 ///
@@ -65,6 +72,9 @@ mod tests {
         assert!(skill_dir.is_dir());
         assert!(skill_dir.join("manifest.toml").exists());
         assert!(skill_dir.join("SKILL.md").exists());
+        let plugin_skill_dir = dir.path().join(".clawseed/skills/plugin-authoring");
+        assert!(plugin_skill_dir.join("manifest.toml").exists());
+        assert!(plugin_skill_dir.join("SKILL.md").exists());
     }
 
     #[test]

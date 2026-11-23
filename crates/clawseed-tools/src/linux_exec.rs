@@ -1,5 +1,6 @@
 //! Linux user-space execution through an installed PRoot runtime.
 
+use anyhow::Context;
 use async_trait::async_trait;
 use clawseed_api::tool::{Tool, ToolResult};
 use clawseed_api::tool_context::ToolContext;
@@ -19,6 +20,141 @@ fn linux_exec_limit() -> Arc<Semaphore> {
     LIMIT
         .get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_LINUX_EXEC)))
         .clone()
+}
+
+/// Resources that must stay alive while a persistent plugin runs in PRoot.
+#[cfg(unix)]
+pub(crate) struct LinuxPluginGuard {
+    _permit: tokio::sync::OwnedSemaphorePermit,
+    _lease: Option<usage::Lease>,
+    _task_tmp: tempfile::TempDir,
+}
+
+/// Spawn a long-lived Python or Node.js process inside the active PRoot runtime.
+#[cfg(unix)]
+pub(crate) async fn spawn_linux_plugin(
+    language: &str,
+    entry: &Path,
+    plugin_root: &Path,
+    workspace: &Path,
+    runtime_dir: Option<PathBuf>,
+    plugin_id: &str,
+    workspace_permission: &str,
+) -> anyhow::Result<(tokio::process::Child, LinuxPluginGuard)> {
+    anyhow::ensure!(
+        workspace.is_dir(),
+        "workspace is not a directory: {}",
+        workspace.display()
+    );
+    let permit = linux_exec_limit().acquire_owned().await?;
+    let store = runtime_dir
+        .clone()
+        .or_else(|| std::env::var_os(RUNTIME_DIR_ENV).map(PathBuf::from));
+    let lease = store
+        .as_ref()
+        .filter(|path| path.is_dir())
+        .map(|path| usage::Lease::acquire(path))
+        .transpose()
+        .map_err(|e| anyhow::anyhow!("runtime is being removed or cannot be locked: {e}"))?;
+    let layout = RuntimeLayout::load(runtime_dir).map_err(anyhow::Error::msg)?;
+    let task_dir = layout.root.join("tasks");
+    std::fs::create_dir_all(&task_dir)?;
+    let task_tmp = tempfile::Builder::new()
+        .prefix("clawseed-plugin-")
+        .tempdir_in(&task_dir)?;
+    let proot_tmp = task_tmp.path().join("proot-tmp");
+    std::fs::create_dir(&proot_tmp)?;
+    let proot_l2s = layout.rootfs.join("root/.l2s");
+    std::fs::create_dir_all(&proot_l2s)?;
+
+    let plugin_root = plugin_root.canonicalize()?;
+    let entry = entry.canonicalize()?;
+    let relative_entry = entry
+        .strip_prefix(&plugin_root)
+        .map_err(|_| anyhow::anyhow!("plugin entry is outside its plugin directory"))?;
+    let guest_entry = Path::new("/plugin").join(relative_entry);
+    let interpreter = match language {
+        // The signed runtime installs Python under /opt/python. This path is
+        // inside the guest rootfs and is resolved after PRoot starts.
+        "python" => "/opt/python/bin/python3",
+        "node" => "/opt/node/bin/node",
+        other => anyhow::bail!("unsupported plugin language: {other}"),
+    };
+
+    let mut cmd = tokio::process::Command::new(&layout.proot);
+    cmd.args(["--kill-on-exit", "--link2symlink", "--sysvipc", "-0", "-r"])
+        .arg(&layout.rootfs)
+        .args(["-b"])
+        .arg(format!("{}:/plugin", plugin_root.display()))
+        .args(["-b"])
+        .arg(format!("{}:/tmp", task_tmp.path().display()))
+        .args(["-b", "/dev", "-b", "/proc"]);
+    if workspace_permission != "none" {
+        cmd.args(["-b"])
+            .arg(format!("{}:/workspace", workspace.display()));
+    }
+    #[cfg(target_os = "android")]
+    cmd.args(["-b", "/system", "-b", "/apex"]);
+    cmd.args([
+        "-w",
+        "/plugin",
+        "/usr/bin/env",
+        "-i",
+        "HOME=/root",
+        "USER=root",
+        "LOGNAME=root",
+        "SHELL=/bin/sh",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "LANG=C.UTF-8",
+        "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt",
+        "TMPDIR=/tmp",
+        "TERM=dumb",
+        interpreter,
+    ])
+    .arg(guest_entry)
+    .current_dir(plugin_root)
+    .env_clear()
+    .env("HOME", "/root")
+    .env(
+        "PATH",
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    )
+    .env("LANG", "C.UTF-8")
+    .env("TMPDIR", &proot_tmp)
+    .env("TERM", "dumb")
+    .env("CLAWSEED_PLUGIN_ID", plugin_id)
+    .env("CLAWSEED_CETP_VERSION", "2")
+    .env(
+        "CLAWSEED_PLUGIN_WORKSPACE",
+        if workspace_permission == "none" {
+            ""
+        } else {
+            "/workspace"
+        },
+    )
+    .stdin(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .kill_on_drop(true);
+    if let Some(loader) = &layout.loader {
+        cmd.env("PROOT_LOADER", loader);
+    }
+    if let Some(library_dir) = &layout.library_dir {
+        cmd.env("LD_LIBRARY_PATH", library_dir);
+    }
+    cmd.env("PROOT_TMP_DIR", &proot_tmp)
+        .env("PROOT_L2S_DIR", &proot_l2s);
+    let child = cmd
+        .spawn()
+        .with_context(|| format!("failed to start Linux plugin {plugin_id}"))?;
+    Ok((
+        child,
+        LinuxPluginGuard {
+            _permit: permit,
+            _lease: lease,
+            _task_tmp: task_tmp,
+        },
+    ))
 }
 
 // FileChannel.lock() on Android uses POSIX record locks. Keep one descriptor

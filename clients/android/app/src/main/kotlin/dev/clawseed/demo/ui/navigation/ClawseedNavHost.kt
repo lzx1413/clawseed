@@ -17,6 +17,8 @@ import dev.clawseed.demo.ui.persona.PersonaManagerScreen
 import dev.clawseed.demo.ui.profile.UserProfileScreen
 import dev.clawseed.demo.ui.scheduled.ScheduledTasksScreen
 import dev.clawseed.demo.ui.settings.SettingsScreen
+import dev.clawseed.demo.ui.settings.SkillManagementScreen
+import dev.clawseed.demo.ui.settings.ToolManagementScreen
 
 object Routes {
     const val CHAT = "chat"
@@ -24,6 +26,8 @@ object Routes {
     const val SCHEDULED_TASKS = "scheduled_tasks"
     const val PERSONAS = "personas"
     const val USER_PROFILE = "user_profile"
+    const val SKILL_MANAGEMENT = "skill_management"
+    const val TOOL_MANAGEMENT = "tool_management"
     const val PERSONA_NAME_ARG = "name"
     const val PERSONA_DETAIL = "personas/{$PERSONA_NAME_ARG}"
 
@@ -75,8 +79,16 @@ fun ClawseedNavHost(
             AppPageBackdrop { SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onManageUserProfile = { navController.navigate(Routes.USER_PROFILE) },
+                onManageSkills = { navController.navigate(Routes.SKILL_MANAGEMENT) },
+                onManageTools = { navController.navigate(Routes.TOOL_MANAGEMENT) },
                 localStore = localStore,
             ) }
+        }
+        composable(Routes.SKILL_MANAGEMENT) {
+            AppPageBackdrop { SkillManagementScreen(onBack = { navController.popBackStack() }) }
+        }
+        composable(Routes.TOOL_MANAGEMENT) {
+            AppPageBackdrop { ToolManagementScreen(onBack = { navController.popBackStack() }) }
         }
         composable(Routes.USER_PROFILE) {
             AppPageBackdrop { UserProfileScreen(onBack = { navController.popBackStack() }) }

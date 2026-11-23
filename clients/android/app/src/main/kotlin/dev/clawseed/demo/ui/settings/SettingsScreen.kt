@@ -10,6 +10,7 @@ import dev.clawseed.demo.ui.components.ClawSeedOutlinedButton
 import dev.clawseed.demo.ui.components.ClawSeedTextField
 import dev.clawseed.demo.ui.components.ClawSeedChoiceChip
 import dev.clawseed.demo.ui.components.ClawSeedIconButton
+import dev.clawseed.demo.ui.components.ClawSeedSectionHeader
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -110,6 +111,8 @@ private fun ExpandableSection(
 fun SettingsScreen(
     onBack: () -> Unit,
     onManageUserProfile: () -> Unit = {},
+    onManageSkills: () -> Unit = {},
+    onManageTools: () -> Unit = {},
     localStore: LocalStore? = null,
 ) {
     val viewModel: SettingsViewModel = viewModel()
@@ -259,7 +262,22 @@ fun SettingsScreen(
 
                 item { StatusCard(uiState.status, uiState.downloadProgress) }
 
-                item { Text(stringResource(R.string.settings_save_scope_notice), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        ClawSeedSectionHeader(
+                            title = stringResource(R.string.settings_skill_management),
+                            expanded = false,
+                            onToggle = onManageSkills,
+                            subtitle = stringResource(R.string.settings_skill_management_desc, uiState.skills.size),
+                        )
+                        ClawSeedSectionHeader(
+                            title = stringResource(R.string.settings_tool_management),
+                            expanded = false,
+                            onToggle = onManageTools,
+                            subtitle = stringResource(R.string.settings_tool_management_desc, uiState.tools.size + uiState.plugins.size),
+                        )
+                    }
+                }
 
                 if (localStore != null) {
                     item {

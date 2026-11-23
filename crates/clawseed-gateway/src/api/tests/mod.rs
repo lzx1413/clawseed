@@ -21,6 +21,7 @@ mod background;
 mod config;
 mod cron;
 mod identity;
+mod plugins;
 mod profile;
 mod providers;
 

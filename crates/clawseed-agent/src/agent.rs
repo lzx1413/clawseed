@@ -639,7 +639,8 @@ impl Agent {
             model_name,
             temperature,
             None,
-        )?;
+        )
+        .await?;
         if config.user_model.enabled {
             let store = clawseed_memory::user_profile::SqliteUserProfileStore::with_governance(
                 &config.workspace_dir,
@@ -684,10 +685,11 @@ impl Agent {
             temperature,
             shared_builtin_tools,
         )
+        .await
     }
 
     /// Private: shared assembly logic for both public constructors.
-    fn build_from_config(
+    async fn build_from_config(
         config: &clawseed_config::schema::Config,
         provider: Arc<dyn Provider>,
         memory: Arc<dyn Memory>,
@@ -786,6 +788,20 @@ impl Agent {
             }
             Arc::new(reg)
         };
+
+        if config.plugins.enabled {
+            for registration in
+                clawseed_tools::plugins::load_plugin_tools(&config.workspace_dir, &config.plugins)
+                    .await
+            {
+                if !registry.register(registration.tool, registration.source.clone()) {
+                    tracing::warn!(
+                        source = ?registration.source,
+                        "plugin tool name conflicts with an existing tool"
+                    );
+                }
+            }
+        }
 
         // Seed built-in skills before loading the index
         crate::skills::builtin::ensure_builtin_skills(&config.workspace_dir);

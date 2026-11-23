@@ -24,6 +24,10 @@ import dev.clawseed.sdk.core.model.UserProfileChangePlanRequest
 import dev.clawseed.sdk.core.model.UserProfileChangePlan
 import dev.clawseed.sdk.core.model.UserProfileMutationResult
 import dev.clawseed.sdk.core.model.MemoryEntries
+import dev.clawseed.sdk.core.model.PluginConfigPatch
+import dev.clawseed.sdk.core.model.PluginConfigState
+import dev.clawseed.sdk.core.model.PluginCatalog
+import dev.clawseed.sdk.core.model.PluginInfo
 import dev.clawseed.sdk.core.model.ProfileImportStrategy
 import dev.clawseed.sdk.core.model.WebhookResponse
 import kotlinx.coroutines.Dispatchers
@@ -432,6 +436,31 @@ class GatewayClient(
             val arr = element["tools"]?.jsonArray ?: return@runCatching emptyList()
             arr.map { json.decodeFromJsonElement(ToolInfo.serializer(), it) }
         }
+    }
+
+    /** Lists discovered local Linux runtime plugins and manifest validation state. */
+    suspend fun plugins(): Result<List<PluginInfo>> = withContext(Dispatchers.IO) {
+        pluginCatalog().map { it.plugins }
+    }
+
+    /** Lists discovered plugins together with the global plugin load policy. */
+    suspend fun pluginCatalog(): Result<PluginCatalog> = withContext(Dispatchers.IO) {
+        runCatching {
+            val req = Request.Builder().url("$baseUrl/api/plugins").addAuth().build()
+            val body = execute(req).getOrThrow()
+            json.decodeFromString<PluginCatalog>(body)
+        }
+    }
+
+    /** Updates only the plugin section of the gateway configuration. */
+    suspend fun updatePluginConfig(patch: PluginConfigPatch): Result<PluginConfigState> {
+        val payload = json.encodeToString(PluginConfigPatch.serializer(), patch)
+        val req = Request.Builder()
+            .url("$baseUrl/api/plugins/config")
+            .addAuth()
+            .patch(payload.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        return execute(req).mapCatching { json.decodeFromString<PluginConfigState>(it) }
     }
 
     /** Lists the skills currently available in the gateway runtime. */

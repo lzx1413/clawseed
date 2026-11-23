@@ -145,6 +145,7 @@ use crate::memory_store::MemoryStoreTool;
 use crate::memory_update::MemoryUpdateTool;
 use crate::model_routing_config::ModelRoutingConfigTool;
 use crate::pdf_read::PdfReadTool;
+use crate::plugin_create::{PluginCreateTool, PluginListTool, PluginValidateTool};
 use crate::shell::ShellTool;
 use crate::skill_create::SkillCreateTool;
 use crate::skill_tool::SkillTool;
@@ -259,6 +260,12 @@ pub fn all_tools_with_runtime(
     tools.push(Box::new(PdfReadTool::new()));
     tools.push(Box::new(ShellTool::new()));
     tools.push(Box::new(RuntimeStatusTool::new()));
+    tools.push(Box::new(PluginCreateTool::new()));
+    tools.push(Box::new(PluginListTool::new(
+        workspace_dir.clone(),
+        config.plugins.clone(),
+    )));
+    tools.push(Box::new(PluginValidateTool::new()));
 
     // Skill tool: only include when skill system is enabled
     if config.skills.enabled {

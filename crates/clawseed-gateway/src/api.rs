@@ -17,6 +17,7 @@ mod hooks;
 mod identity;
 mod integrations;
 mod memory;
+mod plugins;
 mod providers;
 mod sessions;
 mod skills;
@@ -26,7 +27,7 @@ mod tts;
 
 pub use self::{
     attachments::*, background::*, config::*, cron::*, hooks::*, identity::*, integrations::*,
-    memory::*, providers::*, sessions::*, skills::*, status::*, system::*, tts::*,
+    memory::*, plugins::*, providers::*, sessions::*, skills::*, status::*, system::*, tts::*,
 };
 use config_secrets::{hydrate_config_for_save, mask_sensitive_fields};
 

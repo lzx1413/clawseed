@@ -287,5 +287,7 @@ class PersonaViewModel(application: Application) : AndroidViewModel(application)
             || color.isNotBlank()
 
     private fun defaultAllowedTools(tools: List<ToolInfo>): Set<String> =
-        tools.filter { it.sourceType == "builtin" }.map { it.name }.toSet()
+        tools.filter { it.enabled && (it.sourceType == "builtin" || it.sourceType == "plugin") }
+            .map { it.name }
+            .toSet()
 }

@@ -16,6 +16,8 @@ pub enum ToolSource {
     Mcp { server: String },
     /// Tool registered by a remote client (e.g., Android via WebSocket).
     Remote { session: String },
+    /// Tool provided by a local Linux runtime plugin.
+    Plugin { plugin_id: String },
 }
 
 /// Metadata about a registered tool entry.

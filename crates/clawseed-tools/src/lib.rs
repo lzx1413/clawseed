@@ -45,6 +45,8 @@ pub mod memory_store;
 pub mod memory_update;
 pub mod model_routing_config;
 pub mod pdf_read;
+pub mod plugin_create;
+pub mod plugins;
 pub mod registry;
 pub mod shell;
 pub mod skill_create;

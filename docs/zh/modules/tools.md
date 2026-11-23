@@ -58,6 +58,9 @@ HTML 提取会移除脚本、样式、导航、页脚、侧栏、表单和隐藏
 | `ShellTool` | `shell` | 选择 host/Linux 后端同步执行工作区命令 |
 | `BackgroundRunTool` | `background_run` | 选择 host/Linux 后端启动命令，立即返回作业 ID |
 | `LinuxExecTool` | `linux_exec` | `shell` 的 Linux 兼容入口，新调用使用 `shell` + `backend=linux` |
+| `PluginCreateTool` | `plugin_create` | 生成 Python 或 Node.js CETP 插件脚手架 |
+| `PluginListTool` | `plugin_list` | 列出插件 manifest、校验状态和加载策略 |
+| `PluginValidateTool` | `plugin_validate` | 校验插件 manifest、入口和 CETP 握手 |
 | `BackgroundStatusTool` | `background_status` | 查询作业状态、退出码和有界 stdout/stderr |
 | `BackgroundCancelTool` | `background_cancel` | 取消排队或运行中的命令并等待其停止 |
 | `GitOperationsTool` | `git_operations` | Git 操作 |

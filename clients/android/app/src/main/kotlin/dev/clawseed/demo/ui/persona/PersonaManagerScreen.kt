@@ -1150,7 +1150,9 @@ private fun PersonaDetail.toInfo(): PersonaInfo =
     )
 
 private fun defaultAllowedTools(tools: List<ToolInfo>): Set<String> =
-    tools.filter { it.sourceType == "builtin" }.map { it.name }.toSet()
+    tools.filter { it.enabled && (it.sourceType == "builtin" || it.sourceType == "plugin") }
+        .map { it.name }
+        .toSet()
 
 private fun Set<String>.toggle(value: String): Set<String> =
     if (contains(value)) this - value else this + value

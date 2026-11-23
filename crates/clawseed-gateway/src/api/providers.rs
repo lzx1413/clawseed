@@ -199,11 +199,13 @@ pub async fn handle_api_tools(
                 clawseed_api::tool_registry::ToolSource::BuiltIn => "builtin",
                 clawseed_api::tool_registry::ToolSource::Mcp { .. } => "mcp",
                 clawseed_api::tool_registry::ToolSource::Remote { .. } => "remote",
+                clawseed_api::tool_registry::ToolSource::Plugin { .. } => "plugin",
             });
             let source = entry.as_ref().map(|e| match &e.source {
                 clawseed_api::tool_registry::ToolSource::BuiltIn => "builtin".to_string(),
                 clawseed_api::tool_registry::ToolSource::Mcp { server } => server.clone(),
                 clawseed_api::tool_registry::ToolSource::Remote { session } => session.clone(),
+                clawseed_api::tool_registry::ToolSource::Plugin { plugin_id } => plugin_id.clone(),
             });
             let enabled = registry.is_tool_enabled(name);
             serde_json::json!({
