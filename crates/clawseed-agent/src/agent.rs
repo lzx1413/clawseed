@@ -86,6 +86,12 @@ pub struct CompletedTurn<'a> {
     pub memory_namespace: &'a str,
 }
 
+/// Shared tool instances and their registry provenance for gateway agents.
+pub struct SharedToolBundle {
+    pub tools: Arc<[Arc<dyn Tool>]>,
+    pub sources: std::collections::HashMap<String, ToolSource>,
+}
+
 /// The core Agent struct — a registry of tools, hooks, and context providers.
 pub struct Agent {
     provider: Arc<dyn Provider>,
@@ -683,7 +689,32 @@ impl Agent {
             observer,
             model_name,
             temperature,
-            shared_builtin_tools,
+            shared_builtin_tools.map(|tools| SharedToolBundle {
+                tools,
+                sources: std::collections::HashMap::new(),
+            }),
+        )
+        .await
+    }
+
+    /// Build an agent from shared tools while preserving each tool's source metadata.
+    pub async fn from_config_with_shared_components_and_sources(
+        config: &clawseed_config::schema::Config,
+        provider: Arc<dyn Provider>,
+        memory: Arc<dyn Memory>,
+        observer: Arc<dyn Observer>,
+        model_name: String,
+        temperature: f64,
+        shared_tools: SharedToolBundle,
+    ) -> anyhow::Result<Self> {
+        Self::build_from_config(
+            config,
+            provider,
+            memory,
+            observer,
+            model_name,
+            temperature,
+            Some(shared_tools),
         )
         .await
     }
@@ -696,7 +727,7 @@ impl Agent {
         observer: Arc<dyn Observer>,
         model_name: String,
         temperature: f64,
-        shared_builtin_tools: Option<Arc<[Arc<dyn clawseed_api::tool::Tool>]>>,
+        shared_tools: Option<SharedToolBundle>,
     ) -> anyhow::Result<Self> {
         // A global memory namespace is a storage isolation boundary, not a
         // session identifier. Persona paths already pass a namespaced wrapper.
@@ -761,13 +792,20 @@ impl Agent {
         };
 
         // Build the tool registry — reuse shared Arc instances when available
-        let registry: Arc<dyn ToolRegistry> = if let Some(ref shared) = shared_builtin_tools {
+        let registry: Arc<dyn ToolRegistry> = if let Some(shared) = shared_tools.as_ref() {
             let reg = DefaultToolRegistry::with_filters(
                 allowed.unwrap_or_default(),
                 denied.unwrap_or_default(),
                 mcp_filters.unwrap_or_default(),
             );
-            reg.register_all_arc(shared.to_vec(), ToolSource::BuiltIn);
+            for tool in shared.tools.iter() {
+                let source = shared
+                    .sources
+                    .get(tool.name())
+                    .cloned()
+                    .unwrap_or(ToolSource::BuiltIn);
+                reg.register_arc(Arc::clone(tool), source);
+            }
             if config.agent.memory_namespace.is_some() || config.memory.namespace.is_some() {
                 replace_memory_tools(&reg, memory.clone());
             }
@@ -789,7 +827,7 @@ impl Agent {
             Arc::new(reg)
         };
 
-        if config.plugins.enabled {
+        if shared_tools.is_none() && config.plugins.enabled {
             for registration in
                 clawseed_tools::plugins::load_plugin_tools(&config.workspace_dir, &config.plugins)
                     .await

@@ -226,16 +226,20 @@ pub(crate) async fn run_gateway_chat_with_tools(
             None => (config, _state.mem.clone()),
         };
 
-        let mut agent = clawseed_agent::agent::Agent::from_config_with_shared_components(
-            &config,
-            _state.provider.clone(),
-            shared_memory,
-            _state.observer.clone(),
-            _state.model.clone(),
-            _state.temperature,
-            Some(_state.shared_builtin_tools.clone()),
-        )
-        .await?;
+        let mut agent =
+            clawseed_agent::agent::Agent::from_config_with_shared_components_and_sources(
+                &config,
+                _state.provider.clone(),
+                shared_memory,
+                _state.observer.clone(),
+                _state.model.clone(),
+                _state.temperature,
+                clawseed_agent::agent::SharedToolBundle {
+                    tools: _state.shared_builtin_tools.clone(),
+                    sources: (*_state.shared_tool_sources).clone(),
+                },
+            )
+            .await?;
         if let Some(sid) = session_id {
             if let Some(ref backend) = _state.session_backend {
                 let session_key = format!("gw_{sid}");
@@ -712,6 +716,7 @@ mod tests {
             observer: Arc::new(clawseed_agent::observability::NoopObserver),
             tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
             shared_builtin_tools: Arc::new([]),
+            shared_tool_sources: Arc::new(std::collections::HashMap::new()),
             skill_index: Arc::new(parking_lot::RwLock::new(Vec::new())),
             skills_excluded: Arc::new(std::sync::Mutex::new(Vec::new())),
             cost_tracker: None,
@@ -773,6 +778,7 @@ mod tests {
             observer,
             tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
             shared_builtin_tools: Arc::new([]),
+            shared_tool_sources: Arc::new(std::collections::HashMap::new()),
             skill_index: Arc::new(parking_lot::RwLock::new(Vec::new())),
             skills_excluded: Arc::new(std::sync::Mutex::new(Vec::new())),
             cost_tracker: None,
@@ -1021,6 +1027,7 @@ mod tests {
             observer: Arc::new(clawseed_agent::observability::NoopObserver),
             tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
             shared_builtin_tools: Arc::new([]),
+            shared_tool_sources: Arc::new(std::collections::HashMap::new()),
             skill_index: Arc::new(parking_lot::RwLock::new(Vec::new())),
             skills_excluded: Arc::new(std::sync::Mutex::new(Vec::new())),
             cost_tracker: None,
@@ -1098,6 +1105,7 @@ mod tests {
             observer: Arc::new(clawseed_agent::observability::NoopObserver),
             tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
             shared_builtin_tools: Arc::new([]),
+            shared_tool_sources: Arc::new(std::collections::HashMap::new()),
             skill_index: Arc::new(parking_lot::RwLock::new(Vec::new())),
             skills_excluded: Arc::new(std::sync::Mutex::new(Vec::new())),
             cost_tracker: None,
@@ -1183,6 +1191,7 @@ mod tests {
             observer: Arc::new(clawseed_agent::observability::NoopObserver),
             tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
             shared_builtin_tools: Arc::new([]),
+            shared_tool_sources: Arc::new(std::collections::HashMap::new()),
             skill_index: Arc::new(parking_lot::RwLock::new(Vec::new())),
             skills_excluded: Arc::new(std::sync::Mutex::new(Vec::new())),
             cost_tracker: None,
@@ -1243,6 +1252,7 @@ mod tests {
             observer: Arc::new(clawseed_agent::observability::NoopObserver),
             tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
             shared_builtin_tools: Arc::new([]),
+            shared_tool_sources: Arc::new(std::collections::HashMap::new()),
             skill_index: Arc::new(parking_lot::RwLock::new(Vec::new())),
             skills_excluded: Arc::new(std::sync::Mutex::new(Vec::new())),
             cost_tracker: None,
@@ -1308,6 +1318,7 @@ mod tests {
             observer: Arc::new(clawseed_agent::observability::NoopObserver),
             tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
             shared_builtin_tools: Arc::new([]),
+            shared_tool_sources: Arc::new(std::collections::HashMap::new()),
             skill_index: Arc::new(parking_lot::RwLock::new(Vec::new())),
             skills_excluded: Arc::new(std::sync::Mutex::new(Vec::new())),
             cost_tracker: None,

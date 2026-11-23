@@ -171,6 +171,14 @@ impl PluginManifest {
                 self.permissions.network
             );
         }
+        if self
+            .permissions
+            .environment
+            .iter()
+            .any(|name| name.is_empty() || name.contains('=') || name.as_bytes().contains(&0))
+        {
+            bail!("environment contains an invalid variable name");
+        }
         if self.limits.max_concurrent_requests == 0 {
             bail!("max_concurrent_requests must be greater than zero");
         }
@@ -286,7 +294,13 @@ impl PluginClient {
                 }),
                 timeout_duration,
             )
-            .await?;
+            .await
+            .with_context(|| {
+                format!(
+                    "plugin {} negotiate failed or timed out",
+                    self.manifest.plugin_id
+                )
+            })?;
         let token = negotiation
             .get("session_token")
             .and_then(Value::as_str)
@@ -304,7 +318,13 @@ impl PluginClient {
                 }),
                 timeout_duration,
             )
-            .await?;
+            .await
+            .with_context(|| {
+                format!(
+                    "plugin {} get_provider_info failed or timed out",
+                    self.manifest.plugin_id
+                )
+            })?;
         let provider_id = info
             .get("provider_id")
             .and_then(Value::as_str)
@@ -336,7 +356,13 @@ impl PluginClient {
                 }),
                 self.request_timeout(),
             )
-            .await?;
+            .await
+            .with_context(|| {
+                format!(
+                    "plugin {} list_tools failed or timed out",
+                    self.manifest.plugin_id
+                )
+            })?;
         self.restart_attempts.store(0, Ordering::Relaxed);
         let tools = data
             .get("tools")
@@ -396,6 +422,11 @@ impl PluginClient {
     async fn spawn(&self) -> Result<PluginSession> {
         #[cfg(unix)]
         {
+            let permissions = crate::linux_exec::LinuxPluginPermissions {
+                workspace: &self.manifest.permissions.workspace,
+                network: &self.manifest.permissions.network,
+                environment: &self.manifest.permissions.environment,
+            };
             let (child, runtime_guard) = crate::linux_exec::spawn_linux_plugin(
                 &self.manifest.runtime.language,
                 &self.entry,
@@ -403,7 +434,7 @@ impl PluginClient {
                 &self.workspace,
                 None,
                 &self.manifest.plugin_id,
-                &self.manifest.permissions.workspace,
+                &permissions,
             )
             .await
             .with_context(|| {
@@ -412,7 +443,7 @@ impl PluginClient {
                     self.manifest.plugin_id
                 )
             })?;
-            return self.take_session(child, Some(runtime_guard));
+            self.take_session(child, Some(runtime_guard))
         }
 
         #[cfg(not(unix))]
@@ -432,12 +463,18 @@ impl PluginClient {
             .stdout
             .take()
             .ok_or_else(|| anyhow!("plugin stdout unavailable"))?;
-        if let Some(stderr) = child.stderr.take() {
+        if let Some(mut stderr) = child.stderr.take() {
             let plugin_id = self.manifest.plugin_id.clone();
             tokio::spawn(async move {
-                let mut lines = BufReader::new(stderr).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    tracing::debug!(plugin = %plugin_id, "plugin stderr: {line}");
+                let mut buffer = [0_u8; 4096];
+                loop {
+                    match tokio::io::AsyncReadExt::read(&mut stderr, &mut buffer).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(size) => {
+                            let text = String::from_utf8_lossy(&buffer[..size]);
+                            tracing::debug!(plugin = %plugin_id, "plugin stderr: {text}");
+                        }
+                    }
                 }
             });
         }
@@ -469,19 +506,19 @@ impl PluginClient {
         }
         session.stdin.write_all(&encoded).await?;
         session.stdin.flush().await?;
-        let mut line = String::new();
-        let read = timeout(request_timeout, session.stdout.read_line(&mut line)).await??;
-        if read == 0 {
+        let line = timeout(
+            request_timeout,
+            read_bounded_line(&mut session.stdout, self.manifest.limits.max_output_bytes),
+        )
+        .await??;
+        let Some(line) = line else {
             let status = session.child.try_wait()?.map(|status| status.to_string());
             bail!(
                 "plugin exited before responding{}",
                 status.map(|s| format!(": {s}")).unwrap_or_default()
             );
-        }
-        if line.len() > self.manifest.limits.max_output_bytes {
-            bail!("plugin response exceeds configured output limit");
-        }
-        let response: StdioResponse = serde_json::from_str(&line)
+        };
+        let response: StdioResponse = serde_json::from_slice(&line)
             .with_context(|| format!("invalid response from plugin method {method}"))?;
         if response.id != request_id {
             bail!("plugin response id does not match request");
@@ -520,6 +557,35 @@ struct StdioResponse {
     status: String,
     data: Option<Value>,
     error: Option<Value>,
+}
+
+async fn read_bounded_line<R>(
+    reader: &mut BufReader<R>,
+    max_bytes: usize,
+) -> std::io::Result<Option<Vec<u8>>>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    let mut line = Vec::new();
+    loop {
+        let chunk = reader.fill_buf().await?;
+        if chunk.is_empty() {
+            return Ok((!line.is_empty()).then_some(line));
+        }
+        let newline = chunk.iter().position(|byte| *byte == b'\n');
+        let take = newline.map_or(chunk.len(), |position| position + 1);
+        if line.len().saturating_add(take) > max_bytes {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "plugin response exceeds configured output limit",
+            ));
+        }
+        line.extend_from_slice(&chunk[..take]);
+        reader.consume(take);
+        if newline.is_some() {
+            return Ok(Some(line));
+        }
+    }
 }
 
 struct PluginTool {
@@ -570,6 +636,7 @@ pub async fn load_plugin_tools(
     roots.extend(config.extra_roots.iter().map(PathBuf::from));
     let mut seen = HashSet::new();
     let mut registrations = Vec::new();
+    let mut loaded_plugins = 0usize;
     for root in roots {
         let Ok(entries) = std::fs::read_dir(&root) else {
             continue;
@@ -581,7 +648,7 @@ pub async fn load_plugin_tools(
             .collect();
         plugin_dirs.sort();
         for plugin_dir in plugin_dirs {
-            if registrations.len() >= config.max_loaded {
+            if loaded_plugins >= config.max_loaded {
                 return registrations;
             }
             let manifest_path = plugin_dir.join("manifest.json");
@@ -630,6 +697,7 @@ pub async fn load_plugin_tools(
                     continue;
                 }
             };
+            loaded_plugins += 1;
             for spec in specs {
                 if !valid_tool_name(&spec.name) {
                     tracing::warn!(plugin = %plugin_id, tool = %spec.name, "skipping invalid plugin tool name");

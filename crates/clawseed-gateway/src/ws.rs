@@ -335,37 +335,41 @@ async fn handle_socket(
     };
     let image_support = agent_provider.image_attachment_support(&agent_model);
 
-    let mut agent = match clawseed_agent::agent::Agent::from_config_with_shared_components(
-        &agent_config,
-        agent_provider,
-        shared_memory,
-        state.observer.clone(),
-        agent_model,
-        agent_temperature,
-        Some(state.shared_builtin_tools.clone()),
-    )
-    .await
-    {
-        Ok(a) => a,
-        Err(e) => {
-            tracing::error!(error = %e, "Agent initialization failed");
-            let err = serde_json::json!({
-                "type": "error",
-                "message": format!("Failed to initialise agent: {e}"),
-                "code": "AGENT_INIT_FAILED"
-            });
-            let _ = sender.send(Message::Text(err.to_string().into())).await;
-            let _ = sender
-                .send(Message::Close(Some(axum::extract::ws::CloseFrame {
-                    code: 1011,
-                    reason: axum::extract::ws::Utf8Bytes::from_static(
-                        "Agent initialization failed",
-                    ),
-                })))
-                .await;
-            return;
-        }
-    };
+    let mut agent =
+        match clawseed_agent::agent::Agent::from_config_with_shared_components_and_sources(
+            &agent_config,
+            agent_provider,
+            shared_memory,
+            state.observer.clone(),
+            agent_model,
+            agent_temperature,
+            clawseed_agent::agent::SharedToolBundle {
+                tools: state.shared_builtin_tools.clone(),
+                sources: (*state.shared_tool_sources).clone(),
+            },
+        )
+        .await
+        {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::error!(error = %e, "Agent initialization failed");
+                let err = serde_json::json!({
+                    "type": "error",
+                    "message": format!("Failed to initialise agent: {e}"),
+                    "code": "AGENT_INIT_FAILED"
+                });
+                let _ = sender.send(Message::Text(err.to_string().into())).await;
+                let _ = sender
+                    .send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                        code: 1011,
+                        reason: axum::extract::ws::Utf8Bytes::from_static(
+                            "Agent initialization failed",
+                        ),
+                    })))
+                    .await;
+                return;
+            }
+        };
     agent.set_memory_session_id(Some(session_id.clone()));
     agent.set_user_profile_store(
         state.user_profile_store.clone(),

@@ -113,6 +113,7 @@ fn test_state(config: clawseed_config::schema::Config) -> AppState {
         observer: Arc::new(clawseed_agent::observability::NoopObserver),
         tool_registry: Arc::new(clawseed_agent::tool_registry::DefaultToolRegistry::new()),
         shared_builtin_tools: Arc::new([]),
+        shared_tool_sources: Arc::new(std::collections::HashMap::new()),
         skill_index: Arc::new(parking_lot::RwLock::new(Vec::new())),
         skills_excluded: Arc::new(std::sync::Mutex::new(Vec::new())),
         cost_tracker: None,

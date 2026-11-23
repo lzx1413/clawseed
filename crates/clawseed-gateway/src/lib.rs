@@ -44,7 +44,6 @@ use clawseed_agent::tools;
 use clawseed_agent::tools::CanvasStore;
 use clawseed_api::memory_traits::Memory;
 use clawseed_api::provider::Provider;
-use clawseed_api::tool_registry::ToolRegistry;
 use clawseed_api::user_profile::UserProfileStore;
 
 use clawseed_config::schema::Config;
@@ -120,8 +119,11 @@ pub struct AppState {
     pub observer: Arc<dyn clawseed_agent::observability::Observer>,
     /// Registered tool registry (for web dashboard tools page)
     pub tool_registry: Arc<dyn clawseed_api::tool_registry::ToolRegistry>,
-    /// Shared BuiltIn tool instances — reused across connections to avoid per-connection construction
+    /// Shared built-in and plugin tool instances reused across connections.
     pub shared_builtin_tools: Arc<[Arc<dyn clawseed_api::tool::Tool>]>,
+    /// Source metadata for shared tools, keyed by tool name.
+    pub shared_tool_sources:
+        std::sync::Arc<std::collections::HashMap<String, clawseed_api::tool_registry::ToolSource>>,
     /// Skill index entries for the /api/skills endpoint (all entries, including excluded)
     pub skill_index: Arc<parking_lot::RwLock<Vec<clawseed_agent::skills::SkillIndexEntry>>>,
     /// Skill names excluded by config (mutable for hot-update)
@@ -357,10 +359,28 @@ pub async fn run_gateway(
     }
 
     // Build the shared tool registry from all sources
-    let shared_builtin_tools: Arc<[Arc<dyn clawseed_api::tool::Tool>]> = tools_registry_raw
+    let builtin_tools: Arc<[Arc<dyn clawseed_api::tool::Tool>]> = tools_registry_raw
         .into_iter()
         .map(|t| Arc::from(t) as Arc<dyn clawseed_api::tool::Tool>)
         .collect();
+    let plugin_tools: Vec<(
+        Arc<dyn clawseed_api::tool::Tool>,
+        clawseed_api::tool_registry::ToolSource,
+    )> = if config.plugins.enabled {
+        clawseed_tools::plugins::load_plugin_tools(&config.workspace_dir, &config.plugins)
+            .await
+            .into_iter()
+            .map(|registration| {
+                (
+                    Arc::from(registration.tool) as Arc<dyn clawseed_api::tool::Tool>,
+                    registration.source,
+                )
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let mut registered_plugin_tools = Vec::new();
     let shared_tool_registry: Arc<dyn clawseed_api::tool_registry::ToolRegistry> = {
         let reg = clawseed_agent::tool_registry::DefaultToolRegistry::with_filters(
             config.agent.allowed_tools.clone(),
@@ -368,24 +388,30 @@ pub async fn run_gateway(
             config.agent.mcp_tool_filters.clone(),
         );
         reg.register_all_arc(
-            shared_builtin_tools.to_vec(),
+            builtin_tools.to_vec(),
             clawseed_api::tool_registry::ToolSource::BuiltIn,
         );
-        if config.plugins.enabled {
-            for registration in
-                clawseed_tools::plugins::load_plugin_tools(&config.workspace_dir, &config.plugins)
-                    .await
-            {
-                if !reg.register(registration.tool, registration.source.clone()) {
-                    tracing::warn!(
-                        source = ?registration.source,
-                        "Gateway plugin tool name conflicts with an existing tool"
-                    );
-                }
+        for (tool, source) in &plugin_tools {
+            if reg.register_arc(Arc::clone(tool), source.clone()) {
+                registered_plugin_tools.push((Arc::clone(tool), source.clone()));
+            } else {
+                tracing::warn!(
+                    source = ?source,
+                    "Gateway plugin tool name conflicts with an existing tool"
+                );
             }
         }
         Arc::new(reg)
     };
+    let mut agent_tools = builtin_tools.to_vec();
+    let shared_tool_sources = std::sync::Arc::new(
+        registered_plugin_tools
+            .iter()
+            .map(|(tool, source)| (tool.name().to_string(), source.clone()))
+            .collect::<std::collections::HashMap<_, _>>(),
+    );
+    agent_tools.extend(registered_plugin_tools.into_iter().map(|(tool, _)| tool));
+    let shared_builtin_tools: Arc<[Arc<dyn clawseed_api::tool::Tool>]> = agent_tools.into();
 
     // Cost tracker — process-global singleton so channels share the same instance
     let cost_tracker = Some(CostTracker::get_or_init_global(
@@ -591,6 +617,7 @@ pub async fn run_gateway(
         observer: broadcast_observer,
         tool_registry: shared_tool_registry,
         shared_builtin_tools,
+        shared_tool_sources,
         skill_index,
         skills_excluded,
         cost_tracker,

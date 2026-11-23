@@ -10,15 +10,25 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use tokio::sync::Semaphore;
+use tokio::time::timeout;
 
 const RUNTIME_DIR_ENV: &str = "CLAWSEED_PROOT_RUNTIME_DIR";
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
 const MAX_CONCURRENT_LINUX_EXEC: usize = 2;
+const MAX_CONCURRENT_LINUX_PLUGINS: usize = 16;
+const PLUGIN_RUNTIME_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(2);
 
 fn linux_exec_limit() -> Arc<Semaphore> {
     static LIMIT: OnceLock<Arc<Semaphore>> = OnceLock::new();
     LIMIT
         .get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_LINUX_EXEC)))
+        .clone()
+}
+
+fn linux_plugin_limit() -> Arc<Semaphore> {
+    static LIMIT: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    LIMIT
+        .get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_LINUX_PLUGINS)))
         .clone()
 }
 
@@ -30,6 +40,12 @@ pub(crate) struct LinuxPluginGuard {
     _task_tmp: tempfile::TempDir,
 }
 
+pub(crate) struct LinuxPluginPermissions<'a> {
+    pub workspace: &'a str,
+    pub network: &'a str,
+    pub environment: &'a [String],
+}
+
 /// Spawn a long-lived Python or Node.js process inside the active PRoot runtime.
 #[cfg(unix)]
 pub(crate) async fn spawn_linux_plugin(
@@ -39,14 +55,23 @@ pub(crate) async fn spawn_linux_plugin(
     workspace: &Path,
     runtime_dir: Option<PathBuf>,
     plugin_id: &str,
-    workspace_permission: &str,
+    permissions: &LinuxPluginPermissions<'_>,
 ) -> anyhow::Result<(tokio::process::Child, LinuxPluginGuard)> {
     anyhow::ensure!(
         workspace.is_dir(),
         "workspace is not a directory: {}",
         workspace.display()
     );
-    let permit = linux_exec_limit().acquire_owned().await?;
+    let permit = timeout(
+        PLUGIN_RUNTIME_ACQUIRE_TIMEOUT,
+        linux_plugin_limit().acquire_owned(),
+    )
+    .await
+    .map_err(|_| {
+        anyhow::anyhow!(
+            "timed out waiting for Linux runtime capacity; stop another Linux task or plugin and retry"
+        )
+    })??;
     let store = runtime_dir
         .clone()
         .or_else(|| std::env::var_os(RUNTIME_DIR_ENV).map(PathBuf::from));
@@ -64,6 +89,13 @@ pub(crate) async fn spawn_linux_plugin(
         .tempdir_in(&task_dir)?;
     let proot_tmp = task_tmp.path().join("proot-tmp");
     std::fs::create_dir(&proot_tmp)?;
+    let workspace_mount = if permissions.workspace == "read" {
+        let snapshot = task_tmp.path().join("workspace");
+        copy_workspace_snapshot(workspace, &snapshot)?;
+        snapshot
+    } else {
+        workspace.to_path_buf()
+    };
     let proot_l2s = layout.rootfs.join("root/.l2s");
     std::fs::create_dir_all(&proot_l2s)?;
 
@@ -89,9 +121,9 @@ pub(crate) async fn spawn_linux_plugin(
         .args(["-b"])
         .arg(format!("{}:/tmp", task_tmp.path().display()))
         .args(["-b", "/dev", "-b", "/proc"]);
-    if workspace_permission != "none" {
+    if permissions.workspace != "none" {
         cmd.args(["-b"])
-            .arg(format!("{}:/workspace", workspace.display()));
+            .arg(format!("{}:/workspace", workspace_mount.display()));
     }
     #[cfg(target_os = "android")]
     cmd.args(["-b", "/system", "-b", "/apex"]);
@@ -124,9 +156,10 @@ pub(crate) async fn spawn_linux_plugin(
     .env("TERM", "dumb")
     .env("CLAWSEED_PLUGIN_ID", plugin_id)
     .env("CLAWSEED_CETP_VERSION", "2")
+    .env("CLAWSEED_PLUGIN_NETWORK", permissions.network)
     .env(
         "CLAWSEED_PLUGIN_WORKSPACE",
-        if workspace_permission == "none" {
+        if permissions.workspace == "none" {
             ""
         } else {
             "/workspace"
@@ -142,6 +175,11 @@ pub(crate) async fn spawn_linux_plugin(
     if let Some(library_dir) = &layout.library_dir {
         cmd.env("LD_LIBRARY_PATH", library_dir);
     }
+    for name in permissions.environment {
+        if let Some(value) = std::env::var_os(name) {
+            cmd.env(name, value);
+        }
+    }
     cmd.env("PROOT_TMP_DIR", &proot_tmp)
         .env("PROOT_L2S_DIR", &proot_l2s);
     let child = cmd
@@ -155,6 +193,26 @@ pub(crate) async fn spawn_linux_plugin(
             _task_tmp: task_tmp,
         },
     ))
+}
+
+fn copy_workspace_snapshot(source: &Path, destination: &Path) -> anyhow::Result<()> {
+    std::fs::create_dir_all(destination)?;
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let metadata = std::fs::symlink_metadata(&source_path)?;
+        let file_type = metadata.file_type();
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
+            copy_workspace_snapshot(&source_path, &destination_path)?;
+        } else if file_type.is_file() {
+            std::fs::copy(&source_path, &destination_path)?;
+        }
+    }
+    Ok(())
 }
 
 // FileChannel.lock() on Android uses POSIX record locks. Keep one descriptor
