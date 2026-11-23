@@ -140,15 +140,15 @@ pub async fn handle_api_plugins_config(
     if let Err(e) = require_auth(&state, &headers) {
         return e.into_response();
     }
-    if let Some(ids) = patch.allowed.as_deref() {
-        if let Err(error) = validate_id_list("allowed", ids) {
-            return error.into_response();
-        }
+    if let Some(ids) = patch.allowed.as_deref()
+        && let Err(error) = validate_id_list("allowed", ids)
+    {
+        return error.into_response();
     }
-    if let Some(ids) = patch.denied.as_deref() {
-        if let Err(error) = validate_id_list("denied", ids) {
-            return error.into_response();
-        }
+    if let Some(ids) = patch.denied.as_deref()
+        && let Err(error) = validate_id_list("denied", ids)
+    {
+        return error.into_response();
     }
 
     let mut config = state.config.lock().clone();

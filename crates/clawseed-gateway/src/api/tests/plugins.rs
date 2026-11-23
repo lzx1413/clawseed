@@ -23,8 +23,10 @@ async fn lists_plugin_manifest_and_policy() {
     )
     .expect("manifest");
 
-    let mut config = clawseed_config::schema::Config::default();
-    config.workspace_dir = root.path().to_path_buf();
+    let mut config = clawseed_config::schema::Config {
+        workspace_dir: root.path().to_path_buf(),
+        ..Default::default()
+    };
     config.plugins.enabled = true;
     let state = test_state(config);
     let response = crate::api::handle_api_plugins(State(state), axum::http::HeaderMap::new())
@@ -67,6 +69,6 @@ async fn plugin_config_patch_rejects_invalid_ids_and_updates_section() {
     .await
     .into_response();
     assert_eq!(updated.status(), axum::http::StatusCode::OK);
-    assert_eq!(state.config.lock().plugins.enabled, true);
+    assert!(state.config.lock().plugins.enabled);
     assert_eq!(state.config.lock().plugins.max_loaded, 8);
 }
