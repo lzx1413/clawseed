@@ -4,6 +4,11 @@
 
 ## 1. Overview
 
+ClawSeed uses a static trusted Rust core with dynamic extension bindings. The Android SDK exposes the
+core over WebSocket/REST and bridges device capabilities, CETP external-app tools, and optional Linux
+runtime plugins into the same Tool Registry. Dynamic Sub-Agent orchestration is not part of the current
+SDK contract.
+
 ### 1.1 Background
 
 The current Android client (`clients/android/`) is a demo app with a thin `lib/` module. The `lib/` module contains `ClawseedClient`（callback-based WebSocket client）and `ClawseedMessages`（message parsing with `org.json`）. The `app/` module contains gateway process management, REST API client, session management, and all UI code tightly coupled together.

@@ -2,6 +2,8 @@
 
 ClawSeed 的 Android 客户端，在设备本地运行 clawseed gateway（编译为 `.so` 的原生二进制），通过 WebSocket/REST 与之通信，提供 LLM 对话、工具调用、会话管理和配置编辑功能。
 
+客户端采用“静态可信内核 + 动态扩展层”的架构：Rust Gateway/Agent 负责会话、分身、记忆、工具注册和安全策略；Linux Runtime 中的 Python/Node.js 插件、CETP 跨应用工具以及 WebSocket 远程工具负责动态扩展。不同传输最终都进入同一个 Tool Registry。动态 Sub-Agent 编排尚未实现。
+
 ## 架构
 
 ```

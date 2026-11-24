@@ -9,6 +9,8 @@ description: 下载并了解 ClawSeed Android AI Agent 应用；完整 Rust Agen
 
 ClawSeed Android Demo 是一个完整的端侧 AI Agent 应用，在 Android 设备上运行整个 Agent 栈。Rust 编译的 Gateway 二进制作为前台服务进程运行，Android 客户端通过 WebSocket 连接并注册设备端工具。
 
+Android 端体现了 ClawSeed 的动静结合模型：Rust Gateway、Agent、记忆和安全策略构成静态可信内核；可选的 PRoot Linux Runtime 承载 Python/Node.js 插件、Linux CLI 和编译工具。插件以及其他 Android 应用提供的工具都通过 CETP 语义接入，再统一注册到 Agent 的 Tool Registry。Sub-Agent 动态编排暂未实现。
+
 ## 下载 Android 应用
 
 [下载最新 Android APK](https://github.com/lzx1413/clawseed/releases/latest){ .md-button .md-button--primary }
@@ -66,6 +68,10 @@ ClawSeed Android Demo 是一个完整的端侧 AI Agent 应用，在 Android 设
 ```
 
 **关键设计**：整个 Agent 栈在设备端运行，LLM 推理通过网络调用云端 Provider。
+
+### 静态内核与动态执行层
+
+内核进程负责会话、分身、记忆、工具注册、Hook 和审批；动态层包括 Linux Runtime 中的本地插件、CETP 跨应用工具和 WebSocket 远程工具。它们都以工具规格和调用结果接入同一个注册表，插件退出或超时应被视为单个扩展故障，而不是改变内核的权限模型。PRoot 提供用户态兼容性，不等价于强隔离沙箱。
 
 ### 用户画像备份
 

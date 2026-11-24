@@ -7,6 +7,10 @@ description: 为 ClawSeed Android App 提供可下载、可更新、受约束的
 
 # Android PRoot Linux 执行环境开发方案
 
+## 在 ClawSeed 中的定位
+
+PRoot Runtime 是 ClawSeed 动态扩展执行层的一部分，不替代 Rust Agent 内核。Rust 进程继续负责会话、分身、记忆、工具策略和审批；Runtime 负责为 Python/Node.js 插件、Linux CLI、Git 和编译任务提供可复现的用户态环境。CETP 则把本地插件、Android 外部应用工具和其他客户端工具统一接入 Tool Registry。Runtime 未安装或不满足权限时，能力应明确不可用，不能静默绕回 Android shell。
+
 ## 1. 背景
 
 ClawSeed 当前的 shell 类工具直接运行在 Android 应用进程所在的系统环境中。它适合执行简单的文件操作和设备命令，但 Android 用户空间与常见 Linux 发行版存在差异：命令集不完整、工具参数和路径行为不同，Python、Node.js、Git 以及编译工具链也不能假设已经存在。

@@ -6,6 +6,8 @@ ClawSeed is an AI agent runtime written in Rust. It connects to LLM providers (A
 
 Core design principle: **runtime, not application**. ClawSeed provides crates that applications assemble — it does not bundle channels, dashboards, or integrations. See [Runtime vs Application](#runtime-vs-application) below.
 
+More specifically, ClawSeed uses a **static trusted core plus a dynamic extension execution layer**. The compiled Rust core owns the Agent, personas, memory, tool registry, hooks, and security policy. An optional Linux runtime hosts Python/Node.js plugins, scripts, and Linux tooling. Dynamic plugins and constrained Linux execution are implemented today; dynamic Sub-Agent orchestration is not yet implemented and is not a current feature.
+
 ## Runtime vs Application
 
 An agent **runtime** should do exactly three things: receive messages, call an LLM, and execute tools. Everything else — where messages come from, how results are displayed, which integrations are wired up — belongs to the application layer.
@@ -98,6 +100,24 @@ All extension points in ClawSeed are traits:
 | `ToolRegistry` | Unified tool registration and lookup | `DefaultToolRegistry` in `clawseed-agent`; supports BuiltIn / MCP / Remote sources. MCP is defined in the enum and registry infrastructure supports it, but the actual MCP protocol client is not yet implemented — see "MCP Status" below |
 | `Hook` | Tool call interceptor | Implement `before_tool_call` / `after_tool_call`, or create declaratively via `HookFactory` from config |
 | `Memory` | Conversation memory backend | Implement in `clawseed-memory` |
+
+## Static Core, Dynamic Extensions
+
+### Static trusted core
+
+The Rust core owns the long-lived and policy-sensitive capabilities: the Agent turn loop, Provider/Tool/Memory traits, persona resolution, session persistence, hooks, approvals, and `SecurityPolicy`. These capabilities are compiled and tested with the main runtime; extension code still enters through the tool registry and security pipeline.
+
+### Dynamic extension execution layer
+
+The Linux runtime and CETP place fast-changing, dependency-heavy, or app-owned capabilities behind explicit extension boundaries:
+
+- Python/Node.js CETP plugins declare entrypoints, protocol versions, permissions, and resource limits in a manifest;
+- `linux_exec` provides a constrained backend for scripts, Git, compilers, and Linux CLI tools;
+- Android external apps expose tools through the CETP ContentProvider binding, while remote clients register tools over WebSocket;
+- local plugins communicate with the Rust core over stdio/CETP, so a plugin timeout or exit does not change the core's type or policy model;
+- PRoot provides Linux userspace compatibility, not a kernel-level sandbox; network, filesystem, and high-risk operations remain governed by Rust/Android policy.
+
+New tools can therefore come from Linux plugins, other Android apps, or remote clients without recompiling the main Agent; all sources are normalized into the same `Tool`/`ToolSpec` registry, hook, and approval path. The core remains auditable and regression-testable. Dynamic Sub-Agent creation, scheduling, and result aggregation are outside the current implementation scope.
 
 ## Agent Assembly & Loop
 

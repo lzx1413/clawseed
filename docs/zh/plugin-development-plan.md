@@ -14,6 +14,11 @@ Linux runtime 当前提供 Node.js 和 Python 等程序的运行环境。本方�
 第三方 App 继续使用 ContentProvider 绑定，Linux 插件使用 stdin/stdout 或 Unix socket 绑定。
 两种 Provider 对 Agent 都表现为相同的 `Tool`。
 
+这体现了 ClawSeed 的动静结合模型：Rust Agent、记忆、分身和安全策略是静态可信内核；CETP
+是动态扩展的统一语义层，具体传输绑定可以是 Linux 插件的 stdio、Android 外部 App 的
+ContentProvider，或其他客户端的 WebSocket。当前首期实现为 stdin/stdout JSONL；Unix socket
+仍是后续可选绑定。
+
 首期交付目标如下：
 
 - 支持 Python 和 Node.js 插件；

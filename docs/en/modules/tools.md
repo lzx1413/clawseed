@@ -4,6 +4,16 @@
 
 `clawseed-tools` contains 25+ built-in tool implementations. All tools depend only on `clawseed-api` traits. Tools that need runtime dependencies (Memory, etc.) receive them via constructor injection.
 
+ClawSeed's dynamic tools use CETP semantics as well: Python/Node.js plugins in the Linux runtime use stdio, Android external apps use ContentProvider, and remote clients use WebSocket. The transport differs, but each capability is normalized to the same `Tool`/`ToolSpec` model and passes through the same registry, hooks, approvals, and security policy.
+
+## Dynamic Extension Tools
+
+Linux-runtime plugin directories contain a manifest declaring the entrypoint, protocol versions, runtime, workspace/network permissions, and resource limits. Gateway/Agent registers only plugins that pass validation and configuration allowlists. Plugins run as separate child processes and exchange tool specs and results through CETP over stdio.
+
+Android external apps can expose tools through the CETP v1/v2 ContentProvider binding. The SDK discovers these providers and wraps their capabilities as `RemoteTool`, using the same Agent dispatch path as built-in tools. See the [External Tool Protocol](../external-tool-protocol.md).
+
+Startup failures, timeouts, and exits are recorded as extension failures and cannot bypass Rust hooks, approvals, or tool policy. PRoot is Linux userspace compatibility, not a strong security sandbox.
+
 ## Tool List
 
 ### File Operations

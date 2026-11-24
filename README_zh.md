@@ -22,6 +22,8 @@
 
 ClawSeed 是一个可以直接运行在 Android 手机上的移动端 AI Agent。应用会在设备本地运行 Rust Gateway、Agent 循环、记忆和工具系统，再连接你选择的 LLM 提供商。它同时也是一个开源的 Rust Agent 运行时和 SDK，方便开发者构建自己的 Agent 与 Android 集成。
 
+ClawSeed 的核心特色是**动静结合**：用 Rust 编译得到稳定、可审计的 Agent 核心，负责会话、分身、记忆、工具注册和安全策略；用可选的 Linux Runtime 承载 Python/Node.js 插件、脚本和 Linux 工具链。核心能力保持静态可靠，扩展能力可以动态发现、加载、限权和回收。当前动态层已经支持本地 CETP 插件和受约束的 Linux 执行；动态 Sub-Agent 编排仍是后续方向，不属于当前已实现能力。
+
 ## 在 Android 上体验 ClawSeed
 
 [下载最新 APK](https://github.com/lzx1413/clawseed/releases/latest)，安装到 Android 设备后，打开应用，在设置中配置 Provider 和模型，即可开始对话。所有已发布 APK 和更新说明都在 [GitHub Releases](https://github.com/lzx1413/clawseed/releases) 页面。
@@ -51,6 +53,13 @@ ClawSeed 既是一个可以直接使用的 Android 应用，也是一个 Rust AI
 ## 面向开发者的运行时
 
 一个 Agent 运行时应该只做三件事：接收消息、调用 LLM、执行工具。其他一切——渠道、面板和集成——都属于应用层。ClawSeed 提供稳定的 trait crate，由应用自行组装。
+
+运行时由两层组成：
+
+- **静态可信内核**：Rust Agent、Provider、Memory、Persona、Hook、审批和工具注册表，提供稳定的类型和安全边界。
+- **动态扩展执行层**：Linux Runtime 中的 Python/Node.js 插件、CLI，以及通过 CETP 接入的 Android 外部应用工具和 WebSocket 远程工具，通过 manifest、协议、超时、并发和输出限制接入内核。
+
+这使得新工具不必修改或重新编译主 Agent，同时把动态代码限制在独立的执行边界内。Linux Runtime/PRoot 是兼容层而不是强安全沙箱；高风险插件仍必须经过权限和审批策略。
 
 ```toml
 # 一个 Discord 机器人应用

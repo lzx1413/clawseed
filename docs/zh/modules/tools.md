@@ -4,6 +4,16 @@
 
 `clawseed-tools` 包含 25+ 内置工具的具体实现。所有工具仅依赖 `clawseed-api` 的 trait。需要运行时依赖（Memory 等）的工具通过构造函数注入获取。
 
+ClawSeed 的动态工具也采用 CETP 语义：Linux Runtime 中的 Python/Node.js 插件使用 stdio 传输，Android 外部应用使用 ContentProvider 传输，远程客户端使用 WebSocket 传输。传输不同，但都转换为统一的 `Tool`/`ToolSpec`，由同一套注册、Hook、审批和安全策略处理。
+
+## 动态扩展工具
+
+Linux Runtime 插件目录包含 manifest，声明入口、协议版本、运行时、工作区/网络权限和资源限制；Gateway/Agent 只注册通过校验且满足配置白名单的插件。插件以独立子进程运行，通过 CETP over stdio 返回工具规格和执行结果。
+
+Android 外部应用可以通过 CETP v1/v2 的 ContentProvider 绑定提供工具；这些工具由 SDK 发现后包装为 RemoteTool，和内置工具使用同一个 Agent 调度路径。CETP v1/v2 的 Android 传输规范见[外部工具协议](../external-tool-protocol.md)。
+
+启动失败、超时或进程退出会被记录为扩展故障，不应绕过 Rust 的 Hook、审批和工具策略。PRoot 是 Linux 用户态兼容层，不是强安全沙箱。
+
 ## 工具清单
 
 ### 文件操作

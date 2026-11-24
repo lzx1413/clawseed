@@ -10,6 +10,11 @@ It complements `sdk-design.md`:
 - `sdk-design.md` explains the intended architecture and API boundaries.
 - This document explains what has already been implemented in code and how the pieces map together.
 
+The SDK is one binding of ClawSeed's static-core/dynamic-extension model. The Rust Gateway and Agent
+own sessions, personas, memory, tool policy, and approvals. Dynamic capabilities are normalized into
+the same tool model: local Linux plugins use CETP semantics over stdio, Android external apps use the
+CETP ContentProvider binding, and remote clients use WebSocket.
+
 ## 2. Module Layout
 
 The SDK is split into three publishable modules:

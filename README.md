@@ -21,6 +21,8 @@
 
 ClawSeed is a mobile AI agent you can run on your Android phone. The app runs the Rust gateway, agent loop, memory, and tools on-device, then connects to the LLM provider you choose. It is also an open-source runtime and SDK for building your own agents and Android integrations.
 
+ClawSeed's defining design is a **static core with a dynamic execution layer**. Rust provides a stable, auditable Agent core for sessions, personas, memory, tool registration, and security. An optional Linux runtime hosts Python/Node.js plugins, scripts, and Linux tooling that can be discovered, loaded, permissioned, and retired without recompiling the core. The dynamic Sub-Agent orchestration model is a future direction, not a current capability.
+
 ## Try ClawSeed on Android
 
 [Download the latest APK](https://github.com/lzx1413/clawseed/releases/latest) and install it on an Android device. Open the app, configure a provider and model in Settings, then start a conversation. Published APKs and release notes are available on the [GitHub Releases page](https://github.com/lzx1413/clawseed/releases).
@@ -50,6 +52,13 @@ ClawSeed is both a ready-to-use Android application and a Rust AI agent runtime.
 ## Runtime for developers
 
 An agent runtime should do three things: receive messages, call an LLM, and execute tools. Everything else — channels, dashboards, and integrations — belongs to the application layer. ClawSeed provides crates with stable traits; applications compose them.
+
+The runtime has two deliberate layers:
+
+- **Static trusted core**: the Rust Agent, providers, memory, personas, hooks, approvals, and tool registry provide stable types and security boundaries.
+- **Dynamic extension layer**: Python/Node.js plugins and CLI tools run through the Linux runtime, while Android external-app tools use CETP and remote tools use WebSocket; all are admitted through manifests or protocol negotiation, timeouts, concurrency limits, and output caps.
+
+This lets applications add capabilities without changing or recompiling the main Agent. Linux Runtime/PRoot is a compatibility layer rather than a strong security sandbox, so high-risk plugins still require explicit permissions and approval policies.
 
 ```toml
 # A Discord bot application

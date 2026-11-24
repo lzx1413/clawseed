@@ -4,6 +4,8 @@
 
 An Android client for ClawSeed that runs the clawseed gateway natively on-device (compiled as `.so`), communicating via WebSocket and REST to provide LLM chat, tool calling, session management, and configuration editing.
 
+The client uses a **static trusted core plus a dynamic extension layer**: the Rust Gateway/Agent owns sessions, personas, memory, tool registration, and security policy; Python/Node.js plugins in the Linux runtime, CETP cross-app tools, and WebSocket remote tools provide dynamic extensions. All transports are normalized into the same Tool Registry. Dynamic Sub-Agent orchestration is not implemented yet.
+
 ## Architecture
 
 ```
