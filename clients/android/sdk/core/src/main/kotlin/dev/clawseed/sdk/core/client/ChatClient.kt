@@ -311,7 +311,7 @@ internal class ChatClient(
                 ToolResult.Failure(error.message ?: "Handler threw exception")
             }
             when (result) {
-                is ToolResult.Success -> sendToolResult(id, result.output)
+                is ToolResult.Success -> sendToolResult(id, result.output, result.presentation)
                 is ToolResult.Failure -> sendToolError(id, result.error)
             }
         }
@@ -325,12 +325,13 @@ internal class ChatClient(
         activeToolCalls.clear()
     }
 
-    private fun sendToolResult(id: String, output: String) {
+    private fun sendToolResult(id: String, output: String, presentation: kotlinx.serialization.json.JsonObject? = null) {
         val msg = buildJsonObject {
             put("type", "tool_result")
             put("id", id)
             put("output", output)
             put("success", true)
+            presentation?.let { put("presentation", it) }
         }.toString()
         webSocket?.send(msg)
     }

@@ -23,17 +23,20 @@ const BUILTIN_SKILLS: &[BuiltinSkill] = &[
     },
     BuiltinSkill {
         name: "plugin-authoring",
-        version: "0.2.0",
+        version: "0.3.0",
         manifest: include_str!("builtin_plugin-authoring_manifest.toml"),
         skill_md: include_str!("builtin_plugin-authoring_SKILL.md"),
-        legacy_hashes: &["1cb6f708ce97191caa323570c606e4bff36336d8cc36856efa26ee1781390ef5"],
+        legacy_hashes: &[
+            "1cb6f708ce97191caa323570c606e4bff36336d8cc36856efa26ee1781390ef5",
+            "65f442d23161ba8a1d63169c1f56510e55967cfc293c75adb7a610b06dcf9c5a",
+        ],
     },
     BuiltinSkill {
         name: "media-presentation",
-        version: "0.3.0",
+        version: "0.4.0",
         manifest: include_str!("builtin_media-presentation_manifest.toml"),
         skill_md: include_str!("builtin_media-presentation_SKILL.md"),
-        legacy_hashes: &[],
+        legacy_hashes: &["80323bb48a8144f509b99d552c83700bf376a09f39b85301e617ab569c93d7ea"],
     },
 ];
 

@@ -22,7 +22,7 @@ Use this workflow when the user asks to create or modify a local ClawSeed plugin
 - `list_tools` returns `tools` with `name`, `description`, and `parameters`. Use `parameters`, not `inputSchema`.
 - `execute_tool` receives `tool_name` and `args` inside `params`.
 - The host puts current-turn images in both `params.attachments` and `params.context.attachments`. Each item has a runtime-visible `path`, `id`, `mime_type`, `size_bytes`, `width`, and `height`. Read the path during the call and do not retain it after the response.
-- `execute_tool` may return `data.output` for LLM-facing text and an optional `data.presentation` object with versioned `blocks` such as `image`, `audio`, `video`, or `link`.
+- `execute_tool` may return `data.output` for LLM-facing text and an optional `data.presentation` object with versioned `blocks` such as `image`, `audio`, `video`, or `link`. The Android client renders these blocks.
 - `negotiate` returns `selected_version: 2` and `session_token`.
 - Do not print logs, progress text, or stack traces to stdout.
 - Keep `list_tools` schemas accurate because the Agent uses them for model tool selection.
@@ -36,8 +36,10 @@ Media presentation example:
 Media URLs must use HTTPS. The host validates presentation blocks before they reach the client.
 
 For plugin-generated local media, return a workspace-relative `media.path` with the MIME type.
-The Android client reads that path from the local workspace and renders the file. Do not generate
-opaque asset IDs or return host absolute paths.
+The Android client reads that path from its local workspace and renders the file. Do not generate
+opaque asset IDs or return host absolute paths. The client-provided `media_present` tool is for
+explicit display requests and is not needed when the plugin result already contains a
+`presentation` block.
 
 ## Permission rules
 

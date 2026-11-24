@@ -49,6 +49,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
@@ -1265,6 +1266,70 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
     }
 
     private fun registerTools(session: ClawSeedSession) {
+        session.tools.register(
+            name = "media_present",
+            description = "在 Android 客户端显示媒体。显示当前回合上传的图片时传 attachment_ids，显示插件生成的 workspace 相对路径时传 path。",
+            parameters = """{
+                "type":"object",
+                "properties":{
+                    "attachment_ids":{"type":"array","items":{"type":"string"},"maxItems":4},
+                    "path":{"type":"string","description":"workspace 根目录下的相对媒体路径"},
+                    "media_type":{"type":"string","enum":["image","audio","video"]},
+                    "mime_type":{"type":"string"},
+                    "alt":{"type":"string"},
+                    "title":{"type":"string"}
+                },
+                "additionalProperties":false
+            }""",
+        ) { args ->
+            try {
+                val path = args["path"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                require(path == null || (!path.startsWith('/') && !path.contains(".."))) { "媒体路径必须是 workspace 内的相对路径" }
+                val attachmentIds = args["attachment_ids"]?.jsonArray
+                    ?.mapNotNull { it.jsonPrimitive.contentOrNull?.takeIf(String::isNotBlank) }
+                    .orEmpty()
+                require(path != null || attachmentIds.isNotEmpty()) { "缺少 path 或 attachment_ids" }
+                require(path == null || attachmentIds.isEmpty()) { "path 与 attachment_ids 只能选择一个" }
+                val mediaType = args["media_type"]?.jsonPrimitive?.contentOrNull ?: "image"
+                require(mediaType in setOf("image", "audio", "video")) { "不支持的媒体类型" }
+                val mimeType = args["mime_type"]?.jsonPrimitive?.contentOrNull
+                val blocks = buildJsonArray {
+                    if (path != null) {
+                        add(buildJsonObject {
+                            put("type", mediaType)
+                            put("media", buildJsonObject {
+                                put("path", path)
+                                mimeType?.let { put("mime_type", it) }
+                            })
+                            if (mediaType == "image") {
+                                args["alt"]?.jsonPrimitive?.contentOrNull?.let { put("alt", it) }
+                            } else {
+                                args["title"]?.jsonPrimitive?.contentOrNull?.let { put("title", it) }
+                            }
+                        })
+                    } else {
+                        attachmentIds.forEach { id ->
+                            add(buildJsonObject {
+                                put("type", "image")
+                                put("media", buildJsonObject {
+                                    put("asset_id", id)
+                                    mimeType?.let { put("mime_type", it) }
+                                })
+                                args["alt"]?.jsonPrimitive?.contentOrNull?.let { put("alt", it) }
+                            })
+                        }
+                    }
+                }
+                val presentation = buildJsonObject {
+                    put("version", 1)
+                    put("blocks", blocks)
+                }
+                ToolResult.Success("已请求 Android 客户端显示媒体。", presentation)
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                ToolResult.Failure(error.message ?: "媒体展示失败")
+            }
+        }
         session.tools.register(
             name = "attachment_read",
             description = "读取当前会话已发送的文件。start 从 0 开始；文本/DOCX 按 Unicode 字符，CSV 按完整记录（第 0 条是表头），PDF 按页。返回 next/eof；继续读取使用 next。原始 Android 客户端必须在线。",
