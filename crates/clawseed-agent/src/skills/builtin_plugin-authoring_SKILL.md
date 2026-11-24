@@ -35,6 +35,10 @@ Media presentation example:
 
 Media URLs must use HTTPS. The host validates presentation blocks before they reach the client.
 
+For plugin-generated local media, return a workspace-relative `media.path` with the MIME type.
+The Android client reads that path from the local workspace and renders the file. Do not generate
+opaque asset IDs or return host absolute paths.
+
 ## Permission rules
 
 Use the smallest permissions that satisfy the request. The generated default is

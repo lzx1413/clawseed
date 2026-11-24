@@ -92,4 +92,21 @@ class ChatEventPresentationTest {
         assertEquals("preference.language", block.items.single().key)
         assertEquals("Apply profile plan plan-1", block.actions.single().command)
     }
+
+    @Test
+    fun toolResultParsesWorkspaceRelativeMediaPath() {
+        val event = ChatEvent.parse(
+            """
+            {"type":"tool_result","id":"call-3","name":"plugin__show","output":"image",
+             "presentation":{"version":1,"blocks":[{"type":"image",
+             "media":{"path":".clawseed/plugins/demo/output.png","mime_type":"image/png"}}]}}
+            """.trimIndent(),
+            Json { ignoreUnknownKeys = true },
+        )
+
+        val result = assertIs<ChatEvent.ToolCallCompleted>(event)
+        val block = assertIs<ContentBlock.Image>(result.presentation!!.blocks.single())
+        assertEquals(".clawseed/plugins/demo/output.png", block.media.path)
+        assertEquals("image/png", block.media.mimeType)
+    }
 }

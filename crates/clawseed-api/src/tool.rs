@@ -154,8 +154,22 @@ fn validate_search_result(item: &SearchResultItem) -> anyhow::Result<()> {
 }
 
 fn validate_media(media: &MediaReference) -> anyhow::Result<()> {
-    if media.asset_id.is_none() && media.url.is_none() {
-        anyhow::bail!("media requires an asset_id or HTTPS URL");
+    if media.path.is_none() && media.asset_id.is_none() && media.url.is_none() {
+        anyhow::bail!("media requires a relative path, asset_id, or HTTPS URL");
+    }
+    if let Some(path) = media.path.as_deref() {
+        validate_text("media path", path, 1_024)?;
+        if path.trim().is_empty() {
+            anyhow::bail!("media path must not be empty");
+        }
+        let path = std::path::Path::new(path);
+        if path.is_absolute()
+            || path
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir))
+        {
+            anyhow::bail!("media path must be relative to the workspace");
+        }
     }
     validate_optional_text("media asset id", media.asset_id.as_deref(), 128)?;
     if let Some(url) = media.url.as_deref() {
@@ -259,11 +273,12 @@ pub struct PresentationAction {
     pub destructive: bool,
 }
 
-/// A remote or gateway-managed media item. At least one of `asset_id` and
-/// `url` must be supplied by the producer; client-side URL policy is enforced
-/// at the presentation boundary.
+/// A media item rendered by the client. Local plugin files use a workspace-
+/// relative `path`, while remote media uses an HTTPS URL.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MediaReference {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub asset_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -369,6 +384,7 @@ mod tests {
     fn presentation_rejects_insecure_media_urls() {
         let presentation = ToolPresentation::new(vec![ContentBlock::Image {
             media: MediaReference {
+                path: None,
                 asset_id: None,
                 url: Some("http://example.test/image.jpg".into()),
                 mime_type: Some("image/jpeg".into()),
@@ -387,6 +403,24 @@ mod tests {
                 .to_string()
                 .contains("HTTPS")
         );
+    }
+
+    #[test]
+    fn presentation_accepts_workspace_relative_media_path() {
+        let presentation = ToolPresentation::new(vec![ContentBlock::Image {
+            media: MediaReference {
+                path: Some(".clawseed/plugins/demo/generated.png".into()),
+                asset_id: None,
+                url: None,
+                mime_type: Some("image/png".into()),
+                thumbnail_url: None,
+                width: None,
+                height: None,
+                duration_ms: None,
+            },
+            alt: None,
+        }]);
+        assert!(presentation.validate().is_ok());
     }
 
     #[test]

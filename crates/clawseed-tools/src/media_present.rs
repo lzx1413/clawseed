@@ -73,6 +73,7 @@ impl Tool for MediaPresentTool {
         let blocks = selected
             .map(|attachment| ContentBlock::Image {
                 media: MediaReference {
+                    path: None,
                     asset_id: Some(attachment.id.clone()),
                     url: None,
                     mime_type: Some(attachment.mime_type.clone()),

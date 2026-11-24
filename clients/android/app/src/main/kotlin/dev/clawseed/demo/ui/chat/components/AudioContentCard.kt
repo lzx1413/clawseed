@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import android.net.Uri
+import java.io.File
 import dev.clawseed.demo.R
 import dev.clawseed.demo.ui.components.ClawSeedTextButton
 import dev.clawseed.demo.ui.theme.ClawSeedShapes
@@ -35,16 +37,34 @@ import kotlinx.coroutines.isActive
 internal fun AudioContentCard(
     media: MediaReference,
     title: String?,
+    readAsset: (suspend (String) -> Result<ByteArray>)?,
     modifier: Modifier = Modifier,
 ) {
     val url = media.safeHttpsUrl()
     val context = androidx.compose.ui.platform.LocalContext.current
-    if (url == null) {
+    val assetId = media.assetId?.takeIf { it.isNotBlank() }
+    val localPath = media.path?.takeIf { it.isNotBlank() }
+    var localFile by remember(localPath, assetId) { mutableStateOf<File?>(null) }
+    LaunchedEffect(url, localPath, assetId) {
+        if (url == null && (localPath != null || assetId != null)) {
+            val bytes = readAsset?.invoke(localPath ?: assetId!!)?.getOrNull()
+            if (bytes != null) {
+                localFile = File.createTempFile("clawseed-audio-", ".media", context.cacheDir).also {
+                    it.writeBytes(bytes)
+                }
+            }
+        }
+    }
+    DisposableEffect(localFile) {
+        onDispose { localFile?.delete() }
+    }
+    val mediaUri: Uri? = url?.let(Uri::parse) ?: localFile?.let(Uri::fromFile)
+    if (mediaUri == null) {
         TextUnavailable(R.string.msg_audio_unavailable, modifier)
         return
     }
-    val player = remember(url) {
-        ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(url)) }
+    val player = remember(mediaUri) {
+        ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(mediaUri)) }
     }
     var isPlaying by remember(player) { mutableStateOf(false) }
     var positionMs by remember(player) { mutableStateOf(0L) }

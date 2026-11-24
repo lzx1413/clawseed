@@ -43,14 +43,16 @@ internal fun ImageContentCard(
 ) {
     val url = media.safeHttpsUrl()
     val assetId = media.assetId?.takeIf { it.isNotBlank() }
+    val localPath = media.path?.takeIf { it.isNotBlank() }
     val imageLoader = rememberRichMediaImageLoader()
-    var assetResult by remember(assetId) { mutableStateOf<Result<ByteArray>?>(null) }
-    var showPreview by remember(url, assetId) { mutableStateOf(false) }
+    var assetResult by remember(localPath, assetId) { mutableStateOf<Result<ByteArray>?>(null) }
+    var showPreview by remember(url, localPath, assetId) { mutableStateOf(false) }
     val colorScheme = MaterialTheme.colorScheme
 
-    LaunchedEffect(assetId, url) {
-        if (url == null && assetId != null) {
-            assetResult = readAsset?.invoke(assetId)
+    LaunchedEffect(assetId, localPath, url) {
+        if (url == null && (localPath != null || assetId != null)) {
+            val source = localPath ?: assetId
+            assetResult = readAsset?.invoke(source!!)
                 ?: Result.failure(IllegalStateException("Image attachment reader unavailable"))
         }
     }
@@ -65,7 +67,7 @@ internal fun ImageContentCard(
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (imageModel == null && assetId != null && assetResult == null) {
+        if (imageModel == null && (localPath != null || assetId != null) && assetResult == null) {
             CircularProgressIndicator(modifier = Modifier.size(24.dp))
         } else if (imageModel == null) {
             Text(

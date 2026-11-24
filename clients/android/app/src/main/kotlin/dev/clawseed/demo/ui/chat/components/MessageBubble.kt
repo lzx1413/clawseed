@@ -591,8 +591,8 @@ private fun RichContentBlocks(
                 is ContentBlock.Markdown -> MarkdownContent(block.text)
                 is ContentBlock.SearchResults -> SearchResultsCard(block)
                 is ContentBlock.Image -> ImageContentCard(block.media, block.alt, onReadImage)
-                is ContentBlock.Audio -> AudioContentCard(block.media, block.title)
-                is ContentBlock.Video -> VideoContentCard(block.media, block.title)
+                is ContentBlock.Audio -> AudioContentCard(block.media, block.title, onReadImage)
+                is ContentBlock.Video -> VideoContentCard(block.media, block.title, onReadImage)
                 is ContentBlock.Link -> LinkContentCard(block)
                 is ContentBlock.Profile -> ProfileContentCard(block, onAction)
                 is ContentBlock.Unsupported -> Unit

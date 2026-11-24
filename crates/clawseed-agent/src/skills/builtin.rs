@@ -30,7 +30,7 @@ const BUILTIN_SKILLS: &[BuiltinSkill] = &[
     },
     BuiltinSkill {
         name: "media-presentation",
-        version: "0.2.0",
+        version: "0.3.0",
         manifest: include_str!("builtin_media-presentation_manifest.toml"),
         skill_md: include_str!("builtin_media-presentation_SKILL.md"),
         legacy_hashes: &[],

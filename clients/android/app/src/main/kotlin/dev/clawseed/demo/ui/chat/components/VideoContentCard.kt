@@ -10,7 +10,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.viewinterop.AndroidView
@@ -21,16 +25,35 @@ import androidx.media3.ui.PlayerView
 import dev.clawseed.demo.R
 import dev.clawseed.demo.ui.theme.ClawSeedShapes
 import dev.clawseed.sdk.core.model.MediaReference
+import android.net.Uri
+import java.io.File
 
 @Composable
 internal fun VideoContentCard(
     media: MediaReference,
     title: String?,
+    readAsset: (suspend (String) -> Result<ByteArray>)?,
     modifier: Modifier = Modifier,
 ) {
     val url = media.safeHttpsUrl()
     val context = androidx.compose.ui.platform.LocalContext.current
-    if (url == null) {
+    val assetId = media.assetId?.takeIf { it.isNotBlank() }
+    val localPath = media.path?.takeIf { it.isNotBlank() }
+    var localFile by remember(localPath, assetId) { mutableStateOf<File?>(null) }
+    LaunchedEffect(url, localPath, assetId) {
+        if (url == null && (localPath != null || assetId != null)) {
+            readAsset?.invoke(localPath ?: assetId!!)?.getOrNull()?.let { bytes ->
+                localFile = File.createTempFile("clawseed-video-", ".media", context.cacheDir).also {
+                    it.writeBytes(bytes)
+                }
+            }
+        }
+    }
+    DisposableEffect(localFile) {
+        onDispose { localFile?.delete() }
+    }
+    val mediaUri: Uri? = url?.let(Uri::parse) ?: localFile?.let(Uri::fromFile)
+    if (mediaUri == null) {
         Text(
             text = androidx.compose.ui.res.stringResource(R.string.msg_video_unavailable),
             modifier = modifier.padding(top = 8.dp),
@@ -39,9 +62,9 @@ internal fun VideoContentCard(
         )
         return
     }
-    val player = remember(url) {
+    val player = remember(mediaUri) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(url))
+            setMediaItem(MediaItem.fromUri(mediaUri))
             prepare()
             playWhenReady = false
         }

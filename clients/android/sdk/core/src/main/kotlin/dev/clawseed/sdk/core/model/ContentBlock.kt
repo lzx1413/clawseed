@@ -46,6 +46,7 @@ sealed interface ContentBlock {
 }
 
 data class MediaReference(
+    val path: String?,
     val assetId: String?,
     val url: String?,
     val mimeType: String?,
@@ -148,6 +149,7 @@ private fun parseContentBlock(block: JsonObject): ContentBlock {
 private fun parseMedia(element: JsonElement?): MediaReference {
     val media = element as? JsonObject
     return MediaReference(
+        path = media?.string("path"),
         assetId = media?.string("asset_id"),
         url = media?.string("url"),
         mimeType = media?.string("mime_type"),

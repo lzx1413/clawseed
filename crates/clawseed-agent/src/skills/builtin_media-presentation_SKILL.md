@@ -56,11 +56,26 @@ workspace 中寻找同一张图片，也不要要求用户再次提供宿主文�
 }
 ```
 
+插件生成本地媒体时，把文件写入 workspace 下的插件目录后返回相对路径：
+
+```json
+{
+  "type": "image",
+  "media": {
+    "path": ".clawseed/plugins/weather/data/weather.png",
+    "mime_type": "image/png"
+  }
+}
+```
+
+客户端会按 workspace 根目录解析这个相对路径并直接展示文件。
+插件不要返回宿主绝对路径，也不要生成 `asset_id`。
+
 规则如下：
 
 - `output` 用简短文字说明结果，供 Agent 继续推理。
 - `presentation` 只放客户端需要渲染的图片、音频、视频或链接。
-- 远程媒体 URL 必须使用 HTTPS。受宿主管理的媒体可以使用 `asset_id`。
+- 远程媒体 URL 必须使用 HTTPS。本地插件媒体使用相对 `path`，由客户端读取并展示。
 - 媒体 block 只包含与用户请求相关的内容，避免重复展示候选媒体。
 - 用户只要求一张图片时返回一个 `image` block。用户要求比较时再返回多个 block。
 - 图表、指标和多图切换使用 `visualize-dashboard` Skill。

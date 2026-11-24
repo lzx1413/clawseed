@@ -1,6 +1,6 @@
 [skill]
 name = "media-presentation"
-version = "0.2.0"
+version = "0.3.0"
 description = "展示和处理图片、音频、视频与链接等多媒体内容。"
 category = "media"
 permissions = []

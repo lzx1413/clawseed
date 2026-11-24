@@ -28,6 +28,7 @@ import dev.clawseed.demo.scheduled.AlarmSchedule
 import dev.clawseed.sdk.android.ClawSeedAndroid
 import dev.clawseed.sdk.android.ChatAccumulator
 import dev.clawseed.sdk.core.ClawSeedSession
+import dev.clawseed.sdk.embedded.GatewayConfigManager
 import dev.clawseed.sdk.core.model.ConnectionState
 import dev.clawseed.sdk.core.model.ChatEvent
 import dev.clawseed.sdk.core.model.ContentBlock
@@ -61,6 +62,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.contentOrNull
 import java.util.Locale
+import java.io.File
 
 /**
  * Strip enrichment prefixes that the gateway adds for LLM prompt cache fidelity.
@@ -842,6 +844,22 @@ class ChatViewModel(application: Application, private val savedStateHandle: Save
     internal suspend fun readImage(sessionId: String, id: String): Result<ByteArray> {
         val session = currentSlot?.session ?: return Result.failure(IllegalStateException("会话未连接"))
         if (session.sessionInfo.value?.sessionId != sessionId) return Result.failure(IllegalStateException("会话已切换"))
+        if (!id.startsWith("att_") && !id.startsWith("asset_")) {
+            return attachmentImageCache.load("${ChatImageDrafts.key(session.gateway, sessionId)}:path:$id") {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        require(!id.startsWith("/") && !id.contains("..")) { "媒体路径无效" }
+                        val workspace = GatewayConfigManager(getApplication()).workspaceDir().canonicalFile
+                        val file = File(workspace, id).canonicalFile
+                        require(file.toPath().startsWith(workspace.toPath())) { "媒体路径超出 workspace" }
+                        require(file.isFile) { "媒体文件不存在" }
+                        val bytes = file.readBytes()
+                        require(bytes.size <= 5 * 1024 * 1024) { "媒体文件过大" }
+                        bytes
+                    }
+                }
+            }
+        }
         return attachmentImageCache.load("${ChatImageDrafts.key(session.gateway, sessionId)}:$id") {
             session.gateway.readImage(sessionId, id)
         }

@@ -572,6 +572,7 @@ impl WebSearchTool {
                 &mut media,
                 ContentBlock::Image {
                     media: MediaReference {
+                        path: None,
                         asset_id: None,
                         url: Some(url.to_owned()),
                         mime_type: None,
@@ -812,6 +813,7 @@ const MAX_SEARCH_MEDIA_BLOCKS: usize = 6;
 
 fn media_reference(url: &str) -> MediaReference {
     MediaReference {
+        path: None,
         asset_id: None,
         url: Some(url.to_owned()),
         mime_type: None,

@@ -308,6 +308,9 @@ stdin 和 stdout 均使用 UTF-8，每行一个完整 JSON 对象。插件不得
 `link`。媒体 URL 必须使用 HTTPS，宿主会在交给 Android 客户端前执行完整校验。没有
 `presentation` 的旧插件结果继续按原始 JSON 值处理。
 
+插件生成本地媒体时可以在媒体对象中返回相对 workspace 根目录的 `path` 和 MIME 类型。
+Android 客户端会直接读取这个路径并展示媒体。插件无需生成 ID，也不能返回宿主绝对路径。
+
 当前用户回合的图片会通过 `execute_tool.params.attachments` 和
 `execute_tool.params.context.attachments` 传给插件。每项包含
 Linux runtime 内可访问的 `path`，以及 `id`、`mime_type`、`size_bytes`、`width` 和 `height`。
