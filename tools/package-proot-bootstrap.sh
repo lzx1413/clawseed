@@ -11,6 +11,11 @@ cp "$BUNDLE_DIR/stage/proot" "$DEST/libproot.so"
 cp "$BUNDLE_DIR/stage/proot-loader" "$DEST/libproot-loader.so"
 cp "$BUNDLE_DIR/stage/proot-libs/libtalloc.so.2" "$DEST/libtalloc.so"
 cp "$BUNDLE_DIR/stage/proot-libs/libandroid-shmem.so" "$DEST/libandroid-shmem.so"
+TAWCROOT_DIR="$ROOT/build/tawcroot/jniLibs/$ABI"
+if [[ -f "$TAWCROOT_DIR/libtawcroot.so" ]]; then
+  cp "$TAWCROOT_DIR/libtawcroot.so" "$DEST/libtawcroot.so"
+  chmod 0755 "$DEST/libtawcroot.so"
+fi
 # Android packages lib*.so names only. Preserve ELF offsets while rewriting the
 # dependency and SONAME; runtime copies in the tar retain their original names.
 python3 - "$DEST" <<'PY'

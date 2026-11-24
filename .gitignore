@@ -97,4 +97,5 @@ site/
 
 # Generated Linux runtime archives, caches, staging and APK inputs
 /build/proot-runtime-*/
+/build/tawcroot/
 clients/android/app/src/androidTest/jniLibs/*/libcommand-backends-probe.so

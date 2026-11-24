@@ -936,6 +936,7 @@ private fun ProotRuntimeCard() {
             }
 
             StatusRow(stringResource(R.string.settings_proot_runtime_status), statusText)
+            StatusRow("Backend", state.status.backend)
             state.status.version?.let {
                 StatusRow(stringResource(R.string.settings_proot_runtime_version), it)
             }

@@ -9,7 +9,7 @@ description: Download and explore ClawSeed's Android AI agent app, which runs th
 
 The ClawSeed Android Demo is a complete on-device AI agent application. The entire agent stack runs on the Android device — the Rust-compiled Gateway binary runs as a foreground service process, while the Android client connects via WebSocket and registers device-side tools.
 
-Android demonstrates ClawSeed's static/dynamic split: the Rust Gateway, Agent, memory, and security policy form the static trusted core; an optional PRoot Linux runtime hosts Python/Node.js plugins, Linux CLI tools, and compilers. Local plugins and tools supplied by other Android apps enter through CETP semantics and are exposed through the same Agent Tool Registry. Dynamic Sub-Agent orchestration is not implemented yet.
+Android demonstrates ClawSeed's static/dynamic split: the Rust Gateway, Agent, memory, and security policy form the static trusted core; an optional tawcroot Linux runtime with PRoot fallback hosts Python/Node.js plugins, Linux CLI tools, and compilers. Local plugins and tools supplied by other Android apps enter through CETP semantics and are exposed through the same Agent Tool Registry. Dynamic Sub-Agent orchestration is not implemented yet.
 
 ## Download the Android App
 
@@ -76,7 +76,7 @@ and their release notes remain available in
 
 ### Static core and dynamic execution layer
 
-The core process owns sessions, personas, memory, tool registration, hooks, and approvals. The dynamic layer includes local Linux-runtime plugins, CETP cross-app tools, and WebSocket remote tools. All of them enter through the same tool-spec and result model, so a plugin exit or timeout can be handled as an extension failure without changing the core's policy model. PRoot provides userspace compatibility, not strong isolation.
+The core process owns sessions, personas, memory, tool registration, hooks, and approvals. The dynamic layer includes local Linux-runtime plugins, CETP cross-app tools, and WebSocket remote tools. All of them enter through the same tool-spec and result model, so a plugin exit or timeout can be handled as an extension failure without changing the core's policy model. Tawcroot and PRoot provide userspace compatibility, not strong isolation.
 
 ### User Profile Backup
 

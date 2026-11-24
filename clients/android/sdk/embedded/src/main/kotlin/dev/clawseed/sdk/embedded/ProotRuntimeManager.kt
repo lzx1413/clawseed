@@ -21,7 +21,7 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlinx.coroutines.CancellationException
 
-/** Configuration for downloading and storing a PRoot Linux runtime. */
+/** Configuration for downloading and storing the shared Linux user-space runtime. */
 data class ProotRuntimeConfig(
     /** Signed/controlled manifest endpoint. Empty means download is disabled. */
     val manifestUrl: String? = null,
@@ -48,6 +48,7 @@ data class ProotRuntimeStatus(
     val error: String? = null,
     val canRollback: Boolean = false,
     val checkedAtMs: Long? = null,
+    val backend: String = "tawcroot",
 )
 
 data class ProotRuntimeProgress(
@@ -57,7 +58,7 @@ data class ProotRuntimeProgress(
 )
 
 /**
- * Installs a versioned PRoot bundle into app-private storage.
+ * Installs a versioned Linux runtime bundle into app-private storage.
  *
  * Bundled assets are authenticated by APK signing; remote manifests need a trusted
  * publisher signature. tar.gz/tar.xz and development ZIP bundles are supported.
@@ -118,7 +119,7 @@ class ProotRuntimeManager(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            Log.e(TAG, "Failed to install PRoot runtime", error)
+            Log.e(TAG, "Failed to install Linux runtime", error)
             writeState("FAILED", error.message)
             val previous = status()
             if (previous.state == ProotRuntimeState.READY) previous.copy(error = error.message)
@@ -195,6 +196,7 @@ class ProotRuntimeManager(
                 directory.absolutePath,
                 canRollback = canRollback,
                 checkedAtMs = checkedAt,
+                    backend = preferredBackend(),
             )
         } else {
             ProotRuntimeStatus(
@@ -205,9 +207,13 @@ class ProotRuntimeManager(
                 error = health?.optString("error")?.takeIf { it.isNotBlank() } ?: "active runtime is incomplete",
                 canRollback = canRollback,
                 checkedAtMs = checkedAt,
+                backend = preferredBackend(),
             )
         }
     }
+
+    private fun preferredBackend(): String =
+        if (File(context.applicationInfo.nativeLibraryDir, "libtawcroot.so").canExecute()) "tawcroot" else "proot"
 
     fun activePath(): File? = status().takeIf { it.state == ProotRuntimeState.READY }
         ?.path

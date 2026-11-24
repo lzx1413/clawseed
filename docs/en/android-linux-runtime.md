@@ -1,13 +1,14 @@
 # Offline Linux, Node.js and Python on Android
 
 ClawSeed can bundle an arm64 Linux runtime in the APK. Users install it offline
-from Settings. The Rust gateway stays on Android; `shell` and `background_run` use PRoot when `backend=linux`. Packaging follows the layout used by
+from Settings. The Rust gateway stays on Android; `shell` and `background_run` use the small tawcroot launcher by default when `backend=linux`, and fall back to PRoot when tawcroot is unavailable or cannot start. Both share the same rootfs, generation and task directory; Linux plugins use the same selection. Neither backend is a strong security sandbox. Packaging follows the layout used by
 [DSH Go](https://github.com/ccch1mneyyy/dsh-Go), with an independent ClawSeed recipe.
 
 From the repository root:
 
 ```bash
 ./tools/build-proot-runtime.sh arm64-v8a build/proot-runtime-arm64
+python3 ./tools/build-tawcroot.py --ndk "$ANDROID_NDK_HOME"
 ./tools/package-proot-bootstrap.sh
 ./tools/build-clawseed-android.sh aarch64 build
 cd clients/android
@@ -18,7 +19,7 @@ cd clients/android
 The recipe requires curl, GNU tar, ar, xz and Python 3.11+. Inputs are pinned by
 version and SHA-256: Ubuntu Base 24.04.5, Termux PRoot 5.1.107.102, Node.js 24.22.1
 and CPython 3.12.15 from python-build-standalone 20261021. No arm64 code runs on
-the build host. Generated files are ignored under `build/proot-runtime-arm64/`.
+the build host. Generated files are ignored under `build/proot-runtime-arm64/` and `build/tawcroot/`.
 Gradle reads its `packaged/assets` and `packaged/jniLibs` directories. A normal
 developer build without these generated inputs does not contain an offline runtime.
 
@@ -85,7 +86,8 @@ On startup, queries, and job transitions, completed history is pruned to 64 jobs
 to list metadata without copying output. Unwritable or concurrently owned storage
 rejects new background jobs. Configurations without `config_path` retain memory-only
 behavior. Linux/Android commands set a parent-death signal, using SIGQUIT for PRoot
-to request tracee cleanup. Output-pipe draining is bounded even after the shell exits.
+to request tracee cleanup and process-group cleanup for tawcroot. Output-pipe draining
+is bounded even after the shell exits; a tawcroot startup error alone triggers PRoot fallback.
 
 `RuntimeLifecycleDeviceTest` uses isolated storage to verify installation, damaged
 interpreters, health checks, preservation of the previous environment, rollback,
@@ -96,8 +98,8 @@ size limits, the actual complete bundle and manifest signature verification.
 Rust tests cover activation changes and command policy. ClawSeed retains target
 SDK 37, whereas DSH Go uses 28: installation must pass the execution probe on an
 actual Android device. Also verify HTTPS pip/npm installs, workspace persistence,
-timeouts, removal protection and recovery after restarting the app. PRoot runs
-with the app UID and is not a kernel security sandbox.
+timeouts, removal protection and recovery after restarting the app. Tawcroot and PRoot
+run with the app UID and are userspace compatibility layers, not kernel security sandboxes.
 
 The Android `CommandBackendsDeviceTest` runs the actual Rust tool implementations.
 Build its native probe with `tools/build-command-backends-probe-android.sh`, build

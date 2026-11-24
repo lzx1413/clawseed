@@ -57,7 +57,7 @@ class EmbeddedGateway(
             configManager.ensureBundledSkills()
             configManager.ensureSkillsDir()
 
-            Log.i(TAG, "PRoot runtime status: ${prootRuntimeManager.status()}")
+            Log.i(TAG, "Linux runtime status: ${prootRuntimeManager.status()}")
 
             process = ProcessBuilder(binary.absolutePath, "gateway", "--port", config.port.toString())
                 .redirectErrorStream(true)
@@ -70,8 +70,13 @@ class EmbeddedGateway(
                     // Resolve active.json for each tool call, including after first install.
                     pb.environment()["CLAWSEED_PROOT_RUNTIME_DIR"] =
                         File(filesDir, "proot-runtime").absolutePath
+                    pb.environment()["CLAWSEED_LINUX_BACKEND"] = "tawcroot"
                     pb.environment()["TMPDIR"] = context.cacheDir.absolutePath
                     val nativeProotDir = context.applicationInfo.nativeLibraryDir
+                    val nativeTawcroot = File(nativeProotDir, "libtawcroot.so")
+                    if (nativeTawcroot.canExecute()) {
+                        pb.environment()["CLAWSEED_TAWCROOT_BINARY"] = nativeTawcroot.absolutePath
+                    }
                     val nativeProot = File(nativeProotDir, "libproot.so")
                     val nativeLoader = File(nativeProotDir, "libproot-loader.so")
                     if (nativeProot.canExecute() && nativeLoader.isFile) {

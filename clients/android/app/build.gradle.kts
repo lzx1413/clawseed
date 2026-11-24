@@ -100,7 +100,8 @@ android {
         buildConfig = true
     }
 
-    // Generated, ignored artifacts; build-proot-runtime.sh + package-proot-bootstrap.sh.
+    // Generated, ignored artifacts; build-proot-runtime.sh + package-proot-bootstrap.sh
+    // and build-tawcroot.py.
     sourceSets.getByName("main") {
         assets.srcDir(rootProject.file("../../build/proot-runtime-arm64/packaged/assets"))
         jniLibs.srcDir(rootProject.file("../../build/proot-runtime-arm64/packaged/jniLibs"))
@@ -113,7 +114,7 @@ android {
         // and ProcessBuilder cannot launch a binary from inside a zip file.
         jniLibs {
             useLegacyPackaging = true
-            keepDebugSymbols += listOf("**/libproot.so", "**/libproot-loader.so",
+            keepDebugSymbols += listOf("**/libtawcroot.so", "**/libproot.so", "**/libproot-loader.so",
                 "**/libtalloc.so", "**/libandroid-shmem.so")
         }
     }

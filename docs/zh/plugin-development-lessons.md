@@ -24,10 +24,10 @@ ClawSeed 的 CETP stdio binding 不是通用 JSON-RPC：
 ## 验证环境
 
 `plugin_validate` 必须使用和实际运行一致的 Linux runtime。Android 宿主通常没有 `python3`
-或 `node`，不能把宿主命令探测结果当作插件可运行性结论。当前实现只使用 active PRoot
-runtime，runtime 未就绪时直接返回错误，不回退到宿主执行。
+或 `node`，不能把宿主命令探测结果当作插件可运行性结论。当前实现使用 active tawcroot
+runtime，启动失败回退 PRoot；runtime 未就绪时直接返回错误，不回退到宿主执行。
 
-PRoot 是插件的启动器，Python 和 Node.js 是 rootfs 内的 guest 解释器。当前签名 runtime 的
+Tawcroot/PRoot 是插件的启动器，Python 和 Node.js 是 rootfs 内的 guest 解释器。当前签名 runtime 的
 Python 路径是 `/opt/python/bin/python3`，Node.js 路径是 `/opt/node/bin/node`。宿主侧不能用
 `which python3` 代替 runtime 检查，也不能通过普通 exec 启动插件。
 

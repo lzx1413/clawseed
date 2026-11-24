@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit
 internal object RuntimeReadinessProbe {
     fun check(context: Context, runtime: File) {
         val native = File(context.applicationInfo.nativeLibraryDir)
+        val nativeTawcroot = File(native, "libtawcroot.so").takeIf { it.canExecute() }
         val nativeProot = File(native, "libproot.so")
         val proot = nativeProot.takeIf { it.canExecute() } ?: File(runtime, "proot")
         val loader = if (proot == nativeProot) File(native, "libproot-loader.so") else File(runtime, "proot-loader")
@@ -16,9 +17,16 @@ internal object RuntimeReadinessProbe {
         val temporary = File(context.cacheDir, "runtime-probe-${java.util.UUID.randomUUID()}").apply { mkdirs() }
         val log = File(temporary, "probe.log")
         try {
-            val command = listOf(proot.absolutePath, "--kill-on-exit", "--link2symlink", "--sysvipc", "-0",
-                "-r", rootfs.absolutePath, "-b", "/dev", "-b", "/proc", "-b", "/system", "-b", "/apex",
-                "-b", "${temporary.absolutePath}:/tmp", "-w", "/root", "/usr/bin/env", "-i",
+            val backendCommand = if (nativeTawcroot != null) {
+                listOf(nativeTawcroot.absolutePath, "-r", rootfs.absolutePath,
+                    "-b", "/dev:/dev", "-b", "/proc:/proc", "-b", "/system:/system", "-b", "/apex:/apex",
+                    "-b", "${temporary.absolutePath}:/tmp", "--", "/usr/bin/env", "-i")
+            } else {
+                listOf(proot.absolutePath, "--kill-on-exit", "--link2symlink", "--sysvipc", "-0",
+                    "-r", rootfs.absolutePath, "-b", "/dev", "-b", "/proc", "-b", "/system", "-b", "/apex",
+                    "-b", "${temporary.absolutePath}:/tmp", "-w", "/root", "/usr/bin/env", "-i")
+            }
+            val command = backendCommand + listOf(
                 "HOME=/root", "PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8", "TMPDIR=/tmp",
                 "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt", "/bin/sh", "-ec",
                 "node -e 'require(\"node:child_process\").execFileSync(\"/bin/sh\",[\"-c\",\"true\"]); console.log(process.version)'\n" +
@@ -37,10 +45,25 @@ internal object RuntimeReadinessProbe {
                 put("TMPDIR", temporary.absolutePath)
                 put("PROOT_TMP_DIR", temporary.absolutePath)
                 put("PROOT_L2S_DIR", File(rootfs, "root/.l2s").apply { mkdirs() }.absolutePath)
-                put("PROOT_LOADER", loader.absolutePath)
-                put("LD_LIBRARY_PATH", libraries.absolutePath)
+                if (nativeTawcroot == null) {
+                    put("PROOT_LOADER", loader.absolutePath)
+                    put("LD_LIBRARY_PATH", libraries.absolutePath)
+                }
             }
-            val process = builder.start()
+            var process = runCatching { builder.start() }.getOrElse { firstError ->
+                check(nativeTawcroot != null && proot.canExecute()) { firstError.message ?: "Linux runtime launcher failed" }
+                ProcessBuilder(listOf(proot.absolutePath, "--kill-on-exit", "--link2symlink", "--sysvipc", "-0",
+                    "-r", rootfs.absolutePath, "-b", "/dev", "-b", "/proc", "-b", "/system", "-b", "/apex",
+                    "-b", "${temporary.absolutePath}:/tmp", "-w", "/root", "/usr/bin/env", "-i") + command.drop(backendCommand.size))
+                    .directory(context.filesDir).redirectErrorStream(true).redirectOutput(log).apply {
+                        environment().apply {
+                            clear(); put("PATH", "/system/bin"); put("TMPDIR", temporary.absolutePath)
+                            put("PROOT_TMP_DIR", temporary.absolutePath)
+                            put("PROOT_L2S_DIR", File(rootfs, "root/.l2s").apply { mkdirs() }.absolutePath)
+                            put("PROOT_LOADER", loader.absolutePath); put("LD_LIBRARY_PATH", libraries.absolutePath)
+                        }
+                    }.start()
+            }
             val completed = process.waitFor(90, TimeUnit.SECONDS)
             if (!completed) {
                 process.destroyForcibly()

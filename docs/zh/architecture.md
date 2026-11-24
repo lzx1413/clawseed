@@ -115,7 +115,7 @@ Linux Runtime 和 CETP 将变化快、依赖复杂或属于其他应用的能力
 - `linux_exec` 为脚本、Git、编译器和 Linux CLI 提供受约束的执行后端；
 - Android 外部应用通过 CETP ContentProvider 暴露工具，远程客户端通过 WebSocket 注册工具；
 - 本地插件通过 stdio/CETP 与 Rust 内核通信，插件退出或超时不会改变核心的类型和权限模型；
-- PRoot 只提供 Linux 用户态兼容性，不等价于内核级沙箱，网络、文件和高风险操作仍由 Rust/Android 策略控制。
+- Android 默认使用 tawcroot，启动失败回退 PRoot；两者只提供 Linux 用户态兼容性，不等价于内核级沙箱，网络、文件和高风险操作仍由 Rust/Android 策略控制。
 
 因此，新工具可以来自 Linux 插件、其他 Android 应用或远程客户端，并动态加入而无需重新编译主 Agent；所有来源最终都进入统一的 `Tool`/`ToolSpec` 注册、Hook 和审批路径。核心能力保持可审计和可回归测试。Sub-Agent 的动态创建、调度和结果汇聚暂不属于当前实现范围。
 

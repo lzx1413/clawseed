@@ -1,4 +1,4 @@
-//! Linux user-space execution through an installed PRoot runtime.
+//! Linux user-space execution through the installed tawcroot/PRoot runtime.
 
 use anyhow::Context;
 use async_trait::async_trait;
@@ -13,6 +13,9 @@ use tokio::sync::Semaphore;
 use tokio::time::timeout;
 
 const RUNTIME_DIR_ENV: &str = "CLAWSEED_PROOT_RUNTIME_DIR";
+const BACKEND_ENV: &str = "CLAWSEED_LINUX_BACKEND";
+const TAWCROOT_BINARY_ENV: &str = "CLAWSEED_TAWCROOT_BINARY";
+const PROOT_BINARY_ENV: &str = "CLAWSEED_PROOT_BINARY";
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
 const MAX_CONCURRENT_LINUX_EXEC: usize = 2;
 const MAX_CONCURRENT_LINUX_PLUGINS: usize = 16;
@@ -113,67 +116,114 @@ pub(crate) async fn spawn_linux_plugin(
         other => anyhow::bail!("unsupported plugin language: {other}"),
     };
 
-    let mut cmd = tokio::process::Command::new(&layout.proot);
-    cmd.args(["--kill-on-exit", "--link2symlink", "--sysvipc", "-0", "-r"])
-        .arg(&layout.rootfs)
-        .args(["-b"])
+    let backend = layout.backend();
+    let mut cmd = layout.command(backend)?;
+    if backend == RuntimeBackend::Proot {
+        cmd.args(["--kill-on-exit", "--link2symlink", "--sysvipc", "-0", "-r"])
+            .arg(&layout.rootfs);
+    } else {
+        cmd.args(["-r"]).arg(&layout.rootfs);
+    }
+    cmd.args(["-b"])
         .arg(format!("{}:/plugin", plugin_root.display()))
         .args(["-b"])
         .arg(format!("{}:/tmp", task_tmp.path().display()))
-        .args(["-b", "/dev", "-b", "/proc"]);
+        .args(if backend == RuntimeBackend::Tawcroot {
+            vec![
+                "-b".to_string(),
+                "/dev:/dev".to_string(),
+                "-b".to_string(),
+                "/proc:/proc".to_string(),
+            ]
+        } else {
+            vec![
+                "-b".to_string(),
+                "/dev".to_string(),
+                "-b".to_string(),
+                "/proc".to_string(),
+            ]
+        });
     if permissions.workspace != "none" {
         cmd.args(["-b"])
             .arg(format!("{}:/workspace", workspace_mount.display()));
     }
     #[cfg(target_os = "android")]
-    cmd.args(["-b", "/system", "-b", "/apex"]);
-    cmd.args([
-        "-w",
-        "/plugin",
-        "/usr/bin/env",
-        "-i",
-        "HOME=/root",
-        "USER=root",
-        "LOGNAME=root",
-        "SHELL=/bin/sh",
-        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-        "LANG=C.UTF-8",
-        "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt",
-        "TMPDIR=/tmp",
-        "TERM=dumb",
-        interpreter,
-    ])
-    .arg(guest_entry)
-    .current_dir(plugin_root)
-    .env_clear()
-    .env("HOME", "/root")
-    .env(
-        "PATH",
-        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-    )
-    .env("LANG", "C.UTF-8")
-    .env("TMPDIR", &proot_tmp)
-    .env("TERM", "dumb")
-    .env("CLAWSEED_PLUGIN_ID", plugin_id)
-    .env("CLAWSEED_CETP_VERSION", "2")
-    .env("CLAWSEED_PLUGIN_NETWORK", permissions.network)
-    .env(
-        "CLAWSEED_PLUGIN_WORKSPACE",
-        if permissions.workspace == "none" {
-            ""
-        } else {
-            "/workspace"
-        },
-    )
-    .stdin(std::process::Stdio::piped())
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .kill_on_drop(true);
-    if let Some(loader) = &layout.loader {
-        cmd.env("PROOT_LOADER", loader);
+    if backend == RuntimeBackend::Tawcroot {
+        cmd.args(["-b", "/system:/system", "-b", "/apex:/apex"]);
+    } else {
+        cmd.args(["-b", "/system", "-b", "/apex"]);
     }
-    if let Some(library_dir) = &layout.library_dir {
-        cmd.env("LD_LIBRARY_PATH", library_dir);
+    if backend == RuntimeBackend::Proot {
+        cmd.args(["-w", "/plugin"]);
+    }
+    cmd.args([if backend == RuntimeBackend::Tawcroot {
+        "--"
+    } else {
+        "/usr/bin/env"
+    }]);
+    if backend == RuntimeBackend::Tawcroot {
+        cmd.args([
+            "/usr/bin/env",
+            "-i",
+            "HOME=/root",
+            "USER=root",
+            "LOGNAME=root",
+            "SHELL=/bin/sh",
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "LANG=C.UTF-8",
+            "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt",
+            "TMPDIR=/tmp",
+            "TERM=dumb",
+            interpreter,
+        ]);
+    } else {
+        cmd.args([
+            "-i",
+            "HOME=/root",
+            "USER=root",
+            "LOGNAME=root",
+            "SHELL=/bin/sh",
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "LANG=C.UTF-8",
+            "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt",
+            "TMPDIR=/tmp",
+            "TERM=dumb",
+            interpreter,
+        ]);
+    }
+    cmd.arg(&guest_entry)
+        .current_dir(&plugin_root)
+        .env_clear()
+        .env("HOME", "/root")
+        .env(
+            "PATH",
+            "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        )
+        .env("LANG", "C.UTF-8")
+        .env("TMPDIR", &proot_tmp)
+        .env("TERM", "dumb")
+        .env("CLAWSEED_PLUGIN_ID", plugin_id)
+        .env("CLAWSEED_CETP_VERSION", "2")
+        .env("CLAWSEED_PLUGIN_NETWORK", permissions.network)
+        .env(
+            "CLAWSEED_PLUGIN_WORKSPACE",
+            if permissions.workspace == "none" {
+                ""
+            } else {
+                "/workspace"
+            },
+        )
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    if backend == RuntimeBackend::Proot {
+        if let Some(loader) = &layout.loader {
+            cmd.env("PROOT_LOADER", loader);
+        }
+        if let Some(library_dir) = &layout.library_dir {
+            cmd.env("LD_LIBRARY_PATH", library_dir);
+        }
     }
     for name in permissions.environment {
         if let Some(value) = std::env::var_os(name) {
@@ -182,9 +232,89 @@ pub(crate) async fn spawn_linux_plugin(
     }
     cmd.env("PROOT_TMP_DIR", &proot_tmp)
         .env("PROOT_L2S_DIR", &proot_l2s);
-    let child = cmd
-        .spawn()
-        .with_context(|| format!("failed to start Linux plugin {plugin_id}"))?;
+    let child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(error) if backend == RuntimeBackend::Tawcroot && layout.proot.is_some() => {
+            let mut fallback = layout.command(RuntimeBackend::Proot)?;
+            fallback
+                .args(["--kill-on-exit", "--link2symlink", "--sysvipc", "-0", "-r"])
+                .arg(&layout.rootfs)
+                .args(["-b"])
+                .arg(format!("{}:/plugin", plugin_root.display()))
+                .args(["-b"])
+                .arg(format!("{}:/tmp", task_tmp.path().display()))
+                .args(["-b", "/dev", "-b", "/proc"]);
+            if permissions.workspace != "none" {
+                fallback
+                    .args(["-b"])
+                    .arg(format!("{}:/workspace", workspace_mount.display()));
+            }
+            #[cfg(target_os = "android")]
+            fallback.args(["-b", "/system", "-b", "/apex"]);
+            fallback
+                .args([
+                    "-w",
+                    "/plugin",
+                    "/usr/bin/env",
+                    "-i",
+                    "HOME=/root",
+                    "USER=root",
+                    "LOGNAME=root",
+                    "SHELL=/bin/sh",
+                    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                    "LANG=C.UTF-8",
+                    "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt",
+                    "TMPDIR=/tmp",
+                    "TERM=dumb",
+                ])
+                .arg(interpreter)
+                .arg(guest_entry)
+                .current_dir(&plugin_root)
+                .env_clear()
+                .env("HOME", "/root")
+                .env(
+                    "PATH",
+                    "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                )
+                .env("LANG", "C.UTF-8")
+                .env("TMPDIR", &proot_tmp)
+                .env("TERM", "dumb")
+                .env("CLAWSEED_PLUGIN_ID", plugin_id)
+                .env("CLAWSEED_CETP_VERSION", "2")
+                .env("CLAWSEED_PLUGIN_NETWORK", permissions.network)
+                .env(
+                    "CLAWSEED_PLUGIN_WORKSPACE",
+                    if permissions.workspace == "none" {
+                        ""
+                    } else {
+                        "/workspace"
+                    },
+                )
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .kill_on_drop(true)
+                .env("PROOT_TMP_DIR", &proot_tmp)
+                .env("PROOT_L2S_DIR", &proot_l2s);
+            if let Some(loader) = &layout.loader {
+                fallback.env("PROOT_LOADER", loader);
+            }
+            if let Some(library_dir) = &layout.library_dir {
+                fallback.env("LD_LIBRARY_PATH", library_dir);
+            }
+            for name in permissions.environment {
+                if let Some(value) = std::env::var_os(name) {
+                    fallback.env(name, value);
+                }
+            }
+            fallback.spawn().with_context(|| {
+                format!("tawcroot failed to start Linux plugin {plugin_id} ({error}); PRoot fallback failed")
+            })?
+        }
+        Err(error) => {
+            return Err(error).with_context(|| format!("failed to start Linux plugin {plugin_id}"));
+        }
+    };
     Ok((
         child,
         LinuxPluginGuard {
@@ -285,10 +415,27 @@ mod usage {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RuntimeBackend {
+    Tawcroot,
+    Proot,
+}
+
+impl RuntimeBackend {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Tawcroot => "tawcroot",
+            Self::Proot => "proot",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct RuntimeLayout {
     root: PathBuf,
-    proot: PathBuf,
+    tawcroot: Option<PathBuf>,
+    proot: Option<PathBuf>,
+    backend: RuntimeBackend,
     rootfs: PathBuf,
     loader: Option<PathBuf>,
     library_dir: Option<PathBuf>,
@@ -326,19 +473,41 @@ impl RuntimeLayout {
                 .ok_or("invalid runtime generation")?;
             root = root.join("versions").join(generation);
         }
-        let proot = std::env::var_os("CLAWSEED_PROOT_BINARY")
+        let tawcroot = std::env::var_os(TAWCROOT_BINARY_ENV)
+            .map(PathBuf::from)
+            .or_else(|| {
+                let candidate = root.join("tawcroot");
+                candidate.is_file().then_some(candidate)
+            })
+            .filter(|path| is_executable(path));
+        let proot = std::env::var_os(PROOT_BINARY_ENV)
             .map(PathBuf::from)
             .unwrap_or_else(|| root.join("proot"));
         let rootfs = root.join("rootfs");
-        if !proot.is_file() {
-            return Err(format!("PRoot binary is missing: {}", proot.display()));
-        }
-        if !is_executable(&proot) {
+        let proot = proot
+            .is_file()
+            .then_some(proot)
+            .filter(|path| is_executable(path));
+        let requested = std::env::var(BACKEND_ENV).ok();
+        if requested
+            .as_deref()
+            .is_some_and(|name| !matches!(name, "tawcroot" | "proot"))
+        {
             return Err(format!(
-                "PRoot binary is not executable: {}",
-                proot.display()
+                "unsupported Linux runtime backend: {}",
+                requested.unwrap()
             ));
         }
+        let backend = match requested.as_deref() {
+            Some("proot") => proot.as_ref().map(|_| RuntimeBackend::Proot),
+            _ => tawcroot
+                .as_ref()
+                .map(|_| RuntimeBackend::Tawcroot)
+                .or_else(|| proot.as_ref().map(|_| RuntimeBackend::Proot)),
+        };
+        let Some(backend) = backend else {
+            return Err("Linux runtime has neither a usable tawcroot nor PRoot binary".into());
+        };
         if !rootfs.is_dir() {
             return Err(format!("PRoot rootfs is missing: {}", rootfs.display()));
         }
@@ -383,7 +552,9 @@ impl RuntimeLayout {
         let library_dir = library_dir.is_dir().then_some(library_dir);
         Ok(Self {
             root,
+            tawcroot,
             proot,
+            backend,
             rootfs,
             loader,
             library_dir,
@@ -409,12 +580,31 @@ impl RuntimeLayout {
             })
             .unwrap_or_default();
         format!(
-            "ready (runtime={}, proot={}, rootfs={}{})",
+            "ready (runtime={}, backend={}, tawcroot={}, proot={}, rootfs={}{})",
             self.root.display(),
-            self.proot.display(),
+            self.backend.name(),
+            self.tawcroot
+                .as_ref()
+                .map_or("unavailable".into(), |p| p.display().to_string()),
+            self.proot
+                .as_ref()
+                .map_or("unavailable".into(), |p| p.display().to_string()),
             self.rootfs.display(),
             metadata,
         )
+    }
+
+    fn backend(&self) -> RuntimeBackend {
+        self.backend
+    }
+
+    fn command(&self, backend: RuntimeBackend) -> anyhow::Result<tokio::process::Command> {
+        let path = match backend {
+            RuntimeBackend::Tawcroot => self.tawcroot.as_ref(),
+            RuntimeBackend::Proot => self.proot.as_ref(),
+        }
+        .ok_or_else(|| anyhow::anyhow!("{} binary is unavailable", backend.name()))?;
+        Ok(tokio::process::Command::new(path))
     }
 }
 
@@ -545,21 +735,38 @@ pub(crate) async fn run_linux_command(
     std::fs::create_dir(&proot_tmp)?;
     std::fs::create_dir_all(&proot_l2s)?;
 
-    let mut cmd = tokio::process::Command::new(&layout.proot);
-    cmd.args(["--kill-on-exit", "--link2symlink", "--sysvipc", "-0", "-r"])
-        .arg(&layout.rootfs)
-        .args(["-b"])
+    let backend = layout.backend();
+    let mut cmd = layout.command(backend)?;
+    if backend == RuntimeBackend::Proot {
+        cmd.args(["--kill-on-exit", "--link2symlink", "--sysvipc", "-0", "-r"])
+            .arg(&layout.rootfs);
+    } else {
+        cmd.args(["-r"]).arg(&layout.rootfs);
+    }
+    cmd.args(["-b"])
         .arg(format!("{}:/workspace", workspace.display()))
         .args(["-b"])
-        .arg(format!("{}:/tmp", task_tmp.path().display()))
-        .args(["-b", "/dev", "-b", "/proc"]);
+        .arg(format!("{}:/tmp", task_tmp.path().display()));
+    if backend == RuntimeBackend::Tawcroot {
+        cmd.args(["-b", "/dev:/dev", "-b", "/proc:/proc"]);
+    } else {
+        cmd.args(["-b", "/dev", "-b", "/proc"]);
+    }
     #[cfg(target_os = "android")]
-    cmd.args(["-b", "/system", "-b", "/apex"]);
+    if backend == RuntimeBackend::Tawcroot {
+        cmd.args(["-b", "/system:/system", "-b", "/apex:/apex"]);
+    } else {
+        cmd.args(["-b", "/system", "-b", "/apex"]);
+    }
+    if backend == RuntimeBackend::Proot {
+        cmd.args(["-w", "/workspace"]);
+    }
+    if backend == RuntimeBackend::Tawcroot {
+        cmd.args(["--", "/usr/bin/env", "-i"]);
+    } else {
+        cmd.args(["/usr/bin/env", "-i"]);
+    }
     cmd.args([
-        "-w",
-        "/workspace",
-        "/usr/bin/env",
-        "-i",
         "HOME=/root",
         "USER=root",
         "LOGNAME=root",
@@ -583,11 +790,13 @@ pub(crate) async fn run_linux_command(
     .env("LANG", "C.UTF-8")
     .env("TMPDIR", &proot_tmp)
     .env("TERM", "dumb");
-    if let Some(loader) = &layout.loader {
-        cmd.env("PROOT_LOADER", loader);
-    }
-    if let Some(library_dir) = &layout.library_dir {
-        cmd.env("LD_LIBRARY_PATH", library_dir);
+    if backend == RuntimeBackend::Proot {
+        if let Some(loader) = &layout.loader {
+            cmd.env("PROOT_LOADER", loader);
+        }
+        if let Some(library_dir) = &layout.library_dir {
+            cmd.env("LD_LIBRARY_PATH", library_dir);
+        }
     }
     cmd.env("PROOT_TMP_DIR", &proot_tmp)
         .env("PROOT_L2S_DIR", &proot_l2s);
@@ -596,9 +805,65 @@ pub(crate) async fn run_linux_command(
     if remaining.is_zero() {
         return Ok(stopped(crate::shell::CommandTermination::TimedOut));
     }
-    let result =
-        crate::shell::run_proot_command(cmd, remaining, max_output_bytes, cancel_rx).await?;
-    Ok(result)
+    let result = if backend == RuntimeBackend::Proot {
+        crate::shell::run_proot_command(cmd, remaining, max_output_bytes, cancel_rx).await
+    } else {
+        crate::shell::run_command(cmd, remaining, max_output_bytes, cancel_rx).await
+    };
+    match result {
+        Ok(result) => Ok(result),
+        Err(error) if backend == RuntimeBackend::Tawcroot && layout.proot.is_some() => {
+            let mut fallback = layout.command(RuntimeBackend::Proot)?;
+            fallback
+                .args(["--kill-on-exit", "--link2symlink", "--sysvipc", "-0", "-r"])
+                .arg(&layout.rootfs)
+                .args(["-b"])
+                .arg(format!("{}:/workspace", workspace.display()))
+                .args(["-b"])
+                .arg(format!("{}:/tmp", task_tmp.path().display()))
+                .args(["-b", "/dev", "-b", "/proc"])
+                .args([
+                    "-w",
+                    "/workspace",
+                    "/usr/bin/env",
+                    "-i",
+                    "HOME=/root",
+                    "USER=root",
+                    "LOGNAME=root",
+                    "SHELL=/bin/sh",
+                    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                    "LANG=C.UTF-8",
+                    "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt",
+                    "TMPDIR=/tmp",
+                    "TERM=dumb",
+                    "/bin/sh",
+                    "-c",
+                ])
+                .arg(command)
+                .current_dir(workspace)
+                .env_clear()
+                .env("HOME", "/root")
+                .env(
+                    "PATH",
+                    "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                )
+                .env("LANG", "C.UTF-8")
+                .env("TMPDIR", &proot_tmp)
+                .env("TERM", "dumb")
+                .env("PROOT_TMP_DIR", &proot_tmp)
+                .env("PROOT_L2S_DIR", &proot_l2s);
+            if let Some(loader) = &layout.loader {
+                fallback.env("PROOT_LOADER", loader);
+            }
+            if let Some(library_dir) = &layout.library_dir {
+                fallback.env("LD_LIBRARY_PATH", library_dir);
+            }
+            crate::shell::run_proot_command(fallback, remaining, max_output_bytes, None)
+                .await
+                .with_context(|| format!("tawcroot failed ({error}); PRoot fallback failed"))
+        }
+        Err(error) => Err(error),
+    }
 }
 
 #[derive(Default)]
@@ -688,7 +953,12 @@ pub(crate) mod tests {
             .await
             .unwrap();
         assert!(!result.success);
-        assert!(result.error.unwrap().contains("PRoot binary is missing"));
+        assert!(
+            result
+                .error
+                .unwrap()
+                .contains("neither a usable tawcroot nor PRoot binary")
+        );
     }
 
     #[test]

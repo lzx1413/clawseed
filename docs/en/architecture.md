@@ -115,7 +115,7 @@ The Linux runtime and CETP place fast-changing, dependency-heavy, or app-owned c
 - `linux_exec` provides a constrained backend for scripts, Git, compilers, and Linux CLI tools;
 - Android external apps expose tools through the CETP ContentProvider binding, while remote clients register tools over WebSocket;
 - local plugins communicate with the Rust core over stdio/CETP, so a plugin timeout or exit does not change the core's type or policy model;
-- PRoot provides Linux userspace compatibility, not a kernel-level sandbox; network, filesystem, and high-risk operations remain governed by Rust/Android policy.
+- Android prefers tawcroot for Linux userspace compatibility and falls back to PRoot on launcher failure; neither is a kernel-level sandbox. Network, filesystem, and high-risk operations remain governed by Rust/Android policy.
 
 New tools can therefore come from Linux plugins, other Android apps, or remote clients without recompiling the main Agent; all sources are normalized into the same `Tool`/`ToolSpec` registry, hook, and approval path. The core remains auditable and regression-testable. Dynamic Sub-Agent creation, scheduling, and result aggregation are outside the current implementation scope.
 

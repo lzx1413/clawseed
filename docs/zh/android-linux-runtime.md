@@ -1,7 +1,9 @@
 # Android 离线 Linux、Node.js 和 Python
 
 ClawSeed 可以将 arm64 Linux runtime 随 APK 分发，首次在设置页启用时离线安装。
-Rust Gateway 仍直接运行在 Android 上，`shell` 和 `background_run` 选择 `backend=linux` 时进入 PRoot。
+Rust Gateway 仍直接运行在 Android 上，`shell` 和 `background_run` 选择 `backend=linux` 时默认进入
+轻量的 tawcroot；设备缺少 tawcroot 或启动失败时自动回退到 PRoot。两者共享同一份 rootfs、generation
+和任务目录，动态插件也走同一 backend 选择。PRoot 仍作为兼容性保底，不宣称强安全隔离。
 打包布局参考 [DSH Go](https://github.com/ccch1mneyyy/dsh-Go)，构建脚本与业务引擎由 ClawSeed 独立维护。
 
 ## 构建 APK
@@ -10,6 +12,7 @@ Rust Gateway 仍直接运行在 Android 上，`shell` 和 `background_run` 选�
 
 ```bash
 ./tools/build-proot-runtime.sh arm64-v8a build/proot-runtime-arm64
+python3 ./tools/build-tawcroot.py --ndk "$ANDROID_NDK_HOME"
 ./tools/package-proot-bootstrap.sh
 ./tools/build-clawseed-android.sh aarch64 build
 cd clients/android
@@ -27,7 +30,7 @@ Node.js 24.22.1 和 CPython 3.12.15（python-build-standalone 20261021）。
 `build/proot-runtime-arm64/`，无须将大型二进制文件放入 Git。
 
 第二步生成 `packaged/assets/clawseed-runtime/{manifest.json,runtime.tar.xz}` 和
-`packaged/jniLibs/arm64-v8a/lib{proot,proot-loader,talloc,android-shmem}.so`。
+`packaged/jniLibs/arm64-v8a/lib{tawcroot,proot,proot-loader,talloc,android-shmem}.so`。
 它会将原生依赖名 `libtalloc.so.2` 修补为 APK 可打包的 `libtalloc.so`。
 Gradle 自动读取该目录；缺少生成物的普通开发构建仍可构建，但不会携带离线环境。
 XZ 资源不再经过 ZIP 二次压缩，原生组件由 Android 解压到 `nativeLibraryDir`。
@@ -103,7 +106,8 @@ CA 文件来自固定 Python 包所带的 certifi；DNS 默认使用 1.1.1.1 和
 存储不可写或被另一网关/CLI 占用时拒绝新后台任务，避免悄悄丢失结果。
 以纯内存配置构造工具（没有 `config_path`）时仍使用内存记录。
 
-Linux/Android 命令还设置父进程退出信号，PRoot 使用 SIGQUIT 请求清理被跟踪的子进程。
+Linux/Android 命令还设置父进程退出信号；PRoot 使用 SIGQUIT 请求清理被跟踪的子进程，
+tawcroot 使用进程组清理。tawcroot 启动错误只触发 PRoot 保底，guest 命令自身的非零退出不会重复执行。
 输出管道的关闭也受时间限制，避免 shell 已退出、后代仍持有输出时让任务一直占用队列。
 
 ## 验证边界
@@ -122,7 +126,7 @@ sleep 5 # 通过工具参数 timeout_secs=1 验证超时
 ```
 
 还需验证 pip/npm HTTPS 下载、工作区写入持久化、运行时移除保护和 App 重启恢复。
-PRoot 是 Linux 用户态兼容层，仍使用 App UID 和 Android 内核，不是内核级安全沙箱。
+tawcroot 和 PRoot 都运行在 App UID 与 Android 内核约束下；它们是用户态兼容层，不是内核级安全沙箱。
 
 ### Release 真机回归
 

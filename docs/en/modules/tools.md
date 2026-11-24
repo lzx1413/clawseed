@@ -12,7 +12,7 @@ Linux-runtime plugin directories contain a manifest declaring the entrypoint, pr
 
 Android external apps can expose tools through the CETP v1/v2 ContentProvider binding. The SDK discovers these providers and wraps their capabilities as `RemoteTool`, using the same Agent dispatch path as built-in tools. See the [External Tool Protocol](../external-tool-protocol.md).
 
-Startup failures, timeouts, and exits are recorded as extension failures and cannot bypass Rust hooks, approvals, or tool policy. PRoot is Linux userspace compatibility, not a strong security sandbox.
+Startup failures, timeouts, and exits are recorded as extension failures and cannot bypass Rust hooks, approvals, or tool policy. Android prefers tawcroot and falls back to PRoot on launcher startup errors; both are Linux userspace compatibility layers, not strong security sandboxes.
 
 ## Tool List
 
@@ -76,7 +76,7 @@ HTML extraction removes scripts, styles, navigation, footers, sidebars, forms, a
 `shell` and `background_run` share one command runner and accept `backend`,
 `timeout_secs`, and `max_output_bytes`. The default backend is `host` (the native
 Android shell on Android); `android` is an alias for `host`. `linux` uses the
-installed PRoot runtime and fails without falling back when it is unavailable.
+installed tawcroot/PRoot runtime; it prefers tawcroot and falls back to PRoot only when the launcher cannot start.
 Existing command-only calls retain host behavior. `linux_exec` remains a fixed
 Linux compatibility alias; new callers should use `shell` with `backend=linux`.
 `eval_javascript` continues to use embedded QuickJS.

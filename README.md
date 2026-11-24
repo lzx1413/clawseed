@@ -58,7 +58,7 @@ The runtime has two deliberate layers:
 - **Static trusted core**: the Rust Agent, providers, memory, personas, hooks, approvals, and tool registry provide stable types and security boundaries.
 - **Dynamic extension layer**: Python/Node.js plugins and CLI tools run through the Linux runtime, while Android external-app tools use CETP and remote tools use WebSocket; all are admitted through manifests or protocol negotiation, timeouts, concurrency limits, and output caps.
 
-This lets applications add capabilities without changing or recompiling the main Agent. Linux Runtime/PRoot is a compatibility layer rather than a strong security sandbox, so high-risk plugins still require explicit permissions and approval policies.
+This lets applications add capabilities without changing or recompiling the main Agent. Android prefers the small tawcroot launcher and falls back to PRoot; both are compatibility layers rather than a strong security sandbox, so high-risk plugins still require explicit permissions and approval policies.
 
 ```toml
 # A Discord bot application

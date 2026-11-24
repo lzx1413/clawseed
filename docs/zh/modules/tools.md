@@ -12,7 +12,7 @@ Linux Runtime 插件目录包含 manifest，声明入口、协议版本、运行
 
 Android 外部应用可以通过 CETP v1/v2 的 ContentProvider 绑定提供工具；这些工具由 SDK 发现后包装为 RemoteTool，和内置工具使用同一个 Agent 调度路径。CETP v1/v2 的 Android 传输规范见[外部工具协议](../external-tool-protocol.md)。
 
-启动失败、超时或进程退出会被记录为扩展故障，不应绕过 Rust 的 Hook、审批和工具策略。PRoot 是 Linux 用户态兼容层，不是强安全沙箱。
+启动失败、超时或进程退出会被记录为扩展故障，不应绕过 Rust 的 Hook、审批和工具策略。Android 默认使用 tawcroot，启动错误回退 PRoot；两者都是 Linux 用户态兼容层，不是强安全沙箱。
 
 ## 工具清单
 
@@ -78,14 +78,14 @@ HTML 提取会移除脚本、样式、导航、页脚、侧栏、表单和隐藏
 
 `shell` 和 `background_run` 使用同一套命令执行器，接受 `backend`、`timeout_secs` 和
 `max_output_bytes`。`backend` 默认为 `host`（Android 上为宿主 shell），`android` 是
-`host` 的别名；`linux` 进入已安装的 PRoot 环境，未就绪时返回错误，不回退到宿主。
+`host` 的别名；`linux` 进入已安装的 tawcroot/PRoot 环境，优先 tawcroot，启动失败回退 PRoot，未就绪时返回错误，不回退到宿主。
 原有仅传 `command` 的调用保持宿主行为，`linux_exec` 保留为固定 Linux 后端的兼容入口。
 `eval_javascript` 继续使用内置 QuickJS。
 
 同步执行默认 30 秒、最长 300 秒；兼容入口 `linux_exec` 保留原先的 60 秒默认值。
 后台任务默认 300 秒、最长 3600 秒。每个输出流默认保留 1 MiB，可通过
 `max_output_bytes` 设置为 1024 字节至 4 MiB。Linux 等待共享执行容量的时间也计入执行预算，
-等待期间支持取消；执行中的 PRoot 先接收 SIGQUIT 清理 tracees，再清理残留进程组。
+等待期间支持取消；执行中的 PRoot 先接收 SIGQUIT 清理 tracees，tawcroot 和 fallback 都清理残留进程组。
 Android 启动 PRoot 前仅在子进程中恢复 SIGQUIT 的处理及屏蔽状态，避免继承 ART
 的信号屏蔽导致取消无效；包含分离进程组的 tracees 也纳入真机回归。
 
