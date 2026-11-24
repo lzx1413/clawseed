@@ -406,9 +406,13 @@
     <string name="settings_tool_group_local_remote">Local Remote</string>
     <string name="settings_tool_group_third_party_app">Third-party Apps</string>
     <string name="settings_tool_group_plugin">Linux Plugins</string>
+    <string name="settings_plugin_packages">Linux Plugin Packages</string>
     <string name="settings_tool_group_mcp">MCP</string>
     <string name="settings_tool_group_other">Other</string>
     <string name="settings_plugin_count">%1$d plugins</string>
+    <string name="settings_plugin_delete">Delete plugin</string>
+    <string name="settings_plugin_delete_title">Delete plugin?</string>
+    <string name="settings_plugin_delete_message">Delete %1$s and its files from the workspace?</string>
     <string name="settings_refresh_skills">Refresh Skills</string>
     <string name="settings_skills_refreshed">Skills refreshed</string>
     <string name="settings_refresh_skills_failed">Refresh skills failed: %1$s</string>

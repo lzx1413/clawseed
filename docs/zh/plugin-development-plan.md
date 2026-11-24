@@ -308,6 +308,11 @@ stdin 和 stdout 均使用 UTF-8，每行一个完整 JSON 对象。插件不得
 `link`。媒体 URL 必须使用 HTTPS，宿主会在交给 Android 客户端前执行完整校验。没有
 `presentation` 的旧插件结果继续按原始 JSON 值处理。
 
+当前用户回合的图片会通过 `execute_tool.params.attachments` 和
+`execute_tool.params.context.attachments` 传给插件。每项包含
+Linux runtime 内可访问的 `path`，以及 `id`、`mime_type`、`size_bytes`、`width` 和 `height`。
+该路径只在本次工具调用期间有效，宿主会在调用结束后清理临时文件。
+
 ## 6. 生命周期
 
 ```text

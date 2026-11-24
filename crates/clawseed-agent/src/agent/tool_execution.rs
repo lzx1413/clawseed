@@ -38,6 +38,7 @@ impl Agent {
             self.user_context.clone(),
             self.active_turn_id.clone(),
             tool_call_id,
+            self.last_user_attachments(),
         )
     }
 

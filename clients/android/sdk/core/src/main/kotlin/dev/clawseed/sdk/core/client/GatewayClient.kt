@@ -463,6 +463,17 @@ class GatewayClient(
         return execute(req).mapCatching { json.decodeFromString<PluginConfigState>(it) }
     }
 
+    /** Deletes a workspace-local plugin and returns the updated plugin policy. */
+    suspend fun deletePlugin(pluginId: String): Result<PluginConfigState> {
+        val encoded = java.net.URLEncoder.encode(pluginId, "UTF-8")
+        val req = Request.Builder()
+            .url("$baseUrl/api/plugins/$encoded")
+            .addAuth()
+            .delete()
+            .build()
+        return execute(req).mapCatching { json.decodeFromString<PluginConfigState>(it) }
+    }
+
     /** Lists the skills currently available in the gateway runtime. */
     suspend fun skills(): Result<List<SkillInfo>> = withContext(Dispatchers.IO) {
         runCatching {

@@ -18,7 +18,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +28,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -229,7 +232,7 @@ fun ToolManagementScreen(onBack: () -> Unit) {
             if (state.plugins.isNotEmpty()) {
                 item(key = "plugin-manifests-header") {
                     ClawSeedSectionHeader(
-                        title = stringResource(R.string.settings_tool_group_plugin),
+                        title = stringResource(R.string.settings_plugin_packages),
                         expanded = "plugin-manifests" in expandedGroups,
                         onToggle = {
                             expandedGroups = if ("plugin-manifests" in expandedGroups) {
@@ -246,6 +249,7 @@ fun ToolManagementScreen(onBack: () -> Unit) {
                         PluginManagementCard(
                             plugin = plugin,
                             onToggle = { viewModel.togglePlugin(plugin.pluginId, it) },
+                            onDelete = { viewModel.deletePlugin(plugin.pluginId) },
                         )
                     }
                 }
@@ -272,7 +276,12 @@ fun ToolManagementScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun PluginManagementCard(plugin: PluginInfo, onToggle: (Boolean) -> Unit) {
+private fun PluginManagementCard(
+    plugin: PluginInfo,
+    onToggle: (Boolean) -> Unit,
+    onDelete: () -> Unit,
+) {
+    var confirmDelete by remember { mutableStateOf(false) }
     ClawSeedCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             SettingsSwitchRow(
@@ -292,7 +301,33 @@ private fun PluginManagementCard(plugin: PluginInfo, onToggle: (Boolean) -> Unit
             plugin.validationError?.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                ClawSeedIconButton(onClick = { confirmDelete = true }) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = stringResource(R.string.settings_plugin_delete),
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
         }
+    }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text(stringResource(R.string.settings_plugin_delete_title)) },
+            text = { Text(stringResource(R.string.settings_plugin_delete_message, plugin.pluginId)) },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; onDelete() }) {
+                    Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        )
     }
 }
 

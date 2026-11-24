@@ -1060,6 +1060,28 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun deletePlugin(pluginId: String) {
+        val previous = _uiState.value
+        viewModelScope.launch {
+            client().deletePlugin(pluginId)
+                .onSuccess {
+                    runCatching { ClawSeedAndroid.restartGateway() }
+                        .onFailure { error ->
+                            _uiState.value = _uiState.value.copy(error = error.message)
+                        }
+                    loadAll()
+                }
+                .onFailure { error ->
+                    _uiState.value = previous.copy(
+                        error = getApplication<Application>().getString(
+                            R.string.settings_save_failed,
+                            error.message?.take(100) ?: "",
+                        ),
+                    )
+                }
+        }
+    }
+
     fun toggleSkill(name: String, enabled: Boolean) {
         val state = _uiState.value
         _uiState.value = state.copy(

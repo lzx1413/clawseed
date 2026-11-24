@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 /// The real tool execution context — holds workspace dir.
 pub struct AgentToolContext {
     workspace_dir: PathBuf,
+    image_attachments: Vec<clawseed_api::provider::ImageAttachment>,
     user_context: Option<clawseed_api::user_profile::UserContext>,
     turn_id: Option<String>,
     tool_call_id: Option<String>,
@@ -16,9 +17,11 @@ impl AgentToolContext {
         user_context: Option<clawseed_api::user_profile::UserContext>,
         turn_id: Option<String>,
         tool_call_id: Option<String>,
+        image_attachments: Vec<clawseed_api::provider::ImageAttachment>,
     ) -> Self {
         Self {
             workspace_dir,
+            image_attachments,
             user_context,
             turn_id,
             tool_call_id,
@@ -42,6 +45,10 @@ impl clawseed_api::tool_context::ToolContext for AgentToolContext {
     fn tool_call_id(&self) -> Option<&str> {
         self.tool_call_id.as_deref()
     }
+
+    fn image_attachments(&self) -> &[clawseed_api::provider::ImageAttachment] {
+        &self.image_attachments
+    }
 }
 
 #[cfg(test)]
@@ -51,7 +58,7 @@ mod tests {
 
     #[test]
     fn workspace_dir_returns_correct_path() {
-        let ctx = AgentToolContext::new(PathBuf::from("/workspace"), None, None, None);
+        let ctx = AgentToolContext::new(PathBuf::from("/workspace"), None, None, None, Vec::new());
         assert_eq!(ctx.workspace_dir(), Path::new("/workspace"));
     }
 }

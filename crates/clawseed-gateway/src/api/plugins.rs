@@ -1,6 +1,6 @@
 use super::{AppState, require_auth};
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json},
 };
@@ -186,4 +186,76 @@ pub async fn handle_api_plugins_config(
     });
     *state.config.lock() = config;
     Json(response).into_response()
+}
+
+/// DELETE /api/plugins/{plugin_id} — remove a workspace-local plugin.
+pub async fn handle_api_plugin_delete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(plugin_id): Path<String>,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    if !valid_plugin_id(&plugin_id) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "invalid plugin id"})),
+        )
+            .into_response();
+    }
+
+    let mut config = state.config.lock().clone();
+    let plugin_root = config
+        .workspace_dir
+        .join(".clawseed")
+        .join("plugins")
+        .join(&plugin_id);
+    let metadata = match std::fs::symlink_metadata(&plugin_root) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "workspace plugin not found"})),
+            )
+                .into_response();
+        }
+        Err(error) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("could not inspect plugin: {error}")})),
+            )
+                .into_response();
+        }
+    };
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "plugin path is not a regular workspace directory"})),
+        )
+            .into_response();
+    }
+    if let Err(error) = std::fs::remove_dir_all(&plugin_root) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("could not delete plugin: {error}")})),
+        )
+            .into_response();
+    }
+
+    config.plugins.allowed.retain(|id| id != &plugin_id);
+    config.plugins.denied.retain(|id| id != &plugin_id);
+    if let Err(error) = config.save() {
+        tracing::warn!(plugin = %plugin_id, %error, "plugin deleted but plugin config cleanup failed");
+    }
+    *state.config.lock() = config.clone();
+    Json(serde_json::json!({
+        "status": "deleted",
+        "plugin_id": plugin_id,
+        "reload_required": true,
+        "enabled": config.plugins.enabled,
+        "allowed": config.plugins.allowed,
+        "denied": config.plugins.denied,
+    }))
+    .into_response()
 }

@@ -72,3 +72,28 @@ async fn plugin_config_patch_rejects_invalid_ids_and_updates_section() {
     assert!(state.config.lock().plugins.enabled);
     assert_eq!(state.config.lock().plugins.max_loaded, 8);
 }
+
+#[tokio::test]
+async fn deletes_workspace_plugin_and_cleans_policy() {
+    let root = tempfile::tempdir().expect("temp root");
+    let plugin_dir = root.path().join(".clawseed/plugins/example.echo");
+    std::fs::create_dir_all(&plugin_dir).expect("plugin directory");
+    std::fs::write(plugin_dir.join("manifest.json"), "{}").expect("manifest");
+    let mut config = clawseed_config::schema::Config::default();
+    config.workspace_dir = root.path().to_path_buf();
+    config.plugins.enabled = true;
+    config.plugins.allowed = vec!["example.echo".into()];
+    config.plugins.denied = vec!["example.echo".into()];
+    let state = test_state(config);
+    let response = crate::api::handle_api_plugin_delete(
+        State(state.clone()),
+        axum::http::HeaderMap::new(),
+        axum::extract::Path("example.echo".into()),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    assert!(!plugin_dir.exists());
+    assert!(state.config.lock().plugins.allowed.is_empty());
+    assert!(state.config.lock().plugins.denied.is_empty());
+}

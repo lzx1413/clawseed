@@ -21,6 +21,7 @@ Use this workflow when the user asks to create or modify a local ClawSeed plugin
 - The response envelope is `{"id":"...","status":"success","data":...}`. This is the CETP stdio binding, not generic JSON-RPC.
 - `list_tools` returns `tools` with `name`, `description`, and `parameters`. Use `parameters`, not `inputSchema`.
 - `execute_tool` receives `tool_name` and `args` inside `params`.
+- The host puts current-turn images in both `params.attachments` and `params.context.attachments`. Each item has a runtime-visible `path`, `id`, `mime_type`, `size_bytes`, `width`, and `height`. Read the path during the call and do not retain it after the response.
 - `execute_tool` may return `data.output` for LLM-facing text and an optional `data.presentation` object with versioned `blocks` such as `image`, `audio`, `video`, or `link`.
 - `negotiate` returns `selected_version: 2` and `session_token`.
 - Do not print logs, progress text, or stack traces to stdout.

@@ -375,7 +375,7 @@ impl PluginClient {
             .collect()
     }
 
-    async fn call(&self, tool_name: &str, args: Value) -> Result<Value> {
+    async fn call(&self, tool_name: &str, args: Value, context: Value) -> Result<Value> {
         let mut guard = self.session.lock().await;
         if guard.is_none() {
             if self.restart_attempts.fetch_add(1, Ordering::Relaxed) >= 3 {
@@ -395,7 +395,9 @@ impl PluginClient {
                 "session_token": self.session_token().await,
                     "request_id": Uuid::new_v4().to_string(),
                     "tool_name": tool_name,
-                    "args": args
+                    "args": args,
+                    "context": context.clone(),
+                    "attachments": context.get("attachments").cloned().unwrap_or_else(|| json!([]))
                 }),
                 self.request_timeout(),
             )
@@ -595,6 +597,71 @@ struct PluginTool {
     qualified_name: String,
 }
 
+struct MaterializedAttachments {
+    _directory: tempfile::TempDir,
+    context: Value,
+}
+
+fn materialize_attachments(
+    plugin_root: &Path,
+    attachments: &[clawseed_api::provider::ImageAttachment],
+) -> Result<Option<MaterializedAttachments>> {
+    if attachments.is_empty() {
+        return Ok(None);
+    }
+    let input_root = plugin_root.join(".clawseed-input");
+    std::fs::create_dir_all(&input_root).with_context(|| {
+        format!(
+            "could not create plugin input directory {}",
+            input_root.display()
+        )
+    })?;
+    let directory = tempfile::Builder::new()
+        .prefix("images-")
+        .tempdir_in(&input_root)
+        .context("could not create plugin image input directory")?;
+    let directory_name = directory
+        .path()
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("plugin image input directory has no valid name"))?;
+    let mut items = Vec::with_capacity(attachments.len());
+    for attachment in attachments {
+        let source = attachment.resolved_path.as_deref().ok_or_else(|| {
+            anyhow!(
+                "image attachment {} has no resolved file path",
+                attachment.id
+            )
+        })?;
+        anyhow::ensure!(
+            source.is_file(),
+            "image attachment file is unavailable: {}",
+            source.display()
+        );
+        let filename = attachment.id.as_str();
+        let target = directory.path().join(filename);
+        std::fs::copy(source, &target).with_context(|| {
+            format!(
+                "could not materialize image attachment {} for plugin",
+                attachment.id
+            )
+        })?;
+        let guest_path = format!("/plugin/.clawseed-input/{directory_name}/{filename}");
+        items.push(serde_json::json!({
+            "id": attachment.id,
+            "path": guest_path,
+            "mime_type": attachment.mime_type,
+            "size_bytes": attachment.size_bytes,
+            "width": attachment.width,
+            "height": attachment.height
+        }));
+    }
+    Ok(Some(MaterializedAttachments {
+        _directory: directory,
+        context: serde_json::json!({"attachments": items}),
+    }))
+}
+
 #[async_trait]
 impl Tool for PluginTool {
     fn name(&self) -> &str {
@@ -610,7 +677,12 @@ impl Tool for PluginTool {
     }
 
     async fn execute(&self, args: Value, _ctx: &dyn ToolContext) -> Result<ToolResult> {
-        let value = self.client.call(&self.inner_name, args).await?;
+        let attachments = materialize_attachments(&self.client.root, _ctx.image_attachments())?;
+        let context = attachments
+            .as_ref()
+            .map(|value| value.context.clone())
+            .unwrap_or_else(|| serde_json::json!({}));
+        let value = self.client.call(&self.inner_name, args, context).await?;
         plugin_tool_result(value)
     }
 }
@@ -774,6 +846,21 @@ mod tests {
         }
     }
 
+    struct ImageContext {
+        workspace: PathBuf,
+        images: Vec<clawseed_api::provider::ImageAttachment>,
+    }
+
+    impl ToolContext for ImageContext {
+        fn workspace_dir(&self) -> &Path {
+            &self.workspace
+        }
+
+        fn image_attachments(&self) -> &[clawseed_api::provider::ImageAttachment] {
+            &self.images
+        }
+    }
+
     fn runtime_configured() -> bool {
         std::env::var_os("CLAWSEED_PROOT_RUNTIME_DIR").is_some()
     }
@@ -842,7 +929,7 @@ for line in sys.stdin:
     elif method == "list_tools":
         data = {"tools": [{"name": "echo", "description": "Echo input", "parameters": {"type": "object"}}]}
     elif method == "execute_tool":
-        data = request["params"]["args"]
+        data = request["params"].get("context") if request["params"]["args"].get("return_context") else request["params"]["args"]
     else:
         data = {}
     print(json.dumps({"id": request["id"], "status": "success", "data": data}), flush=True)
@@ -870,6 +957,29 @@ for line in sys.stdin:
             .unwrap();
         assert!(result.success);
         assert_eq!(result.output, r#"{"text":"hello"}"#);
+
+        let source = root.path().join("uploaded.png");
+        fs::write(&source, b"image-bytes").unwrap();
+        let result = registration
+            .tool
+            .execute(
+                json!({"return_context": true}),
+                &ImageContext {
+                    workspace: root.path().to_path_buf(),
+                    images: vec![clawseed_api::provider::ImageAttachment {
+                        id: "att_0123456789abcdef0123456789abcdef".into(),
+                        mime_type: "image/png".into(),
+                        size_bytes: 11,
+                        width: 2,
+                        height: 3,
+                        resolved_path: Some(source),
+                    }],
+                },
+            )
+            .await
+            .unwrap();
+        assert!(result.success);
+        assert!(result.output.contains("/plugin/.clawseed-input/"));
     }
 
     #[tokio::test]
@@ -975,5 +1085,32 @@ input.on('line', (line) => {
         }))
         .unwrap_err();
         assert!(format!("{error:#}").contains("HTTPS"));
+    }
+
+    #[test]
+    fn materializes_current_turn_images_for_plugin_context() {
+        let root = tempdir().unwrap();
+        let source = root.path().join("uploaded.png");
+        fs::write(&source, b"png-bytes").unwrap();
+        let attachment = clawseed_api::provider::ImageAttachment {
+            id: "att_0123456789abcdef0123456789abcdef".into(),
+            mime_type: "image/png".into(),
+            size_bytes: 9,
+            width: 2,
+            height: 3,
+            resolved_path: Some(source),
+        };
+        let materialized = materialize_attachments(root.path(), &[attachment]).unwrap();
+        let materialized = materialized.unwrap();
+        let item = &materialized.context["attachments"][0];
+        let guest_path = item["path"].as_str().unwrap();
+        assert!(guest_path.starts_with("/plugin/.clawseed-input/"));
+        assert!(
+            materialized
+                ._directory
+                .path()
+                .join("att_0123456789abcdef0123456789abcdef")
+                .is_file()
+        );
     }
 }

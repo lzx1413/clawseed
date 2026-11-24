@@ -26,4 +26,10 @@ pub trait ToolContext: Send + Sync {
     fn tool_call_id(&self) -> Option<&str> {
         None
     }
+
+    /// Images attached to the current user turn with request-local source paths.
+    /// Extensions may use these paths only for the current tool invocation.
+    fn image_attachments(&self) -> &[crate::provider::ImageAttachment] {
+        &[]
+    }
 }

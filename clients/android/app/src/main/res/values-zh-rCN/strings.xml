@@ -406,9 +406,13 @@
     <string name="settings_tool_group_local_remote">本机 Remote</string>
     <string name="settings_tool_group_third_party_app">第三方 App</string>
     <string name="settings_tool_group_plugin">Linux 插件</string>
+    <string name="settings_plugin_packages">Linux 插件包</string>
     <string name="settings_tool_group_mcp">MCP</string>
     <string name="settings_tool_group_other">其他</string>
     <string name="settings_plugin_count">%1$d 个插件</string>
+    <string name="settings_plugin_delete">删除插件</string>
+    <string name="settings_plugin_delete_title">删除插件？</string>
+    <string name="settings_plugin_delete_message">确定从 workspace 删除 %1$s 及其文件吗？</string>
     <string name="settings_refresh_skills">刷新技能</string>
     <string name="settings_skills_refreshed">技能已刷新</string>
     <string name="settings_refresh_skills_failed">刷新技能失败: %1$s</string>

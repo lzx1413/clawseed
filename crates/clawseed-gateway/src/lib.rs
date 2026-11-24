@@ -706,6 +706,10 @@ pub async fn run_gateway(
         .route("/api/tools", get(api::handle_api_tools))
         .route("/api/plugins", get(api::handle_api_plugins))
         .route("/api/plugins/config", patch(api::handle_api_plugins_config))
+        .route(
+            "/api/plugins/{plugin_id}",
+            delete(api::handle_api_plugin_delete),
+        )
         .route("/api/background-jobs", get(api::handle_api_background_jobs))
         .route("/api/skills", get(api::handle_api_skills))
         .route("/api/skills/reload", post(api::handle_api_skills_reload))
