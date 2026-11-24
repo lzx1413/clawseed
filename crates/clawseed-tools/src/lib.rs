@@ -36,6 +36,7 @@ pub mod javascript;
 pub mod knowledge_tool;
 pub mod linux_exec;
 pub mod llm_task;
+pub mod media_present;
 pub mod memory_export;
 pub mod memory_forget;
 pub mod memory_purge;

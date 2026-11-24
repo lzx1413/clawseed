@@ -28,6 +28,13 @@ const BUILTIN_SKILLS: &[BuiltinSkill] = &[
         skill_md: include_str!("builtin_plugin-authoring_SKILL.md"),
         legacy_hashes: &["1cb6f708ce97191caa323570c606e4bff36336d8cc36856efa26ee1781390ef5"],
     },
+    BuiltinSkill {
+        name: "media-presentation",
+        version: "0.2.0",
+        manifest: include_str!("builtin_media-presentation_manifest.toml"),
+        skill_md: include_str!("builtin_media-presentation_SKILL.md"),
+        legacy_hashes: &[],
+    },
 ];
 
 /// Ensure built-in skills exist and upgrade files that still contain system content.
@@ -60,8 +67,7 @@ pub fn ensure_builtin_skills(workspace_dir: &Path) {
             .map(|value| value.trim().to_owned());
         let is_new = !skill_md_path.exists();
         let is_known_system_content = current_hash.as_deref().is_some_and(|hash| {
-            marker_hash.as_deref() == Some(hash)
-                || skill.legacy_hashes.iter().any(|legacy| *legacy == hash)
+            marker_hash.as_deref() == Some(hash) || skill.legacy_hashes.contains(&hash)
         });
         if is_new || is_known_system_content {
             if let Err(e) = std::fs::write(&manifest_path, skill.manifest) {

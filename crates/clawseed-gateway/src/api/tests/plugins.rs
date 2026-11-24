@@ -79,8 +79,10 @@ async fn deletes_workspace_plugin_and_cleans_policy() {
     let plugin_dir = root.path().join(".clawseed/plugins/example.echo");
     std::fs::create_dir_all(&plugin_dir).expect("plugin directory");
     std::fs::write(plugin_dir.join("manifest.json"), "{}").expect("manifest");
-    let mut config = clawseed_config::schema::Config::default();
-    config.workspace_dir = root.path().to_path_buf();
+    let mut config = clawseed_config::schema::Config {
+        workspace_dir: root.path().to_path_buf(),
+        ..Default::default()
+    };
     config.plugins.enabled = true;
     config.plugins.allowed = vec!["example.echo".into()];
     config.plugins.denied = vec!["example.echo".into()];

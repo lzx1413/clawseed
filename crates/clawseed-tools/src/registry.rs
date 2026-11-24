@@ -137,6 +137,7 @@ use crate::javascript::JavaScriptTool;
 use crate::knowledge_tool::KnowledgeTool;
 use crate::linux_exec::{LinuxExecTool, RuntimeStatusTool};
 use crate::llm_task::LlmTaskTool;
+use crate::media_present::MediaPresentTool;
 use crate::memory_export::MemoryExportTool;
 use crate::memory_forget::MemoryForgetTool;
 use crate::memory_purge::MemoryPurgeTool;
@@ -215,6 +216,7 @@ pub fn all_tools_with_runtime(
         Box::new(FileWriteTool::new()),
         Box::new(GlobSearchTool::new()),
         Box::new(JavaScriptTool::new()),
+        Box::new(MediaPresentTool::new()),
     ];
 
     #[cfg(not(feature = "android"))]

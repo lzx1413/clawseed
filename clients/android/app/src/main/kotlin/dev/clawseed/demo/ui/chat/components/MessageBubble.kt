@@ -7,19 +7,16 @@ import dev.clawseed.demo.ui.components.ClawSeedTextButton
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import androidx.compose.foundation.Image
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
@@ -36,7 +33,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,7 +43,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -61,19 +56,10 @@ import dev.clawseed.demo.ui.theme.success
 import dev.clawseed.demo.ui.theme.ClawSeedShapes
 import dev.clawseed.demo.data.ChatEntry
 import dev.clawseed.demo.data.ToolCallInfo
-import dev.clawseed.demo.ui.chat.rememberRichMediaImageLoader
 import dev.clawseed.sdk.core.model.ContentBlock
-import dev.clawseed.sdk.core.model.MediaReference
 import dev.clawseed.sdk.core.model.ToolPresentation
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
-import coil3.compose.AsyncImage
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 
 @Composable
 fun MessageBubble(
@@ -115,6 +101,7 @@ fun MessageBubble(
             onStop = onStop,
             onPresentationAction = onPresentationAction,
             isSpeakingThis = isSpeakingThis,
+            onReadImage = onReadImage,
             modifier = modifier,
         )
         is ChatEntry.ToolInvocations -> ToolInvocationsCard(entry, modifier)
@@ -210,6 +197,7 @@ private fun AssistantBubble(
     onStop: (() -> Unit)?,
     onPresentationAction: ((String) -> Unit)?,
     isSpeakingThis: Boolean,
+    onReadImage: (suspend (String) -> Result<ByteArray>)?,
     modifier: Modifier = Modifier,
 ) {
     val clipboardManager = LocalClipboardManager.current
@@ -220,7 +208,7 @@ private fun AssistantBubble(
         SelectionContainer {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 MarkdownContent(content = content, cacheDocument = !isStreaming)
-                presentation?.let { RichContentBlocks(it, onPresentationAction) }
+                presentation?.let { RichContentBlocks(it, onPresentationAction, onReadImage) }
                 if (isStreaming) {
                     Text(
                         text = "█",
@@ -583,6 +571,7 @@ private fun ToolInvocationsCard(entry: ChatEntry.ToolInvocations, modifier: Modi
 private fun RichContentBlocks(
     presentation: ToolPresentation,
     onAction: ((String) -> Unit)?,
+    onReadImage: (suspend (String) -> Result<ByteArray>)?,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -593,7 +582,7 @@ private fun RichContentBlocks(
             when (block) {
                 is ContentBlock.Markdown -> MarkdownContent(block.text)
                 is ContentBlock.SearchResults -> SearchResultsCard(block)
-                is ContentBlock.Image -> ImageContentCard(block.media, block.alt)
+                is ContentBlock.Image -> ImageContentCard(block.media, block.alt, onReadImage)
                 is ContentBlock.Audio -> AudioContentCard(block.media, block.title)
                 is ContentBlock.Video -> VideoContentCard(block.media, block.title)
                 is ContentBlock.Link -> LinkContentCard(block)
@@ -653,183 +642,6 @@ private fun ProfileContentCard(
                 }
             }
         }
-    }
-}
-
-private fun MediaReference.safeHttpsUrl(): String? = url?.takeIf { it.startsWith("https://") }
-
-@Composable
-private fun ImageContentCard(media: MediaReference, alt: String?, modifier: Modifier = Modifier) {
-    val url = media.safeHttpsUrl()
-    val imageLoader = rememberRichMediaImageLoader()
-    var showPreview by remember(url) { mutableStateOf(false) }
-    val colorScheme = MaterialTheme.colorScheme
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(ClawSeedShapes.Media)
-            .background(colorScheme.surfaceVariant.copy(alpha = 0.45f))
-            .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        if (url == null) {
-            Text(
-                text = stringResource(R.string.msg_image_unavailable),
-                style = MaterialTheme.typography.bodySmall,
-                color = colorScheme.onSurfaceVariant,
-            )
-        } else {
-            AsyncImage(
-                model = url,
-                imageLoader = imageLoader,
-                contentDescription = alt ?: stringResource(R.string.msg_image_attachment),
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 260.dp)
-                    .clip(ClawSeedShapes.Content)
-                    .clickable { showPreview = true },
-            )
-            alt?.takeIf { it.isNotBlank() }?.let { description ->
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-
-    if (showPreview && url != null) {
-        Dialog(onDismissRequest = { showPreview = false }) {
-            Image(
-                painter = coil3.compose.rememberAsyncImagePainter(
-                    model = url,
-                    imageLoader = imageLoader,
-                ),
-                contentDescription = alt ?: stringResource(R.string.msg_image_attachment),
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun AudioContentCard(media: MediaReference, title: String?, modifier: Modifier = Modifier) {
-    val url = media.safeHttpsUrl()
-    val context = LocalContext.current
-    if (url == null) {
-        Text(
-            text = stringResource(R.string.msg_audio_unavailable),
-            modifier = modifier.padding(top = 8.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        return
-    }
-    val player = remember(url) {
-        ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(url)) }
-    }
-    var isPlaying by remember(player) { mutableStateOf(false) }
-    var positionMs by remember(player) { mutableStateOf(0L) }
-    var durationMs by remember(player) { mutableStateOf(media.durationMs ?: 0L) }
-    DisposableEffect(player) {
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
-            override fun onPlaybackStateChanged(state: Int) {
-                if (player.duration > 0) durationMs = player.duration
-            }
-        }
-        player.addListener(listener)
-        onDispose {
-            player.removeListener(listener)
-            player.release()
-        }
-    }
-    LaunchedEffect(player, isPlaying) {
-        while (isActive && isPlaying) {
-            positionMs = player.currentPosition.coerceAtLeast(0L)
-            delay(500)
-        }
-    }
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(top = 8.dp)
-            .clip(ClawSeedShapes.Media)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        ClawSeedTextButton(onClick = {
-            if (isPlaying) player.pause() else {
-                player.prepare()
-                player.play()
-            }
-        }) { Text(stringResource(if (isPlaying) R.string.msg_pause else R.string.msg_play)) }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title ?: stringResource(R.string.msg_audio_default_title), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (durationMs > 0) {
-                Text(
-                    text = "${formatDuration(positionMs)} / ${formatDuration(durationMs)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun VideoContentCard(media: MediaReference, title: String?, modifier: Modifier = Modifier) {
-    val url = media.safeHttpsUrl()
-    val context = LocalContext.current
-    if (url == null) {
-        Text(
-            text = stringResource(R.string.msg_video_unavailable),
-            modifier = modifier.padding(top = 8.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        return
-    }
-    val player = remember(url) {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(url))
-            prepare()
-            playWhenReady = false
-        }
-    }
-    DisposableEffect(player) { onDispose { player.release() } }
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(top = 8.dp)
-            .clip(ClawSeedShapes.Media)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
-            .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        title?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-        AndroidView(
-            factory = { viewContext ->
-                PlayerView(viewContext).apply {
-                    this.player = player
-                    useController = true
-                }
-            },
-            update = { it.player = player },
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(16f / 9f)
-                .clip(ClawSeedShapes.Content),
-        )
     }
 }
 
@@ -1034,6 +846,7 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
                     RichContentBlocks(
                         presentation = presentation,
                         onAction = null,
+                        onReadImage = null,
                     )
                 }
             }
