@@ -34,6 +34,12 @@ workspace 中寻找同一张图片，也不要要求用户再次提供宿主文�
 
 ## 返回媒体
 
+插件进程的当前目录是 `/plugin`。这个目录用于插件代码，不能作为 App 媒体目录。
+需要返回本地媒体时，插件必须声明 `workspace=write`，把文件写入 `/workspace` 下，
+再把同一个文件转换为 workspace 相对路径返回。例如插件 `weather` 应写入
+`/workspace/.clawseed/plugins/weather/media/weather.png`，返回
+`.clawseed/plugins/weather/media/weather.png`。
+
 插件或工具需要同时返回文本和媒体时，在 CETP `execute_tool` 的 `data` 中使用
 `output` 和 `presentation`：
 

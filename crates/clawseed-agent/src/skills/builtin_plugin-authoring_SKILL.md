@@ -49,6 +49,7 @@ Use the smallest permissions that satisfy the request. The generated default is
 - `workspace=none` does not mount `/workspace`. The plugin cannot access the workspace.
 - `workspace=read` exposes a temporary snapshot at `/workspace`. The plugin can read it, but changes are discarded when the process exits and the real workspace is not modified.
 - `workspace=write` mounts the real workspace at `/workspace`. The plugin can create, modify, and delete workspace files.
+- The plugin process starts in `/plugin`. Relative paths such as `data/output.png` point into the plugin code mount. App-visible media must be written below `/workspace`, then returned as a path relative to the workspace root, for example `.clawseed/plugins/weather/media/output.png`.
 - `network=deny` and `network=allow` describe the plugin's network requirement. They do not provide kernel-level network isolation.
 - `environment` is a whitelist of host environment variable names passed to the plugin.
 
