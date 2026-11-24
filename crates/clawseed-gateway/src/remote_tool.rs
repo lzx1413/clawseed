@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use clawseed_api::tool::{Tool, ToolResult};
+use clawseed_api::tool::{Tool, ToolPresentation, ToolResult};
 use tokio::sync::{mpsc, oneshot};
 
 /// Default timeout for remote tool invocations (30 seconds).
@@ -49,6 +49,8 @@ pub struct RemoteToolResult {
     pub output: String,
     /// Optional error message
     pub error: Option<String>,
+    /// Structured media or other rich content returned by the remote tool.
+    pub presentation: Option<ToolPresentation>,
 }
 
 /// Handle shared between ws.rs and RemoteTool instances.
@@ -181,7 +183,7 @@ impl Tool for RemoteTool {
                 success: result.success,
                 output: result.output,
                 error: result.error,
-                presentation: None,
+                presentation: result.presentation,
             }),
             Ok(Err(_)) => Ok(ToolResult {
                 success: false,
@@ -299,6 +301,7 @@ mod tests {
                     success: true,
                     output: "success output".into(),
                     error: None,
+                    presentation: None,
                 });
             }
         });
@@ -331,6 +334,7 @@ mod tests {
                     success: false,
                     output: String::new(),
                     error: Some("Permission denied".into()),
+                    presentation: None,
                 });
             }
         });

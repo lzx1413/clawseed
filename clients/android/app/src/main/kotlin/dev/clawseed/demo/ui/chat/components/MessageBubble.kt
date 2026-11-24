@@ -104,9 +104,9 @@ fun MessageBubble(
             onReadImage = onReadImage,
             modifier = modifier,
         )
-        is ChatEntry.ToolInvocations -> ToolInvocationsCard(entry, modifier)
+        is ChatEntry.ToolInvocations -> ToolInvocationsCard(entry, onReadImage, modifier)
         is ChatEntry.Thinking -> ThinkingCard(entry.content, modifier)
-        is ChatEntry.TurnActivity -> TurnActivityCard(entry, modifier)
+        is ChatEntry.TurnActivity -> TurnActivityCard(entry, onReadImage, modifier)
         is ChatEntry.SystemMessage -> SystemBubble(entry.content, modifier)
         is ChatEntry.DebugInfo -> DebugInfoCard(entry, modifier)
         is ChatEntry.ContextCompactionStatus -> ContextCompactionBubble(entry, modifier)
@@ -114,7 +114,11 @@ fun MessageBubble(
 }
 
 @Composable
-private fun TurnActivityCard(entry: ChatEntry.TurnActivity, modifier: Modifier = Modifier) {
+private fun TurnActivityCard(
+    entry: ChatEntry.TurnActivity,
+    onReadImage: (suspend (String) -> Result<ByteArray>)?,
+    modifier: Modifier = Modifier,
+) {
     var expanded by remember(entry.id) { mutableStateOf(false) }
     val fg = MaterialTheme.colorScheme.onSurfaceVariant
 
@@ -146,7 +150,7 @@ private fun TurnActivityCard(entry: ChatEntry.TurnActivity, modifier: Modifier =
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 entry.activities.forEach { activity ->
-                    MessageBubble(entry = activity)
+                    MessageBubble(entry = activity, onReadImage = onReadImage)
                 }
             }
         }
@@ -503,7 +507,11 @@ val SpeakerOffIcon: ImageVector by lazy {
 }
 
 @Composable
-private fun ToolInvocationsCard(entry: ChatEntry.ToolInvocations, modifier: Modifier = Modifier) {
+private fun ToolInvocationsCard(
+    entry: ChatEntry.ToolInvocations,
+    onReadImage: (suspend (String) -> Result<ByteArray>)?,
+    modifier: Modifier = Modifier,
+) {
     var expanded by remember { mutableStateOf(false) }
     val invocations = entry.invocations
     val callingCount = invocations.count { it.toolResult == null }
@@ -560,7 +568,7 @@ private fun ToolInvocationsCard(entry: ChatEntry.ToolInvocations, modifier: Modi
         AnimatedVisibility(visible = expanded) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
                 for (inv in invocations) {
-                    ToolCallRow(inv)
+                    ToolCallRow(inv, onReadImage)
                 }
             }
         }
@@ -752,7 +760,11 @@ private fun SearchResultsCard(block: ContentBlock.SearchResults, modifier: Modif
 }
 
 @Composable
-private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
+private fun ToolCallRow(
+    inv: ToolCallInfo,
+    onReadImage: (suspend (String) -> Result<ByteArray>)?,
+    modifier: Modifier = Modifier,
+) {
     var detailExpanded by remember { mutableStateOf(false) }
     val isCalling = inv.toolResult == null
     val isSuccess = inv.toolSuccess == true
@@ -846,7 +858,7 @@ private fun ToolCallRow(inv: ToolCallInfo, modifier: Modifier = Modifier) {
                     RichContentBlocks(
                         presentation = presentation,
                         onAction = null,
-                        onReadImage = null,
+                        onReadImage = onReadImage,
                     )
                 }
             }

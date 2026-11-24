@@ -162,6 +162,7 @@ async fn remote_tool_happy_path() {
             success: true,
             output: r#"[{"name":"张三","phone":"13800138000"}]"#.into(),
             error: None,
+            presentation: None,
         })
         .unwrap();
 
@@ -201,6 +202,7 @@ async fn remote_tool_error_handled_gracefully() {
             success: false,
             output: String::new(),
             error: Some("Permission denied: READ_CONTACTS required".into()),
+            presentation: None,
         })
         .unwrap();
 
@@ -253,6 +255,7 @@ async fn remote_tool_turn_events_include_tool_call_and_result() {
             success: true,
             output: r#"[{"name":"张三","phone":"13800138000"}]"#.into(),
             error: None,
+            presentation: None,
         })
         .unwrap();
 
@@ -304,6 +307,7 @@ async fn remote_tool_completes_well_under_timeout() {
                 success: true,
                 output: r#"[{"name":"张三","phone":"13800138000"}]"#.into(),
                 error: None,
+                presentation: None,
             })
             .unwrap();
 

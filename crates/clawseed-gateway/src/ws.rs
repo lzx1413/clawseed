@@ -47,6 +47,7 @@ use axum::{
     http::{HeaderMap, header},
     response::IntoResponse,
 };
+use clawseed_api::tool::ToolPresentation;
 use clawseed_api::tool_registry::ToolSource;
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
@@ -969,6 +970,7 @@ fn parse_mid_turn_message(
                 success,
                 output,
                 error,
+                presentation: parse_remote_presentation(parsed),
             }
         }
         "tool_error" => {
@@ -980,12 +982,19 @@ fn parse_mid_turn_message(
                 success: false,
                 output: error.clone(),
                 error: Some(error),
+                presentation: None,
             }
         }
         _ => return None,
     };
 
     Some((call_id, result, ack))
+}
+
+fn parse_remote_presentation(parsed: &serde_json::Value) -> Option<ToolPresentation> {
+    let value = parsed.get("presentation")?.clone();
+    let presentation = serde_json::from_value::<ToolPresentation>(value).ok()?;
+    presentation.validate().ok().map(|_| presentation)
 }
 
 /// Process a `tool_result` or `tool_error` message from the WebSocket client.
@@ -1333,6 +1342,7 @@ async fn process_chat_message(
                                 success: false,
                                 output: String::new(),
                                 error: Some("WebSocket send failed".into()),
+                                presentation: None,
                             });
                         } else {
                             pending_remote_calls.write().await.insert(req.call_id, req.response_tx);
@@ -1772,6 +1782,28 @@ mod mid_turn_tests {
         assert!(result.error.is_none());
         assert_eq!(ack["type"], "result_acknowledged");
         assert_eq!(ack["id"], "call_123");
+    }
+
+    #[test]
+    fn parse_tool_result_preserves_valid_media_presentation() {
+        let parsed = serde_json::json!({
+            "type": "tool_result",
+            "id": "call_media",
+            "output": "image ready",
+            "presentation": {
+                "version": 1,
+                "blocks": [{
+                    "type": "image",
+                    "media": {
+                        "asset_id": "att_0123456789abcdef0123456789abcdef",
+                        "mime_type": "image/png"
+                    },
+                    "alt": "Generated image"
+                }]
+            }
+        });
+        let (_call_id, result, _ack) = parse_mid_turn_message(&parsed).unwrap();
+        assert_eq!(result.presentation.as_ref().unwrap().blocks.len(), 1);
     }
 
     #[test]
