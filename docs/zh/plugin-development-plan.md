@@ -211,7 +211,7 @@ Android 应用内使用应用私有目录映射相同的结构。插件不得从
 | 权限 | 含义 |
 | --- | --- |
 | `workspace=none` | 不映射 workspace |
-| `workspace=read` | 只读映射 workspace |
+| `workspace=read` | 将 workspace 复制到临时快照并以 `/workspace` 提供，插件修改不会写回真实 workspace |
 | `workspace=write` | 允许写入 workspace |
 | `network=deny` | 不提供网络能力声明 |
 | `network=allow` | 使用宿主网络 |
@@ -219,6 +219,10 @@ Android 应用内使用应用私有目录映射相同的结构。插件不得从
 
 实际网络隔离取决于宿主平台。Android PRoot 默认使用宿主网络时，`network=deny` 只能阻止
 插件获得声明的网络配置，不能宣称已经完成内核级网络隔离。
+
+`plugin_create` 默认使用 `workspace=none` 和 `network=deny`。`workspace=read` 的临时快照会在
+插件进程结束后删除，适合需要读取项目文件但不应修改项目的插件。`workspace=write` 直接挂载
+真实 workspace，创建、修改和删除都会保留。
 
 ## 5. CETP stdio 绑定
 
@@ -297,6 +301,12 @@ stdin 和 stdout 均使用 UTF-8，每行一个完整 JSON 对象。插件不得
 调用完成后只接受与请求 ID 匹配的响应。超时会先请求插件取消，再关闭进程输入并回收整个
 进程组。插件返回的数据必须通过输出大小、JSON 解析和 CETP schema 校验后才能转换为
 `ToolResult`。
+
+插件的 `execute_tool` 结果可以包含 `data.output` 和可选的 `data.presentation`。
+
+`presentation` 使用现有 `ToolPresentation` 格式，`blocks` 支持 `image`、`audio`、`video` 和
+`link`。媒体 URL 必须使用 HTTPS，宿主会在交给 Android 客户端前执行完整校验。没有
+`presentation` 的旧插件结果继续按原始 JSON 值处理。
 
 ## 6. 生命周期
 

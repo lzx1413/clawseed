@@ -31,6 +31,10 @@ Tawcroot/PRoot 是插件的启动器，Python 和 Node.js 是 rootfs 内的 gues
 Python 路径是 `/opt/python/bin/python3`，Node.js 路径是 `/opt/node/bin/node`。宿主侧不能用
 `which python3` 代替 runtime 检查，也不能通过普通 exec 启动插件。
 
+插件作者还需要明确 workspace 权限。`none` 不提供 `/workspace`，`read` 使用临时快照且修改
+不会写回，`write` 才能修改真实 workspace。脚手架默认是 `none`，需要访问项目文件时应在
+启用前说明权限变化。
+
 ## 配置和可观测性
 
 插件启用配置应通过专用配置 API 或插件管理工具修改。不要让模型用宽范围的 `sed` 修改整个

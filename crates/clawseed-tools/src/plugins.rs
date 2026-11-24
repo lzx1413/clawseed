@@ -6,7 +6,7 @@
 
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
-use clawseed_api::tool::{Tool, ToolResult, ToolSpec};
+use clawseed_api::tool::{Tool, ToolPresentation, ToolResult, ToolSpec};
 use clawseed_api::tool_context::ToolContext;
 use clawseed_api::tool_registry::ToolSource;
 use clawseed_config::schema::PluginsConfig;
@@ -611,17 +611,43 @@ impl Tool for PluginTool {
 
     async fn execute(&self, args: Value, _ctx: &dyn ToolContext) -> Result<ToolResult> {
         let value = self.client.call(&self.inner_name, args).await?;
-        let output = match value {
-            Value::String(value) => value,
-            value => serde_json::to_string(&value)?,
-        };
-        Ok(ToolResult {
-            success: true,
-            output,
-            error: None,
-            presentation: None,
-        })
+        plugin_tool_result(value)
     }
+}
+
+/// Convert the transport-neutral CETP result into the Agent tool result.
+///
+/// Existing plugins may return any JSON value directly. New plugins can return
+/// `{ "output": ..., "presentation": ... }` to provide rich client content
+/// without putting media URLs into the LLM-facing text.
+fn plugin_tool_result(value: Value) -> Result<ToolResult> {
+    let (output_value, presentation) = match value {
+        Value::Object(mut object) => {
+            let presentation = object
+                .remove("presentation")
+                .map(serde_json::from_value::<ToolPresentation>)
+                .transpose()
+                .context("invalid plugin tool presentation")?;
+            let output_value = object.remove("output").unwrap_or(Value::Object(object));
+            (output_value, presentation)
+        }
+        value => (value, None),
+    };
+    if let Some(presentation) = &presentation {
+        presentation
+            .validate()
+            .context("invalid plugin tool presentation")?;
+    }
+    let output = match output_value {
+        Value::String(value) => value,
+        value => serde_json::to_string(&value)?,
+    };
+    Ok(ToolResult {
+        success: true,
+        output,
+        error: None,
+        presentation,
+    })
 }
 
 /// Discover and initialize enabled local plugins.
@@ -891,5 +917,63 @@ input.on('line', (line) => {
         let registrations = load_plugin_tools(root.path(), &config).await;
         assert_eq!(registrations.len(), 1);
         assert_eq!(registrations[0].tool.name(), "example.node__echo");
+    }
+
+    #[test]
+    fn plugin_result_preserves_legacy_json_values() {
+        let result = plugin_tool_result(json!({"temperature": 21})).unwrap();
+        assert_eq!(result.output, r#"{"temperature":21}"#);
+        assert!(result.presentation.is_none());
+    }
+
+    #[test]
+    fn plugin_result_maps_and_validates_media_presentation() {
+        let result = plugin_tool_result(json!({
+            "output": "forecast",
+            "presentation": {
+                "version": 1,
+                "blocks": [{
+                    "type": "image",
+                    "media": {
+                        "url": "https://cdn.example.com/weather.png",
+                        "mime_type": "image/png"
+                    },
+                    "alt": "Weather chart"
+                }, {
+                    "type": "audio",
+                    "media": {
+                        "url": "https://cdn.example.com/forecast.mp3",
+                        "mime_type": "audio/mpeg"
+                    },
+                    "title": "Forecast"
+                }, {
+                    "type": "video",
+                    "media": {
+                        "url": "https://cdn.example.com/radar.mp4",
+                        "mime_type": "video/mp4"
+                    },
+                    "title": "Radar"
+                }]
+            }
+        }))
+        .unwrap();
+        assert_eq!(result.output, "forecast");
+        assert_eq!(result.presentation.as_ref().unwrap().blocks.len(), 3);
+    }
+
+    #[test]
+    fn plugin_result_rejects_insecure_media() {
+        let error = plugin_tool_result(json!({
+            "output": "unsafe",
+            "presentation": {
+                "version": 1,
+                "blocks": [{
+                    "type": "image",
+                    "media": {"url": "http://cdn.example.com/image.png"}
+                }]
+            }
+        }))
+        .unwrap_err();
+        assert!(format!("{error:#}").contains("HTTPS"));
     }
 }

@@ -1,6 +1,6 @@
 [skill]
 name = "plugin-authoring"
-version = "0.1.0"
+version = "0.2.0"
 description = "Create and validate Python or Node.js CETP plugins for ClawSeed."
 category = "development"
 permissions = ["plugin_create", "plugin_validate", "file_read", "file_edit"]
