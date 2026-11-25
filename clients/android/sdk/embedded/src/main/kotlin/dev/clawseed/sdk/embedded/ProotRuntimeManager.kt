@@ -48,7 +48,7 @@ data class ProotRuntimeStatus(
     val error: String? = null,
     val canRollback: Boolean = false,
     val checkedAtMs: Long? = null,
-    val backend: String = "tawcroot",
+    val backend: String? = null,
 )
 
 data class ProotRuntimeProgress(
@@ -196,7 +196,7 @@ class ProotRuntimeManager(
                 directory.absolutePath,
                 canRollback = canRollback,
                 checkedAtMs = checkedAt,
-                    backend = preferredBackend(),
+                backend = preferredBackend(),
             )
         } else {
             ProotRuntimeStatus(

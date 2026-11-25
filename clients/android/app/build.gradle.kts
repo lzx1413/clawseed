@@ -120,6 +120,18 @@ android {
     }
 }
 
+// A previously staged runtime can predate the tawcroot launcher.
+val bundledRuntime = rootProject.file("../../build/proot-runtime-arm64/packaged")
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    doFirst {
+        if (bundledRuntime.resolve("assets/clawseed-runtime/manifest.json").isFile) {
+            check(bundledRuntime.resolve("jniLibs/arm64-v8a/libtawcroot.so").length() > 0) {
+                "Rebuild the bundled runtime inputs with tools/build-tawcroot.py and tools/package-proot-bootstrap.sh"
+            }
+        }
+    }
+}
+
 dependencies {
     implementation(project(":sdk:embedded"))
 

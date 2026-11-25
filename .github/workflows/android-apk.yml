@@ -127,6 +127,8 @@ jobs:
         if: env.ARCH == 'aarch64'
         run: |
           ./tools/build-proot-runtime.sh arm64-v8a build/proot-runtime-arm64
+          sdkmanager "ndk;28.2.13676358"
+          python3 tools/build-tawcroot.py --ndk "${ANDROID_HOME}/ndk/28.2.13676358"
           ./tools/package-proot-bootstrap.sh
 
       - name: Test bundled runtime extraction

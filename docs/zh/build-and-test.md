@@ -161,6 +161,7 @@ ADB_BIN=/root/Android/Sdk/platform-tools/adb \
 
 ```bash
 ./tools/build-proot-runtime.sh arm64-v8a build/proot-runtime-arm64
+python3 tools/build-tawcroot.py --ndk "$ANDROID_HOME/ndk/28.2.13676358"
 ./tools/package-proot-bootstrap.sh
 ```
 

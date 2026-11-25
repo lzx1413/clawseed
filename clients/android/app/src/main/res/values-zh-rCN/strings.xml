@@ -427,7 +427,8 @@
     <string name="settings_developer_options">开发者选项</string>
     <string name="settings_debug_query">Debug Query Message</string>
     <string name="settings_debug_desc">显示发送给 LLM 的完整内容，以及回复的输入/输出 Token、缓存命中率、输出速度和整体耗时。Token 汇总本轮所有模型调用；速度不含首 Token 等待及工具执行，缺失数据显示为未提供。</string>
-    <string name="settings_proot_runtime_title">Linux 运行环境（PRoot）</string>
+    <string name="settings_proot_runtime_title">Linux 运行环境</string>
+    <string name="settings_linux_runtime_backend">首选后端</string>
     <string name="settings_proot_runtime_desc">离线安装 Linux、Node.js 和 Python，用于脚本及命令行工具。</string>
     <string name="settings_proot_runtime_status">状态</string>
     <string name="settings_proot_runtime_not_installed">未安装</string>

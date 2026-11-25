@@ -427,7 +427,8 @@
     <string name="settings_developer_options">Developer Options</string>
     <string name="settings_debug_query">Debug Query Message</string>
     <string name="settings_debug_desc">Show the prompt and response statistics: input/output tokens, cache hit ratio, output speed, and total time. Counts cover all model calls in a turn. Speed excludes first-token waiting and tool execution; unavailable data is marked.</string>
-    <string name="settings_proot_runtime_title">Linux Runtime (PRoot)</string>
+    <string name="settings_proot_runtime_title">Linux Runtime</string>
+    <string name="settings_linux_runtime_backend">Preferred backend</string>
     <string name="settings_proot_runtime_desc">Install Linux, Node.js and Python for scripts and command-line tools, including offline setup.</string>
     <string name="settings_proot_runtime_status">Status</string>
     <string name="settings_proot_runtime_not_installed">Not installed</string>

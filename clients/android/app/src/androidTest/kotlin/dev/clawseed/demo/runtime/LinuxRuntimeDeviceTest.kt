@@ -17,6 +17,31 @@ import java.util.concurrent.TimeUnit
 
 /** Run explicitly against the signed release; keeps the successfully installed runtime. */
 class LinuxRuntimeDeviceTest {
+    @Test fun bundledArm64LauncherRunsGuestShell() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val manager = ProotRuntimeManager(context)
+        val status = runBlocking { manager.ensureReady() }
+        assertEquals(status.error, ProotRuntimeState.READY, status.state)
+        assertEquals("tawcroot", status.backend)
+        val launcher = File(context.applicationInfo.nativeLibraryDir, "libtawcroot.so")
+        val rootfs = File(requireNotNull(status.path), "rootfs")
+        val output = File.createTempFile("tawcroot-probe-", ".log", context.cacheDir)
+        try {
+            val process = ProcessBuilder(
+                launcher.absolutePath, "-r", rootfs.absolutePath, "-b", "/proc:/proc",
+                "--", "/bin/sh", "-ec", "/usr/bin/uname -m",
+            ).redirectErrorStream(true).redirectOutput(output).start()
+            if (!process.waitFor(20, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                fail("tawcroot guest shell timed out")
+            }
+            assertEquals(output.readText(), 0, process.exitValue())
+            assertTrue(output.readText(), output.readLines().contains("aarch64"))
+        } finally {
+            output.delete()
+        }
+    }
+
     @Test fun installsBundledRuntimeAndCreatesBothVenvKinds() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val wakeLock = context.getSystemService(android.os.PowerManager::class.java)

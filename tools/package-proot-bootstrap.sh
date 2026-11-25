@@ -12,7 +12,8 @@ cp "$BUNDLE_DIR/stage/proot-loader" "$DEST/libproot-loader.so"
 cp "$BUNDLE_DIR/stage/proot-libs/libtalloc.so.2" "$DEST/libtalloc.so"
 cp "$BUNDLE_DIR/stage/proot-libs/libandroid-shmem.so" "$DEST/libandroid-shmem.so"
 TAWCROOT_DIR="$ROOT/build/tawcroot/jniLibs/$ABI"
-if [[ -f "$TAWCROOT_DIR/libtawcroot.so" ]]; then
+if [[ "$ABI" == arm64-v8a || -f "$TAWCROOT_DIR/libtawcroot.so" ]]; then
+  [[ -s "$TAWCROOT_DIR/libtawcroot.so" ]] || { echo "Build the arm64 launcher with tools/build-tawcroot.py before packaging" >&2; exit 1; }
   cp "$TAWCROOT_DIR/libtawcroot.so" "$DEST/libtawcroot.so"
   chmod 0755 "$DEST/libtawcroot.so"
 fi
