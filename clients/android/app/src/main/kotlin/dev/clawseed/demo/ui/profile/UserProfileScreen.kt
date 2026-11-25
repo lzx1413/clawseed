@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import dev.clawseed.demo.ui.components.ClawSeedButton
 import dev.clawseed.demo.ui.components.ClawSeedTextButton
 import dev.clawseed.demo.ui.components.ClawSeedTextField
+import dev.clawseed.demo.ui.components.ClawSeedSegmentedPill
 import dev.clawseed.demo.ui.components.ClawSeedChoiceChip
 import dev.clawseed.demo.ui.components.ClawSeedIconButton
 import androidx.compose.foundation.layout.Arrangement
@@ -239,18 +240,13 @@ private fun ProfileFilters(uiState: UserProfileUiState, viewModel: UserProfileVi
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        ClawSeedChoiceChip(
-            selected = uiState.categoryFilter == null,
-            onClick = { viewModel.setCategoryFilter(null) },
-            label = { Text(stringResource(R.string.profile_filter_all)) },
+        val categories = listOf(null) + ProfileCategory.entries
+        ClawSeedSegmentedPill(
+            options = categories.map { it?.label() ?: stringResource(R.string.profile_filter_all) },
+            selectedIndex = categories.indexOf(uiState.categoryFilter),
+            onSelect = { viewModel.setCategoryFilter(categories[it]) },
+            modifier = Modifier.fillMaxWidth(),
         )
-        ProfileCategory.entries.forEach { category ->
-            ClawSeedChoiceChip(
-                selected = uiState.categoryFilter == category,
-                onClick = { viewModel.setCategoryFilter(category) },
-                label = { Text(category.label()) },
-            )
-        }
         ClawSeedChoiceChip(
             selected = uiState.sourceFilter == ProfileSource.INFERRED,
             onClick = {
@@ -527,20 +523,13 @@ private fun UserProfileEditorDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(stringResource(R.string.profile_category), style = MaterialTheme.typography.labelLarge)
-                FlowRow(
-                    modifier = Modifier.selectableGroup(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    ProfileCategory.entries.forEach { category ->
-                        ClawSeedChoiceChip(
-                            selected = draft.category == category,
-                            onClick = { onChange { it.copy(category = category) } },
-                            label = { Text(category.label()) },
-                            enabled = !isSaving,
-                        )
-                    }
-                }
+                ClawSeedSegmentedPill(
+                    options = ProfileCategory.entries.map { it.label() },
+                    selectedIndex = ProfileCategory.entries.indexOf(draft.category),
+                    onSelect = { index -> onChange { it.copy(category = ProfileCategory.entries[index]) } },
+                    enabled = !isSaving,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         },
         confirmButton = {

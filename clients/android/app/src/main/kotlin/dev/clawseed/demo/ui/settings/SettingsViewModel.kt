@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.launch
 
 data class ProviderPreset(@StringRes val displayNameRes: Int, val id: String, val baseUrl: String)
@@ -53,6 +55,9 @@ data class SettingsUiState(
     val pluginDenied: Set<String> = emptySet(),
     val skills: List<SkillInfo> = emptyList(),
     val configToml: String = "",
+    val configDraft: String? = null,
+    val saveErrorSection: Int? = null,
+    val saveErrorMessage: String? = null,
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
     val error: String? = null,
@@ -273,7 +278,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun updateConfigToml(toml: String) {
-        _uiState.value = _uiState.value.copy(configToml = toml, successMessage = null)
+        _uiState.value = _uiState.value.copy(configDraft = toml, successMessage = null)
     }
 
     fun selectProvider(index: Int) {
@@ -303,7 +308,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
         val hasServerKey = saved != null && saved.apiKey.isNotBlank()
 
-        _uiState.value = _uiState.value.copy(
+        val form = _uiState.value.copy(
             selectedPresetIndex = index,
             baseUrl = preset.baseUrl,
             apiKey = displayApiKey,
@@ -322,6 +327,19 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             connectionOk = null,
             successMessage = null,
         )
+        if (saved != null && saved.model.isNotBlank() && activeProviderKey(toml) != providerKey) {
+            saveSetting(R.string.settings_llm_config,
+                change = { setValue(it, "[providers]", "fallback", tomlString(providerKey)) },
+                applied = { current -> current.copy(
+                    selectedPresetIndex = index, baseUrl = form.baseUrl, apiKey = displayApiKey,
+                    hasServerApiKey = hasServerKey, selectedModel = form.selectedModel,
+                    availableModels = form.availableModels, thinkingEnabled = form.thinkingEnabled,
+                    vision = form.vision, maxTokens = form.maxTokens, providerBalance = null, connectionOk = null,
+                ) },
+            )
+        } else {
+            _uiState.value = form
+        }
     }
 
     fun updateBaseUrl(url: String) {
@@ -344,13 +362,37 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(selectedModel = model, vision = if (model == _uiState.value.selectedModel) _uiState.value.vision else "auto", successMessage = null)
     }
 
-    fun updateVision(value: String) {
-        _uiState.value = _uiState.value.copy(vision = value, successMessage = null)
+    private fun changeProviderOption(
+        change: (String, String) -> String,
+        apply: (SettingsUiState) -> SettingsUiState,
+    ) {
+        val state = _uiState.value
+        val preset = PROVIDER_PRESETS[state.selectedPresetIndex]
+        val key = if (preset.id == "custom") "custom:${state.baseUrl.trimEnd('/')}" else preset.id
+        val header = providerSectionHeader(state.configToml, key)
+        if (findSection(state.configToml, header).isEmpty()) {
+            _uiState.value = apply(state)
+            return
+        }
+        saveSetting(R.string.settings_llm_config, change = { change(it, header) }, applied = {
+            if (it.selectedPresetIndex == state.selectedPresetIndex && it.baseUrl == state.baseUrl) apply(it) else it
+        })
     }
 
-    fun toggleThinking(enabled: Boolean) {
-        _uiState.value = _uiState.value.copy(thinkingEnabled = enabled, successMessage = null)
-    }
+    fun chooseModel(model: String) = changeProviderOption(
+        change = { toml, header -> replaceInSection(replaceInSection(toml, header, "model", model), header, "vision", "auto") },
+        apply = { it.copy(selectedModel = model, vision = "auto") },
+    )
+
+    fun updateVision(value: String) = changeProviderOption(
+        change = { toml, header -> replaceInSection(toml, header, "vision", value) },
+        apply = { it.copy(vision = value) },
+    )
+
+    fun toggleThinking(enabled: Boolean) = changeProviderOption(
+        change = { toml, header -> setProviderExtraInSection(toml, header, enabled) },
+        apply = { it.copy(thinkingEnabled = enabled) },
+    )
 
     fun updateSessionTtlHours(value: String) {
         _uiState.value = _uiState.value.copy(sessionTtlHours = value, successMessage = null)
@@ -365,23 +407,42 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun toggleContextCompaction(enabled: Boolean) {
-        _uiState.value = _uiState.value.copy(contextCompactionEnabled = enabled, successMessage = null)
+        saveSetting(R.string.settings_context_compaction_title,
+            change = { setValue(it, "[agent]", "context_compaction_enabled", enabled.toString()) },
+            applied = { it.copy(contextCompactionEnabled = enabled) },
+        )
     }
 
     fun updateContextCompactionKeepRecentTurns(value: String) {
-        _uiState.value = _uiState.value.copy(contextCompactionKeepRecentTurns = value, successMessage = null)
+        saveSetting(R.string.settings_context_compaction_title,
+            change = { removeFromSection(setValue(it, "[agent]", "context_compaction_keep_recent_turns", value), "[agent]", "context_compaction_keep_recent_messages") },
+            applied = { it.copy(contextCompactionKeepRecentTurns = value) },
+        )
     }
 
     fun updateContextCompactionThresholdPercent(value: String) {
-        _uiState.value = _uiState.value.copy(contextCompactionThresholdPercent = value, successMessage = null)
+        saveSetting(R.string.settings_context_compaction_title,
+            change = { removeFromSection(setValue(it, "[agent]", "context_compaction_threshold_percent", value), "[agent]", "context_compaction_trigger_tokens") },
+            applied = { it.copy(contextCompactionThresholdPercent = value) },
+        )
     }
 
     fun toggleUserModelAutoInfer(enabled: Boolean) {
-        _uiState.value = _uiState.value.copy(userModelAutoInfer = enabled, successMessage = null)
+        saveSetting(R.string.settings_user_model,
+            change = { UserModelConfigToml.updateAutoInfer(it, enabled) },
+            applied = { it.copy(userModelAutoInfer = enabled) },
+        )
     }
 
     fun updateSearchEngine(engine: String) {
-        _uiState.value = _uiState.value.copy(searchEngine = engine, successMessage = null)
+        if (engine == "tavily" && extractTavilyApiKey(_uiState.value.configToml).isBlank()) {
+            _uiState.value = _uiState.value.copy(searchEngine = engine)
+            return
+        }
+        saveSetting(R.string.settings_search_engine,
+            change = { setValue(it, "[web_search]", "provider", tomlString(engine)) },
+            applied = { it.copy(searchEngine = engine) },
+        )
     }
 
     fun updateTavilyApiKey(key: String) {
@@ -516,19 +577,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             "custom:${state.baseUrl.trimEnd('/')}"
         }
         val header = "[providers.models.${tomlKey(providerKey)}]"
-        val toml = updateTomlArray(state.configToml, header, "models", models)
-        viewModelScope.launch {
-            val result = if (ClawSeedAndroid.isInitialized) {
-                client().updateConfig(toml)
-            } else {
-                runCatching { saveToLocalConfig(toml) }
-            }
-            result.onSuccess {
-                if (_uiState.value.baseUrl == state.baseUrl) {
-                    _uiState.value = _uiState.value.copy(configToml = toml)
-                }
-            }
-        }
+        saveSetting(R.string.settings_llm_config, change = { updateTomlArray(it, header, "models", models) }, restart = false)
     }
 
     private fun loadFromLocalConfig() {
@@ -612,58 +661,69 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun saveConfig() {
+    private val settingsWrites = Mutex()
+
+    private fun saveSetting(
+        section: Int,
+        change: (String) -> String,
+        applied: (SettingsUiState) -> SettingsUiState = { it },
+        restart: Boolean = true,
+    ) {
         viewModelScope.launch {
-            val state = _uiState.value
-            _uiState.value = state.copy(isSaving = true, error = null, successMessage = null)
-
-            val toml = buildConfigToml(state)
-
-            if (!ClawSeedAndroid.isInitialized) {
-                // Gateway not running — save directly to local config file
+            settingsWrites.withLock {
+                _uiState.value = _uiState.value.copy(isSaving = true, error = null, saveErrorSection = null, saveErrorMessage = null)
                 try {
-                    saveToLocalConfig(toml)
-                } catch (e: Exception) {
-                    if (e is kotlinx.coroutines.CancellationException) throw e
-                    showConfigSaveError(e)
-                    return@launch
+                    val online = ClawSeedAndroid.isInitialized
+                    val current = if (online) client().config().getOrThrow() else
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            GatewayConfigManager(getApplication()).ensureConfig().readText()
+                        }
+                    val updated = change(current)
+                    if (online) saveThroughGateway(updated).getOrThrow() else saveToLocalConfig(updated)
+                    _uiState.value = applied(_uiState.value).copy(configToml = updated)
+                    if (online && restart) ClawSeedAndroid.restartGateway()
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    _uiState.value = _uiState.value.copy(saveErrorSection = section,
+                        saveErrorMessage = getApplication<Application>().getString(R.string.settings_save_failed, error.message.orEmpty()))
+                } finally {
+                    _uiState.value = _uiState.value.copy(isSaving = false)
                 }
-                _uiState.value = _uiState.value.copy(
-                    isSaving = false,
-                    successMessage = getApplication<Application>().getString(R.string.settings_save_config_local),
-                )
-                _uiState.value = _uiState.value.copy(configToml = toml)
-                // Persist API key locally
-                val savedBaseUrl = state.baseUrl.trimEnd('/')
-                val isRealKey = state.apiKey.isNotBlank() && state.apiKey != MASKED_KEY_PLACEHOLDER && !state.apiKey.contains("***")
-                if (isRealKey) {
-                    storedApiKeys[savedBaseUrl] = state.apiKey
-                    localStore.setProviderApiKey(savedBaseUrl, state.apiKey)
-                }
-                return@launch
             }
-
-            saveThroughGateway(toml)
-                .onSuccess {
-                    _uiState.value = _uiState.value.copy(isSaving = false, successMessage = getApplication<Application>().getString(R.string.settings_save_config_gateway))
-                    saveCurrentDraft()
-                    // Persist API key to local storage for recovery after gateway masking
-                    val savedBaseUrl = state.baseUrl.trimEnd('/')
-                    val isRealKey = state.apiKey.isNotBlank() && state.apiKey != MASKED_KEY_PLACEHOLDER && !state.apiKey.contains("***")
-                    if (isRealKey) {
-                        storedApiKeys[savedBaseUrl] = state.apiKey
-                        viewModelScope.launch { localStore.setProviderApiKey(savedBaseUrl, state.apiKey) }
-                    }
-                    // Restart gateway in background — don't block the save coroutine
-                    viewModelScope.launch {
-                        ClawSeedAndroid.restartGateway()
-                        loadAll()
-                    }
-                }
-                .onFailure { e ->
-                    showConfigSaveError(e)
-                }
         }
+    }
+
+    fun saveConfig() {
+        val form = _uiState.value
+        saveSetting(R.string.settings_llm_config, change = { buildProviderConfig(form.copy(configToml = it)) }, applied = { state ->
+            val key = form.apiKey
+            if (key.isNotBlank() && !key.contains("***") && key != MASKED_KEY_PLACEHOLDER) {
+                val url = form.baseUrl.trimEnd('/')
+                storedApiKeys[url] = key
+                viewModelScope.launch { localStore.setProviderApiKey(url, key) }
+            }
+            state.copy(successMessage = getApplication<Application>().getString(
+                if (ClawSeedAndroid.isInitialized) R.string.settings_save_config_gateway else R.string.settings_save_config_local
+            ))
+        })
+    }
+
+    fun saveSessionTtl() {
+        val ttl = _uiState.value.sessionTtlHours
+        saveSetting(R.string.settings_session_title, change = { setValue(it, "[gateway]", "session_ttl_hours", ttl) })
+    }
+
+    fun saveSearchCredentials() {
+        val key = _uiState.value.tavilyApiKey
+        saveSetting(R.string.settings_search_engine, change = {
+            val config = setValue(it, "[web_search]", "provider", tomlString("tavily"))
+            setValue(config, "[web_search]", "tavily_api_key", tomlString(key))
+        })
+    }
+
+    private fun setValue(toml: String, section: String, key: String, raw: String): String {
+        val base = if (section in toml) toml else toml.trimEnd() + "\n\n$section\n"
+        return replaceInSectionRaw(base, section, key, " $raw")
     }
 
     fun saveConfigToml() {
@@ -671,7 +731,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val state = _uiState.value
             _uiState.value = state.copy(isSaving = true, error = null, successMessage = null)
 
-            val toml = state.configToml
+            val toml = state.configDraft ?: state.configToml
 
             if (!ClawSeedAndroid.isInitialized) {
                 try {
@@ -684,14 +744,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
                     successMessage = getApplication<Application>().getString(R.string.settings_global_config_saved_local),
-                    configToml = toml,
+                    configToml = toml, configDraft = null,
                 )
                 return@launch
             }
 
             saveThroughGateway(toml)
                 .onSuccess {
-                    _uiState.value = _uiState.value.copy(isSaving = false, successMessage = getApplication<Application>().getString(R.string.settings_global_config_saved_gateway))
+                    _uiState.value = _uiState.value.copy(isSaving = false, configDraft = null, successMessage = getApplication<Application>().getString(R.string.settings_global_config_saved_gateway))
                     viewModelScope.launch {
                         ClawSeedAndroid.restartGateway()
                         loadAll()
@@ -699,66 +759,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 }
                 .onFailure { e ->
                     showConfigSaveError(e)
-                }
-        }
-    }
-
-    fun saveUserModelConfig() {
-        viewModelScope.launch {
-            val state = _uiState.value
-            if (state.configToml.isBlank()) {
-                _uiState.value = state.copy(
-                    error = getApplication<Application>().getString(
-                        R.string.settings_user_model_config_unavailable,
-                    ),
-                )
-                return@launch
-            }
-            val toml = UserModelConfigToml.updateAutoInfer(
-                state.configToml,
-                state.userModelAutoInfer,
-            )
-            _uiState.value = state.copy(isSaving = true, error = null, successMessage = null)
-
-            if (!ClawSeedAndroid.isInitialized) {
-                runCatching { saveToLocalConfig(toml) }
-                    .onSuccess {
-                        _uiState.value = _uiState.value.copy(
-                            isSaving = false,
-                            configToml = toml,
-                            successMessage = getApplication<Application>().getString(
-                                R.string.settings_save_config_local,
-                            ),
-                        )
-                    }
-                    .onFailure { error ->
-                        _uiState.value = _uiState.value.copy(
-                            isSaving = false,
-                            error = getApplication<Application>().getString(
-                                R.string.settings_save_failed,
-                                error.message?.take(100) ?: "",
-                            ),
-                        )
-                    }
-                return@launch
-            }
-
-            saveThroughGateway(toml)
-                .onSuccess {
-                    _uiState.value = _uiState.value.copy(
-                        isSaving = false,
-                        configToml = toml,
-                        successMessage = getApplication<Application>().getString(
-                            R.string.settings_save_config_gateway,
-                        ),
-                    )
-                    viewModelScope.launch {
-                        ClawSeedAndroid.restartGateway()
-                        loadAll()
-                    }
-                }
-                .onFailure { gatewayError ->
-                    showConfigSaveError(gatewayError)
                 }
         }
     }
@@ -776,7 +776,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         )
     }
 
-    private fun buildConfigToml(state: SettingsUiState): String {
+    private fun buildProviderConfig(state: SettingsUiState): String {
         val baseUrl = state.baseUrl.trimEnd('/')
         val selectedPreset = PROVIDER_PRESETS.getOrNull(state.selectedPresetIndex)
         val newProviderId = if (selectedPreset != null && selectedPreset.id != "custom") {
@@ -845,125 +845,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             }
         }
 
-        // Update [web_search] section
-        val webSearchHeader = "[web_search]"
-        if (toml.contains(webSearchHeader)) {
-            toml = replaceInSection(toml, webSearchHeader, "provider", state.searchEngine)
-            if (state.searchEngine == "tavily" && state.tavilyApiKey.isNotBlank()) {
-                toml = replaceInSection(toml, webSearchHeader, "tavily_api_key", state.tavilyApiKey)
-            }
-        } else {
-            val section = buildString {
-                appendLine()
-                appendLine(webSearchHeader)
-                appendLine("enabled = true")
-                appendLine("provider = ${tomlString(state.searchEngine)}")
-                if (state.searchEngine == "tavily" && state.tavilyApiKey.isNotBlank()) {
-                    appendLine("tavily_api_key = ${tomlString(state.tavilyApiKey)}")
-                }
-            }
-            toml = toml.trimEnd() + section
-        }
-
-        val agentHeader = "[agent]"
-        if (!toml.contains(agentHeader)) {
-            toml = toml.trimEnd() + "\n\n$agentHeader\n"
-        }
-
-        // Context compaction settings. The trigger is derived from the model
-        // context window and percentage, so remove any legacy explicit token
-        // override when saving from the structured settings UI.
-        val contextWindowTokens = state.contextWindowTokens.toLongOrNull()
-            ?.coerceIn(1_000L, 10_000_000L)
-            ?: 512_000L
-        val compactionKeepTurns = state.contextCompactionKeepRecentTurns.toIntOrNull()
-            ?.coerceIn(1, 100)
-            ?: 1
-        val compactionThreshold = state.contextCompactionThresholdPercent.toIntOrNull()
-            ?.coerceIn(5, 95)
-            ?: 80
-        toml = replaceInSectionRaw(
-            toml,
-            agentHeader,
-            "context_compaction_enabled",
-            if (state.contextCompactionEnabled) " true" else " false",
-        )
-        toml = replaceInIntSection(toml, agentHeader, "context_window_tokens", contextWindowTokens.toString())
-        toml = replaceInIntSection(toml, agentHeader, "context_compaction_threshold_percent", compactionThreshold.toString())
-        toml = replaceInIntSection(toml, agentHeader, "context_compaction_keep_recent_turns", compactionKeepTurns.toString())
-        toml = removeFromSection(toml, agentHeader, "auto_continue_on_truncation")
-        toml = removeFromSection(toml, agentHeader, "max_auto_continue")
-        toml = removeFromSection(toml, agentHeader, "context_compaction_trigger_tokens")
-        toml = removeFromSection(toml, agentHeader, "context_compaction_keep_recent_messages")
-
-        // Update [gateway] session_ttl_hours
-        val gatewayHeader = "[gateway]"
-        if (toml.contains(gatewayHeader)) {
-            toml = replaceInIntSection(toml, gatewayHeader, "session_ttl_hours", state.sessionTtlHours)
-        } else {
-            toml = toml.trimEnd() + "\n\n[gateway]\nsession_ttl_hours = ${state.sessionTtlHours}\n"
-        }
-
-        // Update [memory] section for embedding
-        val memoryHeader = "[memory]"
-        if (state.embeddingProvider.isBlank()) {
-            // Embedding disabled — remove [memory] section if it exists
-            if (toml.contains(memoryHeader)) {
-                val idx = toml.indexOf(memoryHeader)
-                val nextSection = toml.indexOf("\n[", idx + 1).let { if (it == -1) toml.length else it }
-                toml = toml.substring(0, idx).trimEnd() + "\n" + toml.substring(nextSection)
-            }
-        } else {
-            val embeddingModel = if (state.embeddingProvider == "local") {
-                state.embeddingModel.ifBlank { "gte-multilingual-base" }
-            } else {
-                state.embeddingModel
-            }
-            val isLocal = state.embeddingProvider == "local"
-            val embeddingDims = state.embeddingDims.ifBlank {
-                if (isLocal) "768" else ""
-            }
-            val isRealEmbeddingApiKey = state.embeddingApiKey.isNotBlank()
-                    && state.embeddingApiKey != MASKED_KEY_PLACEHOLDER
-                    && !state.embeddingApiKey.contains("***")
-            val memorySection = buildString {
-                append(memoryHeader)
-                appendLine()
-                append("embedding_provider = ${tomlString(state.embeddingProvider)}")
-                appendLine()
-                append("embedding_model = ${tomlString(embeddingModel)}")
-                appendLine()
-                if (embeddingDims.isNotBlank()) {
-                    append("embedding_dims = $embeddingDims")
-                    appendLine()
-                }
-                if (!isLocal && isRealEmbeddingApiKey) {
-                    append("embedding_api_key = ${tomlString(state.embeddingApiKey)}")
-                    appendLine()
-                }
-                // Memory system upgrade fields (Phase A-E defaults)
-                append("merge_strategy = \"rrf\"")
-                appendLine()
-                append("defer_embedding = true")
-                appendLine()
-                append("stable_memory_in_system_prompt = true")
-                appendLine()
-                append("conflict_mode = \"combined\"")
-                appendLine()
-                append("min_retention_floor = 30")
-                appendLine()
-                append("backfill_on_startup = true")
-                appendLine()
-            }
-            if (toml.contains(memoryHeader)) {
-                val idx = toml.indexOf(memoryHeader)
-                val nextSection = toml.indexOf("\n[", idx + 1).let { if (it == -1) toml.length else it }
-                toml = toml.substring(0, idx) + memorySection + toml.substring(nextSection)
-            } else {
-                toml = toml.trimEnd() + "\n\n" + memorySection
-            }
-        }
-
+        val window = state.contextWindowTokens.toLongOrNull()?.coerceIn(1_000L, 10_000_000L) ?: 512_000L
+        toml = setValue(toml, "[agent]", "context_window_tokens", window.toString())
         return toml
     }
 

@@ -475,7 +475,7 @@
     <string name="persona_soul_customized">已设置专属身份指令</string>
     <string name="persona_appearance_section">外观</string>
     <string name="persona_avatar_label">头像</string>
-    <string name="persona_avatar_desc">从设备中选择一张图片。</string>
+    <string name="persona_avatar_desc">点击头像选择图片。</string>
     <string name="persona_avatar_choose">选择图片</string>
     <string name="persona_avatar_clear">使用生成头像</string>
     <string name="persona_llm_section">LLM</string>
@@ -493,6 +493,7 @@
     <string name="persona_thinking_on">已启用</string>
     <string name="persona_thinking_off">已关闭</string>
     <string name="persona_memory_section">记忆</string>
+    <string name="persona_memory_isolated">独立记忆</string>
     <string name="persona_memory_shared">共享记忆</string>
     <string name="persona_isolated_memory">使用独立记忆</string>
     <string name="persona_isolated_memory_desc">使用分身名称作为它的独立记忆空间。</string>
@@ -779,8 +780,7 @@
     <string name="profile_confirm_item">删除这条信息？此操作无法撤销。</string>
     <string name="profile_no_filter_results">没有符合筛选条件的信息。</string>
     <string name="profile_clear_filters">清除筛选</string>
-    <string name="settings_save_scope_notice">保存全部配置时，也会保存模型、会话、上下文和搜索中尚未保存的修改，并可能重启网关。</string>
-    <string name="settings_save_all_config">保存全部配置</string>
+    <string name="settings_llm_config_save">保存模型配置</string>
     <string name="suggestion_edit_title">编辑快捷卡片</string>
     <string name="suggestion_edit_hint">为当前角色自定义四张卡片。点击卡片后会立即发送对应内容。</string>
     <string name="suggestion_card_number">卡片 %1$d</string>

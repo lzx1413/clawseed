@@ -106,6 +106,13 @@ private fun ExpandableSection(
     dev.clawseed.demo.ui.components.ClawSeedExpandableSection(title, expanded, onToggle, subtitle, content)
 }
 
+@Composable
+private fun SettingSaveError(state: SettingsUiState, section: Int) {
+    if (state.saveErrorSection == section) {
+        state.saveErrorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -190,7 +197,6 @@ fun SettingsScreen(
             bottomBar = {
                 Column(Modifier.navigationBarsPadding().imePadding()) {
                     HorizontalDivider()
-                    Text(stringResource(R.string.settings_save_scope_notice), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall)
                     ClawSeedButton(
                         onClick = viewModel::saveConfig,
                         loading = uiState.isSaving,
@@ -199,7 +205,7 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.Check, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.settings_save_all_config))
+                        Text(stringResource(R.string.settings_llm_config_save))
                     }
                 }
             },
@@ -212,12 +218,14 @@ fun SettingsScreen(
                     onBaseUrlChange = viewModel::updateBaseUrl,
                     onApiKeyChange = viewModel::updateApiKey,
                     onFetchModels = viewModel::fetchModels,
-                    onSelectModel = viewModel::selectModel,
+                    onSelectModel = viewModel::chooseModel,
+                    onModelTextChange = viewModel::selectModel,
                     onToggleThinking = viewModel::toggleThinking,
                     onVisionChange = viewModel::updateVision,
                     onUpdateMaxTokens = viewModel::updateMaxTokens,
                     onUpdateContextWindowTokens = viewModel::updateContextWindowTokens,
                 )
+                SettingSaveError(uiState, R.string.settings_llm_config)
             }
         }
         return
@@ -319,9 +327,7 @@ fun SettingsScreen(
                         onToggle = { sessionExpanded = !sessionExpanded },
                         subtitle = if (!sessionExpanded) {
                             val d = ttlHoursToDays(uiState.sessionTtlHours)
-                            val ttlStr = if (d.isEmpty() || d == "0") stringResource(R.string.settings_session_ttl_never_delete) else stringResource(R.string.settings_session_ttl_days, d.toInt())
-                            val councilStr = if (uiState.councilEnabled) stringResource(R.string.settings_council_reviewers, uiState.councilReviewers.size) else stringResource(R.string.settings_council_off)
-                            stringResource(R.string.settings_session_subtitle, ttlStr, councilStr)
+                            if (d.isEmpty() || d == "0") stringResource(R.string.settings_session_ttl_never_delete) else stringResource(R.string.settings_session_ttl_days, d.toInt())
                         } else null,
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -329,16 +335,9 @@ fun SettingsScreen(
                                 ttlHours = uiState.sessionTtlHours,
                                 onTtlChange = { viewModel.updateSessionTtlHours(it) },
                             )
-                            CouncilCard(
-                                enabled = uiState.councilEnabled,
-                                reviewers = uiState.councilReviewers,
-                                onToggleEnabled = viewModel::toggleCouncilEnabled,
-                                onAddReviewer = viewModel::addCouncilReviewer,
-                                onRemoveReviewer = viewModel::removeCouncilReviewer,
-                                onUpdateReviewer = viewModel::updateCouncilReviewer,
-                            )
+                            SettingSaveError(uiState, R.string.settings_session_title)
                             ClawSeedButton(
-                                onClick = { viewModel.saveConfig() },
+                                onClick = viewModel::saveSessionTtl,
                                 enabled = !uiState.isSaving,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
@@ -346,7 +345,7 @@ fun SettingsScreen(
                                     CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
                                     Spacer(modifier = Modifier.width(8.dp))
                                 }
-                                Text(if (uiState.isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_all_config))
+                                Text(if (uiState.isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_session_config))
                             }
                         }
                     }
@@ -382,23 +381,8 @@ fun SettingsScreen(
                                 onKeepRecentTurnsChange = viewModel::updateContextCompactionKeepRecentTurns,
                                 onThresholdChange = viewModel::updateContextCompactionThresholdPercent,
                             )
-                            ClawSeedButton(
-                                onClick = { viewModel.saveConfig() },
-                                enabled = !uiState.isSaving,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                if (uiState.isSaving) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(18.dp),
-                                        color = MaterialTheme.colorScheme.onPrimary,
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                }
-                                Text(
-                                    if (uiState.isSaving) stringResource(R.string.common_saving)
-                                    else stringResource(R.string.settings_save_all_config),
-                                )
-                            }
+                            SettingSaveError(uiState, R.string.settings_context_compaction_title)
+
                         }
                     }
                 }
@@ -438,16 +422,11 @@ fun SettingsScreen(
                                 onTavilyApiKeyChange = viewModel::updateTavilyApiKey,
                                 onToggleTavilyApiKeyVisibility = viewModel::toggleTavilyApiKeyVisibility,
                             )
-                            ClawSeedButton(
-                                onClick = { viewModel.saveConfig() },
-                                enabled = !uiState.isSaving,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                if (uiState.isSaving) {
-                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
-                                    Spacer(modifier = Modifier.width(8.dp))
+                            SettingSaveError(uiState, R.string.settings_search_engine)
+                            if (uiState.searchEngine == "tavily") {
+                                ClawSeedButton(onClick = viewModel::saveSearchCredentials, enabled = !uiState.isSaving && uiState.tavilyApiKey.isNotBlank()) {
+                                    Text(stringResource(R.string.settings_save_search_config))
                                 }
-                                Text(if (uiState.isSaving) stringResource(R.string.common_saving) else stringResource(R.string.settings_save_all_config))
                             }
                         }
                     }
@@ -473,6 +452,7 @@ fun SettingsScreen(
                                 controlsEnabled = !uiState.isSaving && uiState.configToml.isNotBlank(),
                                 onToggle = viewModel::toggleUserModelAutoInfer,
                             )
+                            SettingSaveError(uiState, R.string.settings_user_model)
                             ClawSeedOutlinedButton(
                                 onClick = onManageUserProfile,
                                 modifier = Modifier.fillMaxWidth(),
@@ -484,26 +464,7 @@ fun SettingsScreen(
                                     contentDescription = null,
                                 )
                             }
-                            ClawSeedButton(
-                                onClick = viewModel::saveUserModelConfig,
-                                enabled = !uiState.isSaving && uiState.configToml.isNotBlank(),
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                if (uiState.isSaving) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(18.dp),
-                                        color = MaterialTheme.colorScheme.onPrimary,
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                }
-                                Text(
-                                    if (uiState.isSaving) {
-                                        stringResource(R.string.common_saving)
-                                    } else {
-                                        stringResource(R.string.settings_save_user_model)
-                                    },
-                                )
-                            }
+
                         }
                     }
                 }
@@ -534,7 +495,7 @@ fun SettingsScreen(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                         TomlEditor(
-                                            toml = uiState.configToml,
+                                            toml = uiState.configDraft ?: uiState.configToml,
                                             onTomlChange = { viewModel.updateConfigToml(it) },
                                         )
                                         ClawSeedButton(
@@ -847,23 +808,18 @@ private fun AppearanceCard(localStore: LocalStore) {
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(stringResource(R.string.settings_language), style = MaterialTheme.typography.bodyMedium)
-            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ClawSeedChoiceChip(
-                    selected = languageMode == "system",
-                    onClick = { scope.launch { localStore.setLanguageMode("system"); (context as? android.app.Activity)?.recreate() } },
-                    label = { Text(stringResource(R.string.settings_language_system)) },
-                )
-                ClawSeedChoiceChip(
-                    selected = languageMode == "en",
-                    onClick = { scope.launch { localStore.setLanguageMode("en"); (context as? android.app.Activity)?.recreate() } },
-                    label = { Text(stringResource(R.string.settings_language_english)) },
-                )
-                ClawSeedChoiceChip(
-                    selected = languageMode == "zh",
-                    onClick = { scope.launch { localStore.setLanguageMode("zh"); (context as? android.app.Activity)?.recreate() } },
-                    label = { Text(stringResource(R.string.settings_language_chinese)) },
-                )
-            }
+            val languages = listOf("system", "en", "zh")
+            ClawSeedSegmentedPill(
+                options = listOf(stringResource(R.string.settings_language_system), stringResource(R.string.settings_language_english), stringResource(R.string.settings_language_chinese)),
+                selectedIndex = languages.indexOf(languageMode),
+                onSelect = { index ->
+                    scope.launch {
+                        localStore.setLanguageMode(languages[index])
+                        (context as? android.app.Activity)?.recreate()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
             if (useDarkTheme) {
                 Spacer(modifier = Modifier.height(12.dp))
                 SettingsSwitchRow(title = stringResource(R.string.settings_oled_mode),
@@ -1188,6 +1144,7 @@ private fun ProviderFormEditor(
     onApiKeyChange: (String) -> Unit,
     onFetchModels: () -> Unit,
     onSelectModel: (String) -> Unit,
+    onModelTextChange: (String) -> Unit,
     onToggleThinking: (Boolean) -> Unit,
     onVisionChange: (String) -> Unit,
     onUpdateMaxTokens: (String) -> Unit,
@@ -1195,7 +1152,6 @@ private fun ProviderFormEditor(
 ) {
     var providerExpanded by remember { mutableStateOf(false) }
     var modelExpanded by remember { mutableStateOf(false) }
-    var contextWindowExpanded by remember { mutableStateOf(false) }
     var showApiKey by remember { mutableStateOf(false) }
 
     SettingsGroup(modifier = Modifier.fillMaxWidth()) {
@@ -1347,7 +1303,7 @@ private fun ProviderFormEditor(
                 ) {
                     ClawSeedTextField(
                         value = state.selectedModel,
-                        onValueChange = { onSelectModel(it) },
+                        onValueChange = onModelTextChange,
                         label = { Text("Model") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded) },
                         modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable),
@@ -1371,7 +1327,7 @@ private fun ProviderFormEditor(
             } else {
                 ClawSeedTextField(
                     value = state.selectedModel,
-                    onValueChange = { onSelectModel(it) },
+                    onValueChange = onModelTextChange,
                     label = { Text("Model") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
@@ -1428,45 +1384,17 @@ private fun ProviderFormEditor(
                 "512000" to "512K",
                 "1000000" to "1M",
             )
-            val currentContextWindowLabel = contextWindowOptions
-                .firstOrNull { it.first == state.contextWindowTokens }
-                ?.second
-                ?: "${formatTokenCount(state.contextWindowTokens.toLongOrNull() ?: 0L)} (custom)"
-            ExposedDropdownMenuBox(
-                expanded = contextWindowExpanded,
-                onExpandedChange = { contextWindowExpanded = it },
-            ) {
-                ClawSeedTextField(
-                    value = currentContextWindowLabel,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(stringResource(R.string.settings_context_window)) },
-                    supportingText = {
-                        Text(stringResource(R.string.settings_context_window_desc))
-                    },
-                    trailingIcon = {
-                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = contextWindowExpanded)
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-                )
-                ClawSeedGlassExposedDropdownMenu(
-                    expanded = contextWindowExpanded,
-                    onDismissRequest = { contextWindowExpanded = false },
-                ) {
-                    contextWindowOptions.forEach { (tokens, label) ->
-                        DropdownMenuItem(
-                            text = { Text(label) },
-                            onClick = {
-                                onUpdateContextWindowTokens(tokens)
-                                contextWindowExpanded = false
-                            },
-                        )
-                    }
-                }
-            }
-
+            val currentWindow = state.contextWindowTokens
+            val windows = if (contextWindowOptions.any { it.first == currentWindow }) contextWindowOptions
+                else contextWindowOptions + (currentWindow to formatTokenCount(currentWindow.toLongOrNull() ?: 0L))
+            Text(stringResource(R.string.settings_context_window))
+            ClawSeedSegmentedPill(
+                options = windows.map { it.second },
+                selectedIndex = windows.indexOfFirst { it.first == currentWindow },
+                onSelect = { onUpdateContextWindowTokens(windows[it].first) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(stringResource(R.string.settings_context_window_desc), style = MaterialTheme.typography.bodySmall)
             Spacer(modifier = Modifier.height(8.dp))
 
         }
@@ -1833,7 +1761,6 @@ private fun SearchEngineCard(
     onTavilyApiKeyChange: (String) -> Unit,
     onToggleTavilyApiKeyVisibility: () -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
 
     val searchEngines = listOf(
@@ -1841,7 +1768,6 @@ private fun SearchEngineCard(
         "tavily" to "Tavily",
         "deepseek" to "DeepSeek Search",
     )
-    val selectedDisplayName = searchEngines.find { it.first == searchEngine }?.second ?: "Bing"
 
     val freeApiKeyPrefix = stringResource(R.string.settings_search_free_api_key)
 
@@ -1852,34 +1778,12 @@ private fun SearchEngineCard(
         ) {
             Text(stringResource(R.string.settings_search_engine), style = MaterialTheme.typography.titleSmall)
 
-            ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { expanded = it },
-            ) {
-                ClawSeedTextField(
-                    value = selectedDisplayName,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Provider") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                    modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-                )
-                ClawSeedGlassExposedDropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false },
-                ) {
-                    searchEngines.forEach { (id, name) ->
-                        DropdownMenuItem(
-                            text = { Text(name) },
-                            onClick = {
-                                onSearchEngineChange(id)
-                                expanded = false
-                            },
-                        )
-                    }
-                }
-            }
-
+            ClawSeedSegmentedPill(
+                options = searchEngines.map { it.second },
+                selectedIndex = searchEngines.indexOfFirst { it.first == searchEngine },
+                onSelect = { onSearchEngineChange(searchEngines[it].first) },
+                modifier = Modifier.fillMaxWidth(),
+            )
             if (searchEngine == "tavily") {
                 ClawSeedTextField(
                     value = tavilyApiKey,
@@ -1999,10 +1903,8 @@ private fun ContextCompactionCard(
     onKeepRecentTurnsChange: (String) -> Unit,
     onThresholdChange: (String) -> Unit,
 ) {
-    val keepOptions = listOf("1", "2", "3", "5", "10")
-    val thresholdOptions = listOf("50", "60", "70", "80", "85", "90", "95")
-    var keepExpanded by remember { mutableStateOf(false) }
-    var thresholdExpanded by remember { mutableStateOf(false) }
+    val keepOptions = listOf("1", "2", "3", "5", "10").plus(keepRecentTurns).distinct()
+    val thresholdOptions = listOf("50", "60", "70", "80", "85", "90", "95").plus(thresholdPercent).distinct()
 
     SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -2011,69 +1913,24 @@ private fun ContextCompactionCard(
         ) {
             SettingsSwitchRow(title = stringResource(R.string.settings_context_compaction_enabled), subtitle = stringResource(R.string.settings_context_compaction_enabled_desc), checked = enabled, onCheckedChange = onToggleEnabled)
 
-            ExposedDropdownMenuBox(
-                expanded = keepExpanded,
-                onExpandedChange = { keepExpanded = it },
-            ) {
-                ClawSeedTextField(
-                    value = stringResource(R.string.settings_context_compaction_keep_turns_value, keepRecentTurns),
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(stringResource(R.string.settings_context_compaction_keep_turns)) },
-                    supportingText = { Text(stringResource(R.string.settings_context_compaction_keep_turns_desc)) },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = keepExpanded) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-                    enabled = enabled,
-                )
-                ClawSeedGlassExposedDropdownMenu(
-                    expanded = keepExpanded,
-                    onDismissRequest = { keepExpanded = false },
-                ) {
-                    keepOptions.forEach { turns ->
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.settings_context_compaction_keep_turns_value, turns)) },
-                            onClick = {
-                                onKeepRecentTurnsChange(turns)
-                                keepExpanded = false
-                            },
-                        )
-                    }
-                }
-            }
-
-            ExposedDropdownMenuBox(
-                expanded = thresholdExpanded,
-                onExpandedChange = { thresholdExpanded = it },
-            ) {
-                ClawSeedTextField(
-                    value = "$thresholdPercent%",
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(stringResource(R.string.settings_context_compaction_threshold)) },
-                    supportingText = { Text(stringResource(R.string.settings_context_compaction_threshold_desc)) },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = thresholdExpanded) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-                    enabled = enabled,
-                )
-                ClawSeedGlassExposedDropdownMenu(
-                    expanded = thresholdExpanded,
-                    onDismissRequest = { thresholdExpanded = false },
-                ) {
-                    thresholdOptions.forEach { percent ->
-                        DropdownMenuItem(
-                            text = { Text("$percent%") },
-                            onClick = {
-                                onThresholdChange(percent)
-                                thresholdExpanded = false
-                            },
-                        )
-                    }
-                }
-            }
+            Text(stringResource(R.string.settings_context_compaction_keep_turns))
+            ClawSeedSegmentedPill(
+                options = keepOptions.map { stringResource(R.string.settings_context_compaction_keep_turns_value, it) },
+                selectedIndex = keepOptions.indexOf(keepRecentTurns),
+                onSelect = { onKeepRecentTurnsChange(keepOptions[it]) },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(stringResource(R.string.settings_context_compaction_keep_turns_desc), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.settings_context_compaction_threshold))
+            ClawSeedSegmentedPill(
+                options = thresholdOptions.map { "$it%" },
+                selectedIndex = thresholdOptions.indexOf(thresholdPercent),
+                onSelect = { onThresholdChange(thresholdOptions[it]) },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(stringResource(R.string.settings_context_compaction_threshold_desc), style = MaterialTheme.typography.bodySmall)
         }
     }
 }

@@ -197,7 +197,7 @@ fun ToolManagementScreen(onBack: () -> Unit) {
     val viewModel: SettingsViewModel = viewModel()
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var expandedGroups by remember { mutableStateOf(emptySet<String>()) }
+    var expandedGroups by remember { mutableStateOf(emptySet<ToolSourceGroup>()) }
     LaunchedEffect(state.error) {
         state.error?.let { snackbarHostState.showSnackbar(it); viewModel.clearError() }
     }
@@ -220,10 +220,7 @@ fun ToolManagementScreen(onBack: () -> Unit) {
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        val groups = state.nonPluginTools
-            .groupBy(::toolGroupKey)
-            .toList()
-            .sortedBy { toolGroupOrder(it.first) }
+        val groups = state.nonPluginTools.groupBySource()
         LazyColumn(
             state = rememberLazyListState(),
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
@@ -232,19 +229,19 @@ fun ToolManagementScreen(onBack: () -> Unit) {
             if (state.plugins.isNotEmpty()) {
                 item(key = "plugin-manifests-header") {
                     ClawSeedSectionHeader(
-                        title = stringResource(R.string.settings_tool_group_plugin),
-                        expanded = "plugin-manifests" in expandedGroups,
+                        title = stringResource(ToolSourceGroup.PLUGIN.labelRes),
+                        expanded = ToolSourceGroup.PLUGIN in expandedGroups,
                         onToggle = {
-                            expandedGroups = if ("plugin-manifests" in expandedGroups) {
-                                expandedGroups - "plugin-manifests"
+                            expandedGroups = if (ToolSourceGroup.PLUGIN in expandedGroups) {
+                                expandedGroups - ToolSourceGroup.PLUGIN
                             } else {
-                                expandedGroups + "plugin-manifests"
+                                expandedGroups + ToolSourceGroup.PLUGIN
                             }
                         },
                         subtitle = stringResource(R.string.settings_plugin_count, state.plugins.size),
                     )
                 }
-                if ("plugin-manifests" in expandedGroups) {
+                if (ToolSourceGroup.PLUGIN in expandedGroups) {
                     items(state.plugins, key = { "plugin:${it.pluginId}" }) { plugin ->
                         PluginManagementCard(
                             plugin = plugin,
@@ -257,7 +254,7 @@ fun ToolManagementScreen(onBack: () -> Unit) {
             groups.forEach { (group, tools) ->
                 item(key = "header:$group") {
                     ClawSeedSectionHeader(
-                        title = stringResource(toolGroupLabelRes(group)),
+                        title = stringResource(group.labelRes),
                         expanded = group in expandedGroups,
                         onToggle = {
                             expandedGroups = if (group in expandedGroups) expandedGroups - group else expandedGroups + group
@@ -352,28 +349,4 @@ private fun toolSourceLabel(tool: ToolInfo): String = when (tool.sourceType) {
     "remote" -> "Remote${tool.source?.let { " · $it" }.orEmpty()}"
     "mcp" -> "MCP${tool.source?.let { " · $it" }.orEmpty()}"
     else -> "Built-in"
-}
-
-private fun toolGroupKey(tool: ToolInfo): String = when {
-    tool.sourceType == "remote" && "__" in tool.name -> "third_party_app"
-    tool.sourceType == "remote" -> "local_remote"
-    tool.sourceType == "mcp" -> "mcp"
-    tool.sourceType == "builtin" || tool.sourceType.isBlank() -> "builtin"
-    else -> "other"
-}
-
-private fun toolGroupOrder(sourceType: String): Int = when (sourceType) {
-    "builtin" -> 0
-    "local_remote" -> 1
-    "third_party_app" -> 2
-    "mcp" -> 4
-    else -> 5
-}
-
-private fun toolGroupLabelRes(sourceType: String): Int = when (sourceType) {
-    "builtin" -> R.string.settings_tool_group_builtin
-    "local_remote" -> R.string.settings_tool_group_local_remote
-    "third_party_app" -> R.string.settings_tool_group_third_party_app
-    "mcp" -> R.string.settings_tool_group_mcp
-    else -> R.string.settings_tool_group_other
 }

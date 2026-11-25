@@ -475,7 +475,7 @@
     <string name="persona_soul_customized">Custom identity instructions</string>
     <string name="persona_appearance_section">Look</string>
     <string name="persona_avatar_label">Avatar</string>
-    <string name="persona_avatar_desc">Choose an image from your device.</string>
+    <string name="persona_avatar_desc">Tap the avatar to choose an image.</string>
     <string name="persona_avatar_choose">Choose image</string>
     <string name="persona_avatar_clear">Use generated avatar</string>
     <string name="persona_llm_section">LLM</string>
@@ -493,6 +493,7 @@
     <string name="persona_thinking_on">Enabled</string>
     <string name="persona_thinking_off">Disabled</string>
     <string name="persona_memory_section">Memory</string>
+    <string name="persona_memory_isolated">Isolated memory</string>
     <string name="persona_memory_shared">Shared memory</string>
     <string name="persona_isolated_memory">Use isolated memory</string>
     <string name="persona_isolated_memory_desc">Use the persona name as its private memory space.</string>
@@ -779,8 +780,7 @@
     <string name="profile_confirm_item">Delete this entry? This cannot be undone.</string>
     <string name="profile_no_filter_results">No entries match these filters.</string>
     <string name="profile_clear_filters">Clear filters</string>
-    <string name="settings_save_scope_notice">Save all configuration also saves pending changes in the model, session, context and search sections. The gateway may restart.</string>
-    <string name="settings_save_all_config">Save all configuration</string>
+    <string name="settings_llm_config_save">Save model settings</string>
     <string name="suggestion_edit_title">Edit shortcuts</string>
     <string name="suggestion_edit_hint">Customize the four shortcuts for the current assistant. Tap a shortcut to send its prompt immediately.</string>
     <string name="suggestion_card_number">Shortcut %1$d</string>

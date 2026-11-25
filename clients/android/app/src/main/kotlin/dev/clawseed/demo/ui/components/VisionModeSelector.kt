@@ -1,11 +1,9 @@
 package dev.clawseed.demo.ui.components
 
-import dev.clawseed.demo.ui.components.ClawSeedChoiceChip
-import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,20 +18,13 @@ fun VisionModeSelector(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(stringResource(R.string.settings_vision))
-        FlowRow(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            val options = buildList<Pair<String, Int>> {
-                add("auto" to R.string.settings_vision_auto)
-                add("enabled" to R.string.settings_vision_on)
-                add("disabled" to R.string.settings_vision_off)
-            }
-            options.forEach { (mode, label) ->
-                ClawSeedChoiceChip(
-                    selected = value == mode,
-                    onClick = { onChange(mode) },
-                    label = { Text(stringResource(label)) },
-                )
-            }
-        }
+        val modes = listOf("auto", "enabled", "disabled")
+        ClawSeedSegmentedPill(
+            options = listOf(stringResource(R.string.settings_vision_auto), stringResource(R.string.settings_vision_on), stringResource(R.string.settings_vision_off)),
+            selectedIndex = modes.indexOf(value),
+            onSelect = { onChange(modes[it]) },
+            modifier = Modifier.fillMaxWidth(),
+        )
         Text(
             stringResource(R.string.settings_vision_hint),
             style = MaterialTheme.typography.bodySmall,

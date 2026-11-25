@@ -1,5 +1,10 @@
 package dev.clawseed.demo.ui.persona
 
+import dev.clawseed.demo.ui.settings.groupBySource
+import dev.clawseed.demo.ui.components.ClawSeedSectionHeader
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import dev.clawseed.demo.ui.components.SettingsGroup
@@ -7,6 +12,7 @@ import dev.clawseed.demo.ui.components.ClawSeedButton
 import dev.clawseed.demo.ui.components.ClawSeedOutlinedButton
 import dev.clawseed.demo.ui.components.ClawSeedTextButton
 import dev.clawseed.demo.ui.components.ClawSeedTextField
+import dev.clawseed.demo.ui.components.ClawSeedSegmentedPill
 import dev.clawseed.demo.ui.components.ClawSeedChoiceChip
 import dev.clawseed.demo.ui.components.ClawSeedIconButton
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -127,7 +133,7 @@ fun PersonaManagerScreen(
             )
         },
         floatingActionButton = {
-            if (uiState.editing == null && uiState.viewing == null) {
+            if (!uiState.isLoading && uiState.editing == null && uiState.viewing == null) {
                 ClawSeedAddAction(
                     onClick = viewModel::newPersona,
                     contentDescription = stringResource(R.string.persona_create),
@@ -143,6 +149,7 @@ fun PersonaManagerScreen(
             when {
                 uiState.editing != null -> PersonaEditor(
                     draft = uiState.editing!!,
+                    needsSave = uiState.editing?.originalName == null || uiState.editing != uiState.savedDraft,
                     tools = uiState.tools,
                     skills = uiState.skills,
                     availableModels = uiState.availableModels,
@@ -151,9 +158,8 @@ fun PersonaManagerScreen(
                     isSaving = uiState.isSaving,
                     onFetchModels = viewModel::fetchModelsForEditingProvider,
                     onDraftChange = { viewModel.updateDraft { _ -> it } },
-                    onSave = { viewModel.save() },
-                    onSaveAndStart = { viewModel.save(onStartChat) },
-                    onCancel = viewModel::closeEditor,
+                    onChoice = viewModel::applyChoice,
+                    onSave = viewModel::save,
                 )
 
                 uiState.viewing != null -> PersonaDetailView(
@@ -611,13 +617,19 @@ private fun PersonaAppearanceSection(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            PersonaDot(
-                draft.name.ifBlank { stringResource(R.string.persona_default) },
-                Modifier.size(42.dp),
-                showInitial = true,
-                avatar = draft.avatar,
-                color = draft.color,
-            )
+            val chooseImage = stringResource(R.string.persona_avatar_choose)
+            ClawSeedIconButton(
+                onClick = { avatarPicker.launch(arrayOf("image/*")) },
+                modifier = Modifier.semantics { contentDescription = chooseImage },
+            ) {
+                PersonaDot(
+                    draft.name.ifBlank { stringResource(R.string.persona_default) },
+                    Modifier.size(42.dp),
+                    showInitial = true,
+                    avatar = draft.avatar,
+                    color = draft.color,
+                )
+            }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
@@ -630,9 +642,6 @@ private fun PersonaAppearanceSection(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-        ClawSeedOutlinedButton(onClick = { avatarPicker.launch(arrayOf("image/*")) }) {
-                Text(stringResource(R.string.persona_avatar_choose))
         }
         if (draft.avatar.isNotBlank()) {
             ClawSeedOutlinedButton(onClick = { onDraftChange(draft.copy(avatar = "", color = "")) }) {
@@ -649,21 +658,12 @@ private fun ThinkingModeSelector(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(stringResource(R.string.persona_thinking_mode))
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            ClawSeedChoiceChip(
-                selected = value,
-                onClick = { onChange(true) },
-                label = { Text(stringResource(R.string.persona_thinking_on)) },
-            )
-            ClawSeedChoiceChip(
-                selected = !value,
-                onClick = { onChange(false) },
-                label = { Text(stringResource(R.string.persona_thinking_off)) },
-            )
-        }
+        ClawSeedSegmentedPill(
+            options = listOf(stringResource(R.string.persona_thinking_on), stringResource(R.string.persona_thinking_off)),
+            selectedIndex = if (value) 0 else 1,
+            onSelect = { onChange(it == 0) },
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -671,6 +671,7 @@ private fun ThinkingModeSelector(
 @Composable
 private fun PersonaEditor(
     draft: PersonaDraft,
+    needsSave: Boolean,
     tools: List<ToolInfo>,
     skills: List<SkillInfo>,
     availableModels: List<String>,
@@ -680,8 +681,7 @@ private fun PersonaEditor(
     onFetchModels: () -> Unit,
     onDraftChange: (PersonaDraft) -> Unit,
     onSave: () -> Unit,
-    onSaveAndStart: () -> Unit,
-    onCancel: () -> Unit,
+    onChoice: ((PersonaDraft) -> PersonaDraft) -> Unit,
 ) {
     var modelExpanded by remember { mutableStateOf(false) }
     var providerExpanded by remember { mutableStateOf(false) }
@@ -711,7 +711,7 @@ private fun PersonaEditor(
         item {
             PersonaAppearanceSection(
                 draft = draft,
-                onDraftChange = onDraftChange,
+                onDraftChange = { updated -> onChoice { it.copy(avatar = updated.avatar, color = updated.color) } },
             )
         }
         item {
@@ -763,11 +763,11 @@ private fun PersonaEditor(
                             DropdownMenuItem(
                                 text = { Text(provider.name.ifBlank { provider.id }) },
                                 onClick = {
-                                    onDraftChange(draft.copy(
+                                    onChoice { it.copy(
                                         provider = provider.id,
                                         model = provider.models.firstOrNull() ?: provider.model.orEmpty(),
                                         vision = "auto",
-                                    ))
+                                    ) }
                                     providerExpanded = false
                                 },
                             )
@@ -804,7 +804,7 @@ private fun PersonaEditor(
                                 DropdownMenuItem(
                                     text = { Text(model, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                     onClick = {
-                                        onDraftChange(draft.copy(model = model, vision = "auto"))
+                                        onChoice { it.copy(model = model, vision = "auto") }
                                         modelExpanded = false
                                     },
                                 )
@@ -821,22 +821,23 @@ private fun PersonaEditor(
                 }
                 dev.clawseed.demo.ui.components.VisionModeSelector(
                     value = draft.vision,
-                    onChange = { onDraftChange(draft.copy(vision = it)) },
+                    onChange = { value -> onChoice { it.copy(vision = value) } },
                 )
                 ThinkingModeSelector(
                     value = draft.thinkingEnabled,
-                    onChange = { onDraftChange(draft.copy(thinkingEnabled = it)) },
+                    onChange = { value -> onChoice { it.copy(thinkingEnabled = value) } },
                 )
             }
         }
         item {
             PersonaSection(title = stringResource(R.string.persona_memory_section)) {
-                dev.clawseed.demo.ui.components.SettingsSwitchRow(
-                    title = stringResource(R.string.persona_isolated_memory),
-                    subtitle = stringResource(R.string.persona_isolated_memory_desc),
-                    checked = draft.memoryMode == "isolated",
-                    onCheckedChange = { onDraftChange(draft.copy(memoryMode = if (it) "isolated" else "shared")) },
+                ClawSeedSegmentedPill(
+                    options = listOf(stringResource(R.string.persona_memory_shared), stringResource(R.string.persona_memory_isolated)),
+                    selectedIndex = if (draft.memoryMode == "isolated") 1 else 0,
+                    onSelect = { index -> onChoice { it.copy(memoryMode = if (index == 1) "isolated" else "shared") } },
+                    modifier = Modifier.fillMaxWidth(),
                 )
+                Text(stringResource(R.string.persona_isolated_memory_desc), style = MaterialTheme.typography.bodySmall)
             }
         }
         item {
@@ -853,15 +854,8 @@ private fun PersonaEditor(
                 ToolSelector(
                     tools = tools,
                     allowed = draft.allowedTools,
-                    onSelectAll = { onDraftChange(draft.copy(allowedTools = tools.map { it.name }.toSet())) },
-                    onSelectNone = { onDraftChange(draft.copy(allowedTools = emptySet())) },
-                    onRestoreDefault = { onDraftChange(draft.copy(allowedTools = defaultAllowedTools(tools))) },
                     onToggle = { tool ->
-                        onDraftChange(
-                            draft.copy(
-                                allowedTools = draft.allowedTools.toggle(tool),
-                            ),
-                        )
+                        onChoice { it.copy(allowedTools = it.allowedTools.toggle(tool)) }
                     },
                 )
             }
@@ -881,25 +875,17 @@ private fun PersonaEditor(
                     skills = skills,
                     denied = draft.deniedSkills,
                     onToggle = { skill ->
-                        onDraftChange(draft.copy(deniedSkills = draft.deniedSkills.toggle(skill)))
+                        onChoice { it.copy(deniedSkills = it.deniedSkills.toggle(skill)) }
                     },
                 )
             }
         }
-        item {
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                ClawSeedOutlinedButton(onClick = onCancel, enabled = !isSaving) {
-                    Text(stringResource(R.string.common_cancel))
-                }
-                ClawSeedOutlinedButton(onClick = onSave, enabled = !isSaving, loading = isSaving) {
-                    Text(stringResource(R.string.common_confirm))
-                }
-                ClawSeedButton(onClick = onSaveAndStart, enabled = !isSaving) {
-                    Text(stringResource(R.string.persona_save_start))
+        if (needsSave) {
+            item {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                    ClawSeedOutlinedButton(onClick = onSave, enabled = !isSaving, loading = isSaving) {
+                        Text(stringResource(if (draft.originalName == null) R.string.persona_create else R.string.suggestion_save))
+                    }
                 }
             }
         }
@@ -943,9 +929,6 @@ private fun PersonaSection(title: String, content: @Composable ColumnScope.() ->
 private fun ToolSelector(
     tools: List<ToolInfo>,
     allowed: Set<String>,
-    onSelectAll: () -> Unit,
-    onSelectNone: () -> Unit,
-    onRestoreDefault: () -> Unit,
     onToggle: (String) -> Unit,
 ) {
     if (tools.isEmpty()) {
@@ -957,26 +940,23 @@ private fun ToolSelector(
         return
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            ClawSeedOutlinedButton(onClick = onSelectAll) {
-                Text(stringResource(R.string.persona_tools_select_all))
-            }
-            ClawSeedOutlinedButton(onClick = onSelectNone) {
-                Text(stringResource(R.string.persona_tools_select_none))
-            }
-            ClawSeedOutlinedButton(onClick = onRestoreDefault) {
-                Text(stringResource(R.string.persona_tools_restore_default))
-            }
-        }
-        tools.forEach { tool ->
-            PersonaToolCard(
-                tool = tool,
-                enabled = allowed.contains(tool.name),
-                onToggle = { onToggle(tool.name) },
+        tools.groupBySource().forEach { (group, members) ->
+            var expanded by rememberSaveable(group) { mutableStateOf(false) }
+            ClawSeedSectionHeader(
+                title = stringResource(group.labelRes),
+                subtitle = stringResource(R.string.settings_tool_group_count, members.size),
+                expanded = expanded,
+                onToggle = { expanded = !expanded },
             )
+            if (expanded) {
+                members.forEach { tool ->
+                    PersonaToolCard(
+                        tool = tool,
+                        enabled = tool.name in allowed,
+                        onToggle = { onToggle(tool.name) },
+                    )
+                }
+            }
         }
     }
 }
@@ -998,7 +978,7 @@ private fun PersonaToolCard(
         Column(modifier = Modifier.padding(12.dp)) {
             dev.clawseed.demo.ui.components.SettingsSwitchRow(
                 title = tool.name,
-                subtitle = when (tool.sourceType) { "remote" -> "Remote"; "mcp" -> "MCP"; else -> "Built-in" },
+                subtitle = tool.source,
                 checked = enabled, onCheckedChange = onToggle,
             )
             if (tool.description.isNotBlank()) {
@@ -1046,64 +1026,20 @@ private fun PersonaSkillCard(
     onToggle: (Boolean) -> Unit,
 ) {
     SettingsGroup(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(Modifier.padding(12.dp)) {
             dev.clawseed.demo.ui.components.SettingsSwitchRow(
-                title = if (skill.version.isNotBlank()) "${skill.name}  v${skill.version}" else skill.name,
-                checked = enabled, onCheckedChange = onToggle,
+                title = skill.name,
+                checked = enabled,
+                onCheckedChange = onToggle,
             )
             if (skill.description.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = skill.description,
+                    skill.description,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
-            if (skill.triggers.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(6.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    skill.triggers.forEach { trigger ->
-                        ClawSeedChoiceChip(
-                            selected = false,
-                            onClick = {},
-                            choiceType = dev.clawseed.demo.ui.components.ChoiceType.Information,
-                            label = {
-                                Text(
-                                    text = trigger,
-                                    style = MaterialTheme.typography.labelSmall,
-                                )
-                            },
-                            modifier = Modifier,
-                        )
-                    }
-                }
-            }
-            if (skill.permissions.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    skill.permissions.forEach { perm ->
-                        ClawSeedChoiceChip(
-                            selected = false,
-                            onClick = {},
-                            choiceType = dev.clawseed.demo.ui.components.ChoiceType.Information,
-                            label = {
-                                Text(
-                                    text = perm,
-                                    style = MaterialTheme.typography.labelSmall,
-                                )
-                            },
-                            modifier = Modifier,
-                        )
-                    }
-                }
             }
         }
     }
@@ -1148,11 +1084,6 @@ private fun PersonaDetail.toInfo(): PersonaInfo =
         avatar = avatar,
         color = color,
     )
-
-private fun defaultAllowedTools(tools: List<ToolInfo>): Set<String> =
-    tools.filter { it.enabled && (it.sourceType == "builtin" || it.sourceType == "plugin") }
-        .map { it.name }
-        .toSet()
 
 private fun Set<String>.toggle(value: String): Set<String> =
     if (contains(value)) this - value else this + value

@@ -1,5 +1,6 @@
 package dev.clawseed.demo.ui.settings
 
+import kotlinx.coroutines.sync.withLock
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -13,7 +14,7 @@ import androidx.compose.runtime.setValue
 import dev.clawseed.demo.ui.components.SettingsGroup
 import dev.clawseed.demo.ui.components.ClawSeedButton
 import dev.clawseed.demo.ui.components.ClawSeedTextButton
-import dev.clawseed.demo.ui.components.ClawSeedChoiceChip
+import dev.clawseed.demo.ui.components.ClawSeedSegmentedPill
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -266,6 +267,29 @@ fun DataTransferSection() {
     val webDavFailedFormat = stringResource(R.string.data_webdav_failed)
     val webDavSettingsSaved = stringResource(R.string.data_webdav_settings_saved)
     val autoBackupSettingsSaved = stringResource(R.string.data_webdav_auto_settings_saved)
+
+    val backupWrites = remember { kotlinx.coroutines.sync.Mutex() }
+    fun changeBackupChoice(change: (WebDavAutoBackupSettings) -> WebDavAutoBackupSettings) {
+        scope.launch {
+            backupWrites.withLock {
+                val previous = webDavAutoBackupStore.load()
+                val next = change(previous)
+                try {
+                    webDavAutoBackupStore.save(next)
+                    WebDavAutoBackupScheduler.apply(context, next)
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    webDavAutoBackupStore.save(previous)
+                    webDavAutoBackupEnabled = previous.enabled
+                    webDavAutoBackupWifiOnly = previous.wifiOnly
+                    webDavAutoBackupFrequency = previous.frequency
+                    webDavAutoBackupWeeklyDay = previous.weeklyDay
+                    autoBackupStatus = error.message
+                }
+            }
+        }
+    }
+
     val webDavDeleteDone = stringResource(R.string.data_webdav_delete_done)
     val webDavTestPassed = stringResource(R.string.data_webdav_test_passed)
     val webDavTestFailed = stringResource(R.string.data_webdav_test_failed)
@@ -429,18 +453,13 @@ fun DataTransferSection() {
                 )
 
                 Text(stringResource(R.string.data_transfer_destination), style = MaterialTheme.typography.labelLarge)
-                FlowRow(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ClawSeedChoiceChip(
-                        selected = exportDestination == TransferEndpoint.LocalFile,
-                        onClick = { exportDestination = TransferEndpoint.LocalFile },
-                        label = { Text(stringResource(R.string.data_transfer_local_file)) },
-                    )
-                    ClawSeedChoiceChip(
-                        selected = exportDestination == TransferEndpoint.WebDav,
-                        onClick = { exportDestination = TransferEndpoint.WebDav },
-                        label = { Text(stringResource(R.string.data_transfer_webdav)) },
-                    )
-                }
+                val endpoints = listOf(TransferEndpoint.LocalFile, TransferEndpoint.WebDav)
+                ClawSeedSegmentedPill(
+                    options = listOf(stringResource(R.string.data_transfer_local_file), stringResource(R.string.data_transfer_webdav)),
+                    selectedIndex = endpoints.indexOf(exportDestination),
+                    onSelect = { exportDestination = endpoints[it] },
+                    modifier = Modifier.fillMaxWidth(),
+                )
 
                 // Export button
                 ClawSeedButton(
@@ -532,31 +551,21 @@ fun DataTransferSection() {
                 SettingsSwitchRow(
                     title = stringResource(R.string.data_webdav_auto_enable),
                     checked = webDavAutoBackupEnabled,
-                    onCheckedChange = { webDavAutoBackupEnabled = it },
+                    onCheckedChange = { enabled ->
+                        webDavAutoBackupEnabled = enabled
+                        // Enabling requires a complete destination and credentials.
+                        if (!enabled) changeBackupChoice { it.copy(enabled = false) }
+                    },
                 )
                 if (webDavAutoBackupEnabled) {
                     Text(stringResource(R.string.data_webdav_auto_destination), style = MaterialTheme.typography.labelLarge)
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth().selectableGroup(),
-                    ) {
-                        ClawSeedChoiceChip(
-                            selected = webDavAutoBackupDestination == AutoBackupDestination.LOCAL,
-                            onClick = { webDavAutoBackupDestination = AutoBackupDestination.LOCAL },
-                            label = { Text(stringResource(R.string.data_webdav_auto_destination_local)) },
-                        )
-                        ClawSeedChoiceChip(
-                            selected = webDavAutoBackupDestination == AutoBackupDestination.WEBDAV,
-                            onClick = { webDavAutoBackupDestination = AutoBackupDestination.WEBDAV },
-                            label = { Text(stringResource(R.string.data_webdav_auto_destination_webdav)) },
-                        )
-                        ClawSeedChoiceChip(
-                            selected = webDavAutoBackupDestination == AutoBackupDestination.LOCAL_AND_WEBDAV,
-                            onClick = { webDavAutoBackupDestination = AutoBackupDestination.LOCAL_AND_WEBDAV },
-                            label = { Text(stringResource(R.string.data_webdav_auto_destination_both)) },
-                        )
-                    }
+                    val destinations = listOf(AutoBackupDestination.LOCAL, AutoBackupDestination.WEBDAV, AutoBackupDestination.LOCAL_AND_WEBDAV)
+                    ClawSeedSegmentedPill(
+                        options = listOf(stringResource(R.string.data_webdav_auto_destination_local), stringResource(R.string.data_webdav_auto_destination_webdav), stringResource(R.string.data_webdav_auto_destination_both)),
+                        selectedIndex = destinations.indexOf(webDavAutoBackupDestination),
+                        onSelect = { webDavAutoBackupDestination = destinations[it] },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         ClawSeedTextField(
                             value = webDavAutoBackupHour,
@@ -574,38 +583,38 @@ fun DataTransferSection() {
                             modifier = Modifier.weight(1f),
                         )
                     }
-                    FlowRow(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ClawSeedChoiceChip(
-                            selected = webDavAutoBackupFrequency == WebDavAutoBackupFrequency.DAILY,
-                            onClick = { webDavAutoBackupFrequency = WebDavAutoBackupFrequency.DAILY },
-                            label = { Text(stringResource(R.string.data_webdav_auto_daily)) },
-                        )
-                        ClawSeedChoiceChip(
-                            selected = webDavAutoBackupFrequency == WebDavAutoBackupFrequency.WEEKLY,
-                            onClick = { webDavAutoBackupFrequency = WebDavAutoBackupFrequency.WEEKLY },
-                            label = { Text(stringResource(R.string.data_webdav_auto_weekly)) },
-                        )
-                    }
+                    val frequencies = listOf(WebDavAutoBackupFrequency.DAILY, WebDavAutoBackupFrequency.WEEKLY)
+                    ClawSeedSegmentedPill(
+                        options = listOf(stringResource(R.string.data_webdav_auto_daily), stringResource(R.string.data_webdav_auto_weekly)),
+                        selectedIndex = frequencies.indexOf(webDavAutoBackupFrequency),
+                        onSelect = { index ->
+                            val frequency = frequencies[index]
+                            webDavAutoBackupFrequency = frequency
+                            changeBackupChoice { it.copy(frequency = frequency) }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     if (webDavAutoBackupFrequency == WebDavAutoBackupFrequency.WEEKLY) {
                         Text(stringResource(R.string.data_webdav_auto_weekly_day), style = MaterialTheme.typography.labelLarge)
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth().selectableGroup(),
-                        ) {
-                            (1..7).forEach { day ->
-                                ClawSeedChoiceChip(
-                                    selected = webDavAutoBackupWeeklyDay == day,
-                                    onClick = { webDavAutoBackupWeeklyDay = day },
-                                    label = { Text(stringResource(weekdayLabelRes(day))) },
-                                )
-                            }
-                        }
+                        val days = (1..7).toList()
+                        ClawSeedSegmentedPill(
+                            options = days.map { stringResource(weekdayLabelRes(it)) },
+                            selectedIndex = days.indexOf(webDavAutoBackupWeeklyDay),
+                            onSelect = { index ->
+                                val day = days[index]
+                                webDavAutoBackupWeeklyDay = day
+                                changeBackupChoice { it.copy(weeklyDay = day) }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                     SettingsSwitchRow(
                         title = stringResource(R.string.data_webdav_auto_wifi_only),
                         checked = webDavAutoBackupWifiOnly,
-                        onCheckedChange = { webDavAutoBackupWifiOnly = it },
+                        onCheckedChange = { wifiOnly ->
+                            webDavAutoBackupWifiOnly = wifiOnly
+                            changeBackupChoice { it.copy(wifiOnly = wifiOnly) }
+                        },
                     )
                     ClawSeedTextField(
                         value = webDavAutoBackupRetainCount,
@@ -707,8 +716,10 @@ fun DataTransferSection() {
                                 minute = minute ?: 0,
                                 weeklyDay = webDavAutoBackupWeeklyDay,
                             )
-                            withContext(Dispatchers.IO) { webDavAutoBackupStore.save(auto) }
-                            WebDavAutoBackupScheduler.apply(context, auto)
+                            backupWrites.withLock {
+                                withContext(Dispatchers.IO) { webDavAutoBackupStore.save(auto) }
+                                WebDavAutoBackupScheduler.apply(context, auto)
+                            }
                             autoBackupStatus = autoBackupSettingsSaved
                         }
                     },
@@ -884,18 +895,13 @@ fun DataTransferSection() {
                 Text(stringResource(R.string.data_import), style = MaterialTheme.typography.titleMedium)
 
                 Text(stringResource(R.string.data_transfer_source), style = MaterialTheme.typography.labelLarge)
-                FlowRow(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ClawSeedChoiceChip(
-                        selected = importSource == TransferEndpoint.LocalFile,
-                        onClick = { importSource = TransferEndpoint.LocalFile },
-                        label = { Text(stringResource(R.string.data_transfer_local_file)) },
-                    )
-                    ClawSeedChoiceChip(
-                        selected = importSource == TransferEndpoint.WebDav,
-                        onClick = { importSource = TransferEndpoint.WebDav },
-                        label = { Text(stringResource(R.string.data_transfer_webdav)) },
-                    )
-                }
+                val endpoints = listOf(TransferEndpoint.LocalFile, TransferEndpoint.WebDav)
+                ClawSeedSegmentedPill(
+                    options = listOf(stringResource(R.string.data_transfer_local_file), stringResource(R.string.data_transfer_webdav)),
+                    selectedIndex = endpoints.indexOf(importSource),
+                    onSelect = { importSource = endpoints[it] },
+                    modifier = Modifier.fillMaxWidth(),
+                )
 
                 if (importSource == TransferEndpoint.LocalFile) {
                     FlowRow(
@@ -1049,24 +1055,13 @@ fun DataTransferSection() {
                     )
                     // Strategy selector for categories that support multiple strategies
                     if (category in selectedImportCategories && category in STRATEGY_CATEGORIES) {
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth().selectableGroup(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            for (strategy in category.defaultStrategies) {
-                                val currentStrategy = importStrategies[category] ?: category.defaultStrategy
-                                ClawSeedChoiceChip(
-                                    selected = currentStrategy == strategy,
-                                    onClick = {
-                                        importStrategies = importStrategies.toMutableMap().apply {
-                                            this[category] = strategy
-                                        }
-                                    },
-                                    label = { Text(strategy.label()) },
-                                )
-                            }
-                        }
+                        val strategies = category.defaultStrategies
+                        ClawSeedSegmentedPill(
+                            options = strategies.map { it.label() },
+                            selectedIndex = strategies.indexOf(importStrategies[category] ?: category.defaultStrategy),
+                            onSelect = { index -> importStrategies = importStrategies + (category to strategies[index]) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
 
@@ -1194,7 +1189,7 @@ fun DataTransferSection() {
                 }
             },
             confirmButton = {
-                ClawSeedButton(onClick = { importResult = null }) { Text(stringResource(R.string.common_confirm)) }
+                ClawSeedButton(onClick = { importResult = null }) { Text(stringResource(R.string.common_close)) }
             },
         )
     }
