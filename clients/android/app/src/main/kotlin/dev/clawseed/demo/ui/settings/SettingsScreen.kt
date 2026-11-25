@@ -50,6 +50,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -69,6 +70,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import kotlin.math.roundToInt
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -375,6 +380,7 @@ fun SettingsScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             ContextCompactionCard(
                                 enabled = uiState.contextCompactionEnabled,
+                                isSaving = uiState.isSaving,
                                 keepRecentTurns = uiState.contextCompactionKeepRecentTurns,
                                 thresholdPercent = uiState.contextCompactionThresholdPercent,
                                 onToggleEnabled = viewModel::toggleContextCompaction,
@@ -1897,15 +1903,13 @@ private fun SessionSettingsCard(
 @Composable
 private fun ContextCompactionCard(
     enabled: Boolean,
+    isSaving: Boolean,
     keepRecentTurns: String,
     thresholdPercent: String,
     onToggleEnabled: (Boolean) -> Unit,
     onKeepRecentTurnsChange: (String) -> Unit,
     onThresholdChange: (String) -> Unit,
 ) {
-    val keepOptions = listOf("1", "2", "3", "5", "10").plus(keepRecentTurns).distinct()
-    val thresholdOptions = listOf("50", "60", "70", "80", "85", "90", "95").plus(thresholdPercent).distinct()
-
     SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -1913,25 +1917,63 @@ private fun ContextCompactionCard(
         ) {
             SettingsSwitchRow(title = stringResource(R.string.settings_context_compaction_enabled), subtitle = stringResource(R.string.settings_context_compaction_enabled_desc), checked = enabled, onCheckedChange = onToggleEnabled)
 
-            Text(stringResource(R.string.settings_context_compaction_keep_turns))
-            ClawSeedSegmentedPill(
-                options = keepOptions.map { stringResource(R.string.settings_context_compaction_keep_turns_value, it) },
-                selectedIndex = keepOptions.indexOf(keepRecentTurns),
-                onSelect = { onKeepRecentTurnsChange(keepOptions[it]) },
+            CompactionSlider(
+                title = stringResource(R.string.settings_context_compaction_keep_turns),
+                description = stringResource(R.string.settings_context_compaction_keep_turns_desc),
+                value = keepRecentTurns.toIntOrNull() ?: 1,
+                range = 1..100,
                 enabled = enabled,
-                modifier = Modifier.fillMaxWidth(),
+                isSaving = isSaving,
+                format = { stringResource(R.string.settings_context_compaction_keep_turns_value, it.toString()) },
+                onCommit = { onKeepRecentTurnsChange(it.toString()) },
             )
-            Text(stringResource(R.string.settings_context_compaction_keep_turns_desc), style = MaterialTheme.typography.bodySmall)
-            Text(stringResource(R.string.settings_context_compaction_threshold))
-            ClawSeedSegmentedPill(
-                options = thresholdOptions.map { "$it%" },
-                selectedIndex = thresholdOptions.indexOf(thresholdPercent),
-                onSelect = { onThresholdChange(thresholdOptions[it]) },
+            CompactionSlider(
+                title = stringResource(R.string.settings_context_compaction_threshold),
+                description = stringResource(R.string.settings_context_compaction_threshold_desc),
+                value = thresholdPercent.toIntOrNull() ?: 80,
+                range = 5..95,
                 enabled = enabled,
-                modifier = Modifier.fillMaxWidth(),
+                isSaving = isSaving,
+                format = { "$it%" },
+                onCommit = { onThresholdChange(it.toString()) },
             )
-            Text(stringResource(R.string.settings_context_compaction_threshold_desc), style = MaterialTheme.typography.bodySmall)
         }
+    }
+}
+
+@Composable
+private fun CompactionSlider(
+    title: String,
+    description: String,
+    value: Int,
+    range: IntRange,
+    enabled: Boolean,
+    isSaving: Boolean,
+    format: @Composable (Int) -> String,
+    onCommit: (Int) -> Unit,
+) {
+    var position by remember(value, enabled) { mutableStateOf(value.coerceIn(range)) }
+    LaunchedEffect(isSaving) {
+        if (!isSaving) position = value.coerceIn(range)
+    }
+    val label = format(position)
+    Column {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, modifier = Modifier.weight(1f))
+            Text(label, style = MaterialTheme.typography.labelLarge)
+        }
+        Slider(
+            value = position.toFloat(),
+            onValueChange = { position = it.roundToInt() },
+            onValueChangeFinished = { if (position != value) onCommit(position) },
+            valueRange = range.first.toFloat()..range.last.toFloat(),
+            enabled = enabled && !isSaving,
+            modifier = Modifier.fillMaxWidth().semantics {
+                contentDescription = title
+                stateDescription = label
+            },
+        )
+        Text(description, style = MaterialTheme.typography.bodySmall)
     }
 }
 

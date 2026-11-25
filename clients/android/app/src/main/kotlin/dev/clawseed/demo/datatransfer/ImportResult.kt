@@ -2,6 +2,8 @@ package dev.clawseed.demo.datatransfer
 
 /** Summary of an import operation. */
 data class ImportResult(
+    val importedPlugins: Int = 0,
+    val skippedPlugins: Int = 0,
     val importedSkills: Int = 0,
     val importedMemories: Int = 0,
     val importedSessions: Int = 0,

@@ -29,6 +29,7 @@ enum class DataCategory(
         descriptionRes = R.string.enum_data_category_skills_desc,
         isSensitive = false,
     ),
+    PLUGINS(R.string.enum_data_category_plugins, R.string.enum_data_category_plugins_desc, false),
     USER_PROFILE(
         labelRes = R.string.enum_data_category_user_profile,
         descriptionRes = R.string.enum_data_category_user_profile_desc,

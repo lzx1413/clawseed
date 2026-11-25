@@ -1057,7 +1057,11 @@ fun DataTransferSection() {
                     if (category in selectedImportCategories && category in STRATEGY_CATEGORIES) {
                         val strategies = category.defaultStrategies
                         ClawSeedSegmentedPill(
-                            options = strategies.map { it.label() },
+                            options = strategies.map {
+                                if (category == DataCategory.PLUGINS) stringResource(
+                                    if (it == ImportStrategy.REPLACE) R.string.plugin_replace_existing else R.string.plugin_skip_existing
+                                ) else it.label()
+                            },
                             selectedIndex = strategies.indexOf(importStrategies[category] ?: category.defaultStrategy),
                             onSelect = { index -> importStrategies = importStrategies + (category to strategies[index]) },
                             modifier = Modifier.fillMaxWidth(),
@@ -1296,6 +1300,7 @@ private val STRATEGY_CATEGORIES = setOf(
     DataCategory.MEMORY,
     DataCategory.SESSIONS,
     DataCategory.SKILLS,
+    DataCategory.PLUGINS,
     DataCategory.USER_PROFILE,
 )
 
@@ -1304,6 +1309,7 @@ private val DataCategory.defaultStrategy: ImportStrategy
         DataCategory.CONFIG -> ImportStrategy.REPLACE
         DataCategory.MEMORY -> ImportStrategy.MERGE
         DataCategory.SESSIONS -> ImportStrategy.APPEND
+        DataCategory.PLUGINS -> ImportStrategy.APPEND
         DataCategory.SKILLS -> ImportStrategy.MERGE
         DataCategory.USER_PROFILE -> ImportStrategy.MERGE
         DataCategory.PERSONALITY -> ImportStrategy.REPLACE
@@ -1313,6 +1319,7 @@ private val DataCategory.defaultStrategies: List<ImportStrategy>
     get() = when (this) {
         DataCategory.MEMORY -> listOf(ImportStrategy.MERGE, ImportStrategy.REPLACE)
         DataCategory.SESSIONS -> listOf(ImportStrategy.APPEND, ImportStrategy.REPLACE)
+        DataCategory.PLUGINS -> listOf(ImportStrategy.APPEND, ImportStrategy.REPLACE)
         DataCategory.SKILLS -> listOf(ImportStrategy.MERGE, ImportStrategy.REPLACE)
         DataCategory.USER_PROFILE -> listOf(
             ImportStrategy.MERGE,
@@ -1340,6 +1347,9 @@ private fun ImportResult.summaryString(): String {
     }
     if (importedMessages > 0) {
         parts.add(stringResource(R.string.data_import_summary_messages, importedMessages))
+    }
+    if (importedPlugins > 0 || skippedPlugins > 0) {
+        parts.add(stringResource(R.string.data_import_summary_plugins, importedPlugins, skippedPlugins))
     }
     if (importedSkills > 0) {
         parts.add(stringResource(R.string.data_import_summary_skills, importedSkills))

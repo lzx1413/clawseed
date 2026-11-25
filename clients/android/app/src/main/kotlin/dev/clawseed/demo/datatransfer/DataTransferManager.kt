@@ -17,6 +17,8 @@ import dev.clawseed.sdk.core.model.ProfileImportStrategy as SdkProfileImportStra
 import dev.clawseed.sdk.core.model.UserProfileImportItem
 import dev.clawseed.sdk.core.model.UserProfileImportResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -37,6 +39,7 @@ class DataTransferManager(private val context: Context) {
     private val localStore = LocalStore(context)
     private val taskStore = ScheduledTaskStore(context)
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    private fun pluginArchive() = PluginArchive(File(configManager.workspaceDir(), ".clawseed/plugins"), configManager.ensureConfig())
     private val webDav = WebDavSyncClient()
 
     data class LocalBackupResult(val name: String, val bytes: Long)
@@ -256,6 +259,10 @@ class DataTransferManager(private val context: Context) {
         excludeSensitive: Boolean,
         outputStream: OutputStream,
     ): Result<Unit> = withContext(Dispatchers.IO) {
+        archiveLock.withLock { exportArchive(categories, excludeSensitive, outputStream) }
+    }
+
+    private suspend fun exportArchive(categories: Set<DataCategory>, excludeSensitive: Boolean, outputStream: OutputStream): Result<Unit> =
         try {
             val zipOut = ZipOutputStream(outputStream)
             val effectiveCategories = if (excludeSensitive) {
@@ -284,6 +291,7 @@ class DataTransferManager(private val context: Context) {
                     DataCategory.CONFIG -> exportConfig(zipOut, excludeSensitive, prefs, tasks)
                     DataCategory.MEMORY -> exportMemory(zipOut)
                     DataCategory.SESSIONS -> exportSessions(zipOut)
+                    DataCategory.PLUGINS -> pluginArchive().export(zipOut)
                     DataCategory.SKILLS -> exportSkills(zipOut)
                     DataCategory.USER_PROFILE -> exportUserProfile(zipOut)
                     DataCategory.PERSONALITY -> exportPersonality(zipOut)
@@ -296,7 +304,6 @@ class DataTransferManager(private val context: Context) {
         } catch (e: Exception) {
             Result.failure(e)
         }
-    }
 
     private fun exportConfig(
         zipOut: ZipOutputStream,
@@ -397,10 +404,12 @@ class DataTransferManager(private val context: Context) {
         categories: Set<DataCategory>,
         strategies: Map<DataCategory, ImportStrategy>,
     ): Result<ImportResult> = withContext(Dispatchers.IO) {
-        try {
-            val tempDir = File(context.cacheDir, "clawseed-import")
-            if (tempDir.exists()) tempDir.deleteRecursively()
-            tempDir.mkdirs()
+        archiveLock.withLock { importArchive(inputStream, categories, strategies) }
+    }
+
+    private suspend fun importArchive(inputStream: InputStream, categories: Set<DataCategory>, strategies: Map<DataCategory, ImportStrategy>): Result<ImportResult> {
+        val tempDir = java.nio.file.Files.createTempDirectory(context.cacheDir.toPath(), "clawseed-import-").toFile()
+        return try {
 
             // Extract ZIP to temp directory
             val zipIn = ZipInputStream(inputStream)
@@ -408,7 +417,8 @@ class DataTransferManager(private val context: Context) {
             var manifest: ExportManifest? = null
 
             while (entry != null) {
-                val targetFile = File(tempDir, entry.name)
+                val targetFile = File(tempDir, entry.name).canonicalFile
+                require(targetFile.toPath().startsWith(tempDir.canonicalFile.toPath()) && targetFile != tempDir) { "Invalid backup entry" }
                 if (entry.isDirectory) {
                     targetFile.mkdirs()
                 } else {
@@ -425,11 +435,9 @@ class DataTransferManager(private val context: Context) {
             zipIn.close()
 
             if (manifest == null) {
-                tempDir.deleteRecursively()
                 throw IllegalArgumentException(context.getString(R.string.data_export_missing_manifest))
             }
             if (manifest.version > ExportManifest.CURRENT_VERSION) {
-                tempDir.deleteRecursively()
                 throw IllegalArgumentException(context.getString(R.string.data_export_version_incompatible, manifest.version, ExportManifest.CURRENT_VERSION))
             }
 
@@ -440,6 +448,9 @@ class DataTransferManager(private val context: Context) {
 
             val warnings = mutableListOf<String>()
             val errors = mutableListOf<String>()
+            val restoringPlugins = DataCategory.PLUGINS in categories && DataCategory.PLUGINS in availableInZip
+            val previousPlugins = if (restoringPlugins) pluginArchive().states() else emptyMap()
+            var plugins = PluginArchive.Restored(0, 0)
             var importedSkills = 0
             var importedMemories = 0
             var importedSessions = 0
@@ -451,7 +462,7 @@ class DataTransferManager(private val context: Context) {
             var importedConfig = false
             var importedTasks = 0
 
-            for (category in categories) {
+            for (category in categories.sortedBy { if (it == DataCategory.PLUGINS) 1 else 0 }) {
                 if (category !in availableInZip) {
                     warnings.add(context.getString(R.string.data_export_missing_category, category.label(context)))
                     continue
@@ -471,6 +482,10 @@ class DataTransferManager(private val context: Context) {
                             val result = importSessions(tempDir, strategy)
                             importedSessions = result.first
                             importedMessages = result.second
+                        }
+                        DataCategory.PLUGINS -> {
+                            plugins = pluginArchive().restore(tempDir.resolve("plugins"),
+                                strategies[category] == ImportStrategy.REPLACE, previousPlugins)
                         }
                         DataCategory.SKILLS -> {
                             val strategy = strategies[category] ?: ImportStrategy.MERGE
@@ -494,7 +509,7 @@ class DataTransferManager(private val context: Context) {
             }
 
             // Restart gateway if config or personality was imported
-            if (importedConfig || importedPersonalityFiles > 0) {
+            if (importedConfig || importedPersonalityFiles > 0 || plugins.written > 0) {
                 try {
                     ClawSeedAndroid.restartGateway()
                 } catch (e: Exception) {
@@ -502,11 +517,10 @@ class DataTransferManager(private val context: Context) {
                 }
             }
 
-            // Cleanup
-            tempDir.deleteRecursively()
-
             Result.success(ImportResult(
                 importedSkills = importedSkills,
+                importedPlugins = plugins.written,
+                skippedPlugins = plugins.skipped,
                 importedMemories = importedMemories,
                 importedSessions = importedSessions,
                 importedMessages = importedMessages,
@@ -521,6 +535,8 @@ class DataTransferManager(private val context: Context) {
             ))
         } catch (e: Exception) {
             Result.failure(e)
+        } finally {
+            tempDir.deleteRecursively()
         }
     }
 
@@ -940,6 +956,7 @@ class DataTransferManager(private val context: Context) {
     }
 
     companion object {
+        private val archiveLock = Mutex()
         private const val TAG = "DataTransferManager"
     }
 }

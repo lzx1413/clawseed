@@ -230,6 +230,11 @@
     <string name="enum_data_category_memory_desc">Export memory database (brain.db)</string>
     <string name="enum_data_category_sessions">Sessions</string>
     <string name="enum_data_category_sessions_desc">Export session history</string>
+    <string name="enum_data_category_plugins">Linux plugins</string>
+    <string name="enum_data_category_plugins_desc">Plugin files and enabled states</string>
+    <string name="plugin_skip_existing">Skip existing</string>
+    <string name="plugin_replace_existing">Replace existing</string>
+    <string name="data_import_summary_plugins">%1$d plugins restored, %2$d skipped</string>
     <string name="enum_data_category_skills">Skills</string>
     <string name="enum_data_category_skills_desc">Export all skill files and config</string>
     <string name="enum_data_category_personality">Personality</string>

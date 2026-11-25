@@ -230,6 +230,11 @@
     <string name="enum_data_category_memory_desc">导出记忆数据库 (brain.db)</string>
     <string name="enum_data_category_sessions">会话</string>
     <string name="enum_data_category_sessions_desc">导出会话历史记录</string>
+    <string name="enum_data_category_plugins">Linux 插件</string>
+    <string name="enum_data_category_plugins_desc">插件文件及启用状态</string>
+    <string name="plugin_skip_existing">跳过同名插件</string>
+    <string name="plugin_replace_existing">覆盖同名插件</string>
+    <string name="data_import_summary_plugins">已恢复 %1$d 个插件，跳过 %2$d 个</string>
     <string name="enum_data_category_skills">技能</string>
     <string name="enum_data_category_skills_desc">导出所有技能文件和配置</string>
     <string name="enum_data_category_personality">人格</string>
