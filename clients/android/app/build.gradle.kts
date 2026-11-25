@@ -55,11 +55,11 @@ android {
         }
         minSdk = 26
         targetSdk = 37
-        versionCode = 21
-        versionName = "2.2.0"
+        versionCode = 22
+        versionName = "2.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
-        buildConfigField("String", "SDK_VERSION", "\"0.5.0\"")
+        buildConfigField("String", "SDK_VERSION", "\"0.6.0\"")
         buildConfigField("String", "PROOT_RUNTIME_MANIFEST_URL", "\"$prootRuntimeManifestUrl\"")
         buildConfigField("String", "PROOT_RUNTIME_PUBLISHER_KEY_ID", "\"$prootRuntimePublisherKeyId\"")
         buildConfigField("String", "PROOT_RUNTIME_PUBLISHER_KEY", "\"$prootRuntimePublisherKey\"")

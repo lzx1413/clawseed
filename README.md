@@ -45,6 +45,7 @@ ClawSeed is both a ready-to-use Android application and a Rust AI agent runtime.
 
 ## NEWS
 
+- **ClawSeed Android 2.3.0** bundles an arm64 Linux environment and Rust runtime 0.6.0 with local plugin management, backup and chat media support. [Release notes](CHANGELOG.md)
 - 2026-11-10: **ClawSeed Android 2.2.0** refreshes the interface, adds persona-specific chat shortcuts, conversation batch selection, MiMo cloud voice playback, and a CSV processing tool. See the [release notes](CHANGELOG.md) for the complete list.
 - 2026-09-11: **ClawSeed Android 2.0.0** brings image and file conversations: attach images, PDF, DOCX, Markdown, text, and CSV files; browse recent photos or choose Camera, Gallery, and Files from the attachment picker; and share images and files from other Android apps into a new conversation draft. This update also improves photo preview and upload performance, chat scrolling, session resource usage, and LLM usage metrics. See the [attachment guide](docs/en/android-file-attachments.md) for supported formats and limits.
 - 2026-07-03: ClawSeed now officially supports personas.

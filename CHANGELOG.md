@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.0 — 2026-11-26
+
+- Android now bundles a Linux environment with Python and Node.js on arm64 devices. The Rust runtime 0.6.0 discovers and loads local CETP plugins.
+- Manage Linux plugins in settings and back up their files and enabled states locally or through WebDAV.
+- Plugins can receive image inputs and present media in chat.
+- Android settings save individual choices on selection. Persona editing includes an avatar picker and grouped tool permissions, and context compaction uses sliders.
+
 ## 2.2.0 — 2026-11-10
 
 ### Android

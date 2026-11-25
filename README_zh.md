@@ -46,6 +46,7 @@ ClawSeed 既是一个可以直接使用的 Android 应用，也是一个 Rust AI
 
 ## NEWS
 
+- **ClawSeed Android 2.3.0** 内置 arm64 Linux 环境和 Rust runtime 0.6.0，支持 Linux 插件管理、备份和聊天媒体展示。[发布说明](CHANGELOG.md)
 - 2026-11-10：**ClawSeed Android 2.2.0** 更新界面，新增分身专属聊天快捷卡片、会话批量选择、MiMo 云端语音播放和 CSV 处理工具。完整变更见[发布说明](CHANGELOG.md)。
 - 2026-09-11：**ClawSeed Android 2.0.0** 带来图片与文件对话：支持添加图片、PDF、DOCX、Markdown、文本和 CSV 附件；附件面板提供最近图片预览及拍照、相册、文件入口；支持从其他 Android 应用分享图片和文件到新会话草稿。本次更新还优化了拍照预览与上传速度、聊天滚动和会话资源占用，并完善了模型用量统计。支持格式与限制详见[附件使用说明](docs/zh/android-file-attachments.md)。
 - 2026-07-03：ClawSeed 正式支持分身功能。
