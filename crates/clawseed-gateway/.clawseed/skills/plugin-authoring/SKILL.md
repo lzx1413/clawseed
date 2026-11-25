@@ -21,10 +21,36 @@ Use this workflow when the user asks to create or modify a local ClawSeed plugin
 - The response envelope is `{"id":"...","status":"success","data":...}`. This is the CETP stdio binding, not generic JSON-RPC.
 - `list_tools` returns `tools` with `name`, `description`, and `parameters`. Use `parameters`, not `inputSchema`.
 - `execute_tool` receives `tool_name` and `args` inside `params`.
+- The host puts current-turn images in both `params.attachments` and `params.context.attachments`. Each item has a runtime-visible `path`, `id`, `mime_type`, `size_bytes`, `width`, and `height`. Read the path during the call and do not retain it after the response.
+- `execute_tool` may return `data.output` for LLM-facing text and an optional `data.presentation` object with versioned `blocks` such as `image`, `audio`, `video`, or `link`. The Android client renders these blocks.
 - `negotiate` returns `selected_version: 2` and `session_token`.
 - Do not print logs, progress text, or stack traces to stdout.
 - Keep `list_tools` schemas accurate because the Agent uses them for model tool selection.
 
+Media presentation example:
+
+~~~json
+{"id":"req-1","status":"success","data":{"output":"天气图","presentation":{"version":1,"blocks":[{"type":"image","media":{"url":"https://cdn.example.com/weather.png","mime_type":"image/png"},"alt":"天气图"}]}}}
+~~~
+
+Media URLs must use HTTPS. The host validates presentation blocks before they reach the client.
+
+For plugin-generated local media, return a workspace-relative `media.path` with the MIME type.
+The Android client reads that path from its local workspace and renders the file. Do not generate
+opaque asset IDs or return host absolute paths. The client-provided `media_present` tool is for
+explicit display requests and is not needed when the plugin result already contains a
+`presentation` block.
+
 ## Permission rules
 
-Use the smallest permissions that satisfy the request. Explain any request for workspace writes or network access. Plugin creation writes files into `.clawseed/plugins/<plugin_id>` and does not enable or execute the plugin by itself.
+Use the smallest permissions that satisfy the request. The generated default is
+`workspace=none` and `network=deny`.
+
+- `workspace=none` does not mount `/workspace`. The plugin cannot access the workspace.
+- `workspace=read` exposes a temporary snapshot at `/workspace`. The plugin can read it, but changes are discarded when the process exits and the real workspace is not modified.
+- `workspace=write` mounts the real workspace at `/workspace`. The plugin can create, modify, and delete workspace files.
+- The plugin process starts in `/plugin`. Relative paths such as `data/output.png` point into the plugin code mount. App-visible media must be written below `/workspace`, then returned as a path relative to the workspace root, for example `.clawseed/plugins/weather/media/output.png`.
+- `network=deny` and `network=allow` describe the plugin's network requirement. They do not provide kernel-level network isolation.
+- `environment` is a whitelist of host environment variable names passed to the plugin.
+
+Explain any request for workspace writes or network access. Plugin creation writes files into `.clawseed/plugins/<plugin_id>` and does not enable or execute the plugin by itself.

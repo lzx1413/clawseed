@@ -1,0 +1,7 @@
+[skill]
+name = "media-presentation"
+version = "0.5.0"
+description = "展示和处理图片、音频、视频与链接等多媒体内容。"
+category = "media"
+permissions = []
+triggers = ["显示图片", "展示图片", "分析这张图", "播放音频", "播放视频", "多媒体", "media", "show image", "analyze image"]
