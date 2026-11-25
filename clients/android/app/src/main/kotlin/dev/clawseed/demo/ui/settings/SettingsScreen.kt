@@ -274,7 +274,7 @@ fun SettingsScreen(
                             title = stringResource(R.string.settings_tool_management),
                             expanded = false,
                             onToggle = onManageTools,
-                            subtitle = stringResource(R.string.settings_tool_management_desc, uiState.tools.size + uiState.plugins.size),
+                            subtitle = stringResource(R.string.settings_tool_management_desc, uiState.nonPluginTools.size, uiState.plugins.size),
                         )
                     }
                 }

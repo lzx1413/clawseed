@@ -220,7 +220,7 @@ fun ToolManagementScreen(onBack: () -> Unit) {
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        val groups = state.tools
+        val groups = state.nonPluginTools
             .groupBy(::toolGroupKey)
             .toList()
             .sortedBy { toolGroupOrder(it.first) }
@@ -232,7 +232,7 @@ fun ToolManagementScreen(onBack: () -> Unit) {
             if (state.plugins.isNotEmpty()) {
                 item(key = "plugin-manifests-header") {
                     ClawSeedSectionHeader(
-                        title = stringResource(R.string.settings_plugin_packages),
+                        title = stringResource(R.string.settings_tool_group_plugin),
                         expanded = "plugin-manifests" in expandedGroups,
                         onToggle = {
                             expandedGroups = if ("plugin-manifests" in expandedGroups) {
@@ -349,7 +349,6 @@ private fun ToolManagementCard(tool: ToolInfo, onToggle: (Boolean) -> Unit) {
 }
 
 private fun toolSourceLabel(tool: ToolInfo): String = when (tool.sourceType) {
-    "plugin" -> "Plugin${tool.source?.let { " · $it" }.orEmpty()}"
     "remote" -> "Remote${tool.source?.let { " · $it" }.orEmpty()}"
     "mcp" -> "MCP${tool.source?.let { " · $it" }.orEmpty()}"
     else -> "Built-in"
@@ -358,7 +357,6 @@ private fun toolSourceLabel(tool: ToolInfo): String = when (tool.sourceType) {
 private fun toolGroupKey(tool: ToolInfo): String = when {
     tool.sourceType == "remote" && "__" in tool.name -> "third_party_app"
     tool.sourceType == "remote" -> "local_remote"
-    tool.sourceType == "plugin" -> "plugin"
     tool.sourceType == "mcp" -> "mcp"
     tool.sourceType == "builtin" || tool.sourceType.isBlank() -> "builtin"
     else -> "other"
@@ -368,7 +366,6 @@ private fun toolGroupOrder(sourceType: String): Int = when (sourceType) {
     "builtin" -> 0
     "local_remote" -> 1
     "third_party_app" -> 2
-    "plugin" -> 3
     "mcp" -> 4
     else -> 5
 }
@@ -377,7 +374,6 @@ private fun toolGroupLabelRes(sourceType: String): Int = when (sourceType) {
     "builtin" -> R.string.settings_tool_group_builtin
     "local_remote" -> R.string.settings_tool_group_local_remote
     "third_party_app" -> R.string.settings_tool_group_third_party_app
-    "plugin" -> R.string.settings_tool_group_plugin
     "mcp" -> R.string.settings_tool_group_mcp
     else -> R.string.settings_tool_group_other
 }

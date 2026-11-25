@@ -103,7 +103,9 @@ data class SettingsUiState(
     val updateApkReady: Boolean = false,
     val updateInstallError: String? = null,
     val updateCheckResult: UpdateCheckResult? = null,
-)
+) {
+    val nonPluginTools: List<ToolInfo> get() = tools.filterNot { it.sourceType == "plugin" }
+}
 
 /** Result of an update check — used to show "up to date" or error messages. */
 sealed class UpdateCheckResult {

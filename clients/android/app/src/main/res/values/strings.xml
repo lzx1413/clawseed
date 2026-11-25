@@ -400,13 +400,12 @@
     <string name="settings_skill_management_desc">Manage and edit %1$d skills</string>
     <string name="settings_skill_edit_hint">Tap to edit SKILL.md</string>
     <string name="settings_tool_management">Tool Management</string>
-    <string name="settings_tool_management_desc">Manage %1$d registered tools</string>
+    <string name="settings_tool_management_desc">Tools: %1$d · Plugins: %2$d</string>
     <string name="settings_tool_group_count">%1$d tools</string>
     <string name="settings_tool_group_builtin">Built-in</string>
     <string name="settings_tool_group_local_remote">Local Remote</string>
     <string name="settings_tool_group_third_party_app">Third-party Apps</string>
     <string name="settings_tool_group_plugin">Linux Plugins</string>
-    <string name="settings_plugin_packages">Linux Plugin Packages</string>
     <string name="settings_tool_group_mcp">MCP</string>
     <string name="settings_tool_group_other">Other</string>
     <string name="settings_plugin_count">%1$d plugins</string>
