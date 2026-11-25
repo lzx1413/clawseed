@@ -1,7 +1,7 @@
 package dev.clawseed.demo.i18n
 
 import android.content.Context
-import android.content.SharedPreferences
+import android.content.res.Configuration
 import java.util.Locale
 
 /**
@@ -35,7 +35,8 @@ object LocaleHelper {
     fun wrapContext(context: Context): Context {
         val locale = getOverrideLocale(context)
         if (locale == null) return context // system default
-        val config = android.content.res.Configuration(context.resources.configuration)
+        // Override only the locale so system night mode and display settings stay live.
+        val config = Configuration()
         config.setLocale(locale)
         return context.createConfigurationContext(config)
     }
